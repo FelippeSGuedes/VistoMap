@@ -14,18 +14,28 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "${{ secrets.VPS_PORT }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          VPS_PORT_TRIM=$(echo "$VPS_PORT" | tr -d '[:space:]')
+          VPS_HOST_TRIM=$(echo "$VPS_HOST" | tr -d '[:space:]')
+          ssh-keyscan -p "$VPS_PORT_TRIM" -H "$VPS_HOST_TRIM" >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "VPS_PORT_TRIM=$VPS_PORT_TRIM" >> $GITHUB_ENV
+          echo "VPS_HOST_TRIM=$VPS_HOST_TRIM" >> $GITHUB_ENV
+          echo "VPS_USER_TRIM=$(echo "$VPS_USER" | tr -d '[:space:]')" >> $GITHUB_ENV
 
       - name: Deploy Application
         run: |
           ssh -i ~/.ssh/id_ed25519 \
-            -p "${{ secrets.VPS_PORT }}" \
+            -p "$VPS_PORT_TRIM" \
             -o StrictHostKeyChecking=no \
-            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" << 'EOF'
+            "$VPS_USER_TRIM@$VPS_HOST_TRIM" << 'EOF'
               cd /var/www/app
               git pull origin main
               npm install
