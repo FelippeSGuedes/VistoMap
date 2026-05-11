@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f8f9fa;
+  --bg-elev: #ffffff;
+  --ink: #073b4c;
+  --ink-muted: #667280;
+  --emerald: #06d6a0;
+  --amber: #ffd166;
+  --deep: #073b4c;
+  --steel: #e5e7eb;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.dark {
+  --bg: #0b1416;
+  --bg-elev: #11201f;
+  --ink: #f8f9fa;
+  --ink-muted: #94a3a8;
+  --steel: #1c2a2c;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: 16px; /* prevents iOS zoom */
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(102, 114, 128, 0.4);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Mapbox tweaks */
+.mapboxgl-popup-content {
+  padding: 0 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 12px 40px rgba(7, 59, 76, 0.18) !important;
+  background: #ffffff !important;
+  overflow: hidden;
+  border: 1px solid rgba(7, 59, 76, 0.06);
+}
+.mapboxgl-popup-tip {
+  border-top-color: #ffffff !important;
+}
+.mapboxgl-ctrl-group {
+  border-radius: 14px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(7, 59, 76, 0.1) !important;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+  80%,
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Shimmer skeleton */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(229, 231, 235, 0.6) 0%,
+    rgba(248, 249, 250, 1) 50%,
+    rgba(229, 231, 235, 0.6) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* Marker pulse */
+.pin-pulse::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  opacity: 0.55;
+  animation: pulseRing 2.2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+/* Premium glass surface */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(160%) blur(16px);
+  -webkit-backdrop-filter: saturate(160%) blur(16px);
+  border: 1px solid rgba(7, 59, 76, 0.06);
+}
+.dark .glass {
+  background: rgba(11, 20, 22, 0.6);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Hide scroll on horizontal pill rows */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Map container fill */
+.map-canvas,
+.map-canvas .mapboxgl-map {
+  width: 100%;
+  height: 100%;
+}

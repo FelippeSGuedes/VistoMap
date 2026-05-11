@@ -1,0 +1,34 @@
+{
+  "name": "VistoMap — Vistorias em Campo",
+  "short_name": "VistoMap",
+  "description": "Plataforma enterprise de vistorias técnicas em campo.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#073B4C",
+  "theme_color": "#073B4C",
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Vistorias",
+      "url": "/vistorias",
+      "description": "Abrir mapa operacional de vistorias"
+    },
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Visão geral do técnico"
+    }
+  ]
+}
