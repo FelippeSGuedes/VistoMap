@@ -22,5 +22,6 @@ jobs:
 
       - name: Restart app
         run: |
-          pm2 restart app || pm2 start npm --name app -- start
+          pm2 delete app || true
+          pm2 start npm --name app -- start
           pm2 save
