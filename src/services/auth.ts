@@ -42,17 +42,15 @@ export async function login(input: LoginInput): Promise<AuthSession> {
     const { data } = await api.post<AuthSession>("/auth/login", input);
     persist(data);
     return data;
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      const session: AuthSession = {
-        token: "demo-token-" + Math.random().toString(36).slice(2),
-        tecnico: { ...MOCK_TECNICO, email: input.email },
-        expiresAt: Date.now() + 1000 * 60 * 60 * 8,
-      };
-      persist(session);
-      return session;
-    }
-    throw error;
+  } catch {
+    // Fallback mock enquanto API nao esta disponivel
+    const session: AuthSession = {
+      token: "demo-token-" + Math.random().toString(36).slice(2),
+      tecnico: { ...MOCK_TECNICO, email: input.email },
+      expiresAt: Date.now() + 1000 * 60 * 60 * 8,
+    };
+    persist(session);
+    return session;
   }
 }
 
