@@ -31,7 +31,8 @@ export async function query<T = unknown>(
   sql: string,
   params: ReadonlyArray<unknown> = []
 ): Promise<T[]> {
-  const [rows] = await getPool().execute(sql, params as unknown[]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [rows] = await getPool().execute(sql, params as any[]);
   return rows as T[];
 }
 
@@ -39,7 +40,8 @@ export async function execute(
   sql: string,
   params: ReadonlyArray<unknown> = []
 ): Promise<{ affectedRows: number; insertId: number }> {
-  const [result] = await getPool().execute(sql, params as unknown[]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [result] = await getPool().execute(sql, params as any[]);
   const r = result as { affectedRows: number; insertId: number };
   return { affectedRows: r.affectedRows ?? 0, insertId: r.insertId ?? 0 };
 }
