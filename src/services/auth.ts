@@ -38,20 +38,14 @@ export function loadSession(): AuthSession | null {
 }
 
 export async function login(input: LoginInput): Promise<AuthSession> {
-  try {
-    const { data } = await api.post<AuthSession>("/auth/login", input);
-    persist(data);
-    return data;
-  } catch {
-    // Fallback mock enquanto API nao esta disponivel
-    const session: AuthSession = {
-      token: "demo-token-" + Math.random().toString(36).slice(2),
-      tecnico: { ...MOCK_TECNICO, email: input.email },
-      expiresAt: Date.now() + 1000 * 60 * 60 * 8,
-    };
-    persist(session);
-    return session;
-  }
+  // TODO: substituir pelo endpoint real quando autenticação estiver pronta
+  const session: AuthSession = {
+    token: "demo-token-" + Math.random().toString(36).slice(2),
+    tecnico: { ...MOCK_TECNICO, email: input.email },
+    expiresAt: Date.now() + 1000 * 60 * 60 * 8,
+  };
+  persist(session);
+  return session;
 }
 
 export function logout() {
