@@ -20,13 +20,34 @@ export interface Coordinate {
   lng: number;
 }
 
+export type DropdownKey =
+  | "tipodeantena"
+  | "ganhodbi"
+  | "mododeoperacao"
+  | "operadorafourg"
+  | "tipodematerial"
+  | "tensao"
+  | "alimentacaodoequipamento"
+  | "localdeinstalacao";
+
+export interface VistoriaFields {
+  pspostefield?: string;
+  alturadaantenafield?: string;
+  endereofield?: string;
+  observaofield?: string;
+  aterramentofield?: string;
+  intensidadedesinalfield?: string;
+  velocidadefield?: string;
+  motivofield?: string;
+}
+
 export interface Vistoria {
   id: string;
   glpiId: string;
   equipamento: string;
   cidade: string;
-  estado?: string;
-  endereco?: string;
+  estado?: string | null;
+  endereco?: string | null;
   status: VistoriaStatus;
   prioridade: VistoriaPriority;
   tecnico: Tecnico;
@@ -37,6 +58,9 @@ export interface Vistoria {
   distanciaKm?: number;
   categoria?: string;
   online?: boolean;
+  fields?: VistoriaFields;
+  dropdownIds?: Partial<Record<"statusVistoria" | "pendencia", number | null>>;
+  dataVistoria?: string | null;
 }
 
 export interface VistoriaPayload {
@@ -44,8 +68,24 @@ export interface VistoriaPayload {
   latitude: number;
   longitude: number;
   observacoes: string;
-  fotos: string[];
+  pspostefield?: string;
+  alturadaantenafield?: string;
+  endereofield?: string;
+  aterramentofield?: string;
+  intensidadedesinalfield?: string;
+  velocidadefield?: string;
+  motivofield?: string;
+  dropdowns?: Partial<Record<DropdownKey, string>>;
   finalizadaEm: string;
+}
+
+export interface CaptureBundle {
+  imagem1?: Blob | null;
+  imagem2?: Blob | null;
+  imagem3?: Blob | null;
+  imagem4?: Blob | null;
+  imagem5?: Blob | null;
+  video360?: Blob | null;
 }
 
 export interface DashboardStats {

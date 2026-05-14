@@ -9,11 +9,9 @@ import {
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
   MAP_STYLE,
-  buildGoogleMapsUrl,
-  buildWazeUrl,
   getMapboxToken,
 } from "@/services/maps";
-import { STATUS_COLOR, STATUS_LABEL, isMobileDevice, formatDistanceKm } from "@/utils/format";
+import { STATUS_COLOR } from "@/utils/format";
 
 interface MapViewProps {
   vistorias: Vistoria[];
@@ -77,32 +75,6 @@ function buildMarkerEl(status: Vistoria["status"]) {
     root.style.transform = "";
   });
   return root;
-}
-
-function buildPopupHtml(v: Vistoria) {
-  const url = isMobileDevice()
-    ? buildWazeUrl(v.latitude, v.longitude)
-    : buildGoogleMapsUrl(v.latitude, v.longitude);
-  return `
-    <div style="width:280px;font-family:inherit;color:#073B4C;">
-      <div style="padding:14px 16px 10px;background:linear-gradient(135deg,#073B4C,#0A4F65);color:#F8F9FA;">
-        <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;opacity:.7;">${v.glpiId}</div>
-        <div style="font-size:15px;font-weight:600;margin-top:2px;line-height:1.25;">${v.equipamento}</div>
-        <div style="font-size:12px;opacity:.78;margin-top:4px;">${v.cidade}${v.estado ? " · " + v.estado : ""}</div>
-      </div>
-      <div style="display:flex;gap:6px;padding:10px 16px 0;">
-        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;background:${STATUS_COLOR[v.status]}22;color:${STATUS_COLOR[v.status]};padding:4px 8px;border-radius:999px;">${STATUS_LABEL[v.status]}</span>
-        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;background:#E5E7EB;color:#073B4C;padding:4px 8px;border-radius:999px;">${v.prioridade}</span>
-      </div>
-      <div style="display:flex;gap:8px;padding:12px 16px 14px;">
-        <a href="/vistorias/${v.id}" style="flex:1;display:flex;align-items:center;justify-content:center;height:38px;border-radius:12px;background:#F8F9FA;color:#073B4C;font-weight:600;font-size:13px;text-decoration:none;">Abrir</a>
-        <a href="${url}" target="_blank" rel="noopener noreferrer" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border-radius:12px;background:linear-gradient(135deg,#06D6A0,#07A37C);color:#fff;font-weight:600;font-size:13px;text-decoration:none;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-          Navegar
-        </a>
-      </div>
-    </div>
-  `;
 }
 
 export function MapView({
@@ -193,16 +165,13 @@ export function MapView({
           return;
         }
         const el = buildMarkerEl(v.status);
-        const popup = new mapboxgl.Popup({
-          offset: 28,
-          closeButton: false,
-          maxWidth: "320px",
-        }).setHTML(buildPopupHtml(v));
         const marker = new mapboxgl.Marker({ element: el, anchor: "center" })
           .setLngLat([v.longitude, v.latitude])
-          .setPopup(popup)
           .addTo(map);
-        el.addEventListener("click", () => onSelect?.(v.id));
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          onSelect?.(v.id);
+        });
         markersRef.current.set(v.id, marker);
       });
       markersRef.current.forEach((marker, id) => {
@@ -229,8 +198,6 @@ export function MapView({
       essential: true,
       duration: 700,
     });
-    const marker = markersRef.current.get(selectedId);
-    marker?.togglePopup();
   }, [selectedId, vistorias]);
 
   if (!token) {

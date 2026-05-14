@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dir \"c:\\\\Users\\\\nsn102098\\\\Desktop\\\\VistoMap\")"
+      "Bash(dir \"c:\\\\Users\\\\nsn102098\\\\Desktop\\\\VistoMap\")",
+      "Bash(node scripts/set-test-coords.mjs CAM-S-A-013 -19.95502865491202 -44.1474393893272)",
+      "Bash(node scripts/find-equipment.mjs CAM-S-A)"
     ]
   }
 }

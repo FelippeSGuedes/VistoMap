@@ -27,6 +27,13 @@ export function VistoriaCard({
     openNavigation(vistoria.latitude, vistoria.longitude);
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (onSelect) {
+      e.preventDefault();
+      onSelect(vistoria);
+    }
+  };
+
   return (
     <motion.div
       layout
@@ -36,7 +43,7 @@ export function VistoriaCard({
     >
       <Link
         href={`/vistorias/${vistoria.id}`}
-        onClick={() => onSelect?.(vistoria)}
+        onClick={handleClick}
         className="block"
       >
         <Card

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/find-equipment.mjs 013)",
+      "Bash(node scripts/seed-test-equipment.mjs CAM-S-A-013 -19.95502865491202 -44.1474393893272)",
+      "Bash(node scripts/debug-env.mjs)"
+    ]
+  }
+}

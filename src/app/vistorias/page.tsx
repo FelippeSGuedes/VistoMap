@@ -12,6 +12,8 @@ import { MapListToggle } from "@/components/vistorias/MapListToggle";
 import { VistoriaCard } from "@/components/vistorias/VistoriaCard";
 import { VistoriaListSkeleton } from "@/components/vistorias/VistoriaListSkeleton";
 import { MobileMapShell } from "@/components/vistorias/MobileMapShell";
+import { VistoriaPinSheet } from "@/components/vistorias/VistoriaPinSheet";
+import { VistoriaExecucaoSheet } from "@/components/vistorias/VistoriaExecucaoSheet";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useAuthStore } from "@/store/auth";
@@ -36,6 +38,7 @@ export default function VistoriasPage() {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [view, setView] = useState<"map" | "list">("map");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [executingId, setExecutingId] = useState<string | null>(null);
   const { position, refresh: refreshGeo } = useGeolocation(true);
 
   useEffect(() => {
@@ -197,6 +200,25 @@ export default function VistoriasPage() {
         categorias={categorias}
         onApply={setFilters}
         onReset={resetFilters}
+      />
+
+      <VistoriaPinSheet
+        open={!!selectedId && !executingId}
+        vistoria={items.find((v) => v.id === selectedId) ?? null}
+        onClose={() => setSelected(null)}
+        onStart={(v) => {
+          setSelected(null);
+          setExecutingId(v.id);
+        }}
+      />
+
+      <VistoriaExecucaoSheet
+        open={!!executingId}
+        vistoriaId={executingId}
+        onClose={() => {
+          setExecutingId(null);
+          fetchAll();
+        }}
       />
 
       {filtered.length === 0 && filters.query && !loading && (

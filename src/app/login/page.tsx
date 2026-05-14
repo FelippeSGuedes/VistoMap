@@ -55,12 +55,14 @@ export default function LoginPage() {
 
   return (
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden bg-[#073B4C] text-brand-ice">
-      {/* logo_app.png como fundo full-screen — mobile only */}
-      <img
-        src="/logo_app.png"
-        alt=""
+      {/* logo_video.mp4 como fundo full-screen — mobile only */}
+      <video
+        src="/logo_video.mp4"
         aria-hidden
-        draggable={false}
+        autoPlay
+        loop
+        muted
+        playsInline
         className="pointer-events-none absolute inset-0 z-0 h-full w-full select-none object-cover object-top md:hidden"
       />
 

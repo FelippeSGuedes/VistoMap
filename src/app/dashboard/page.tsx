@@ -180,9 +180,9 @@ export default function DashboardPage() {
                 <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
                   {label}
                 </p>
-                <p className="mt-1 text-[26px] font-semibold tracking-tight text-ink">
+                <div className="mt-1 text-[26px] font-semibold tracking-tight text-ink">
                   {stats ? stats[key] : <Skeleton className="h-8 w-12" />}
-                </p>
+                </div>
               </Card>
             </motion.div>
           ))}
