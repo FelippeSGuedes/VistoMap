@@ -1,4 +1,7 @@
 services:
+  # ─────────────────────────────────────────────────────────────────
+  # Next.js PWA (já existente — inalterado funcionalmente)
+  # ─────────────────────────────────────────────────────────────────
   app:
     image: vistomap:latest
     build:
@@ -8,7 +11,7 @@ services:
       # Precisam vir como build-arg, NÃO basta env_file no runtime.
       args:
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
-        # Vazio = client bate em /api da mesma origem (recomendado).
+        # Vazio = client bate em /api e /postes da mesma origem (recomendado).
         NEXT_PUBLIC_API_URL: ""
     container_name: vistomap
     restart: unless-stopped
@@ -20,6 +23,100 @@ services:
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0
     volumes:
-      # Worker Python e plugin GLPI precisam ver os PNGs/MP4 no mesmo path.
-      # Ajuste o lado esquerdo se a pasta do GLPI for diferente.
       - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
+    networks:
+      - vistomap-net
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────────
+  # PostgreSQL 16 + PostGIS 3.4 — source-of-truth geoespacial
+  # Não expõe porta no host: só acessível pela rede interna.
+  # ─────────────────────────────────────────────────────────────────
+  postgis:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: vistomap-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-vistomap}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DATABASE:-vistomap}
+      # Ajustes mínimos para milhões de registros geoespaciais.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=2GB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "max_wal_size=2GB"
+      - "-c"
+      - "checkpoint_timeout=15min"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "jit=off"
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+    networks:
+      - vistomap-net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "pg_isready -U ${PG_USER:-vistomap} -d ${PG_DATABASE:-vistomap}"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────
+  # Fastify — API geoespacial /postes (Knex + pg + PostGIS raw SQL)
+  # ─────────────────────────────────────────────────────────────────
+  postes-api:
+    image: vistomap-postes-api:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vistomap-postes-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3001"
+      PG_HOST: postgis
+      PG_PORT: "5432"
+      PG_USER: ${PG_USER:-vistomap}
+      PG_PASSWORD: ${PG_PASSWORD}
+      PG_DATABASE: ${PG_DATABASE:-vistomap}
+      PG_POOL_MIN: "2"
+      PG_POOL_MAX: "20"
+      JWT_SECRET: ${JWT_SECRET}
+      CSV_PATH: /csv
+      POSTE_TROCA_RAIO_M: ${POSTE_TROCA_RAIO_M:-50}
+      INTERNAL_ALLOWLIST: "127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8"
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      LOG_LEVEL: info
+    volumes:
+      # Pasta de CSVs no host — montada read-only. Importador lê daqui.
+      - /var/www/vistomap-csv:/csv:ro
+    networks:
+      - vistomap-net
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+networks:
+  vistomap-net:
+    driver: bridge
+
+volumes:
+  postgis-data:
+    driver: local
