@@ -5,11 +5,12 @@ import { ITEMTYPE_NE, TABLE_AUX } from "./constants";
 async function ensureTableExists(): Promise<void> {
   await execute(
     `CREATE TABLE IF NOT EXISTS \`${TABLE_AUX}\` (
-      id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
-      items_id    INT UNSIGNED NOT NULL,
-      itemtype    VARCHAR(100) NOT NULL DEFAULT 'NetworkEquipment',
-      project_status VARCHAR(50) NOT NULL DEFAULT 'PENDENTE',
-      project_date   DATE NULL,
+      id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      items_id       INT UNSIGNED NOT NULL,
+      itemtype       VARCHAR(100) NOT NULL DEFAULT 'NetworkEquipment',
+      equipment_name VARCHAR(255) NOT NULL,
+      project_status VARCHAR(50)  NOT NULL DEFAULT 'PENDENTE',
+      project_date   DATETIME NULL,
       image1_path    TEXT NULL,
       image2_path    TEXT NULL,
       image3_path    TEXT NULL,
@@ -27,6 +28,7 @@ interface AuxRow {
 export interface AuxUpsertInput {
   items_id: number;
   itemtype?: string;
+  equipment_name: string;
   project_status: string;
   project_date?: string;
   image1_path?: string;
@@ -42,9 +44,13 @@ export async function upsertAuxiliaryProject(input: AuxUpsertInput): Promise<num
     [input.items_id, itemtype]
   );
 
-  const cols: string[] = ["project_status"];
-  const values: unknown[] = [input.project_status];
-  const pairs: string[] = ["project_status = ?"];
+  // equipment_name + project_status são obrigatórios no INSERT.
+  const cols: string[] = ["equipment_name", "project_status"];
+  const values: unknown[] = [input.equipment_name, input.project_status];
+  const pairs: string[] = [
+    "equipment_name = ?",
+    "project_status = ?",
+  ];
 
   if (input.project_date) {
     cols.push("project_date");

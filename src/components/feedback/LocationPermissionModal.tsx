@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Compass,
+  Lock,
   MapPin,
   Navigation,
   Settings,
@@ -64,6 +65,28 @@ const COPY = {
     secondary: null,
     bullets: [],
   },
+  insecure: {
+    eyebrow: "Conexão não segura",
+    title: "Acesse via HTTPS para liberar o GPS",
+    description:
+      "Navegadores móveis só liberam a localização em conexões seguras (HTTPS). Você está acessando por HTTP, então o prompt nativo não pode aparecer.",
+    primary: "Entendi",
+    secondary: "Continuar sem GPS",
+    bullets: [
+      {
+        icon: Lock,
+        text: "Troque a URL para https:// (ex.: https://vistomap.empresa.com)",
+      },
+      {
+        icon: Settings,
+        text: "Em dev, use localhost ou ngrok/cloudflared para túnel HTTPS",
+      },
+      {
+        icon: ShieldCheck,
+        text: "Em produção, configure um proxy reverso com certificado SSL",
+      },
+    ],
+  },
 } as const;
 
 export function LocationPermissionModal({
@@ -84,7 +107,9 @@ export function LocationPermissionModal({
   }, [open]);
 
   const variant: keyof typeof COPY =
-    state === "denied"
+    state === "insecure"
+      ? "insecure"
+      : state === "denied"
       ? "denied"
       : state === "unsupported"
       ? "unsupported"

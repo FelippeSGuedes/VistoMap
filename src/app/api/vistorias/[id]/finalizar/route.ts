@@ -162,6 +162,7 @@ export async function POST(
 
     await upsertAuxiliaryProject({
       items_id: id,
+      equipment_name: vistoria.equipamento,
       project_status: AUX_STATUS_PENDENTE,
       project_date: datavistoria,
       image1_path: buildEquipmentFilePath(vistoria.equipamento, "imagem1.png"),

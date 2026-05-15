@@ -57,7 +57,8 @@ export default function VistoriasPage() {
     !permissionDismissed &&
     (permission.state === "prompt" ||
       permission.state === "denied" ||
-      permission.state === "unsupported");
+      permission.state === "unsupported" ||
+      permission.state === "insecure");
 
   useEffect(() => {
     if (hydrated && !session) router.replace("/login");

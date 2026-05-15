@@ -7,7 +7,8 @@ export type LocationPermissionState =
   | "prompt"
   | "granted"
   | "denied"
-  | "unsupported";
+  | "unsupported"
+  | "insecure";
 
 export interface GeoCoords {
   lat: number;
@@ -31,6 +32,13 @@ export function useLocationPermission() {
     if (typeof window === "undefined") return;
     if (!("geolocation" in navigator)) {
       setState("unsupported");
+      return;
+    }
+    // Geolocation requer secure context (HTTPS ou localhost).
+    // Em HTTP qualquer, o navegador bloqueia silenciosamente e retorna "denied".
+    if (typeof window.isSecureContext === "boolean" && !window.isSecureContext) {
+      setState("insecure");
+      setError("Geolocalização exige HTTPS. Acesse o app por uma URL https://");
       return;
     }
     if (!("permissions" in navigator)) {

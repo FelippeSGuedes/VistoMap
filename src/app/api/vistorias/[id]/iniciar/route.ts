@@ -27,6 +27,7 @@ export async function POST(
     }
     await upsertAuxiliaryProject({
       items_id: id,
+      equipment_name: vistoria.equipamento,
       project_status: AUX_STATUS_EM_CAMPO,
     });
     return NextResponse.json({ ok: true, status: AUX_STATUS_EM_CAMPO });
