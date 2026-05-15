@@ -45,12 +45,17 @@ export function VistoriaPinSheet({
     };
   }, [open]);
 
+  const [startError, setStartError] = useState<string | null>(null);
+
   const handleStart = async () => {
     if (!vistoria) return;
     setStarting(true);
+    setStartError(null);
     try {
       await vistoriasService.iniciarVistoria(vistoria.id);
       onStart(vistoria);
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : "Erro ao iniciar vistoria");
     } finally {
       setStarting(false);
     }
@@ -148,6 +153,9 @@ export function VistoriaPinSheet({
                 Iniciar Vistoria
               </Button>
             </div>
+            {startError && (
+              <p className="mt-2 text-center text-xs text-red-500">{startError}</p>
+            )}
           </motion.div>
         </motion.div>
       )}
