@@ -98,7 +98,7 @@ export function VistoriaExecucaoSheet({
               </span>
             </header>
 
-            <div className="relative flex-1 overflow-y-auto overscroll-contain pb-32">
+            <div className="relative flex-1 overflow-y-auto overscroll-contain">
               {loading && !vistoria ? (
                 <div className="flex h-full min-h-[60dvh] items-center justify-center">
                   <LoadingShell label="Carregando vistoria" />

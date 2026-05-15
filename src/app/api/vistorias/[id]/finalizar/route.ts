@@ -84,10 +84,14 @@ export async function POST(
   const files: Array<FilePayload | null> = [];
   let videoFile: FilePayload | null = null;
 
+  const t0 = Date.now();
+  console.log(`[finalizar] id=${id} content-length=${request.headers.get("content-length")}`);
+
   try {
     const formData = await request.formData();
     const rawPayload = formData.get("payload");
     if (typeof rawPayload !== "string") {
+      console.warn("[finalizar] payload ausente no FormData");
       return NextResponse.json({ message: "Payload ausente" }, { status: 400 });
     }
     payload = JSON.parse(rawPayload) as FinalizarPayload;
@@ -95,26 +99,27 @@ export async function POST(
     for (const slot of PHOTO_SLOTS) {
       const entry = formData.get(slot.field);
       if (entry instanceof File && entry.size > 0) {
-        files.push({
-          filename: slot.filename,
-          data: await blobToBuffer(entry),
-        });
+        const buf = await blobToBuffer(entry);
+        console.log(`[finalizar] ${slot.field} → ${buf.byteLength} bytes`);
+        files.push({ filename: slot.filename, data: buf });
       } else {
+        console.log(`[finalizar] ${slot.field} → vazio`);
         files.push(null);
       }
     }
 
     const video = formData.get("video360");
     if (video instanceof File && video.size > 0) {
-      const ext = video.name.includes(".")
-        ? video.name.split(".").pop()
-        : "mp4";
-      videoFile = {
-        filename: `video360.${ext}`,
-        data: await blobToBuffer(video),
-      };
+      const ext = video.name.includes(".") ? video.name.split(".").pop() : "mp4";
+      const buf = await blobToBuffer(video);
+      console.log(`[finalizar] video360 → ${buf.byteLength} bytes`);
+      videoFile = { filename: `video360.${ext}`, data: buf };
+    } else {
+      console.log(`[finalizar] video360 → vazio`);
     }
+    console.log(`[finalizar] FormData parsed in ${Date.now() - t0}ms`);
   } catch (err) {
+    console.error("[finalizar] erro parsing FormData", err);
     return NextResponse.json(
       { message: "Payload inválido", error: String(err) },
       { status: 400 }

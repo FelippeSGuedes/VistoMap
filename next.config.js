@@ -5,7 +5,24 @@ const withPWA = require("next-pwa")({
   skipWaiting: true,
   disable: process.env.NODE_ENV === "development",
   buildExcludes: [/middleware-manifest\.json$/],
+  // Não deixar o Service Worker interceptar rotas /api/* nem o próprio _next/data.
+  // Caso o SW pegue um POST multipart, alguns navegadores retornam 404/0 silenciosamente.
+  exclude: [
+    /\/api\/.*/,
+    /^\/_next\/data\/.*/,
+  ],
   runtimeCaching: [
+    {
+      // Bypass total para qualquer chamada ao backend interno.
+      urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
+      handler: "NetworkOnly",
+      method: "GET",
+    },
+    {
+      urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
+      handler: "NetworkOnly",
+      method: "POST",
+    },
     {
       urlPattern: /^https:\/\/api\.mapbox\.com\/.*/i,
       handler: "CacheFirst",
@@ -26,6 +43,7 @@ const withPWA = require("next-pwa")({
     {
       urlPattern: /^https?.*/,
       handler: "NetworkFirst",
+      method: "GET",
       options: {
         cacheName: "http-cache",
         networkTimeoutSeconds: 10,
@@ -49,6 +67,10 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
+    // Aumenta o limite de body para Server Actions e route handlers.
+    serverActions: {
+      bodySizeLimit: "100mb",
+    },
   },
 };
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Antenna,
+  Camera,
   CheckCircle2,
   Construction,
   Crosshair,
@@ -12,6 +13,7 @@ import {
   Locate,
   Navigation,
   Radio,
+  Video,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -20,7 +22,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { EditableField } from "./EditableField";
-import { GuidedCaptureFlow } from "./GuidedCaptureFlow";
+import { CaptureCameraModal } from "./CaptureCameraModal";
 import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
 import { openNavigation } from "@/services/maps";
@@ -90,6 +92,7 @@ export function VistoriaExecucaoForm({
     observaofield: vistoria.fields?.observaofield ?? "",
   }));
   const [captures, setCaptures] = useState<CaptureBundle>({});
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [done, setDone] = useState(false);
@@ -180,8 +183,18 @@ export function VistoriaExecucaoForm({
     : "fixed inset-x-0 bottom-0 z-30 border-t border-brand-steel/60 bg-white/85 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur-xl";
 
   return (
-    <div className={embedded ? "flex flex-col" : "relative flex min-h-[100dvh] flex-col bg-brand-ice pb-32"}>
-      <main className="mx-auto flex w-full max-w-xl flex-col gap-4 px-4 py-4">
+    <div
+      className={
+        embedded
+          ? "relative flex min-h-full flex-col"
+          : "relative flex min-h-[100dvh] flex-col bg-brand-ice"
+      }
+    >
+      <main
+        className={`mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 px-4 py-4 ${
+          embedded ? "" : "pb-32"
+        }`}
+      >
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="overflow-hidden p-0">
             <div className="relative h-32 overflow-hidden bg-grad-deep p-5 text-white">
@@ -391,7 +404,47 @@ export function VistoriaExecucaoForm({
         </SectionCard>
 
         <Card className="space-y-3">
-          <GuidedCaptureFlow bundle={captures} onChange={setCaptures} />
+          <header className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-[15px] font-semibold tracking-tight text-ink">
+                Evidências de campo
+              </h3>
+              <p className="text-xs text-ink-muted">
+                {captureCount}/6 etapas validadas · 5 fotos + 1 vídeo 360°
+              </p>
+            </div>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-amber/20 text-[#8a5a00]">
+              <Camera className="h-5 w-5" />
+            </span>
+          </header>
+
+          <CaptureProgressBar count={captureCount} total={6} />
+
+          <CaptureThumbnails bundle={captures} />
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              fullWidth
+              size="lg"
+              leftIcon={<Camera className="h-4 w-4" />}
+              onClick={() => setCameraOpen(true)}
+            >
+              {captureCount === 0
+                ? "Abrir câmera"
+                : captureCount < 6
+                ? "Continuar captura"
+                : "Revisar evidências"}
+            </Button>
+            {captureCount > 0 && (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setCaptures({})}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
         </Card>
 
         <Card className="space-y-2">
@@ -454,7 +507,116 @@ export function VistoriaExecucaoForm({
         }
         done={done}
       />
+
+      <CaptureCameraModal
+        open={cameraOpen}
+        bundle={captures}
+        onChange={setCaptures}
+        onClose={() => setCameraOpen(false)}
+        equipmentName={vistoria.equipamento}
+      />
     </div>
+  );
+}
+
+function CaptureProgressBar({
+  count,
+  total,
+}: {
+  count: number;
+  total: number;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex h-2 gap-1 overflow-hidden rounded-full bg-brand-steel/60">
+        {Array.from({ length: total }).map((_, i) => (
+          <motion.span
+            key={i}
+            initial={false}
+            animate={{
+              backgroundColor: i < count ? "#06D6A0" : "rgba(229,231,235,0)",
+            }}
+            transition={{ duration: 0.4 }}
+            className="h-full flex-1 rounded-full"
+          />
+        ))}
+      </div>
+      <div className="flex justify-between text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+        <span>{count} de {total} validadas</span>
+        <span className={count === total ? "text-brand-emerald" : ""}>
+          {Math.round((count / total) * 100)}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const THUMB_LABELS = [
+  { key: "imagem1" as const, label: "Poste completo" },
+  { key: "imagem2" as const, label: "Topo" },
+  { key: "imagem3" as const, label: "Base" },
+  { key: "video360" as const, label: "Vídeo 360°", isVideo: true },
+  { key: "imagem4" as const, label: "Vivo" },
+  { key: "imagem5" as const, label: "Claro" },
+];
+
+function CaptureThumbnails({ bundle }: { bundle: CaptureBundle }) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {THUMB_LABELS.map((t) => {
+        const blob = bundle[t.key];
+        const hasBlob = blob instanceof Blob;
+        return (
+          <div
+            key={t.key}
+            className={`relative aspect-square overflow-hidden rounded-2xl border ${
+              hasBlob
+                ? "border-brand-emerald/50 bg-black"
+                : "border-dashed border-brand-steel/70 bg-brand-ice/80"
+            }`}
+          >
+            {hasBlob ? (
+              <ThumbPreview blob={blob as Blob} isVideo={!!("isVideo" in t && t.isVideo)} />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
+                {"isVideo" in t && t.isVideo ? (
+                  <Video className="h-4 w-4 text-ink-muted" />
+                ) : (
+                  <Camera className="h-4 w-4 text-ink-muted" />
+                )}
+                <span className="text-[10px] font-semibold text-ink-muted">
+                  {t.label}
+                </span>
+              </div>
+            )}
+            <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-white">
+              {t.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ThumbPreview({
+  blob,
+  isVideo,
+}: {
+  blob: Blob;
+  isVideo: boolean;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const u = URL.createObjectURL(blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [blob]);
+  if (!url) return null;
+  return isVideo ? (
+    <video src={url} className="h-full w-full object-cover" muted playsInline />
+  ) : (
+    <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
   );
 }
 

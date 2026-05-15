@@ -15,9 +15,11 @@ import { MobileMapShell } from "@/components/vistorias/MobileMapShell";
 import { VistoriaPinSheet } from "@/components/vistorias/VistoriaPinSheet";
 import { VistoriaExecucaoSheet } from "@/components/vistorias/VistoriaExecucaoSheet";
 import { EmptyState } from "@/components/feedback/EmptyState";
+import { LocationPermissionModal } from "@/components/feedback/LocationPermissionModal";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useAuthStore } from "@/store/auth";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { useFilteredVistorias } from "@/hooks/useFilteredVistorias";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { STATUS_LABEL } from "@/utils/format";
@@ -39,7 +41,23 @@ export default function VistoriasPage() {
   const [view, setView] = useState<"map" | "list">("map");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
-  const { position, refresh: refreshGeo } = useGeolocation(true);
+  const [permissionDismissed, setPermissionDismissed] = useState(false);
+  const { position, refresh: refreshGeo } = useGeolocation(false);
+  const permission = useLocationPermission();
+
+  // Quando o usuário concede a permissão (no modal ou via banner do browser),
+  // dispara automaticamente a leitura do GPS.
+  useEffect(() => {
+    if (permission.state === "granted") {
+      refreshGeo();
+    }
+  }, [permission.state, refreshGeo]);
+
+  const showPermissionModal =
+    !permissionDismissed &&
+    (permission.state === "prompt" ||
+      permission.state === "denied" ||
+      permission.state === "unsupported");
 
   useEffect(() => {
     if (hydrated && !session) router.replace("/login");
@@ -82,7 +100,13 @@ export default function VistoriasPage() {
         </div>
         <button
           type="button"
-          onClick={() => refreshGeo()}
+          onClick={() => {
+            if (permission.state === "granted") {
+              refreshGeo();
+            } else {
+              setPermissionDismissed(false);
+            }
+          }}
           className="flex items-center gap-1 rounded-full bg-brand-emerald/12 px-3 py-1.5 text-[12px] font-semibold text-brand-emerald"
         >
           <Compass className="h-3.5 w-3.5" />
@@ -219,6 +243,21 @@ export default function VistoriasPage() {
           setExecutingId(null);
           fetchAll();
         }}
+      />
+
+      <LocationPermissionModal
+        open={showPermissionModal}
+        state={permission.state}
+        requesting={permission.requesting}
+        error={permission.error}
+        onAllow={async () => {
+          const pos = await permission.request();
+          if (pos) {
+            setPermissionDismissed(true);
+            await refreshGeo();
+          }
+        }}
+        onDismiss={() => setPermissionDismissed(true)}
       />
 
       {filtered.length === 0 && filters.query && !loading && (

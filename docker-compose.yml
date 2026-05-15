@@ -4,6 +4,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # IMPORTANTE: vars NEXT_PUBLIC_* são embarcadas no bundle do cliente.
+      # Precisam vir como build-arg, NÃO basta env_file no runtime.
+      args:
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
+        # Vazio = client bate em /api da mesma origem (recomendado).
+        NEXT_PUBLIC_API_URL: ""
     container_name: vistomap
     restart: unless-stopped
     ports:
@@ -13,3 +19,7 @@ services:
     environment:
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0
+    volumes:
+      # Worker Python e plugin GLPI precisam ver os PNGs/MP4 no mesmo path.
+      # Ajuste o lado esquerdo se a pasta do GLPI for diferente.
+      - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
