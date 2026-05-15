@@ -14,17 +14,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
-
-      - name: Restart app
+      - name: Deploy with Docker Compose
         run: |
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
-          fuser -k 3000/tcp || true
-          pm2 delete app || true
-          pm2 start .next/standalone/server.js --name app
-          pm2 save
+          docker compose down --remove-orphans || true
+          docker compose build --no-cache
+          docker compose up -d

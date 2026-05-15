@@ -1,0 +1,14 @@
+services:
+  app:
+    image: vistomap:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vistomap
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
