@@ -11,7 +11,6 @@ import {
   MAP_STYLE,
   getMapboxToken,
 } from "@/services/maps";
-import { STATUS_COLOR } from "@/utils/format";
 
 interface MapViewProps {
   vistorias: Vistoria[];
@@ -21,59 +20,36 @@ interface MapViewProps {
   className?: string;
 }
 
+const PIN_ICON: Record<Vistoria["status"], string> = {
+  PENDENTE:   "/icons/pin-pendente.svg",
+  EM_CAMPO:   "/icons/pin-em-campo.svg",
+  FINALIZADA: "/icons/pin-finalizada.svg",
+  APROVADA:   "/icons/pin-finalizada.svg",
+  REPROVADA:  "/icons/pin-reprovada.svg",
+};
+
+// Inject hover style once (avoids JS mouseenter/mouseleave flicker)
+if (typeof document !== "undefined" && !document.getElementById("vm-pin-style")) {
+  const style = document.createElement("style");
+  style.id = "vm-pin-style";
+  style.textContent = `
+    .vm-pin { cursor: pointer; transition: transform .18s ease; will-change: transform; }
+    .vm-pin:hover { transform: translateY(-3px) scale(1.1); }
+    .vm-pin img { display: block; pointer-events: none; }
+  `;
+  document.head.appendChild(style);
+}
+
 function buildMarkerEl(status: Vistoria["status"]) {
-  const color = STATUS_COLOR[status];
   const root = document.createElement("div");
   root.className = "vm-pin";
-  root.style.cssText = `
-    position: relative;
-    width: 38px;
-    height: 38px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transform: translateZ(0);
-    cursor: pointer;
-    transition: transform .25s cubic-bezier(.2,.7,.3,1);
-  `;
-  root.innerHTML = `
-    <span style="
-      position:absolute;
-      inset:-6px;
-      border-radius:9999px;
-      background:radial-gradient(closest-side, ${color}55, ${color}00 70%);
-      filter: blur(2px);
-    "></span>
-    <span style="
-      position:absolute;
-      inset:0;
-      border-radius:9999px;
-      border:2px solid ${color}66;
-      animation: pulseRing 2.4s cubic-bezier(.215,.61,.355,1) infinite;
-    "></span>
-    <span style="
-      position:relative;
-      width:28px;
-      height:28px;
-      border-radius:9999px;
-      background:linear-gradient(135deg, ${color}, ${color}cc);
-      box-shadow: 0 6px 16px ${color}55, 0 1px 0 rgba(255,255,255,.4) inset;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      color:#fff;
-    ">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2.5L4 6v6c0 5 3.5 8.5 8 9.5 4.5-1 8-4.5 8-9.5V6l-8-3.5z"/>
-      </svg>
-    </span>
-  `;
-  root.addEventListener("mouseenter", () => {
-    root.style.transform = "translateY(-2px) scale(1.06)";
-  });
-  root.addEventListener("mouseleave", () => {
-    root.style.transform = "";
-  });
+  root.style.cssText = "width:44px;height:56px;";
+  const img = document.createElement("img");
+  img.src = PIN_ICON[status];
+  img.width = 44;
+  img.height = 56;
+  img.alt = status;
+  root.appendChild(img);
   return root;
 }
 
@@ -165,7 +141,7 @@ export function MapView({
           return;
         }
         const el = buildMarkerEl(v.status);
-        const marker = new mapboxgl.Marker({ element: el, anchor: "center" })
+        const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([v.longitude, v.latitude])
           .addTo(map);
         el.addEventListener("click", (ev) => {
