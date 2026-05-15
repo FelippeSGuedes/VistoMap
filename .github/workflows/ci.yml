@@ -23,5 +23,5 @@ jobs:
       - name: Restart app
         run: |
           pm2 delete app || true
-          pm2 start npm --name app -- start
+          pm2 start npm --name app --cwd "${{ github.workspace }}" -- start
           pm2 save
