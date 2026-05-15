@@ -16,6 +16,7 @@ jobs:
 
       - name: Deploy with Docker Compose
         run: |
+          set -a && source /etc/vistomap/.env.local && set +a
           docker compose down --remove-orphans || true
           docker compose build --no-cache
           docker compose up -d
