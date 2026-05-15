@@ -22,7 +22,9 @@ jobs:
 
       - name: Restart app
         run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
           fuser -k 3000/tcp || true
           pm2 delete app || true
-          pm2 start node_modules/.bin/next --name app --cwd "${{ github.workspace }}" -- start
+          pm2 start .next/standalone/server.js --name app
           pm2 save
