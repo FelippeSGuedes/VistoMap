@@ -22,6 +22,7 @@ jobs:
 
       - name: Restart app
         run: |
+          fuser -k 3000/tcp || true
           pm2 delete app || true
-          pm2 start npm --name app --cwd "${{ github.workspace }}" -- start
+          pm2 start node_modules/.bin/next --name app --cwd "${{ github.workspace }}" -- start
           pm2 save
