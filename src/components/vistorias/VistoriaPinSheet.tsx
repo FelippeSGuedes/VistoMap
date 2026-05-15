@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import type { Vistoria } from "@/types";
+import type { ApiError } from "@/services/api";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
@@ -55,7 +56,12 @@ export function VistoriaPinSheet({
       await vistoriasService.iniciarVistoria(vistoria.id);
       onStart(vistoria);
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : "Erro ao iniciar vistoria");
+      const apiErr = err as ApiError;
+      const detail = apiErr.response?.data?.error;
+      const msg =
+        apiErr.response?.data?.message ??
+        (err instanceof Error ? err.message : "Erro ao iniciar vistoria");
+      setStartError(detail ? `${msg}: ${detail}` : msg);
     } finally {
       setStarting(false);
     }
