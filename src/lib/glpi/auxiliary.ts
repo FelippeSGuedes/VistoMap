@@ -2,6 +2,24 @@ import "server-only";
 import { execute, query } from "@/lib/db";
 import { ITEMTYPE_NE, TABLE_AUX } from "./constants";
 
+async function ensureTableExists(): Promise<void> {
+  await execute(
+    `CREATE TABLE IF NOT EXISTS \`${TABLE_AUX}\` (
+      id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      items_id    INT UNSIGNED NOT NULL,
+      itemtype    VARCHAR(100) NOT NULL DEFAULT 'NetworkEquipment',
+      project_status VARCHAR(50) NOT NULL DEFAULT 'PENDENTE',
+      project_date   DATE NULL,
+      image1_path    TEXT NULL,
+      image2_path    TEXT NULL,
+      image3_path    TEXT NULL,
+      PRIMARY KEY (id),
+      KEY idx_items (items_id, itemtype)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    []
+  );
+}
+
 interface AuxRow {
   id: number;
 }
@@ -17,6 +35,7 @@ export interface AuxUpsertInput {
 }
 
 export async function upsertAuxiliaryProject(input: AuxUpsertInput): Promise<number> {
+  await ensureTableExists();
   const itemtype = input.itemtype ?? ITEMTYPE_NE;
   const existing = await query<AuxRow>(
     `SELECT id FROM \`${TABLE_AUX}\` WHERE items_id = ? AND itemtype = ? LIMIT 1`,
