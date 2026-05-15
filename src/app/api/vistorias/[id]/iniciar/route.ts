@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { getVistoria } from "@/lib/glpi/equipments";
-import { upsertAuxiliaryProject } from "@/lib/glpi/auxiliary";
-import { AUX_STATUS_EM_CAMPO } from "@/lib/glpi/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,6 +10,15 @@ function parseId(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/**
+ * Iniciar vistoria = apenas valida existência do equipamento.
+ *
+ * IMPORTANTE: o schema do plugin (`glpi_plugin_vistomap_projects.project_status`)
+ * só aceita PENDENTE/GERANDO/GERADO/ERRO. Não escrevemos nada aqui senão o worker
+ * dispararia geração de PDF antes do técnico mandar as fotos.
+ *
+ * A linha na tabela auxiliar é criada/atualizada apenas no `finalizar`.
+ */
 export async function POST(
   _request: Request,
   { params }: { params: { id: string } }
@@ -25,12 +32,7 @@ export async function POST(
     if (!vistoria) {
       return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
     }
-    await upsertAuxiliaryProject({
-      items_id: id,
-      equipment_name: vistoria.equipamento,
-      project_status: AUX_STATUS_EM_CAMPO,
-    });
-    return NextResponse.json({ ok: true, status: AUX_STATUS_EM_CAMPO });
+    return NextResponse.json({ ok: true, equipamento: vistoria.equipamento });
   } catch (error) {
     console.error("[api/vistorias/:id/iniciar] error", error);
     return NextResponse.json(

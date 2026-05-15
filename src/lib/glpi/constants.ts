@@ -44,9 +44,11 @@ export const STATUS_VISTORIA_EM_ANALISE = 5;
 /** Pendência: 1 = "Pendência CPFL". */
 export const PENDENCIA_CPFL = 1;
 
-/** Status interno aux table. */
+/** Status válidos da aux table (`project_status` ENUM do plugin). */
 export const AUX_STATUS_PENDENTE = "PENDENTE";
-export const AUX_STATUS_EM_CAMPO = "EM_CAMPO";
+export const AUX_STATUS_GERANDO = "GERANDO";
+export const AUX_STATUS_GERADO = "GERADO";
+export const AUX_STATUS_ERRO = "ERRO";
 
 /** Mapeia GLPI state.name → VistoriaStatus do frontend. */
 export const STATE_NAME_TO_STATUS: Record<string, string> = {

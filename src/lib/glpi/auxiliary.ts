@@ -2,89 +2,62 @@ import "server-only";
 import { execute, query } from "@/lib/db";
 import { ITEMTYPE_NE, TABLE_AUX } from "./constants";
 
-async function ensureTableExists(): Promise<void> {
-  await execute(
-    `CREATE TABLE IF NOT EXISTS \`${TABLE_AUX}\` (
-      id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
-      items_id       INT UNSIGNED NOT NULL,
-      itemtype       VARCHAR(100) NOT NULL DEFAULT 'NetworkEquipment',
-      equipment_name VARCHAR(255) NOT NULL,
-      project_status VARCHAR(50)  NOT NULL DEFAULT 'PENDENTE',
-      project_date   DATETIME NULL,
-      image1_path    TEXT NULL,
-      image2_path    TEXT NULL,
-      image3_path    TEXT NULL,
-      PRIMARY KEY (id),
-      KEY idx_items (items_id, itemtype)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-    []
-  );
-}
-
-interface AuxRow {
-  id: number;
-}
+export type AuxProjectStatus = "PENDENTE" | "GERANDO" | "GERADO" | "ERRO";
 
 export interface AuxUpsertInput {
   items_id: number;
   itemtype?: string;
   equipment_name: string;
-  project_status: string;
+  project_status?: AuxProjectStatus;
   project_date?: string;
   image1_path?: string;
   image2_path?: string;
   image3_path?: string;
 }
 
+interface AuxRow {
+  id: number;
+}
+
+/**
+ * UPSERT na tabela auxiliar. UNIQUE KEY é `equipment_name`.
+ * `ON DUPLICATE KEY UPDATE` mantém atomicidade. Campos null preservam valor antigo.
+ */
 export async function upsertAuxiliaryProject(input: AuxUpsertInput): Promise<number> {
-  await ensureTableExists();
   const itemtype = input.itemtype ?? ITEMTYPE_NE;
-  const existing = await query<AuxRow>(
-    `SELECT id FROM \`${TABLE_AUX}\` WHERE items_id = ? AND itemtype = ? LIMIT 1`,
-    [input.items_id, itemtype]
+  const status: AuxProjectStatus = input.project_status ?? "PENDENTE";
+
+  const sql = `
+    INSERT INTO \`${TABLE_AUX}\`
+      (equipment_name, items_id, itemtype, project_status, project_date,
+       image1_path, image2_path, image3_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      items_id       = VALUES(items_id),
+      itemtype       = VALUES(itemtype),
+      project_status = VALUES(project_status),
+      project_date   = COALESCE(VALUES(project_date), project_date),
+      image1_path    = COALESCE(VALUES(image1_path), image1_path),
+      image2_path    = COALESCE(VALUES(image2_path), image2_path),
+      image3_path    = COALESCE(VALUES(image3_path), image3_path)
+  `;
+  const result = await execute(sql, [
+    input.equipment_name,
+    input.items_id,
+    itemtype,
+    status,
+    input.project_date ?? null,
+    input.image1_path ?? null,
+    input.image2_path ?? null,
+    input.image3_path ?? null,
+  ]);
+
+  if (result.insertId > 0) return result.insertId;
+
+  // Atualização: busca o id existente.
+  const rows = await query<AuxRow>(
+    `SELECT id FROM \`${TABLE_AUX}\` WHERE equipment_name = ? LIMIT 1`,
+    [input.equipment_name]
   );
-
-  // equipment_name + project_status são obrigatórios no INSERT.
-  const cols: string[] = ["equipment_name", "project_status"];
-  const values: unknown[] = [input.equipment_name, input.project_status];
-  const pairs: string[] = [
-    "equipment_name = ?",
-    "project_status = ?",
-  ];
-
-  if (input.project_date) {
-    cols.push("project_date");
-    values.push(input.project_date);
-    pairs.push("project_date = ?");
-  }
-  if (input.image1_path) {
-    cols.push("image1_path");
-    values.push(input.image1_path);
-    pairs.push("image1_path = ?");
-  }
-  if (input.image2_path) {
-    cols.push("image2_path");
-    values.push(input.image2_path);
-    pairs.push("image2_path = ?");
-  }
-  if (input.image3_path) {
-    cols.push("image3_path");
-    values.push(input.image3_path);
-    pairs.push("image3_path = ?");
-  }
-
-  if (existing.length > 0) {
-    const id = existing[0].id;
-    const sql = `UPDATE \`${TABLE_AUX}\` SET ${pairs.join(", ")} WHERE id = ?`;
-    await execute(sql, [...values, id]);
-    return id;
-  }
-
-  const insertCols = ["items_id", "itemtype", ...cols];
-  const placeholders = insertCols.map(() => "?").join(", ");
-  const sql = `INSERT INTO \`${TABLE_AUX}\` (${insertCols
-    .map((c) => `\`${c}\``)
-    .join(", ")}) VALUES (${placeholders})`;
-  const result = await execute(sql, [input.items_id, itemtype, ...values]);
-  return result.insertId;
+  return rows[0]?.id ?? 0;
 }
