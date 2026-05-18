@@ -204,6 +204,7 @@ export function MudarPosteFlow({
                     const p = postes.items.find((x) => x.id === id) ?? null;
                     setPosteNovo(p);
                   }}
+                  onAtribuir={() => setStep("confirmar")}
                 />
               )}
 
@@ -378,6 +379,7 @@ function PickerStep({
   centerOnVistoria,
   selectedId,
   onSelect,
+  onAtribuir,
 }: {
   postes: Poste[];
   loading: boolean;
@@ -385,13 +387,23 @@ function PickerStep({
   centerOnVistoria: { lat: number; lng: number };
   selectedId: number | null;
   onSelect: (id: number) => void;
+  onAtribuir: () => void;
 }) {
-  // O mapa precisa de pelo menos um pin pra centralizar. Se userPos vazio, usa vistoria.
   const focus = userPos ?? centerOnVistoria;
   const [panelOpen, setPanelOpen] = useState(true);
-
-  // monta uma "fake vistoria" só pra dar centro inicial ao MapView (que requer vistorias[]).
   const dummyVistorias = useMemo(() => [], []);
+
+  const selected = useMemo(
+    () => postes.find((p) => p.id === selectedId) ?? null,
+    [postes, selectedId]
+  );
+
+  // UX: assim que o técnico escolhe um poste (no mapa OU na lista) recolhe o painel
+  // pra liberar a área do botão "Atribuir Novo PSPOSTE".
+  const handlePick = (id: number) => {
+    onSelect(id);
+    setPanelOpen(false);
+  };
 
   return (
     <div className="relative flex h-full flex-col">
@@ -401,31 +413,84 @@ function PickerStep({
           userPosition={focus}
           postes={postes}
           selectedPosteId={selectedId}
-          onPosteSelect={(id) => {
-            onSelect(id);
-            setPanelOpen(true);
-          }}
+          onPosteSelect={handlePick}
           className="h-full w-full"
         />
+
         {loading && (
           <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-ink shadow-soft backdrop-blur">
             <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
             Buscando postes…
           </div>
         )}
+
+        {/* Pílula "Ver lista" — sempre acessível, abre o painel inferior */}
+        <button
+          type="button"
+          onClick={() => setPanelOpen((s) => !s)}
+          className="absolute right-3 top-3 z-20 inline-flex h-9 items-center gap-1.5 rounded-full bg-white/95 px-3 text-[12px] font-semibold text-brand-deep shadow-elev backdrop-blur"
+        >
+          <MapPin className="h-3.5 w-3.5" />
+          {panelOpen ? "Ocultar lista" : `Lista (${postes.length})`}
+        </button>
+
+        {/* Card flutuante do poste selecionado — SEMPRE visível acima do painel */}
+        <AnimatePresence>
+          {selected && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              className="absolute inset-x-3 bottom-3 z-[95]"
+            >
+              <div className="overflow-hidden rounded-3xl border border-brand-emerald/40 bg-white shadow-elev">
+                <div className="flex items-start gap-3 px-4 pb-2 pt-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-amber text-brand-deep">
+                    <MapPin className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-emerald">
+                      Poste selecionado
+                    </p>
+                    <p className="mt-0.5 truncate text-[15px] font-semibold tracking-tight text-ink">
+                      PSPOSTE {selected.pspostefield}
+                    </p>
+                    <p className="truncate text-[11px] text-ink-muted">
+                      {selected.municipiofield}
+                      {selected.materialfield ? ` · ${selected.materialfield}` : ""}
+                      {selected.alturadaantenafield
+                        ? ` · ${selected.alturadaantenafield}m`
+                        : ""}
+                      {selected.distancia_m != null
+                        ? ` · ${Math.round(selected.distancia_m)}m`
+                        : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="border-t border-brand-steel/60 bg-brand-ice/60 p-2">
+                  <Button
+                    fullWidth
+                    size="lg"
+                    leftIcon={<MapPin className="h-4 w-4" />}
+                    onClick={onAtribuir}
+                  >
+                    Atribuir Novo PSPOSTE
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <PostesProximosPanel
         open={panelOpen}
         loading={loading}
         origin={centerOnVistoria}
-        raio={200}
+        raio={500}
         items={postes}
         selectedId={selectedId}
-        onSelect={(id) => {
-          onSelect(id);
-          setPanelOpen(true);
-        }}
+        onSelect={handlePick}
         onClose={() => setPanelOpen(false)}
       />
     </div>
@@ -569,15 +634,11 @@ function FlowFooter({
             <Button variant="outline" size="lg" onClick={onCancel}>
               Cancelar
             </Button>
-            <Button
-              fullWidth
-              size="lg"
-              disabled={!hasPosteNovo}
-              leftIcon={<MapPin className="h-4 w-4" />}
-              onClick={onPickerNext}
-            >
-              Atribuir Novo PSPOSTE
-            </Button>
+            <div className="flex-1 text-center text-[11px] font-medium text-ink-muted">
+              {hasPosteNovo
+                ? "Confirme tocando no card acima"
+                : "Toque num poste no mapa ou na lista"}
+            </div>
           </>
         )}
 
