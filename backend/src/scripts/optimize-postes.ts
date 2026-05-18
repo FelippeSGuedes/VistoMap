@@ -45,10 +45,21 @@ async function main() {
 
     console.log("[optimize] 2/4 CLUSTER postes USING postes_geom_gist (LOCK exclusivo)...");
     const tCluster = Date.now();
-    await pool.query(`CLUSTER postes USING postes_geom_gist`);
-    console.log(
-      `  ✓ reordenado fisicamente em ${((Date.now() - tCluster) / 1000).toFixed(1)}s`
-    );
+    try {
+      await pool.query(`CLUSTER postes USING postes_geom_gist`);
+      console.log(
+        `  ✓ reordenado fisicamente em ${((Date.now() - tCluster) / 1000).toFixed(1)}s`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  ⚠ CLUSTER falhou: ${msg}`);
+      console.warn(`    Seguindo sem reorder físico — perf dos índices não muda.`);
+      console.warn(
+        `    Para habilitar CLUSTER, recrie o índice como cheio (não parcial):\n` +
+          `      DROP INDEX postes_geom_gist;\n` +
+          `      CREATE INDEX postes_geom_gist ON postes USING GIST (geom);`
+      );
+    }
 
     console.log("[optimize] 3/4 VACUUM (ANALYZE, VERBOSE) postes...");
     // VACUUM ANALYZE precisa rodar fora de transação — pg.Pool.query já roda em conexão dedicada.

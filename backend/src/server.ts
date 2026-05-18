@@ -6,6 +6,7 @@ import rateLimit from "@fastify/rate-limit";
 import { env } from "./config.js";
 import authPlugin from "./plugins/auth.js";
 import healthRoutes from "./routes/health.js";
+import postesRoutes from "./routes/postes.js";
 
 async function buildServer() {
   const app = Fastify({
@@ -38,7 +39,8 @@ async function buildServer() {
   // Healthcheck (público — necessário para Docker/proxy)
   await app.register(healthRoutes);
 
-  // TODO ETAPA 6: app.register(postesRoutes, { prefix: "/postes" });
+  // API geoespacial — todas as rotas JWT-protegidas (via plugin authPlugin).
+  await app.register(postesRoutes, { prefix: "/postes" });
 
   app.setErrorHandler((err, _req, reply) => {
     app.log.error({ err }, "request failed");

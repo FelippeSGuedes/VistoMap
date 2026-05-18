@@ -83,19 +83,22 @@ export async function up(knex: Knex): Promise<void> {
   `);
 
   // ── índices geoespaciais ──────────────────────────────────────────────────
+  // Sem WHERE parcial: Postgres não permite CLUSTER em índice parcial.
+  // Trigger postes_sync_geom + NOT NULL em lat/lng garantem geom não-null,
+  // então o WHERE seria inerte. Índice cheio + CLUSTER no postes_geom_gist
+  // mantém co-localização espacial no heap.
+  //
   // 1) geometry (bbox query — ST_MakeEnvelope, &&)
   await knex.raw(`
     CREATE INDEX IF NOT EXISTS postes_geom_gist
       ON postes USING GIST (geom)
-      WHERE geom IS NOT NULL
   `);
 
   // 2) geography (radius em metros — ST_DWithin)
-  // OBS: índice funcional. Sempre que consulta usar `geom::geography`, esse índice entra.
+  // Índice funcional. Consultas com `geom::geography` usam este.
   await knex.raw(`
     CREATE INDEX IF NOT EXISTS postes_geog_gist
       ON postes USING GIST ((geom::geography))
-      WHERE geom IS NOT NULL
   `);
 
   // ── índices auxiliares ───────────────────────────────────────────────────
