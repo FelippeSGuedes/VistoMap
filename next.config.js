@@ -33,11 +33,15 @@ const withPWA = require("next-pwa")({
       },
     },
     {
+      // Imagens estáticas: tenta rede primeiro (2s) e cai pro cache se offline.
+      // Evita servir asset antigo após deploy/troca de arquivo.
       urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
-      handler: "StaleWhileRevalidate",
+      handler: "NetworkFirst",
       options: {
         cacheName: "static-images",
-        expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+        networkTimeoutSeconds: 2,
+        expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 7 },
+        cacheableResponse: { statuses: [0, 200] },
       },
     },
     {

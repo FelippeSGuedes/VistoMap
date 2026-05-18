@@ -10,6 +10,7 @@ import {
   Crosshair,
   Gauge,
   Loader2,
+  Locate,
   Lock,
   MapPin as MapPinIcon,
   Radio,
@@ -27,6 +28,8 @@ import { CaptureCameraModal } from "./CaptureCameraModal";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
+import { reverseGeocode } from "@/services/geocoding";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import type {
   CaptureBundle,
   DropdownKey,
@@ -39,6 +42,10 @@ interface FormState {
   municipiofield: string;
   alturadaantenafield: string;
   endereofield: string;
+  endereco_rua: string;
+  endereco_numero: string;
+  endereco_estado: string;
+  endereco_cep: string;
   aterramentofield: string;
   intensidadedesinalfield: string;
   velocidadefield: string;
@@ -59,6 +66,10 @@ const EMPTY: FormState = {
   municipiofield: "",
   alturadaantenafield: "",
   endereofield: "",
+  endereco_rua: "",
+  endereco_numero: "",
+  endereco_estado: "",
+  endereco_cep: "",
   aterramentofield: "",
   intensidadedesinalfield: "",
   velocidadefield: "",
@@ -109,10 +120,40 @@ export function VistoriaExecucaoForm({
   });
 
   const [mudarPosteOpen, setMudarPosteOpen] = useState(false);
+  const [detectingAddress, setDetectingAddress] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const geoForAddress = useGeolocation(false);
 
   useEffect(() => {
     setCoords({ lat: vistoria.latitude, lng: vistoria.longitude });
   }, [vistoria.latitude, vistoria.longitude]);
+
+  const handleDetectAddress = async () => {
+    setDetectingAddress(true);
+    setAddressError(null);
+    try {
+      // Pega GPS atual do técnico (não usa o do poste — endereço é onde ele tá fisicamente).
+      const pos = geoForAddress.position ?? (await geoForAddress.refresh());
+      if (!pos) {
+        setAddressError("Sem GPS — autorize a localização.");
+        return;
+      }
+      const addr = await reverseGeocode(pos.lat, pos.lng);
+      setForm((f) => ({
+        ...f,
+        endereco_rua: addr.rua || f.endereco_rua,
+        endereco_numero: addr.numero || f.endereco_numero,
+        endereco_estado: (addr.estado_sigla || addr.estado || f.endereco_estado),
+        endereco_cep: addr.cep || f.endereco_cep,
+      }));
+    } catch (err) {
+      setAddressError(
+        err instanceof Error ? err.message : "Falha ao buscar endereço"
+      );
+    } finally {
+      setDetectingAddress(false);
+    }
+  };
 
   const handlePosteMudado = (response: MudancaPosteResponse) => {
     const p = response.poste_novo;
@@ -139,6 +180,19 @@ export function VistoriaExecucaoForm({
 
   const setField = <K extends keyof FormState>(key: K, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  /** Concatena rua/numero/estado/cep em um campo único pro GLPI. */
+  const buildEndereco = (): string => {
+    const parts: string[] = [];
+    const ruaNum = [form.endereco_rua, form.endereco_numero]
+      .filter((s) => s.trim())
+      .join(", ");
+    if (ruaNum) parts.push(ruaNum);
+    if (form.endereco_estado.trim()) parts.push(form.endereco_estado.trim());
+    if (form.endereco_cep.trim()) parts.push(`CEP ${form.endereco_cep.trim()}`);
+    const built = parts.join(" — ");
+    return built || form.endereofield;
+  };
 
   const onFinalize = async () => {
     if (!coords) return;
@@ -175,7 +229,7 @@ export function VistoriaExecucaoForm({
           pspostefield: form.pspostefield || undefined,
           municipiofield: form.municipiofield || undefined,
           alturadaantenafield: form.alturadaantenafield || undefined,
-          endereofield: form.endereofield || undefined,
+          endereofield: buildEndereco() || undefined,
           aterramentofield: form.aterramentofield || undefined,
           intensidadedesinalfield: form.intensidadedesinalfield || undefined,
           velocidadefield: form.velocidadefield || undefined,
@@ -246,94 +300,167 @@ export function VistoriaExecucaoForm({
           </Card>
         </motion.div>
 
-        <SectionCard
-          icon={<Construction className="h-5 w-5" />}
-          title="Dados do Poste"
-          description="Localização geográfica e características estruturais."
-          tone="emerald"
+        {/* ─── DADOS DO POSTE — Premium ──────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
         >
-          <div className="grid grid-cols-2 gap-2">
-            <EditableField
-              label="Latitude"
-              value={coords.lat?.toFixed(6) ?? ""}
-              icon={<Crosshair className="h-3 w-3" />}
-              readOnly
+          <Card className="relative overflow-hidden rounded-3xl border border-brand-steel/40 bg-white/90 p-5 shadow-soft backdrop-blur-xl">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-[radial-gradient(closest-side,rgba(0,179,136,0.18),rgba(0,179,136,0))] blur-2xl"
             />
-            <EditableField
-              label="Longitude"
-              value={coords.lng?.toFixed(6) ?? ""}
-              icon={<Crosshair className="h-3 w-3" />}
-              readOnly
-            />
-          </div>
 
-          <p className="text-xs text-ink-muted">
-            Coordenadas vêm do PSPOSTE selecionado. Para corrigir, use{" "}
-            <strong className="text-ink">Mudar PSPOSTE</strong> abaixo.
-          </p>
-
-          {/* PS / Poste — read-only, troca SOMENTE via flow "Mudar PSPOSTE" */}
-          <div className="rounded-2xl border border-brand-steel/70 bg-white/80 p-3.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
-                  <MapPinIcon className="h-3 w-3" /> PS / Poste
-                  <Lock className="ml-1 h-3 w-3 text-ink-muted/60" />
-                </p>
-                <p className="mt-1 truncate text-[15px] font-semibold tracking-tight text-ink">
-                  {form.pspostefield || "—"}
-                </p>
-                <p className="truncate text-[11px] text-ink-muted">
-                  {form.municipiofield || "—"}
-                </p>
+            <header className="relative flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-steel/50 bg-white/80 text-brand-deep shadow-soft backdrop-blur">
+                  <Construction className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-[15px] font-semibold tracking-tight text-ink">
+                    Dados do Poste
+                  </h3>
+                  <p className="mt-0.5 text-[11px] font-medium tracking-wide text-ink-muted">
+                    Localização e identificação do ativo
+                  </p>
+                </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                leftIcon={<Replace className="h-3.5 w-3.5" />}
-                onClick={() => setMudarPosteOpen(true)}
-              >
-                Mudar PSPOSTE
-              </Button>
-            </div>
-          </div>
+            </header>
 
-          <div className="grid grid-cols-2 gap-2">
-            <EditableField
-              label="Aterramento"
-              value={form.aterramentofield}
-              placeholder="Ex.: NBR 5419"
-              onChange={(v) => setField("aterramentofield", v)}
-            />
-            <EditableField
-              label="Altura da antena"
-              value={form.alturadaantenafield}
-              placeholder="Ex.: 12 m"
-              onChange={(v) => setField("alturadaantenafield", v)}
-            />
-          </div>
-          <EditableField
-            label="Endereço"
-            value={form.endereofield}
-            placeholder="Rua, número, bairro"
-            onChange={(v) => setField("endereofield", v)}
-            colSpan
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <EditableField
-              label="Tipo de material"
-              value={form.tipodematerial}
-              placeholder="Concreto, madeira, metal…"
-              onChange={(v) => setField("tipodematerial", v)}
-            />
-            <EditableField
-              label="Tensão"
-              value={form.tensao}
-              placeholder="Ex.: 220V"
-              onChange={(v) => setField("tensao", v)}
-            />
-          </div>
-        </SectionCard>
+            {/* Lat/Long premium */}
+            <div className="relative mt-4 grid grid-cols-2 gap-2">
+              <CoordTile label="Latitude" value={coords.lat?.toFixed(6) ?? ""} />
+              <CoordTile label="Longitude" value={coords.lng?.toFixed(6) ?? ""} />
+            </div>
+
+            {/* Aviso */}
+            <div className="relative mt-3 flex items-start gap-2 rounded-2xl bg-brand-emerald/8 px-3 py-2.5 text-[11px] leading-relaxed text-brand-deep">
+              <Lock className="mt-0.5 h-3 w-3 shrink-0 text-brand-emerald" />
+              <span>
+                As coordenadas seguem o PSPOSTE selecionado. Para corrigir, use{" "}
+                <strong className="font-semibold">Mudar PSPOSTE</strong>.
+              </span>
+            </div>
+
+            {/* PS/Poste — premium */}
+            <div className="relative mt-3 overflow-hidden rounded-3xl border border-brand-emerald/25 bg-gradient-to-br from-white to-brand-ice p-4">
+              <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-emerald">
+                <MapPinIcon className="h-3 w-3" /> Poste atribuído
+                <Lock className="ml-1 h-3 w-3 text-ink-muted/60" />
+              </p>
+              <div className="mt-1.5 flex items-end justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[18px] font-semibold tracking-tight text-ink">
+                    {form.pspostefield || "—"}
+                  </p>
+                  <p className="truncate text-[12px] text-ink-muted">
+                    {form.municipiofield || "—"}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<Replace className="h-3.5 w-3.5" />}
+                  onClick={() => setMudarPosteOpen(true)}
+                  className="shrink-0"
+                >
+                  Mudar PSPOSTE
+                </Button>
+              </div>
+            </div>
+
+            {/* Estrutura física */}
+            <div className="relative mt-3 grid grid-cols-2 gap-2">
+              <EditableField
+                label="Aterramento"
+                value={form.aterramentofield}
+                placeholder="NBR 5419"
+                onChange={(v) => setField("aterramentofield", v)}
+              />
+              <EditableField
+                label="Altura da antena"
+                value={form.alturadaantenafield}
+                placeholder="12 m"
+                onChange={(v) => setField("alturadaantenafield", v)}
+              />
+              <EditableField
+                label="Tipo de material"
+                value={form.tipodematerial}
+                placeholder="Concreto, madeira, metal…"
+                onChange={(v) => setField("tipodematerial", v)}
+              />
+              <EditableField
+                label="Tensão"
+                value={form.tensao}
+                placeholder="220 V"
+                onChange={(v) => setField("tensao", v)}
+              />
+            </div>
+
+            {/* Endereço — sub-bloco com 4 campos + GPS */}
+            <div className="relative mt-4 rounded-2xl border border-brand-steel/50 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-deep/8 text-brand-deep">
+                    <MapPinIcon className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+                    Endereço do poste
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDetectAddress}
+                  disabled={detectingAddress}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand-emerald/12 px-3 text-[11px] font-semibold text-brand-emerald disabled:opacity-60"
+                >
+                  {detectingAddress ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Locate className="h-3 w-3" />
+                  )}
+                  {detectingAddress ? "Buscando…" : "Detectar via GPS"}
+                </button>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <EditableField
+                  label="Rua"
+                  value={form.endereco_rua}
+                  placeholder="Ex.: Av. Paulista"
+                  onChange={(v) => setField("endereco_rua", v)}
+                  colSpan
+                />
+                <EditableField
+                  label="Número"
+                  value={form.endereco_numero}
+                  placeholder="Ex.: 1578"
+                  onChange={(v) => setField("endereco_numero", v)}
+                />
+                <EditableField
+                  label="Estado"
+                  value={form.endereco_estado}
+                  placeholder="SP"
+                  onChange={(v) => setField("endereco_estado", v)}
+                />
+                <EditableField
+                  label="CEP"
+                  value={form.endereco_cep}
+                  placeholder="00000-000"
+                  onChange={(v) => setField("endereco_cep", v)}
+                  colSpan
+                />
+              </div>
+
+              {addressError && (
+                <p className="mt-2 rounded-xl bg-red-50 px-2.5 py-1.5 text-[11px] font-medium text-red-600">
+                  {addressError}
+                </p>
+              )}
+            </div>
+          </Card>
+        </motion.div>
 
         <SectionCard
           icon={<Radio className="h-5 w-5" />}
@@ -642,6 +769,25 @@ function ThumbPreview({
     <video src={url} className="h-full w-full object-cover" muted playsInline />
   ) : (
     <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+  );
+}
+
+function CoordTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-brand-steel/40 bg-white px-4 py-3 shadow-soft">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full bg-[radial-gradient(closest-side,rgba(0,179,136,0.15),rgba(0,179,136,0))]"
+      />
+      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+        <Crosshair className="h-3 w-3" />
+        {label}
+        <Lock className="ml-auto h-3 w-3 text-ink-muted/50" />
+      </p>
+      <p className="mt-1 truncate font-mono text-[15px] font-semibold text-ink tabular-nums">
+        {value || "—"}
+      </p>
+    </div>
   );
 }
 

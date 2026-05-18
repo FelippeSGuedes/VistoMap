@@ -20,7 +20,7 @@ const Env = z.object({
   CSV_PATH: z.string().default("/csv"),
 
   /** Raio máximo (m) para uma mudança de poste ser permitida. */
-  POSTE_TROCA_RAIO_M: z.coerce.number().int().positive().default(50),
+  POSTE_TROCA_RAIO_M: z.coerce.number().int().positive().default(100),
 
   /** CIDRs internos que podem chamar endpoints administrativos sem JWT. */
   INTERNAL_ALLOWLIST: z
