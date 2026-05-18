@@ -15,6 +15,20 @@ import type { Knex } from "knex";
  *   - `pg_trgm` index em PSPOSTE para autocomplete (`ILIKE '%PS-12%'` performático).
  */
 export async function up(knex: Knex): Promise<void> {
+  // ── wrapper IMMUTABLE para unaccent ───────────────────────────────────────
+  // `unaccent(text)` é STABLE (depende do dicionário), o Postgres recusa em
+  // GENERATED ALWAYS AS ... STORED. Wrapper fixando o dicionário 'public.unaccent'
+  // permite marcar como IMMUTABLE — exigência das colunas geradas.
+  await knex.raw(`
+    CREATE OR REPLACE FUNCTION public.f_unaccent_immutable(text)
+      RETURNS text
+      LANGUAGE sql
+      IMMUTABLE PARALLEL SAFE STRICT
+    AS $$
+      SELECT public.unaccent('public.unaccent', $1);
+    $$;
+  `);
+
   // ── tabela base ───────────────────────────────────────────────────────────
   await knex.raw(`
     CREATE TABLE IF NOT EXISTS postes (
@@ -24,7 +38,7 @@ export async function up(knex: Knex): Promise<void> {
       alturadaantenafield VARCHAR(32)  NULL,
       municipiofield      VARCHAR(120) NOT NULL,
       municipiofield_norm VARCHAR(120) GENERATED ALWAYS AS (
-        upper(unaccent(municipiofield))
+        upper(public.f_unaccent_immutable(municipiofield))
       ) STORED,
       latitudefield       NUMERIC(10,7) NOT NULL,
       longitudefield      NUMERIC(10,7) NOT NULL,
@@ -100,4 +114,5 @@ export async function down(knex: Knex): Promise<void> {
   await knex.raw(`DROP TRIGGER IF EXISTS trg_postes_sync_geom ON postes`);
   await knex.raw(`DROP FUNCTION IF EXISTS postes_sync_geom()`);
   await knex.raw(`DROP TABLE IF EXISTS postes`);
+  await knex.raw(`DROP FUNCTION IF EXISTS public.f_unaccent_immutable(text)`);
 }
