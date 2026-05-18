@@ -2,7 +2,7 @@ import { setAuthToken } from "./api";
 import type { AuthSession } from "@/types";
 
 export interface LoginInput {
-  email: string;
+  login: string;
   senha: string;
 }
 
@@ -40,7 +40,7 @@ export async function login(input: LoginInput): Promise<AuthSession> {
   const res = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: input.email, senha: input.senha }),
+    body: JSON.stringify({ login: input.login, senha: input.senha }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

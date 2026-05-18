@@ -28,38 +28,59 @@ interface GlpiUser {
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, senha } = (await req.json()) as {
-      email: string;
-      senha: string;
-    };
+    const body = (await req.json()) as { login?: string; senha?: string };
+    const login = body.login?.trim() ?? "";
+    const senha = body.senha ?? "";
 
-    if (!email || !senha) {
+    if (!login || !senha) {
       return NextResponse.json(
-        { message: "Email e senha são obrigatórios" },
+        { message: "Usuário/e-mail e senha são obrigatórios" },
         { status: 400 }
       );
     }
 
-    // Busca usuário pelo e-mail em glpi_users + glpi_useremails.
-    // Se ALLOWED_GROUP estiver definido, exige que o usuário pertença ao grupo.
+    // Detecta se digitou e-mail ou username GLPI (u.name).
+    const isEmail = /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(login);
+
     const groupJoin = ALLOWED_GROUP
       ? `INNER JOIN glpi_groups_users gu ON gu.users_id = u.id
          INNER JOIN glpi_groups g ON g.id = gu.groups_id AND g.name = ?`
       : "";
 
-    const rows = await query<GlpiUser>(
-      `
-        SELECT u.id, u.name, u.firstname, u.realname, u.password
-          FROM glpi_users u
-          INNER JOIN glpi_useremails ue ON ue.users_id = u.id
-          ${groupJoin}
-         WHERE ue.email = ?
-           AND u.is_deleted = 0
-           AND u.is_active = 1
-         LIMIT 1
-      `,
-      ALLOWED_GROUP ? [ALLOWED_GROUP, email] : [email]
-    );
+    // Busca por e-mail (com join obrigatório em glpi_useremails)
+    // ou por username direto (sem e-mail necessário).
+    let rows: GlpiUser[];
+    if (isEmail) {
+      rows = await query<GlpiUser>(
+        `
+          SELECT u.id, u.name, u.firstname, u.realname, u.password,
+                 ue.email
+            FROM glpi_users u
+            INNER JOIN glpi_useremails ue ON ue.users_id = u.id
+            ${groupJoin}
+           WHERE ue.email = ?
+             AND u.is_deleted = 0
+             AND u.is_active = 1
+           LIMIT 1
+        `,
+        ALLOWED_GROUP ? [ALLOWED_GROUP, login] : [login]
+      );
+    } else {
+      rows = await query<GlpiUser>(
+        `
+          SELECT u.id, u.name, u.firstname, u.realname, u.password,
+                 COALESCE(ue.email, '') AS email
+            FROM glpi_users u
+            LEFT JOIN glpi_useremails ue ON ue.users_id = u.id
+            ${groupJoin}
+           WHERE u.name = ?
+             AND u.is_deleted = 0
+             AND u.is_active = 1
+           LIMIT 1
+        `,
+        ALLOWED_GROUP ? [ALLOWED_GROUP, login] : [login]
+      );
+    }
 
     const user = rows[0];
     if (!user) {
@@ -70,7 +91,6 @@ export async function POST(req: NextRequest) {
     }
 
     // GLPI 9.x → SHA1 puro. GLPI 10.x → bcrypt ($2y$...).
-    // Tenta bcrypt primeiro; se o hash não tiver prefixo $2, cai no SHA1.
     const hash = user.password;
     let senhaOk = false;
     if (hash.startsWith("$2")) {
@@ -90,10 +110,9 @@ export async function POST(req: NextRequest) {
       id: String(user.id),
       nome:
         `${user.firstname ?? ""} ${user.realname ?? ""}`.trim() || user.name,
-      email,
+      email: user.email || user.name,
     };
 
-    // JWT real (HS256) com o mesmo JWT_SECRET do Fastify postes-api.
     const token = await signSessionJwt({
       sub: tecnico.id,
       email: tecnico.email,
