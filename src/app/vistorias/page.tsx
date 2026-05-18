@@ -16,10 +16,13 @@ import { VistoriaPinSheet } from "@/components/vistorias/VistoriaPinSheet";
 import { VistoriaExecucaoSheet } from "@/components/vistorias/VistoriaExecucaoSheet";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { LocationPermissionModal } from "@/components/feedback/LocationPermissionModal";
+import { PostesProximosFAB } from "@/components/postes/PostesProximosFAB";
+import { PostesProximosPanel } from "@/components/postes/PostesProximosPanel";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useAuthStore } from "@/store/auth";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
+import { usePostesProximos } from "@/hooks/usePostesProximos";
 import { useFilteredVistorias } from "@/hooks/useFilteredVistorias";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { STATUS_LABEL } from "@/utils/format";
@@ -44,6 +47,39 @@ export default function VistoriasPage() {
   const [permissionDismissed, setPermissionDismissed] = useState(false);
   const { position, refresh: refreshGeo } = useGeolocation(false);
   const permission = useLocationPermission();
+
+  // /postes — visualização operacional. Liga/desliga via FAB.
+  const postesProximos = usePostesProximos();
+  const [postesPanelOpen, setPostesPanelOpen] = useState(false);
+  const [postesSelectedId, setPostesSelectedId] = useState<number | null>(null);
+  const postesActive = postesProximos.fetched;
+
+  const togglePostesProximos = async () => {
+    if (postesActive) {
+      // já ativo → desliga
+      postesProximos.reset();
+      setPostesPanelOpen(false);
+      setPostesSelectedId(null);
+      return;
+    }
+    if (!position) {
+      // sem GPS, dispara fluxo de permissão
+      if (permission.state !== "granted") {
+        setPermissionDismissed(false);
+        return;
+      }
+      await refreshGeo();
+    }
+    const origin = position ?? null;
+    if (!origin) return;
+    await postesProximos.fetch({
+      lat: origin.lat,
+      lng: origin.lng,
+      raio: 500,
+      limit: 50,
+    });
+    setPostesPanelOpen(true);
+  };
 
   // Quando o usuário concede a permissão (no modal ou via banner do browser),
   // dispara automaticamente a leitura do GPS.
@@ -145,6 +181,12 @@ export default function VistoriasPage() {
       userPosition={position ? { lat: position.lat, lng: position.lng } : null}
       selectedId={selectedId}
       onSelect={setSelected}
+      postes={postesActive ? postesProximos.items : null}
+      selectedPosteId={postesSelectedId}
+      onPosteSelect={(id) => {
+        setPostesSelectedId(id);
+        setPostesPanelOpen(true);
+      }}
       className="h-full w-full"
     />
   );
@@ -218,6 +260,17 @@ export default function VistoriasPage() {
         </div>
       )}
 
+      {/* FAB "Postes próximos" — abaixo do filtro principal, acima do toggle */}
+      <div className="pointer-events-none fixed inset-x-0 top-[124px] z-30 flex justify-center px-4">
+        <PostesProximosFAB
+          active={postesActive}
+          loading={postesProximos.loading}
+          count={postesProximos.items.length}
+          onClick={togglePostesProximos}
+          className="pointer-events-auto"
+        />
+      </div>
+
       <FiltersBottomSheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
@@ -259,6 +312,17 @@ export default function VistoriasPage() {
           }
         }}
         onDismiss={() => setPermissionDismissed(true)}
+      />
+
+      <PostesProximosPanel
+        open={postesActive && postesPanelOpen}
+        loading={postesProximos.loading}
+        origin={postesProximos.origin}
+        raio={postesProximos.raio}
+        items={postesProximos.items}
+        selectedId={postesSelectedId}
+        onSelect={(id) => setPostesSelectedId(id)}
+        onClose={() => setPostesPanelOpen(false)}
       />
 
       {filtered.length === 0 && filters.query && !loading && (

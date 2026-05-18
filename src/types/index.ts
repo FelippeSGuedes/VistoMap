@@ -79,6 +79,66 @@ export interface VistoriaPayload {
   finalizadaEm: string;
 }
 
+/** Source-of-truth dos postes — vindo do PostGIS via /postes/*. */
+export interface Poste {
+  id: number;
+  pspostefield: string;
+  materialfield: string | null;
+  alturadaantenafield: string | null;
+  municipiofield: string;
+  latitudefield: number;
+  longitudefield: number;
+  distancia_m?: number;
+}
+
+export interface PostesProximosResponse {
+  origem: { lat: number; lng: number };
+  raio_m: number;
+  total: number;
+  items: Poste[];
+}
+
+export const MOTIVOS_MUDANCA = [
+  "POSTE_INACESSIVEL",
+  "VEGETACAO_BLOQUEANDO",
+  "POSTE_INEXISTENTE",
+  "ENDERECO_INCORRETO",
+  "POSTE_DANIFICADO",
+  "AREA_DE_RISCO",
+  "OUTRO",
+] as const;
+
+export type MotivoMudanca = (typeof MOTIVOS_MUDANCA)[number];
+
+export const MOTIVO_LABEL: Record<MotivoMudanca, string> = {
+  POSTE_INACESSIVEL: "Poste inacessível",
+  VEGETACAO_BLOQUEANDO: "Vegetação bloqueando",
+  POSTE_INEXISTENTE: "Poste inexistente",
+  ENDERECO_INCORRETO: "Endereço incorreto",
+  POSTE_DANIFICADO: "Poste danificado",
+  AREA_DE_RISCO: "Área de risco",
+  OUTRO: "Outro",
+};
+
+export interface MudancaPosteResponse {
+  ok: true;
+  mudanca_id: number;
+  distancia_m: number;
+  raio_max_m: number;
+  poste_novo: Poste;
+  descricao_glpi: string;
+  payload_glpi: {
+    vistoria_id: string;
+    pspostefield: string;
+    municipiofield: string;
+    materialfield: string | null;
+    alturadaantenafield: string | null;
+    latitudefield: number;
+    longitudefield: number;
+    observaofield_append: string;
+  };
+}
+
 export interface CaptureBundle {
   imagem1?: Blob | null;
   imagem2?: Blob | null;

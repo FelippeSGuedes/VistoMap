@@ -4,7 +4,8 @@ import mapboxgl, { type LngLatLike, type Map as MapboxMap } from "mapbox-gl";
 import { useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { MapPinned } from "lucide-react";
-import type { Vistoria } from "@/types";
+import type { Poste, Vistoria } from "@/types";
+import { postesToGeoJSON } from "@/services/postes";
 import {
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
@@ -17,8 +18,19 @@ interface MapViewProps {
   userPosition?: { lat: number; lng: number } | null;
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
+  /**
+   * Camada opcional de postes (vinda do PostGIS).
+   * Renderizada como circle-layer Mapbox — escala pra milhares sem custo de DOM.
+   */
+  postes?: Poste[] | null;
+  selectedPosteId?: number | null;
+  onPosteSelect?: (id: number) => void;
   className?: string;
 }
+
+const POSTES_SRC = "vm-postes-src";
+const POSTES_LAYER = "vm-postes-circle";
+const POSTES_LAYER_SELECTED = "vm-postes-circle-selected";
 
 const PIN_ICON: Record<Vistoria["status"], string> = {
   PENDENTE:   "/icons/pin-pendente.svg",
@@ -58,6 +70,9 @@ export function MapView({
   userPosition,
   selectedId,
   onSelect,
+  postes,
+  selectedPosteId,
+  onPosteSelect,
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -162,7 +177,7 @@ export function MapView({
     else map.once("load", sync);
   }, [vistorias, onSelect]);
 
-  // selected fly-to
+  // selected fly-to (vistoria)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedId) return;
@@ -175,6 +190,129 @@ export function MapView({
       duration: 700,
     });
   }, [selectedId, vistorias]);
+
+  /* ────── camada de postes (PostGIS via /postes/proximos) ────────────────── */
+
+  // ref pra manter callback estável sem re-attachar listener
+  const onPosteSelectRef = useRef(onPosteSelect);
+  useEffect(() => {
+    onPosteSelectRef.current = onPosteSelect;
+  }, [onPosteSelect]);
+
+  // 1) garante source + layers (anexo único)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const ensure = () => {
+      if (map.getSource(POSTES_SRC)) return;
+      map.addSource(POSTES_SRC, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        promoteId: "id",
+      });
+      // anel verde (estado padrão)
+      map.addLayer({
+        id: POSTES_LAYER,
+        source: POSTES_SRC,
+        type: "circle",
+        paint: {
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10, 3,
+            14, 6,
+            18, 10,
+          ],
+          "circle-color": "#06D6A0",
+          "circle-stroke-color": "#073B4C",
+          "circle-stroke-width": 1.5,
+          "circle-opacity": 0.9,
+        },
+      });
+      // estrela amarela sobreposta (selecionado)
+      map.addLayer({
+        id: POSTES_LAYER_SELECTED,
+        source: POSTES_SRC,
+        type: "circle",
+        filter: ["==", ["get", "id"], -1],
+        paint: {
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10, 8,
+            14, 14,
+            18, 22,
+          ],
+          "circle-color": "#FFD166",
+          "circle-stroke-color": "#073B4C",
+          "circle-stroke-width": 3,
+          "circle-opacity": 1,
+        },
+      });
+
+      map.on("click", POSTES_LAYER, (e) => {
+        const feat = e.features?.[0];
+        const id = Number(feat?.properties?.id);
+        if (Number.isFinite(id)) onPosteSelectRef.current?.(id);
+      });
+      map.on("mouseenter", POSTES_LAYER, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", POSTES_LAYER, () => {
+        map.getCanvas().style.cursor = "";
+      });
+    };
+    if (map.loaded()) ensure();
+    else map.once("load", ensure);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2) atualiza GeoJSON quando `postes` muda
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      const src = map.getSource(POSTES_SRC) as mapboxgl.GeoJSONSource | undefined;
+      if (!src) return;
+      src.setData(
+        postes
+          ? (postesToGeoJSON(postes) as GeoJSON.FeatureCollection)
+          : { type: "FeatureCollection", features: [] }
+      );
+    };
+    if (map.loaded()) apply();
+    else map.once("load", apply);
+  }, [postes]);
+
+  // 3) filtro do layer "selecionado" + fly-to
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      if (!map.getLayer(POSTES_LAYER_SELECTED)) return;
+      map.setFilter(POSTES_LAYER_SELECTED, [
+        "==",
+        ["get", "id"],
+        selectedPosteId ?? -1,
+      ]);
+    };
+    if (map.loaded()) apply();
+    else map.once("load", apply);
+
+    if (selectedPosteId != null && postes) {
+      const p = postes.find((x) => x.id === selectedPosteId);
+      if (p) {
+        map.flyTo({
+          center: [p.longitudefield, p.latitudefield],
+          zoom: Math.max(map.getZoom(), 15),
+          duration: 600,
+          essential: true,
+        });
+      }
+    }
+  }, [selectedPosteId, postes]);
 
   if (!token) {
     return (
