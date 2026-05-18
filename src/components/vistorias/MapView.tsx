@@ -215,11 +215,19 @@ export function MapView({
 
   /* ────── camada de postes (PostGIS via /postes/proximos) ────────────────── */
 
-  // ref pra manter callback estável sem re-attachar listener
+  // Refs pra evitar race-condition entre loadImage (async) e o effect de dados.
   const onPosteSelectRef = useRef(onPosteSelect);
+  const postesRef = useRef(postes);
+  const selectedPosteIdRef = useRef(selectedPosteId);
   useEffect(() => {
     onPosteSelectRef.current = onPosteSelect;
   }, [onPosteSelect]);
+  useEffect(() => {
+    postesRef.current = postes;
+  }, [postes]);
+  useEffect(() => {
+    selectedPosteIdRef.current = selectedPosteId;
+  }, [selectedPosteId]);
 
   // 1) carrega ícone + source + layers (anexo único)
   useEffect(() => {
@@ -250,9 +258,15 @@ export function MapView({
       await loadIcon();
       if (map.getSource(POSTES_SRC)) return;
 
+      // Pega o estado MAIS RECENTE de postes via ref — loadImage é async,
+      // então a prop pode já ter sido atualizada antes desse ponto.
+      const initialData = postesRef.current
+        ? (postesToGeoJSON(postesRef.current) as GeoJSON.FeatureCollection)
+        : ({ type: "FeatureCollection", features: [] } as GeoJSON.FeatureCollection);
+
       map.addSource(POSTES_SRC, {
         type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
+        data: initialData,
         promoteId: "id",
       });
 
@@ -288,9 +302,9 @@ export function MapView({
             "icon-ignore-placement": true,
             "icon-size": [
               "interpolate", ["linear"], ["zoom"],
-              10, 0.10,
-              14, 0.16,
-              18, 0.30,
+              10, 0.22,
+              14, 0.35,
+              18, 0.55,
             ],
           },
         });
@@ -307,9 +321,9 @@ export function MapView({
             "icon-ignore-placement": true,
             "icon-size": [
               "interpolate", ["linear"], ["zoom"],
-              10, 0.18,
-              14, 0.28,
-              18, 0.48,
+              10, 0.36,
+              14, 0.55,
+              18, 0.85,
             ],
           },
         });
@@ -351,6 +365,20 @@ export function MapView({
       map.on("mouseleave", POSTES_LAYER, () => {
         map.getCanvas().style.cursor = "";
       });
+
+      // Aplica o filtro de selecionado caso já houvesse seleção antes do source nascer.
+      const initialSelected = selectedPosteIdRef.current ?? -1;
+      const filterExpr = [
+        "==",
+        ["get", "id"],
+        initialSelected,
+      ] as mapboxgl.FilterSpecification;
+      if (map.getLayer(POSTES_LAYER_HALO)) {
+        map.setFilter(POSTES_LAYER_HALO, filterExpr);
+      }
+      if (map.getLayer(POSTES_LAYER_SELECTED)) {
+        map.setFilter(POSTES_LAYER_SELECTED, filterExpr);
+      }
     };
     if (map.loaded()) void ensure();
     else map.once("load", () => void ensure());
