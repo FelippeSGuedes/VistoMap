@@ -30,8 +30,9 @@ interface MapViewProps {
 
 const POSTES_SRC = "vm-postes-src";
 const POSTES_ICON = "vm-poste-ico";
-const POSTES_LAYER_HALO = "vm-postes-halo";     // anel atrás (só selecionado)
-const POSTES_LAYER = "vm-postes-symbol";        // ícone posteico.png
+const POSTES_LAYER_HALO = "vm-postes-halo";              // halo amarelo blur
+const POSTES_LAYER = "vm-postes-symbol";                 // ícones (todos)
+const POSTES_LAYER_SELECTED = "vm-postes-symbol-selected"; // ícone maior (1 filtrado)
 
 const PIN_ICON: Record<Vistoria["status"], string> = {
   PENDENTE:   "/icons/pin-pendente.svg",
@@ -249,7 +250,7 @@ export function MapView({
         },
       });
 
-      // Ícone PNG. icon-size é multiplicador da imagem original; ajusta no zoom.
+      // Ícone PNG base — todos os postes. icon-size escala por zoom.
       map.addLayer({
         id: POSTES_LAYER,
         source: POSTES_SRC,
@@ -261,21 +262,30 @@ export function MapView({
           "icon-ignore-placement": true,
           "icon-size": [
             "interpolate", ["linear"], ["zoom"],
-            10, [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              0.35, 0.20,
-            ],
-            14, [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              0.55, 0.32,
-            ],
-            18, [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              0.85, 0.55,
-            ],
+            10, 0.20,
+            14, 0.32,
+            18, 0.55,
+          ],
+        },
+      });
+
+      // Ícone destacado — só renderiza o feature filtrado por id (selecionado).
+      // Mapbox não aceita feature-state em layout, então usamos filter + outra layer.
+      map.addLayer({
+        id: POSTES_LAYER_SELECTED,
+        source: POSTES_SRC,
+        type: "symbol",
+        filter: ["==", ["get", "id"], -1],
+        layout: {
+          "icon-image": POSTES_ICON,
+          "icon-anchor": "bottom",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-size": [
+            "interpolate", ["linear"], ["zoom"],
+            10, 0.35,
+            14, 0.55,
+            18, 0.85,
           ],
         },
       });
@@ -314,35 +324,21 @@ export function MapView({
     else map.once("load", apply);
   }, [postes]);
 
-  // 3) destaque do selecionado: feature-state + halo + fly-to
-  const prevSelectedRef = useRef<number | null>(null);
+  // 3) destaque do selecionado via filtro (sem feature-state)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const apply = () => {
-      if (!map.getSource(POSTES_SRC)) return;
-      // tira destaque do anterior
-      if (prevSelectedRef.current != null) {
-        map.setFeatureState(
-          { source: POSTES_SRC, id: prevSelectedRef.current },
-          { selected: false }
-        );
-      }
-      // aplica no novo
-      if (selectedPosteId != null) {
-        map.setFeatureState(
-          { source: POSTES_SRC, id: selectedPosteId },
-          { selected: true }
-        );
-      }
-      prevSelectedRef.current = selectedPosteId ?? null;
-      // halo (circle) filtrado por id
+      const filterExpr = [
+        "==",
+        ["get", "id"],
+        selectedPosteId ?? -1,
+      ] as mapboxgl.FilterSpecification;
       if (map.getLayer(POSTES_LAYER_HALO)) {
-        map.setFilter(POSTES_LAYER_HALO, [
-          "==",
-          ["get", "id"],
-          selectedPosteId ?? -1,
-        ]);
+        map.setFilter(POSTES_LAYER_HALO, filterExpr);
+      }
+      if (map.getLayer(POSTES_LAYER_SELECTED)) {
+        map.setFilter(POSTES_LAYER_SELECTED, filterExpr);
       }
     };
     if (map.loaded()) apply();
