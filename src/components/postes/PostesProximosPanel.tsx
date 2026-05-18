@@ -103,7 +103,7 @@ export function PostesProximosPanel({
               </button>
             </header>
 
-            <div className="max-h-[46dvh] overflow-y-auto px-3 pb-4 pt-1">
+            <div className="max-h-[32dvh] overflow-y-auto px-3 pb-4 pt-1">
               {loading ? (
                 <SkeletonList />
               ) : items.length === 0 ? (

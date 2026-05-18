@@ -1,7 +1,7 @@
 "use client";
 
 import mapboxgl, { type LngLatLike, type Map as MapboxMap } from "mapbox-gl";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { MapPinned } from "lucide-react";
 import type { Poste, Vistoria } from "@/types";
@@ -84,11 +84,18 @@ export function MapView({
 
   const token = getMapboxToken();
 
-  const initialCenter = useMemo<LngLatLike>(() => {
-    if (userPosition) return [userPosition.lng, userPosition.lat];
-    if (vistorias[0]) return [vistorias[0].longitude, vistorias[0].latitude];
-    return DEFAULT_CENTER;
-  }, [userPosition, vistorias]);
+  // Centro INICIAL congelado: ref que captura a 1ª posição válida e não muda mais.
+  // Evita re-init do mapa quando userPosition/vistorias mudam de referência.
+  const initialCenterRef = useRef<LngLatLike | null>(null);
+  if (initialCenterRef.current === null) {
+    if (userPosition) {
+      initialCenterRef.current = [userPosition.lng, userPosition.lat];
+    } else if (vistorias[0]) {
+      initialCenterRef.current = [vistorias[0].longitude, vistorias[0].latitude];
+    } else {
+      initialCenterRef.current = DEFAULT_CENTER;
+    }
+  }
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -97,7 +104,7 @@ export function MapView({
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
-      center: initialCenter,
+      center: initialCenterRef.current!,
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
       pitchWithRotate: false,
@@ -115,9 +122,12 @@ export function MapView({
       markersRef.current.clear();
       userMarkerRef.current = null;
     };
-  }, [initialCenter, token]);
+    // Init UMA VEZ. Token só muda em hot-reload do dev.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
-  // user position marker
+  // user position marker + auto-centralizar na 1ª chegada do GPS
+  const hasCenteredOnUserRef = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !userPosition) return;
@@ -137,6 +147,16 @@ export function MapView({
             `<div style="padding:10px 12px;font-size:13px;font-weight:600;color:#073B4C;">📍 Sua localização</div>`
           ))
           .addTo(map);
+      }
+      // Primeira vez que ganhamos GPS depois do init → centraliza (uma vez só)
+      if (!hasCenteredOnUserRef.current) {
+        hasCenteredOnUserRef.current = true;
+        map.flyTo({
+          center: [userPosition.lng, userPosition.lat],
+          zoom: 14,
+          duration: 600,
+          essential: true,
+        });
       }
     };
     if (map.loaded()) onReady();
@@ -206,17 +226,22 @@ export function MapView({
     const map = mapRef.current;
     if (!map) return;
 
+    let iconLoaded = false;
     const loadIcon = () =>
       new Promise<void>((resolve) => {
-        if (map.hasImage(POSTES_ICON)) return resolve();
+        if (map.hasImage(POSTES_ICON)) {
+          iconLoaded = true;
+          return resolve();
+        }
         map.loadImage("/posteico.png", (err, image) => {
           if (err || !image) {
-            console.warn("[MapView] falhou carregar /posteico.png:", err);
+            console.warn("[MapView] falhou carregar /posteico.png — usando circle fallback. Erro:", err);
             return resolve();
           }
           if (!map.hasImage(POSTES_ICON)) {
             map.addImage(POSTES_ICON, image);
           }
+          iconLoaded = true;
           resolve();
         });
       });
@@ -250,45 +275,70 @@ export function MapView({
         },
       });
 
-      // Ícone PNG base — todos os postes. icon-size escala por zoom.
-      map.addLayer({
-        id: POSTES_LAYER,
-        source: POSTES_SRC,
-        type: "symbol",
-        layout: {
-          "icon-image": POSTES_ICON,
-          "icon-anchor": "bottom",
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-          "icon-size": [
-            "interpolate", ["linear"], ["zoom"],
-            10, 0.20,
-            14, 0.32,
-            18, 0.55,
-          ],
-        },
-      });
-
-      // Ícone destacado — só renderiza o feature filtrado por id (selecionado).
-      // Mapbox não aceita feature-state em layout, então usamos filter + outra layer.
-      map.addLayer({
-        id: POSTES_LAYER_SELECTED,
-        source: POSTES_SRC,
-        type: "symbol",
-        filter: ["==", ["get", "id"], -1],
-        layout: {
-          "icon-image": POSTES_ICON,
-          "icon-anchor": "bottom",
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-          "icon-size": [
-            "interpolate", ["linear"], ["zoom"],
-            10, 0.35,
-            14, 0.55,
-            18, 0.85,
-          ],
-        },
-      });
+      if (iconLoaded) {
+        // Ícone PNG base — todos os postes.
+        map.addLayer({
+          id: POSTES_LAYER,
+          source: POSTES_SRC,
+          type: "symbol",
+          layout: {
+            "icon-image": POSTES_ICON,
+            "icon-anchor": "bottom",
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+            "icon-size": [
+              "interpolate", ["linear"], ["zoom"],
+              10, 0.20,
+              14, 0.32,
+              18, 0.55,
+            ],
+          },
+        });
+        // Ícone destacado — só renderiza o feature filtrado por id (selecionado).
+        map.addLayer({
+          id: POSTES_LAYER_SELECTED,
+          source: POSTES_SRC,
+          type: "symbol",
+          filter: ["==", ["get", "id"], -1],
+          layout: {
+            "icon-image": POSTES_ICON,
+            "icon-anchor": "bottom",
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+            "icon-size": [
+              "interpolate", ["linear"], ["zoom"],
+              10, 0.35,
+              14, 0.55,
+              18, 0.85,
+            ],
+          },
+        });
+      } else {
+        // Fallback: circle verde se o PNG falhar.
+        map.addLayer({
+          id: POSTES_LAYER,
+          source: POSTES_SRC,
+          type: "circle",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 7, 18, 12],
+            "circle-color": "#06D6A0",
+            "circle-stroke-color": "#073B4C",
+            "circle-stroke-width": 2,
+          },
+        });
+        map.addLayer({
+          id: POSTES_LAYER_SELECTED,
+          source: POSTES_SRC,
+          type: "circle",
+          filter: ["==", ["get", "id"], -1],
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 8, 14, 13, 18, 22],
+            "circle-color": "#FFD166",
+            "circle-stroke-color": "#073B4C",
+            "circle-stroke-width": 3,
+          },
+        });
+      }
 
       map.on("click", POSTES_LAYER, (e) => {
         const feat = e.features?.[0];
