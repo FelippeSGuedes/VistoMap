@@ -97,17 +97,18 @@ export function MudarPosteFlow({
     };
   }, [open]);
 
-  // ao entrar no picker, busca postes próximos
+  // Ao entrar no picker: tenta GPS primeiro (mais confiável que coord do GLPI).
+  // Se GPS já estiver disponível, usa-o; senão, usa lat/lng do vistoria como fallback.
   useEffect(() => {
     if (step !== "picker") return;
     if (postes.fetched) return;
-    void postes.fetch({
-      lat: latAtual,
-      lng: lngAtual,
-      raio: 200,
-      limit: 80,
-    });
-    void geo.refresh();
+    const run = async () => {
+      const fresh = geo.position ?? (await geo.refresh());
+      const lat = fresh?.lat ?? latAtual;
+      const lng = fresh?.lng ?? lngAtual;
+      await postes.fetch({ lat, lng, raio: 500, limit: 80 });
+    };
+    void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
