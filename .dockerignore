@@ -1,0 +1,29 @@
+node_modules
+.next
+out
+dist
+.env
+.env.local
+.env.*.local
+.vercel
+.git
+.github
+*.log
+
+# Service worker gerado em build — não copiar do host
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+public/worker-*.js
+public/worker-*.js.map
+public/fallback-*.js
+
+# Backend Fastify tem seu próprio build context
+backend
+csv
+
+# Pastas que ficam locais (dev)
+uploads-dev
+docs
+scripts
