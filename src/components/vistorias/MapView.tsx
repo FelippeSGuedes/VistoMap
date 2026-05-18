@@ -29,8 +29,9 @@ interface MapViewProps {
 }
 
 const POSTES_SRC = "vm-postes-src";
-const POSTES_LAYER = "vm-postes-circle";
-const POSTES_LAYER_SELECTED = "vm-postes-circle-selected";
+const POSTES_ICON = "vm-poste-ico";
+const POSTES_LAYER_HALO = "vm-postes-halo";     // anel atrás (só selecionado)
+const POSTES_LAYER = "vm-postes-symbol";        // ícone posteico.png
 
 const PIN_ICON: Record<Vistoria["status"], string> = {
   PENDENTE:   "/icons/pin-pendente.svg",
@@ -199,56 +200,83 @@ export function MapView({
     onPosteSelectRef.current = onPosteSelect;
   }, [onPosteSelect]);
 
-  // 1) garante source + layers (anexo único)
+  // 1) carrega ícone + source + layers (anexo único)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const ensure = () => {
+
+    const loadIcon = () =>
+      new Promise<void>((resolve) => {
+        if (map.hasImage(POSTES_ICON)) return resolve();
+        map.loadImage("/posteico.png", (err, image) => {
+          if (err || !image) {
+            console.warn("[MapView] falhou carregar /posteico.png:", err);
+            return resolve();
+          }
+          if (!map.hasImage(POSTES_ICON)) {
+            map.addImage(POSTES_ICON, image);
+          }
+          resolve();
+        });
+      });
+
+    const ensure = async () => {
+      await loadIcon();
       if (map.getSource(POSTES_SRC)) return;
+
       map.addSource(POSTES_SRC, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
         promoteId: "id",
       });
-      // anel verde (estado padrão)
+
+      // Halo amarelo atrás do ícone — só quando selecionado.
       map.addLayer({
-        id: POSTES_LAYER,
-        source: POSTES_SRC,
-        type: "circle",
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            10, 3,
-            14, 6,
-            18, 10,
-          ],
-          "circle-color": "#06D6A0",
-          "circle-stroke-color": "#073B4C",
-          "circle-stroke-width": 1.5,
-          "circle-opacity": 0.9,
-        },
-      });
-      // estrela amarela sobreposta (selecionado)
-      map.addLayer({
-        id: POSTES_LAYER_SELECTED,
+        id: POSTES_LAYER_HALO,
         source: POSTES_SRC,
         type: "circle",
         filter: ["==", ["get", "id"], -1],
         paint: {
           "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            10, 8,
-            14, 14,
-            18, 22,
+            "interpolate", ["linear"], ["zoom"],
+            10, 10,
+            14, 18,
+            18, 28,
           ],
           "circle-color": "#FFD166",
-          "circle-stroke-color": "#073B4C",
-          "circle-stroke-width": 3,
-          "circle-opacity": 1,
+          "circle-opacity": 0.55,
+          "circle-blur": 0.35,
+        },
+      });
+
+      // Ícone PNG. icon-size é multiplicador da imagem original; ajusta no zoom.
+      map.addLayer({
+        id: POSTES_LAYER,
+        source: POSTES_SRC,
+        type: "symbol",
+        layout: {
+          "icon-image": POSTES_ICON,
+          "icon-anchor": "bottom",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-size": [
+            "interpolate", ["linear"], ["zoom"],
+            10, [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              0.35, 0.20,
+            ],
+            14, [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              0.55, 0.32,
+            ],
+            18, [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              0.85, 0.55,
+            ],
+          ],
         },
       });
 
@@ -264,8 +292,8 @@ export function MapView({
         map.getCanvas().style.cursor = "";
       });
     };
-    if (map.loaded()) ensure();
-    else map.once("load", ensure);
+    if (map.loaded()) void ensure();
+    else map.once("load", () => void ensure());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -286,17 +314,36 @@ export function MapView({
     else map.once("load", apply);
   }, [postes]);
 
-  // 3) filtro do layer "selecionado" + fly-to
+  // 3) destaque do selecionado: feature-state + halo + fly-to
+  const prevSelectedRef = useRef<number | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const apply = () => {
-      if (!map.getLayer(POSTES_LAYER_SELECTED)) return;
-      map.setFilter(POSTES_LAYER_SELECTED, [
-        "==",
-        ["get", "id"],
-        selectedPosteId ?? -1,
-      ]);
+      if (!map.getSource(POSTES_SRC)) return;
+      // tira destaque do anterior
+      if (prevSelectedRef.current != null) {
+        map.setFeatureState(
+          { source: POSTES_SRC, id: prevSelectedRef.current },
+          { selected: false }
+        );
+      }
+      // aplica no novo
+      if (selectedPosteId != null) {
+        map.setFeatureState(
+          { source: POSTES_SRC, id: selectedPosteId },
+          { selected: true }
+        );
+      }
+      prevSelectedRef.current = selectedPosteId ?? null;
+      // halo (circle) filtrado por id
+      if (map.getLayer(POSTES_LAYER_HALO)) {
+        map.setFilter(POSTES_LAYER_HALO, [
+          "==",
+          ["get", "id"],
+          selectedPosteId ?? -1,
+        ]);
+      }
     };
     if (map.loaded()) apply();
     else map.once("load", apply);

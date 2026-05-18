@@ -30,6 +30,7 @@ interface FinalizarPayload {
   longitude: number;
   observacoes?: string;
   pspostefield?: string;
+  municipiofield?: string;
   alturadaantenafield?: string;
   endereofield?: string;
   aterramentofield?: string;
@@ -142,6 +143,7 @@ export async function POST(
       latitudefield: String(payload.latitude),
       longitudefield: String(payload.longitude),
       pspostefield: payload.pspostefield,
+      municipiofield: payload.municipiofield,
       alturadaantenafield: payload.alturadaantenafield,
       endereofield: payload.endereofield,
       observaofield: payload.observacoes,

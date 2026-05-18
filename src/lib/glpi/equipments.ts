@@ -103,6 +103,7 @@ export async function getVistoria(id: number) {
 
 export interface UpdateFieldsInput {
   pspostefield?: string;
+  municipiofield?: string;
   latitudefield?: number | string;
   longitudefield?: number | string;
   alturadaantenafield?: string;
@@ -120,6 +121,7 @@ export interface UpdateFieldsInput {
 
 const UPDATABLE_COLUMNS = new Set([
   "pspostefield",
+  "municipiofield",
   "latitudefield",
   "longitudefield",
   "alturadaantenafield",

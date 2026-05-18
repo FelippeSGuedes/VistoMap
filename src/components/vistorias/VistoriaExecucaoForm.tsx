@@ -10,9 +10,10 @@ import {
   Crosshair,
   Gauge,
   Loader2,
-  Locate,
-  Navigation,
+  Lock,
+  MapPin as MapPinIcon,
   Radio,
+  Replace,
   Video,
   Wrench,
   Zap,
@@ -23,15 +24,19 @@ import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { EditableField } from "./EditableField";
 import { CaptureCameraModal } from "./CaptureCameraModal";
+import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
-import { openNavigation } from "@/services/maps";
-import { useGeolocation } from "@/hooks/useGeolocation";
-import { formatLatLng } from "@/utils/format";
-import type { CaptureBundle, DropdownKey, Vistoria } from "@/types";
+import type {
+  CaptureBundle,
+  DropdownKey,
+  MudancaPosteResponse,
+  Vistoria,
+} from "@/types";
 
 interface FormState {
   pspostefield: string;
+  municipiofield: string;
   alturadaantenafield: string;
   endereofield: string;
   aterramentofield: string;
@@ -51,6 +56,7 @@ interface FormState {
 
 const EMPTY: FormState = {
   pspostefield: "",
+  municipiofield: "",
   alturadaantenafield: "",
   endereofield: "",
   aterramentofield: "",
@@ -83,6 +89,7 @@ export function VistoriaExecucaoForm({
   const [form, setForm] = useState<FormState>(() => ({
     ...EMPTY,
     pspostefield: vistoria.fields?.pspostefield ?? "",
+    municipiofield: vistoria.cidade ?? "",
     alturadaantenafield: vistoria.fields?.alturadaantenafield ?? "",
     endereofield: vistoria.fields?.endereofield ?? vistoria.endereco ?? "",
     aterramentofield: vistoria.fields?.aterramentofield ?? "",
@@ -101,11 +108,26 @@ export function VistoriaExecucaoForm({
     lng: vistoria.longitude,
   });
 
-  const geo = useGeolocation(false);
+  const [mudarPosteOpen, setMudarPosteOpen] = useState(false);
 
   useEffect(() => {
     setCoords({ lat: vistoria.latitude, lng: vistoria.longitude });
   }, [vistoria.latitude, vistoria.longitude]);
+
+  const handlePosteMudado = (response: MudancaPosteResponse) => {
+    const p = response.poste_novo;
+    setCoords({ lat: p.latitudefield, lng: p.longitudefield });
+    setForm((f) => ({
+      ...f,
+      pspostefield: p.pspostefield,
+      municipiofield: p.municipiofield,
+      alturadaantenafield: p.alturadaantenafield ?? f.alturadaantenafield,
+      tipodematerial: p.materialfield ?? f.tipodematerial,
+      observaofield: f.observaofield
+        ? `${f.observaofield}\n\n${response.descricao_glpi}`
+        : response.descricao_glpi,
+    }));
+  };
 
   const captureCount =
     (captures.imagem1 ? 1 : 0) +
@@ -117,11 +139,6 @@ export function VistoriaExecucaoForm({
 
   const setField = <K extends keyof FormState>(key: K, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
-
-  const refreshCoords = async () => {
-    const next = await geo.refresh();
-    if (next) setCoords({ lat: next.lat, lng: next.lng, accuracy: next.accuracy });
-  };
 
   const onFinalize = async () => {
     if (!coords) return;
@@ -156,6 +173,7 @@ export function VistoriaExecucaoForm({
           longitude: coords.lng,
           observacoes: form.observaofield,
           pspostefield: form.pspostefield || undefined,
+          municipiofield: form.municipiofield || undefined,
           alturadaantenafield: form.alturadaantenafield || undefined,
           endereofield: form.endereofield || undefined,
           aterramentofield: form.aterramentofield || undefined,
@@ -249,46 +267,49 @@ export function VistoriaExecucaoForm({
             />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
-            <span>
-              {coords.accuracy
-                ? `Precisão ±${Math.round(coords.accuracy)} m via GPS`
-                : `Base GLPI: ${formatLatLng(vistoria.latitude, vistoria.longitude)}`}
-            </span>
-            {geo.error && <span className="text-red-500">{geo.error}</span>}
+          <p className="text-xs text-ink-muted">
+            Coordenadas vêm do PSPOSTE selecionado. Para corrigir, use{" "}
+            <strong className="text-ink">Mudar PSPOSTE</strong> abaixo.
+          </p>
+
+          {/* PS / Poste — read-only, troca SOMENTE via flow "Mudar PSPOSTE" */}
+          <div className="rounded-2xl border border-brand-steel/70 bg-white/80 p-3.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+                  <MapPinIcon className="h-3 w-3" /> PS / Poste
+                  <Lock className="ml-1 h-3 w-3 text-ink-muted/60" />
+                </p>
+                <p className="mt-1 truncate text-[15px] font-semibold tracking-tight text-ink">
+                  {form.pspostefield || "—"}
+                </p>
+                <p className="truncate text-[11px] text-ink-muted">
+                  {form.municipiofield || "—"}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Replace className="h-3.5 w-3.5" />}
+                onClick={() => setMudarPosteOpen(true)}
+              >
+                Mudar PSPOSTE
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button
-              size="md"
-              loading={geo.loading}
-              leftIcon={<Locate className="h-4 w-4" />}
-              onClick={refreshCoords}
-            >
-              Atualizar GPS
-            </Button>
-            <Button
-              variant="outline"
-              size="md"
-              leftIcon={<Navigation className="h-4 w-4" />}
-              onClick={() => openNavigation(coords.lat, coords.lng)}
-            >
-              Rota
-            </Button>
-          </div>
-
-          <div className="mt-1 grid grid-cols-2 gap-2">
-            <EditableField
-              label="PS / Poste"
-              value={form.pspostefield}
-              placeholder="Ex.: PS-1234"
-              onChange={(v) => setField("pspostefield", v)}
-            />
             <EditableField
               label="Aterramento"
               value={form.aterramentofield}
               placeholder="Ex.: NBR 5419"
               onChange={(v) => setField("aterramentofield", v)}
+            />
+            <EditableField
+              label="Altura da antena"
+              value={form.alturadaantenafield}
+              placeholder="Ex.: 12 m"
+              onChange={(v) => setField("alturadaantenafield", v)}
             />
           </div>
           <EditableField
@@ -372,20 +393,13 @@ export function VistoriaExecucaoForm({
               onChange={(v) => setField("ganhodbi", v)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <EditableField
-              label="Altura da antena"
-              value={form.alturadaantenafield}
-              placeholder="Ex.: 12 m"
-              onChange={(v) => setField("alturadaantenafield", v)}
-            />
-            <EditableField
-              label="Modo de operação"
-              value={form.mododeoperacao}
-              placeholder="TDD, FDD, etc."
-              onChange={(v) => setField("mododeoperacao", v)}
-            />
-          </div>
+          <EditableField
+            label="Modo de operação"
+            value={form.mododeoperacao}
+            placeholder="TDD, FDD, etc."
+            onChange={(v) => setField("mododeoperacao", v)}
+            colSpan
+          />
           <div className="grid grid-cols-2 gap-2">
             <EditableField
               label="Alimentação"
@@ -514,6 +528,17 @@ export function VistoriaExecucaoForm({
         onChange={setCaptures}
         onClose={() => setCameraOpen(false)}
         equipmentName={vistoria.equipamento}
+      />
+
+      <MudarPosteFlow
+        open={mudarPosteOpen}
+        onClose={() => setMudarPosteOpen(false)}
+        vistoriaId={vistoria.id}
+        psposteAntigo={form.pspostefield}
+        municipioAntigo={vistoria.cidade}
+        latAtual={coords.lat}
+        lngAtual={coords.lng}
+        onApplied={handlePosteMudado}
       />
     </div>
   );

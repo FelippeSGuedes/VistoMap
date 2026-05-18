@@ -69,6 +69,7 @@ export interface VistoriaPayload {
   longitude: number;
   observacoes: string;
   pspostefield?: string;
+  municipiofield?: string;
   alturadaantenafield?: string;
   endereofield?: string;
   aterramentofield?: string;
