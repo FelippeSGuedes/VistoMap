@@ -1,6 +1,5 @@
-import { api, setAuthToken } from "./api";
+import { setAuthToken } from "./api";
 import type { AuthSession } from "@/types";
-import { MOCK_TECNICO } from "@/utils/mock";
 
 export interface LoginInput {
   email: string;
@@ -38,12 +37,18 @@ export function loadSession(): AuthSession | null {
 }
 
 export async function login(input: LoginInput): Promise<AuthSession> {
-  // TODO: substituir pelo endpoint real quando autenticação estiver pronta
-  const session: AuthSession = {
-    token: "demo-token-" + Math.random().toString(36).slice(2),
-    tecnico: { ...MOCK_TECNICO, email: input.email },
-    expiresAt: Date.now() + 1000 * 60 * 60 * 8,
-  };
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: input.email, senha: input.senha }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(
+      (data as { message?: string }).message || "Credenciais inválidas"
+    );
+  }
+  const session = (await res.json()) as AuthSession;
   persist(session);
   return session;
 }

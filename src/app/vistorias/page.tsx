@@ -62,15 +62,16 @@ export default function VistoriasPage() {
       setPostesSelectedId(null);
       return;
     }
-    if (!position) {
-      // sem GPS, dispara fluxo de permissão
+    // Usa a posição já capturada; se ainda não tiver, pede ao browser agora.
+    let origin = position;
+    if (!origin) {
       if (permission.state !== "granted") {
         setPermissionDismissed(false);
         return;
       }
-      await refreshGeo();
+      // refreshGeo retorna Promise<GeoPosition|null> — evita stale closure
+      origin = await refreshGeo();
     }
-    const origin = position ?? null;
     if (!origin) return;
     await postesProximos.fetch({
       lat: origin.lat,

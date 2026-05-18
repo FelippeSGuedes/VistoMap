@@ -72,6 +72,19 @@ const nextConfig = {
       bodySizeLimit: "100mb",
     },
   },
+  async rewrites() {
+    // Proxy server-side: /postes/* → Fastify postes-api.
+    // Em dev local aponta pra localhost:3001; em prod o POSTES_API_URL do
+    // container pode ser "http://postes-api:3001" (nome Docker interno).
+    const postesApiUrl =
+      process.env.POSTES_API_URL || "http://localhost:3001";
+    return [
+      {
+        source: "/postes/:path*",
+        destination: `${postesApiUrl}/postes/:path*`,
+      },
+    ];
+  },
 };
 
 module.exports = withPWA(nextConfig);
