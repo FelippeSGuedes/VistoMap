@@ -23,9 +23,12 @@ COPY package.json package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund \
  && npm cache clean --force
 
+# Tudo que precisa em produção vem compilado dentro de /app/dist:
+#   dist/src/server.js          ← entrypoint
+#   dist/src/scripts/import-csv.js
+#   dist/knexfile.js            ← config Knex (paths via __dirname)
+#   dist/migrations/*.js        ← migrations compiladas
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/knexfile.ts ./knexfile.ts
-COPY --from=builder /app/migrations ./migrations
 
 # Usuário não-root
 RUN addgroup --system --gid 1001 nodejs \
@@ -34,4 +37,4 @@ RUN addgroup --system --gid 1001 nodejs \
 USER fastify
 
 EXPOSE 3001
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/src/server.js"]

@@ -7,12 +7,14 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "migrate:make": "knex --knexfile knexfile.ts migrate:make",
-    "migrate:latest": "knex --knexfile knexfile.ts migrate:latest",
-    "migrate:rollback": "knex --knexfile knexfile.ts migrate:rollback",
+    "migrate:latest:dev": "knex --knexfile knexfile.ts migrate:latest",
+    "migrate:rollback:dev": "knex --knexfile knexfile.ts migrate:rollback",
+    "migrate:latest": "knex --knexfile dist/knexfile.js migrate:latest",
+    "migrate:rollback": "knex --knexfile dist/knexfile.js migrate:rollback",
     "import:csv:dev": "tsx src/scripts/import-csv.ts",
-    "import:csv": "node dist/scripts/import-csv.js"
+    "import:csv": "node dist/src/scripts/import-csv.js"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

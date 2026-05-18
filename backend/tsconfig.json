@@ -20,6 +20,10 @@
     "removeComments": true,
     "types": ["node"]
   },
-  "include": ["src/**/*", "knexfile.ts", "scripts/**/*"],
+  "include": [
+    "src/**/*.ts",
+    "knexfile.ts",
+    "migrations/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }
