@@ -14,7 +14,11 @@
     "migrate:latest": "knex --knexfile dist/knexfile.js migrate:latest",
     "migrate:rollback": "knex --knexfile dist/knexfile.js migrate:rollback",
     "import:csv:dev": "tsx src/scripts/import-csv.ts",
-    "import:csv": "node dist/src/scripts/import-csv.js"
+    "import:csv": "node dist/src/scripts/import-csv.js",
+    "optimize:postes:dev": "tsx src/scripts/optimize-postes.ts",
+    "optimize:postes": "node dist/src/scripts/optimize-postes.js",
+    "bench:postes:dev": "tsx src/scripts/bench-postes.ts",
+    "bench:postes": "node dist/src/scripts/bench-postes.js"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
