@@ -302,9 +302,9 @@ export function MapView({
             "icon-ignore-placement": true,
             "icon-size": [
               "interpolate", ["linear"], ["zoom"],
-              10, 0.22,
-              14, 0.35,
-              18, 0.55,
+              10, 0.04,
+              14, 0.07,
+              18, 0.14,
             ],
           },
         });
@@ -321,9 +321,9 @@ export function MapView({
             "icon-ignore-placement": true,
             "icon-size": [
               "interpolate", ["linear"], ["zoom"],
-              10, 0.36,
-              14, 0.55,
-              18, 0.85,
+              10, 0.07,
+              14, 0.12,
+              18, 0.22,
             ],
           },
         });
