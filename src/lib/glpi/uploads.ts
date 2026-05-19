@@ -20,11 +20,21 @@ export interface FilePayload {
 
 /**
  * Garante que a pasta `${BASE_PATH}/<equipamento>/` existe e retorna o path absoluto.
+ * Força mode 0o777 para que o worker Python (GLPI/Apache uid 33) também consiga
+ * ler/limpar os arquivos depois. umask do Node mascara o `mode` do mkdir, então
+ * aplicamos chmod logo após. Falha de chmod em pasta de outro dono é ignorada
+ * (esperado quando a pasta veio pré-criada pelo GLPI).
  */
 export async function ensureEquipmentFolder(equipmentName: string): Promise<string> {
   const folder = sanitizeFolderName(equipmentName);
   const targetDir = path.join(BASE_PATH, folder);
-  await fs.mkdir(targetDir, { recursive: true });
+  await fs.mkdir(targetDir, { recursive: true, mode: 0o777 });
+  try {
+    await fs.chmod(targetDir, 0o777);
+  } catch {
+    // EPERM quando a pasta é de outro UID — segue (caller fará writeFile e
+    // levantará erro claro se de fato não puder escrever).
+  }
   return targetDir;
 }
 

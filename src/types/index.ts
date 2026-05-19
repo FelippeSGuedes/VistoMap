@@ -39,6 +39,15 @@ export interface VistoriaFields {
   intensidadedesinalfield?: string;
   velocidadefield?: string;
   motivofield?: string;
+  // Dropdowns resolvidos (texto, vindos de JOIN com tabelas glpi_plugin_fields_*).
+  tipodeantena?: string;
+  ganhodbi?: string;
+  mododeoperacao?: string;
+  operadorafourg?: string;
+  tipodematerial?: string;
+  tensao?: string;
+  alimentacaodoequipamento?: string;
+  localdeinstalacao?: string;
 }
 
 export interface Vistoria {

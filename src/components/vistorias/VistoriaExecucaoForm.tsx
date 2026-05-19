@@ -62,6 +62,32 @@ interface FormState {
   localdeinstalacao: string;
 }
 
+/**
+ * Reverte o formato GLPI "ENDEREÇO : RUA,NUMERO,ESTADO,CEP" para os 4 sub-campos.
+ * Token "—" é tratado como vazio. Se não reconhecer o formato, retorna 4 strings vazias.
+ */
+function parseGlpiEndereco(raw: string): {
+  rua: string;
+  numero: string;
+  estado: string;
+  cep: string;
+} {
+  const empty = { rua: "", numero: "", estado: "", cep: "" };
+  if (!raw) return empty;
+  const m = raw.match(/ENDERE(?:Ç|C)O\s*:\s*(.+)$/i);
+  if (!m) return empty;
+  const parts = m[1].split(",").map((s) => {
+    const t = s.trim();
+    return t === "—" || t === "-" ? "" : t;
+  });
+  return {
+    rua: parts[0] ?? "",
+    numero: parts[1] ?? "",
+    estado: parts[2] ?? "",
+    cep: parts[3] ?? "",
+  };
+}
+
 const EMPTY: FormState = {
   pspostefield: "",
   municipiofield: "",
@@ -98,18 +124,34 @@ export function VistoriaExecucaoForm({
   onDone,
   embedded,
 }: VistoriaExecucaoFormProps) {
-  const [form, setForm] = useState<FormState>(() => ({
-    ...EMPTY,
-    pspostefield: vistoria.fields?.pspostefield ?? "",
-    municipiofield: vistoria.cidade ?? "",
-    alturadaantenafield: vistoria.fields?.alturadaantenafield ?? "",
-    endereofield: vistoria.fields?.endereofield ?? vistoria.endereco ?? "",
-    aterramentofield: vistoria.fields?.aterramentofield ?? "",
-    intensidadedesinalfield: vistoria.fields?.intensidadedesinalfield ?? "",
-    velocidadefield: vistoria.fields?.velocidadefield ?? "",
-    motivofield: vistoria.fields?.motivofield ?? "",
-    observaofield: vistoria.fields?.observaofield ?? "",
-  }));
+  const [form, setForm] = useState<FormState>(() => {
+    const raw = vistoria.fields?.endereofield ?? vistoria.endereco ?? "";
+    const addr = parseGlpiEndereco(raw);
+    return {
+      ...EMPTY,
+      pspostefield: vistoria.fields?.pspostefield ?? "",
+      municipiofield: vistoria.cidade ?? "",
+      alturadaantenafield: vistoria.fields?.alturadaantenafield ?? "",
+      endereofield: raw,
+      endereco_rua: addr.rua,
+      endereco_numero: addr.numero,
+      endereco_estado: addr.estado,
+      endereco_cep: addr.cep,
+      aterramentofield: vistoria.fields?.aterramentofield ?? "",
+      intensidadedesinalfield: vistoria.fields?.intensidadedesinalfield ?? "",
+      velocidadefield: vistoria.fields?.velocidadefield ?? "",
+      motivofield: vistoria.fields?.motivofield ?? "",
+      observaofield: vistoria.fields?.observaofield ?? "",
+      tipodeantena: vistoria.fields?.tipodeantena ?? "",
+      ganhodbi: vistoria.fields?.ganhodbi ?? "",
+      mododeoperacao: vistoria.fields?.mododeoperacao ?? "",
+      operadorafourg: vistoria.fields?.operadorafourg ?? "",
+      tipodematerial: vistoria.fields?.tipodematerial ?? "",
+      tensao: vistoria.fields?.tensao ?? "",
+      alimentacaodoequipamento: vistoria.fields?.alimentacaodoequipamento ?? "",
+      localdeinstalacao: vistoria.fields?.localdeinstalacao ?? "",
+    };
+  });
   const [captures, setCaptures] = useState<CaptureBundle>({});
   const [cameraOpen, setCameraOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);

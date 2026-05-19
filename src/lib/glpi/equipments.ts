@@ -2,6 +2,7 @@ import "server-only";
 import { execute, query } from "@/lib/db";
 import {
   DROPDOWN_COLUMNS,
+  DROPDOWN_TABLES,
   TABLE_FIELDS,
   TABLE_NE,
   type DropdownKey,
@@ -24,9 +25,25 @@ const SELECT_BASE = `
     f.motivofield AS motivo,
     f.plugin_fields_statusvistoriafielddropdowns_id AS status_vistoria_id,
     f.plugin_fields_pendnciafielddropdowns_id AS pendencia_id,
-    f.datadavistoriafield AS data_vistoria
+    f.datadavistoriafield AS data_vistoria,
+    d_ta.name AS tipodeantena,
+    d_gd.name AS ganhodbi,
+    d_mo.name AS mododeoperacao,
+    d_op.name AS operadorafourg,
+    d_tm.name AS tipodematerial,
+    d_tn.name AS tensao,
+    d_al.name AS alimentacaodoequipamento,
+    d_li.name AS localdeinstalacao
   FROM \`${TABLE_NE}\` ne
   INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+  LEFT JOIN \`${DROPDOWN_TABLES.tipodeantena}\` d_ta ON d_ta.id = f.${DROPDOWN_COLUMNS.tipodeantena}
+  LEFT JOIN \`${DROPDOWN_TABLES.ganhodbi}\` d_gd ON d_gd.id = f.${DROPDOWN_COLUMNS.ganhodbi}
+  LEFT JOIN \`${DROPDOWN_TABLES.mododeoperacao}\` d_mo ON d_mo.id = f.${DROPDOWN_COLUMNS.mododeoperacao}
+  LEFT JOIN \`${DROPDOWN_TABLES.operadorafourg}\` d_op ON d_op.id = f.${DROPDOWN_COLUMNS.operadorafourg}
+  LEFT JOIN \`${DROPDOWN_TABLES.tipodematerial}\` d_tm ON d_tm.id = f.${DROPDOWN_COLUMNS.tipodematerial}
+  LEFT JOIN \`${DROPDOWN_TABLES.tensao}\` d_tn ON d_tn.id = f.${DROPDOWN_COLUMNS.tensao}
+  LEFT JOIN \`${DROPDOWN_TABLES.alimentacaodoequipamento}\` d_al ON d_al.id = f.${DROPDOWN_COLUMNS.alimentacaodoequipamento}
+  LEFT JOIN \`${DROPDOWN_TABLES.localdeinstalacao}\` d_li ON d_li.id = f.${DROPDOWN_COLUMNS.localdeinstalacao}
   WHERE ne.is_deleted = 0
 `;
 
@@ -54,6 +71,14 @@ interface RawRow {
   status_vistoria_id: number | null;
   pendencia_id: number | null;
   data_vistoria: string | null;
+  tipodeantena: string | null;
+  ganhodbi: string | null;
+  mododeoperacao: string | null;
+  operadorafourg: string | null;
+  tipodematerial: string | null;
+  tensao: string | null;
+  alimentacaodoequipamento: string | null;
+  localdeinstalacao: string | null;
 }
 
 function mapRow(r: RawRow) {
@@ -78,6 +103,14 @@ function mapRow(r: RawRow) {
       intensidadedesinalfield: r.intensidade_sinal ?? "",
       velocidadefield: r.velocidade ?? "",
       motivofield: r.motivo ?? "",
+      tipodeantena: r.tipodeantena ?? "",
+      ganhodbi: r.ganhodbi ?? "",
+      mododeoperacao: r.mododeoperacao ?? "",
+      operadorafourg: r.operadorafourg ?? "",
+      tipodematerial: r.tipodematerial ?? "",
+      tensao: r.tensao ?? "",
+      alimentacaodoequipamento: r.alimentacaodoequipamento ?? "",
+      localdeinstalacao: r.localdeinstalacao ?? "",
     },
     dropdownIds: {
       statusVistoria: r.status_vistoria_id,
