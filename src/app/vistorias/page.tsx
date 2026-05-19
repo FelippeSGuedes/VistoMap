@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Compass, Inbox, Search } from "lucide-react";
@@ -35,7 +35,7 @@ const MapView = dynamic(
 
 const QUICK_STATUSES: VistoriaStatus[] = ["PENDENTE", "FINALIZADA", "REPROVADA"];
 
-export default function VistoriasPage() {
+function VistoriasPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { hydrated, session } = useAuthStore();
@@ -343,5 +343,13 @@ export default function VistoriasPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function VistoriasPage() {
+  return (
+    <Suspense>
+      <VistoriasPageInner />
+    </Suspense>
   );
 }
