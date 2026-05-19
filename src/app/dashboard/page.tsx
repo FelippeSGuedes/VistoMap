@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Map,
-  RefreshCw,
   RotateCw,
   Signal,
   TrendingDown,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { MunicipioField } from "@/components/dashboard/MunicipioField";
 import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
 import type { DashboardStats } from "@/types";
@@ -34,6 +34,21 @@ function initials(nome: string) {
 }
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+function fmtDateTime(iso: string) {
+  const d = new Date(iso);
+  const dd = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const hh = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dd} às ${hh}`;
+}
+/**
+ * Extrai só o primeiro nome do usuário GLPI, capitalizado.
+ * Aceita "Felippe Andrade" → "Felippe", "felippe.gustavo" → "Felippe",
+ * "felippegustavo1" → "Felippegustavo1" (fallback quando não há separador).
+ */
+function firstNameOf(nome: string): string {
+  const first = nome.trim().split(/[\s._-]+/)[0] ?? nome;
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
 function useCountUp(target: number | null, duration = 700) {
@@ -163,7 +178,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const { hydrated, session, logout } = useAuthStore();
   const [stats, setStats]     = useState<DashboardStats | null>(null);
-  const [syncing, setSyncing] = useState(false);
   const [online, setOnline]   = useState(true);
   const heroRef = useRef<HTMLDivElement>(null);
   const { scrollY } = useScroll();
@@ -186,15 +200,8 @@ export default function DashboardPage() {
     return () => { alive = false; };
   }, []);
 
-  const onSync = async () => {
-    setSyncing(true);
-    const d = await vistoriasService.fetchDashboardStats();
-    setStats(d);
-    setSyncing(false);
-  };
-
   const nome      = session?.tecnico.nome ?? "Tecnico";
-  const firstName = nome;
+  const firstName = firstNameOf(nome);
   const animatedTotal = useCountUp(stats !== null ? stats.total : null, 1400);
 
   return (
@@ -386,7 +393,7 @@ export default function DashboardPage() {
                 WebkitBackdropFilter: "blur(10px)",
               }}
             >
-              Field Ops&nbsp;&middot;&nbsp;VistoMap
+              Vistorias
             </div>
 
             <div className="flex flex-col">
@@ -402,34 +409,23 @@ export default function DashboardPage() {
                 {stats !== null ? animatedTotal : <Skeleton className="h-14 w-20 rounded-xl bg-white/10" />}
               </div>
               <p className="mt-1 text-[13.5px] font-medium" style={{ color: "rgba(255,255,255,0.52)", letterSpacing: "0.005em" }}>
-                vistorias atribuidas
+                Vistorias Sincronizadas
               </p>
               {stats && (
-                <p className="mt-[3px] text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.26)", letterSpacing: "0.06em" }}>
-                  sync {fmtTime(stats.ultimaSincronizacao)}
+                <p className="mt-[3px] text-[10.5px] font-medium" style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.04em" }}>
+                  {fmtDateTime(stats.ultimaSincronizacao)}
                 </p>
               )}
             </div>
-
-            <button
-              type="button"
-              onClick={onSync}
-              disabled={syncing}
-              className="flex w-fit items-center gap-2 rounded-[14px] px-4 py-[10px] text-[12px] font-semibold tracking-tight transition-all active:scale-[0.96]"
-              style={{
-                background:          "rgba(0,200,150,0.16)",
-                border:              "1px solid rgba(0,200,150,0.34)",
-                backdropFilter:      "blur(16px)",
-                WebkitBackdropFilter: "blur(16px)",
-                boxShadow:           "0 2px 16px rgba(0,200,150,0.22), 0 1px 0 rgba(255,255,255,0.07) inset",
-                color:               "#AFFFEA",
-              }}
-            >
-              <RefreshCw className={syncing ? "animate-spin" : ""} style={{ width: 13, height: 13, color: "#5EFFD9" }} strokeWidth={2.2} />
-              Sincronizar
-            </button>
           </div>
         </motion.div>
+
+        {/* MUNICÍPIO FIELD — card horizontal premium dos municípios ativos */}
+        <MunicipioField
+          municipios={stats?.municipios}
+          ultimaSincronizacao={stats?.ultimaSincronizacao}
+          loading={stats === null}
+        />
 
         {/* STATS GRID — Enterprise KPI cards com sparkline + delta */}
         <section>

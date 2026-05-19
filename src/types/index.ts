@@ -163,6 +163,12 @@ export interface CaptureBundle {
   video360?: Blob | null;
 }
 
+/** Município ativo na rota operacional do técnico, com contagem de vistorias. */
+export interface MunicipioOperacional {
+  nome: string;
+  totalVistorias: number;
+}
+
 export interface DashboardStats {
   total: number;
   pendentes: number;
@@ -170,6 +176,8 @@ export interface DashboardStats {
   /** No GLPI `Reprovada`; na UI é exibida como "Revisitas" (ação operacional). */
   reprovadas: number;
   ultimaSincronizacao: string;
+  /** Lista distinta de municípios das vistorias atribuídas — usada no MunicipioField. */
+  municipios?: MunicipioOperacional[];
   /** Série dos últimos 7 dias por KPI — usada nas sparklines do dashboard. */
   trend7d?: {
     pendentes: number[];

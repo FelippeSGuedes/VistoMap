@@ -4,7 +4,10 @@
       "Bash(node scripts/find-equipment.mjs 013)",
       "Bash(node scripts/seed-test-equipment.mjs CAM-S-A-013 -19.95502865491202 -44.1474393893272)",
       "Bash(node scripts/debug-env.mjs)",
-      "Bash(cd \"c:/Users/nsn102098/Desktop/VistoMap\" && ls -la posteico.png && mv posteico.png public/posteico.png && ls -la public/posteico.png)"
+      "Bash(cd \"c:/Users/nsn102098/Desktop/VistoMap\" && ls -la posteico.png && mv posteico.png public/posteico.png && ls -la public/posteico.png)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\nsn102098\\Desktop\\VistoMap"

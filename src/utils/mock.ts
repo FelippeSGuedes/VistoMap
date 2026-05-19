@@ -109,6 +109,12 @@ export const MOCK_STATS: DashboardStats = {
   concluidas: 12,
   reprovadas: 3,
   ultimaSincronizacao: new Date().toISOString(),
+  municipios: [
+    { nome: "Campinas", totalVistorias: 12 },
+    { nome: "Valinhos", totalVistorias: 5 },
+    { nome: "Vinhedo", totalVistorias: 3 },
+    { nome: "Itatiba", totalVistorias: 4 },
+  ],
   trend7d: {
     pendentes: [6, 8, 7, 9, 10, 8, 9],
     concluidas: [6, 7, 8, 9, 10, 11, 12],

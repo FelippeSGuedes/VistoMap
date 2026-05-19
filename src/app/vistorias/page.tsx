@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Compass, Inbox, Search } from "lucide-react";
 import { Pill } from "@/components/ui/Pill";
@@ -37,6 +37,7 @@ const QUICK_STATUSES: VistoriaStatus[] = ["PENDENTE", "FINALIZADA", "REPROVADA"]
 
 export default function VistoriasPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { hydrated, session } = useAuthStore();
   const { items, loading, fetchAll, filters, setFilters, resetFilters, selectedId, setSelected } =
     useVistoriasStore();
@@ -104,6 +105,13 @@ export default function VistoriasPage() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  // Veio do MunicipioField do dashboard → aplica busca pelo nome do município.
+  // O search header já fica pré-preenchido, sinalizando ao técnico que há filtro.
+  useEffect(() => {
+    const municipio = searchParams.get("municipio");
+    if (municipio) setFilters({ query: municipio });
+  }, [searchParams, setFilters]);
 
   const filtered = useFilteredVistorias({
     vistorias: items,
