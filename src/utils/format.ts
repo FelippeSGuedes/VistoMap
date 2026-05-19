@@ -3,8 +3,10 @@ import type { VistoriaPriority, VistoriaStatus } from "@/types";
 export const STATUS_LABEL: Record<VistoriaStatus, string> = {
   PENDENTE: "Pendente",
   EM_CAMPO: "Em campo",
-  FINALIZADA: "Finalizada",
-  REPROVADA: "Reprovada",
+  FINALIZADA: "Concluída",
+  // "Reprovada" no GLPI = vistoria que precisa de revisita pelo técnico.
+  // Renomeada na UI para refletir a ação operacional, não o status administrativo.
+  REPROVADA: "Revisita",
   APROVADA: "Aprovada",
 };
 
@@ -12,7 +14,7 @@ export const STATUS_COLOR: Record<VistoriaStatus, string> = {
   PENDENTE: "#FFD166",
   EM_CAMPO: "#3B82F6",
   FINALIZADA: "#06D6A0",
-  REPROVADA: "#EF4444",
+  REPROVADA: "#F59E0B",
   APROVADA: "#073B4C",
 };
 

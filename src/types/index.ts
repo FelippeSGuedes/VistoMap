@@ -70,6 +70,11 @@ export interface Vistoria {
   fields?: VistoriaFields;
   dropdownIds?: Partial<Record<"statusVistoria" | "pendencia", number | null>>;
   dataVistoria?: string | null;
+  /** Vem de `glpi_plugin_vistomap_projects.is_repeat`. Quando true, esta NE
+   *  é uma revisita (vistoria anterior reprovada). */
+  isRepeat?: boolean;
+  /** `project_status` da aux table (PENDENTE/GERANDO/GERADO/ERRO). */
+  auxProjectStatus?: string | null;
 }
 
 export interface VistoriaPayload {
@@ -161,10 +166,16 @@ export interface CaptureBundle {
 export interface DashboardStats {
   total: number;
   pendentes: number;
-  emCampo: number;
   concluidas: number;
+  /** No GLPI `Reprovada`; na UI é exibida como "Revisitas" (ação operacional). */
   reprovadas: number;
   ultimaSincronizacao: string;
+  /** Série dos últimos 7 dias por KPI — usada nas sparklines do dashboard. */
+  trend7d?: {
+    pendentes: number[];
+    concluidas: number[];
+    reprovadas: number[];
+  };
 }
 
 export interface AuthSession {

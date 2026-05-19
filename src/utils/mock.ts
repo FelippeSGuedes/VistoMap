@@ -106,8 +106,12 @@ export const MOCK_VISTORIAS: Vistoria[] = [
 export const MOCK_STATS: DashboardStats = {
   total: 24,
   pendentes: 9,
-  emCampo: 3,
-  concluidas: 10,
-  reprovadas: 2,
+  concluidas: 12,
+  reprovadas: 3,
   ultimaSincronizacao: new Date().toISOString(),
+  trend7d: {
+    pendentes: [6, 8, 7, 9, 10, 8, 9],
+    concluidas: [6, 7, 8, 9, 10, 11, 12],
+    reprovadas: [1, 1, 2, 2, 3, 2, 3],
+  },
 };

@@ -1,22 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import {
   Activity,
   ArrowUpRight,
   CheckCircle2,
+  ClipboardList,
   Map,
-  Radio,
   RefreshCw,
-  ShieldAlert,
+  RotateCw,
+  Signal,
+  TrendingDown,
   TrendingUp,
-  Wifi,
-  WifiOff,
-  Zap,
 } from "lucide-react";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -24,76 +22,162 @@ import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
 import type { DashboardStats } from "@/types";
 
-/* ─── helpers ──────────────────────────────────────────────────────────── */
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Bom dia";
   if (h < 18) return "Boa tarde";
   return "Boa noite";
 }
-
 function initials(nome: string) {
-  const parts = nome.trim().split(" ");
-  const a = parts[0]?.[0] ?? "";
-  const b = parts[1]?.[0] ?? parts[0]?.[1] ?? "";
-  return (a + b).toUpperCase();
+  const p = nome.trim().split(" ");
+  return ((p[0]?.[0] ?? "") + (p[1]?.[0] ?? p[0]?.[1] ?? "")).toUpperCase();
+}
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-/* ─── stat card config ─────────────────────────────────────────────────── */
-const STAT_CARDS = [
+function useCountUp(target: number | null, duration = 700) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (target === null) return;
+    if (target === 0) { setCount(0); return; }
+    const startTime = performance.now();
+    let raf: number;
+    const tick = (now: number) => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.round(eased * target));
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return count;
+}
+
+type StatKey = "pendentes" | "concluidas" | "reprovadas";
+
+const STATS: Array<{
+  key: StatKey;
+  label: string;
+  icon: typeof Activity;
+  hex: string;
+  pill: string;
+  grad: string;
+}> = [
+  { key: "pendentes",  label: "Pendentes",  icon: Activity,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
+  { key: "concluidas", label: "Concluídas", icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500" },
+  // "Reprovada" no GLPI = revisita pendente pelo técnico (ação operacional).
+  { key: "reprovadas", label: "Revisitas",  icon: RotateCw,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
+];
+
+/**
+ * Sparkline SVG estilizado — curva suavizada (Catmull-Rom-ish) com fill
+ * em gradiente. Animação stroke draw via Framer.
+ */
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (!data.length) return null;
+  const w = 100;
+  const h = 28;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = Math.max(max - min, 1);
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    return [x, y] as const;
+  });
+  // Suaviza com Bézier quadrática.
+  const d = pts
+    .map(([x, y], i) => {
+      if (i === 0) return `M${x.toFixed(1)},${y.toFixed(1)}`;
+      const [px, py] = pts[i - 1];
+      const mx = (px + x) / 2;
+      return `Q${px.toFixed(1)},${py.toFixed(1)} ${mx.toFixed(1)},${((py + y) / 2).toFixed(1)} T${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const dFill = `${d} L${w},${h} L0,${h} Z`;
+  const gid = `sg-${color.replace("#", "")}`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-full w-full">
+      <defs>
+        <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={dFill} fill={`url(#${gid})`} />
+      <motion.path
+        d={d}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 1.1, ease: "easeOut" }}
+      />
+    </svg>
+  );
+}
+
+/** Delta percentual entre últimos 2 pontos da série. */
+function deltaPct(series?: number[]): { value: number; up: boolean } | null {
+  if (!series || series.length < 2) return null;
+  const last = series[series.length - 1];
+  const prev = series[series.length - 2];
+  if (prev === 0) return last > 0 ? { value: 100, up: true } : null;
+  const pct = ((last - prev) / prev) * 100;
+  return { value: Math.abs(Math.round(pct)), up: pct >= 0 };
+}
+
+const ACTIONS = [
   {
-    key: "pendentes" as const,
-    label: "Pendentes",
-    icon: Activity,
-    color: "#F59E0B",
-    bg: "#FFFBEB",
-    border: "#FDE68A",
+    href: "/vistorias",
+    label: "Mapa operacional",
+    sub: "Ordens em tempo real",
+    icon: Map,
+    iconBg: "rgba(0,179,136,0.14)",
+    iconColor: "#00B388",
   },
   {
-    key: "emCampo" as const,
-    label: "Em campo",
-    icon: Radio,
-    color: "#3B82F6",
-    bg: "#EFF6FF",
-    border: "#BFDBFE",
+    href: "/vistorias",
+    label: "Lista de vistorias",
+    sub: "Filtrar e buscar ordens",
+    icon: ClipboardList,
+    iconBg: "#EEF2FF",
+    iconColor: "#6366F1",
   },
   {
-    key: "concluidas" as const,
-    label: "Concluídas",
-    icon: CheckCircle2,
-    color: "#00B388",
-    bg: "#ECFDF5",
-    border: "#6EE7B7",
-  },
-  {
-    key: "reprovadas" as const,
-    label: "Reprovadas",
-    icon: ShieldAlert,
-    color: "#EF4444",
-    bg: "#FEF2F2",
-    border: "#FECACA",
+    href: "/dashboard",
+    label: "Cobertura de sinal",
+    sub: "Mapa de infraestrutura",
+    icon: Signal,
+    iconBg: "#ECFDF5",
+    iconColor: "#00B388",
   },
 ];
 
-/* ─── page ─────────────────────────────────────────────────────────────── */
 export default function DashboardPage() {
   const router = useRouter();
   const { hydrated, session, logout } = useAuthStore();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [online, setOnline] = useState(true);
+  const [stats, setStats]     = useState<DashboardStats | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [online, setOnline]   = useState(true);
+  const heroRef = useRef<HTMLDivElement>(null);
+  const { scrollY } = useScroll();
+  const heroParallax = useTransform(scrollY, [0, 200], [0, -30]);
 
-  useEffect(() => {
-    if (hydrated && !session) router.replace("/login");
-  }, [hydrated, session, router]);
+  useEffect(() => { if (hydrated && !session) router.replace("/login"); }, [hydrated, session, router]);
 
   useEffect(() => {
     setOnline(navigator.onLine);
-    const up = () => setOnline(true);
-    const dn = () => setOnline(false);
-    window.addEventListener("online", up);
-    window.addEventListener("offline", dn);
-    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", dn); };
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
   useEffect(() => {
@@ -102,289 +186,399 @@ export default function DashboardPage() {
     return () => { alive = false; };
   }, []);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
+  const onSync = async () => {
+    setSyncing(true);
     const d = await vistoriasService.fetchDashboardStats();
     setStats(d);
-    setRefreshing(false);
+    setSyncing(false);
   };
 
-  const tecnicoNome = session?.tecnico.nome ?? "Técnico";
-  const firstName = tecnicoNome.split(" ")[0] ?? tecnicoNome;
+  const nome      = session?.tecnico.nome ?? "Tecnico";
+  const firstName = nome;
+  const animatedTotal = useCountUp(stats !== null ? stats.total : null, 1400);
 
   return (
-    <div
-      className="relative flex min-h-[100dvh] flex-col pb-28"
-      style={{ background: "#F7F9FB" }}
-    >
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+    <div className="relative flex min-h-[100dvh] flex-col" style={{ background: "#F7F9FB" }}>
+
+      {/* HEADER */}
       <motion.header
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="sticky top-0 z-40 flex items-center justify-between px-5 pb-3"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4 }}
+        className="sticky top-0 z-50 flex items-center justify-between px-5"
         style={{
-          paddingTop: "max(env(safe-area-inset-top), 16px)",
-          background: "rgba(247,249,251,0.85)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          borderBottom: "1px solid rgba(6,59,59,0.06)",
+          paddingTop:    "max(env(safe-area-inset-top), 18px)",
+          paddingBottom: "14px",
+          background:    "rgba(247,249,251,0.82)",
+          backdropFilter: "saturate(180%) blur(24px)",
+          WebkitBackdropFilter: "saturate(180%) blur(24px)",
+          borderBottom: "1px solid rgba(6,59,59,0.055)",
         }}
       >
-        {/* greeting */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "#00B388" }}>
-            {greeting()}
-          </p>
-          <h1 className="text-[20px] font-semibold tracking-tight" style={{ color: "#063B3B" }}>
-            {firstName}
-          </h1>
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo_favicon.PNG" alt="VistoMap" className="h-8 w-8 rounded-xl" style={{ objectFit: "contain" }} />
+          <div className="flex flex-col">
+            <span className="text-[21px] font-semibold leading-none tracking-[-0.4px]">
+              <span style={{ color: "#00B388" }}>{greeting()},&nbsp;</span>
+              <span style={{ color: "#063B3B" }}>{firstName}</span>
+            </span>
+          </div>
         </div>
 
-        {/* avatar + online badge */}
-        <div className="flex items-center gap-2.5">
-          <span
-            className="flex h-[7px] w-[7px] rounded-full"
-            style={{ background: online ? "#00B388" : "#9CA3AF", boxShadow: online ? "0 0 0 3px rgba(0,179,136,0.2)" : "none" }}
-          />
+        <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold"
+            style={{
+              background: online ? "rgba(0,179,136,0.1)" : "rgba(156,163,175,0.12)",
+              color:      online ? "#00B388" : "#9CA3AF",
+              border:     `1px solid ${online ? "rgba(0,179,136,0.22)" : "rgba(156,163,175,0.2)"}`,
+            }}
+          >
+            <span
+              className="h-[5px] w-[5px] rounded-full"
+              style={{ background: online ? "#00B388" : "#9CA3AF", boxShadow: online ? "0 0 0 2px rgba(0,179,136,0.3)" : "none" }}
+            />
+            {online ? "Online" : "Offline"}
+          </div>
+
           <button
             type="button"
             onClick={logout}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[13px] font-bold"
-            style={{
-              background: "linear-gradient(135deg,#063B3B 0%,#0D5C5C 100%)",
-              color: "#fff",
-              boxShadow: "0 2px 12px rgba(6,59,59,0.25)",
-            }}
             title="Sair"
+            className="flex h-[38px] w-[38px] items-center justify-center rounded-full text-[12px] font-bold text-white"
+            style={{
+              background:    "linear-gradient(145deg,#063B3B 0%,#0A5252 100%)",
+              boxShadow:     "0 2px 10px rgba(6,59,59,0.3), 0 0 0 2px rgba(0,179,136,0.15)",
+              letterSpacing: "0.04em",
+            }}
           >
-            {initials(tecnicoNome)}
+            {initials(nome)}
           </button>
         </div>
       </motion.header>
 
-      <main className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-5 px-4 pt-4">
+      {/* SCROLL CONTENT */}
+      <main
+        className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-5 overflow-y-auto px-4 pb-32 pt-5"
+        style={{ scrollbarWidth: "none" }}
+      >
 
-        {/* ── Hero Card ───────────────────────────────────────────────── */}
+        {/* HERO CARD */}
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          ref={heroRef}
+          initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: [0.22, 0.7, 0.2, 1] }}
+          transition={{ duration: 0.52, ease: [0.22, 0.7, 0.2, 1] }}
           className="relative overflow-hidden"
-          style={{ borderRadius: 28, boxShadow: "0 8px 32px rgba(6,59,59,0.18), 0 1px 0 rgba(255,255,255,0.6) inset" }}
+          style={{
+            height: 252,
+            borderRadius: 28,
+            background: "linear-gradient(135deg, #021818 0%, #031E1E 35%, #052E2E 65%, #073838 100%)",
+            boxShadow:
+              "0 1px 0 rgba(255,255,255,0.06) inset, " +
+              "0 -1px 0 rgba(0,0,0,0.28) inset, " +
+              "0 0 0 1px rgba(0,200,150,0.08), " +
+              "0 12px 32px rgba(2,18,18,0.22), " +
+              "0 4px 10px rgba(2,18,18,0.12)",
+          }}
         >
-          {/* banner image */}
-          <div className="relative h-[220px] w-full">
-            <Image
-              src="/banner.png"
-              alt="Operação em campo"
-              fill
-              className="object-cover object-center"
-              priority
-            />
-            {/* cinematic overlay */}
+          {/* BACKGROUND IMAGE -- full card, brightened */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/banner.png"
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full"
+            style={{
+              objectFit: "cover",
+              objectPosition: "center top",
+              filter: "brightness(1.08) contrast(1.04) saturate(0.88)",
+              zIndex: 0,
+            }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+
+          {/* MAIN OVERLAY: smooth horizontal dissolve, no hard vertical line */}
+          <div
+            className="absolute inset-0"
+            style={{
+              zIndex: 1,
+              background:
+                "linear-gradient(to right, " +
+                "rgba(3,22,22,0.97) 0%, " +
+                "rgba(3,22,22,0.93) 20%, " +
+                "rgba(3,22,22,0.75) 36%, " +
+                "rgba(3,22,22,0.38) 52%, " +
+                "rgba(3,22,22,0.1) 66%, " +
+                "transparent 80%)",
+            }}
+          />
+
+          {/* TOP EDGE */}
+          <div
+            className="absolute inset-x-0 top-0"
+            style={{
+              height: "30%",
+              zIndex: 2,
+              background: "linear-gradient(to bottom, rgba(3,22,22,0.52) 0%, transparent 100%)",
+            }}
+          />
+
+          {/* BOTTOM EDGE */}
+          <div
+            className="absolute inset-x-0 bottom-0"
+            style={{
+              height: "36%",
+              zIndex: 2,
+              background: "linear-gradient(to top, rgba(3,22,22,0.6) 0%, transparent 100%)",
+            }}
+          />
+
+          {/* RIGHT EDGE */}
+          <div
+            className="absolute inset-y-0 right-0"
+            style={{
+              width: "12%",
+              zIndex: 2,
+              background: "linear-gradient(to left, rgba(3,22,22,0.45) 0%, transparent 100%)",
+            }}
+          />
+
+          {/* TEAL GLOW -- bottom left */}
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: -24,
+              bottom: -24,
+              width: 200,
+              height: 200,
+              zIndex: 3,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(0,200,150,0.18) 0%, rgba(0,200,150,0.05) 48%, transparent 68%)",
+            }}
+          />
+
+          {/* TEAL GLOW -- top left accent */}
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: -8,
+              top: -8,
+              width: 160,
+              height: 160,
+              zIndex: 3,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(0,200,150,0.1) 0%, transparent 65%)",
+            }}
+          />
+
+          {/* CONTENT */}
+          <div className="absolute inset-0 flex flex-col justify-between p-6" style={{ zIndex: 10 }}>
             <div
-              className="absolute inset-0"
+              className="w-fit rounded-full px-2.5 py-[5px] text-[8.5px] font-semibold uppercase"
               style={{
-                background: "linear-gradient(170deg, rgba(6,59,59,0.18) 0%, rgba(6,59,59,0.55) 55%, rgba(6,59,59,0.88) 100%)",
+                background:      "rgba(0,200,150,0.1)",
+                color:           "#5EFFD9",
+                border:          "1px solid rgba(0,200,150,0.2)",
+                letterSpacing:   "0.2em",
+                backdropFilter:  "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
               }}
-            />
-          </div>
+            >
+              Field Ops&nbsp;&middot;&nbsp;VistoMap
+            </div>
 
-          {/* content over image */}
-          <div className="absolute inset-0 flex flex-col justify-end p-5">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <div
-                  className="mb-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em]"
-                  style={{ background: "rgba(0,179,136,0.22)", color: "#7FFFD4", border: "1px solid rgba(0,179,136,0.3)" }}
-                >
-                  <Zap className="h-2.5 w-2.5" />
-                  Field Operations
-                </div>
-                <h2 className="text-[26px] font-semibold leading-tight tracking-tight text-white">
-                  {stats ? (
-                    <>{stats.total} <span className="text-[16px] font-normal text-white/70">vistorias</span></>
-                  ) : (
-                    <Skeleton className="h-7 w-24 bg-white/20" />
-                  )}
-                </h2>
-                <p className="mt-0.5 text-[12px] text-white/55">
-                  {stats
-                    ? `Sincronizado ${new Date(stats.ultimaSincronizacao).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
-                    : "Carregando…"}
-                </p>
-              </div>
-
-              {/* sync button */}
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={refreshing}
-                className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-[12px] font-semibold transition"
+            <div className="flex flex-col">
+              <div
+                className="leading-none font-bold text-white"
                 style={{
-                  background: refreshing ? "rgba(0,179,136,0.35)" : "rgba(0,179,136,0.9)",
-                  color: "#fff",
-                  backdropFilter: "blur(8px)",
-                  boxShadow: "0 4px 12px rgba(0,179,136,0.4)",
-                  border: "1px solid rgba(0,179,136,0.5)",
+                  fontSize: 62,
+                  letterSpacing: "-3.5px",
+                  textShadow: "0 0 40px rgba(0,200,150,0.24), 0 2px 24px rgba(0,200,150,0.14)",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                Sincronizar
-              </button>
+                {stats !== null ? animatedTotal : <Skeleton className="h-14 w-20 rounded-xl bg-white/10" />}
+              </div>
+              <p className="mt-1 text-[13.5px] font-medium" style={{ color: "rgba(255,255,255,0.52)", letterSpacing: "0.005em" }}>
+                vistorias atribuidas
+              </p>
+              {stats && (
+                <p className="mt-[3px] text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.26)", letterSpacing: "0.06em" }}>
+                  sync {fmtTime(stats.ultimaSincronizacao)}
+                </p>
+              )}
             </div>
+
+            <button
+              type="button"
+              onClick={onSync}
+              disabled={syncing}
+              className="flex w-fit items-center gap-2 rounded-[14px] px-4 py-[10px] text-[12px] font-semibold tracking-tight transition-all active:scale-[0.96]"
+              style={{
+                background:          "rgba(0,200,150,0.16)",
+                border:              "1px solid rgba(0,200,150,0.34)",
+                backdropFilter:      "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+                boxShadow:           "0 2px 16px rgba(0,200,150,0.22), 0 1px 0 rgba(255,255,255,0.07) inset",
+                color:               "#AFFFEA",
+              }}
+            >
+              <RefreshCw className={syncing ? "animate-spin" : ""} style={{ width: 13, height: 13, color: "#5EFFD9" }} strokeWidth={2.2} />
+              Sincronizar
+            </button>
           </div>
         </motion.div>
 
-        {/* ── Stats grid ──────────────────────────────────────────────── */}
-        <section className="grid grid-cols-2 gap-3">
-          {STAT_CARDS.map(({ key, label, icon: Icon, color, bg, border }, idx) => (
-            <motion.div
-              key={key}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08 * idx + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-              className="relative overflow-hidden rounded-3xl p-4"
-              style={{
-                background: "#fff",
-                border: `1px solid ${border}`,
-                boxShadow: "0 1px 3px rgba(6,59,59,0.05), 0 6px 20px rgba(6,59,59,0.06)",
-              }}
-            >
-              {/* subtle glow top-right */}
-              <div
-                className="pointer-events-none absolute -right-5 -top-5 h-16 w-16 rounded-full blur-2xl"
-                style={{ background: bg, opacity: 0.9 }}
-              />
-              <div
-                className="relative flex h-9 w-9 items-center justify-center rounded-2xl"
-                style={{ background: bg }}
-              >
-                <Icon className="h-4 w-4" style={{ color }} />
-              </div>
-              <p
-                className="relative mt-3 text-[11px] font-semibold uppercase tracking-[0.12em]"
-                style={{ color: "#9CA3AF" }}
-              >
-                {label}
-              </p>
-              <div
-                className="relative mt-1 text-[28px] font-semibold tracking-tight"
-                style={{ color: "#063B3B" }}
-              >
-                {stats ? stats[key] : <Skeleton className="h-7 w-10" />}
-              </div>
-              {/* mini trend badge */}
-              {stats && (
-                <div
-                  className="absolute bottom-3.5 right-3.5 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                  style={{ background: bg, color }}
+        {/* STATS GRID — Enterprise KPI cards com sparkline + delta */}
+        <section>
+          <div className="mb-3 flex items-end justify-between px-0.5">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
+              Resumo operacional
+            </p>
+            <p className="text-[10px] font-medium" style={{ color: "#B0BAC5" }}>
+              últimos 7 dias
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            {STATS.map(({ key, label, icon: Icon, hex, pill, grad }, i) => {
+              const value = stats ? stats[key] : null;
+              const series = stats?.trend7d?.[key];
+              const delta = deltaPct(series);
+              const max = Math.max(stats?.total ?? 1, 1);
+              const pct = value != null ? Math.min(100, (value / max) * 100) : 0;
+              // 3º card (Revisitas) ocupa linha inteira pra destacar
+              const isRevisita = key === "reprovadas";
+              return (
+                <motion.div
+                  key={key}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
+                  whileHover={{ y: -2, transition: { duration: 0.2 } }}
+                  className={`group relative overflow-hidden rounded-[22px] p-[15px] ${isRevisita ? "col-span-2" : ""}`}
+                  style={{
+                    background: isRevisita
+                      ? "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 60%, #FDE68A 100%)"
+                      : "#fff",
+                    boxShadow: isRevisita
+                      ? "0 1px 3px rgba(245,158,11,0.08), 0 8px 24px rgba(245,158,11,0.18), 0 0 0 1px rgba(245,158,11,0.22)"
+                      : "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07), 0 0 0 1px rgba(6,59,59,0.04)",
+                  }}
                 >
-                  <TrendingUp className="h-2.5 w-2.5" />
-                  Hoje
-                </div>
-              )}
-            </motion.div>
-          ))}
+                  {/* glow superior */}
+                  <div
+                    className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-[24px] transition-opacity group-hover:opacity-100"
+                    style={{ background: pill, opacity: 0.85 }}
+                  />
+
+                  {/* topo: ícone + delta */}
+                  <div className="relative flex items-center justify-between">
+                    <div
+                      className={`flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-gradient-to-br ${grad} shadow-sm`}
+                      style={{ boxShadow: `0 4px 12px ${hex}33` }}
+                    >
+                      <Icon className="h-[15px] w-[15px] text-white" strokeWidth={2.2} />
+                    </div>
+                    {delta && (
+                      <span
+                        className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                        style={{
+                          background: delta.up ? "rgba(0,179,136,0.12)" : "rgba(239,68,68,0.10)",
+                          color: delta.up ? "#00B388" : "#EF4444",
+                        }}
+                      >
+                        {delta.up ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+                        {delta.value}%
+                      </span>
+                    )}
+                  </div>
+
+                  {/* label + valor */}
+                  <p
+                    className="relative mt-[11px] text-[10.5px] font-semibold uppercase tracking-[0.13em]"
+                    style={{ color: "#A0ACBA" }}
+                  >
+                    {label}
+                  </p>
+                  <div
+                    className="relative mt-[2px] text-[28px] font-semibold leading-none tracking-[-0.5px] tabular-nums"
+                    style={{ color: "#063B3B" }}
+                  >
+                    {value !== null ? value : <Skeleton className="mt-1 h-7 w-10 rounded-lg" />}
+                  </div>
+
+                  {/* sparkline */}
+                  {series && (
+                    <div className="relative mt-2 h-7 w-full opacity-90">
+                      <Sparkline data={series} color={hex} />
+                    </div>
+                  )}
+
+                  {/* barra de progresso suave */}
+                  {value !== null && (
+                    <div className="relative mt-2 h-[3px] overflow-hidden rounded-full bg-black/[0.04]">
+                      <motion.span
+                        className={`block h-full rounded-full bg-gradient-to-r ${grad}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ delay: 0.18 + i * 0.05, duration: 0.9, ease: [0.22, 0.7, 0.2, 1] }}
+                      />
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+
         </section>
 
-        {/* ── Quick actions ────────────────────────────────────────────── */}
+        {/* QUICK ACTIONS */}
         <motion.section
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.32 }}
+          transition={{ delay: 0.38, ease: [0.22, 0.7, 0.2, 1] }}
         >
-          <p
-            className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.16em]"
-            style={{ color: "#9CA3AF" }}
-          >
-            Atalhos
+          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
+            Acesso rapido
           </p>
-          <div className="flex flex-col gap-2.5">
 
-            {/* primary action */}
-            <Link href="/vistorias">
-              <div
-                className="flex items-center justify-between gap-3 rounded-3xl p-4 transition active:scale-[0.98]"
-                style={{
-                  background: "linear-gradient(135deg,#063B3B 0%,#0D5C5C 100%)",
-                  boxShadow: "0 4px 20px rgba(6,59,59,0.22)",
-                }}
-              >
-                <div className="flex items-center gap-3.5">
-                  <span
-                    className="flex h-11 w-11 items-center justify-center rounded-2xl"
-                    style={{ background: "rgba(0,179,136,0.18)", border: "1px solid rgba(0,179,136,0.3)" }}
-                  >
-                    <Map className="h-5 w-5" style={{ color: "#7FFFD4" }} />
+          <Link href={ACTIONS[0].href} className="block">
+            <div
+              className="flex items-center justify-between gap-3 rounded-[22px] p-4 transition active:scale-[0.98]"
+              style={{ background: "linear-gradient(135deg,#042828 0%,#063B3B 45%,#0A5252 100%)", boxShadow: "0 6px 24px rgba(6,59,59,0.28), 0 1px 0 rgba(255,255,255,0.06) inset" }}
+            >
+              <div className="flex items-center gap-3.5">
+                <span className="flex h-11 w-11 items-center justify-center rounded-[14px]" style={{ background: "rgba(0,179,136,0.16)", border: "1px solid rgba(0,179,136,0.25)" }}>
+                  <Map className="h-5 w-5" style={{ color: "#5EFFD9" }} strokeWidth={1.8} />
+                </span>
+                <div>
+                  <p className="text-[15px] font-semibold tracking-[-0.2px] text-white">{ACTIONS[0].label}</p>
+                  <p className="text-[11.5px]" style={{ color: "rgba(255,255,255,0.42)" }}>{ACTIONS[0].sub}</p>
+                </div>
+              </div>
+              <ArrowUpRight className="h-5 w-5 shrink-0" style={{ color: "rgba(255,255,255,0.3)" }} strokeWidth={1.8} />
+            </div>
+          </Link>
+
+          <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+            {ACTIONS.slice(1).map((a) => (
+              <Link key={a.label} href={a.href}>
+                <div
+                  className="flex flex-col gap-3 rounded-[22px] p-4 transition active:scale-[0.98]"
+                  style={{ background: "#fff", boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07)", border: "1px solid rgba(6,59,59,0.055)" }}
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-[12px]" style={{ background: a.iconBg }}>
+                    <a.icon className="h-[18px] w-[18px]" style={{ color: a.iconColor }} strokeWidth={1.8} />
                   </span>
                   <div>
-                    <p className="text-[15px] font-semibold tracking-tight text-white">
-                      Mapa operacional
-                    </p>
-                    <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
-                      Todas as ordens em tempo real
-                    </p>
+                    <p className="text-[13.5px] font-semibold tracking-[-0.1px]" style={{ color: "#063B3B" }}>{a.label}</p>
+                    <p className="mt-[2px] text-[11px]" style={{ color: "#A0ACBA" }}>{a.sub}</p>
                   </div>
                 </div>
-                <ArrowUpRight className="h-5 w-5 shrink-0" style={{ color: "rgba(255,255,255,0.4)" }} />
-              </div>
-            </Link>
-
-            {/* secondary actions row */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div
-                className="flex flex-col gap-3 rounded-3xl p-4"
-                style={{
-                  background: "#fff",
-                  border: "1px solid rgba(6,59,59,0.07)",
-                  boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 6px 20px rgba(6,59,59,0.05)",
-                }}
-              >
-                <span
-                  className="flex h-10 w-10 items-center justify-center rounded-2xl"
-                  style={{ background: "#EFF6FF" }}
-                >
-                  <Activity className="h-4.5 w-4.5 h-[18px] w-[18px]" style={{ color: "#3B82F6" }} />
-                </span>
-                <div>
-                  <p className="text-[14px] font-semibold tracking-tight" style={{ color: "#063B3B" }}>
-                    Vistorias
-                  </p>
-                  <p className="text-[11px]" style={{ color: "#9CA3AF" }}>
-                    Lista completa
-                  </p>
-                </div>
-              </div>
-
-              <div
-                className="flex flex-col gap-3 rounded-3xl p-4"
-                style={{
-                  background: "#fff",
-                  border: "1px solid rgba(6,59,59,0.07)",
-                  boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 6px 20px rgba(6,59,59,0.05)",
-                }}
-              >
-                <span
-                  className="flex h-10 w-10 items-center justify-center rounded-2xl"
-                  style={{ background: "#F0FDF4" }}
-                >
-                  {online
-                    ? <Wifi className="h-[18px] w-[18px]" style={{ color: "#00B388" }} />
-                    : <WifiOff className="h-[18px] w-[18px]" style={{ color: "#9CA3AF" }} />}
-                </span>
-                <div>
-                  <p className="text-[14px] font-semibold tracking-tight" style={{ color: "#063B3B" }}>
-                    {online ? "Online" : "Offline"}
-                  </p>
-                  <p className="text-[11px]" style={{ color: "#9CA3AF" }}>
-                    {online ? "Conectado" : "Sem conexão"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
+              </Link>
+            ))}
           </div>
         </motion.section>
 

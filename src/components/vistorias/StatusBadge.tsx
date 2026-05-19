@@ -6,7 +6,7 @@ const TONE: Record<VistoriaStatus, Parameters<typeof Badge>[0]["tone"]> = {
   PENDENTE: "amber",
   EM_CAMPO: "blue",
   FINALIZADA: "emerald",
-  REPROVADA: "red",
+  REPROVADA: "amber",
   APROVADA: "deep",
 };
 

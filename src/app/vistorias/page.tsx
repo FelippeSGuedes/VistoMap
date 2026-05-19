@@ -33,7 +33,7 @@ const MapView = dynamic(
   { ssr: false }
 );
 
-const QUICK_STATUSES: VistoriaStatus[] = ["PENDENTE", "EM_CAMPO", "FINALIZADA"];
+const QUICK_STATUSES: VistoriaStatus[] = ["PENDENTE", "FINALIZADA", "REPROVADA"];
 
 export default function VistoriasPage() {
   const router = useRouter();

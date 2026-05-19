@@ -3,18 +3,22 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  AlertTriangle,
   Antenna,
   Camera,
   CheckCircle2,
   Construction,
   Crosshair,
   Gauge,
+  History,
   Loader2,
   Locate,
   Lock,
   MapPin as MapPinIcon,
   Radio,
   Replace,
+  ShieldCheck,
+  Sparkles,
   Video,
   Wrench,
   Zap,
@@ -353,6 +357,11 @@ export function VistoriaExecucaoForm({
             </div>
           </Card>
         </motion.div>
+
+        <RepeatFlag
+          isRepeat={!!vistoria.isRepeat}
+          motivoAnterior={vistoria.fields?.motivofield}
+        />
 
         {/* ─── DADOS DO POSTE — Premium ──────────────────────────────────── */}
         <motion.div
@@ -908,6 +917,96 @@ function CoordTile({ label, value }: { label: string; value: string }) {
         {value || "—"}
       </p>
     </div>
+  );
+}
+
+/**
+ * Flag visual destacada no topo da vistoria.
+ * - is_repeat=0 → badge esmeralda discreta "Primeira Vistoria"
+ * - is_repeat=1 → card âmbar com glow + ícone alerta + motivo da reprovação
+ *
+ * Objetivo: técnico identifica em ms se o equipamento já foi reprovado antes.
+ */
+function RepeatFlag({
+  isRepeat,
+  motivoAnterior,
+}: {
+  isRepeat: boolean;
+  motivoAnterior?: string;
+}) {
+  if (!isRepeat) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="flex items-center gap-2.5 rounded-2xl border border-brand-emerald/30 bg-brand-emerald/8 px-3.5 py-2.5"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-emerald/15 text-brand-emerald">
+          <ShieldCheck className="h-4 w-4" />
+        </span>
+        <div className="flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-emerald">
+            Primeira Vistoria
+          </p>
+          <p className="text-[12px] text-ink-muted">
+            Equipamento sem histórico de reprovação.
+          </p>
+        </div>
+        <Sparkles className="h-3.5 w-3.5 text-brand-emerald/70" />
+      </motion.div>
+    );
+  }
+  const motivo = motivoAnterior?.trim();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: 0.08, ease: [0.22, 0.7, 0.2, 1] }}
+      className="relative overflow-hidden rounded-3xl border-2 border-amber-400/60 bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50/40 p-4 shadow-[0_4px_24px_-4px_rgba(245,158,11,0.4)]"
+    >
+      {/* glow pulsante */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-gradient-to-br from-amber-400/35 via-orange-400/20 to-transparent blur-2xl"
+        animate={{ opacity: [0.5, 0.85, 0.5] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <div className="relative flex items-start gap-3">
+        <motion.span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/40"
+          animate={{ rotate: [0, -6, 6, 0] }}
+          transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 2 }}
+        >
+          <AlertTriangle className="h-5 w-5" />
+        </motion.span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white shadow-sm">
+              <History className="h-3 w-3" />
+              Revisita
+            </span>
+          </div>
+          <p className="mt-1 text-[14px] font-semibold tracking-tight text-amber-900">
+            Equipamento já reprovado anteriormente
+          </p>
+          {motivo ? (
+            <div className="mt-2.5 rounded-xl border border-amber-300/60 bg-white/70 px-3 py-2 backdrop-blur-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+                Motivo da reprovação anterior
+              </p>
+              <p className="mt-0.5 text-[13px] font-medium leading-snug text-amber-950">
+                {motivo}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-1 text-[11px] text-amber-700/80">
+              Motivo da reprovação não registrado.
+            </p>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }
 

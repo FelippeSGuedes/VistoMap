@@ -3,10 +3,15 @@ import { execute, query } from "@/lib/db";
 import {
   DROPDOWN_COLUMNS,
   DROPDOWN_TABLES,
+  ITEMTYPE_NE,
+  STATE_NAME_TO_STATUS,
+  TABLE_AUX,
   TABLE_FIELDS,
   TABLE_NE,
+  TABLE_STATUS_VISTORIA,
   type DropdownKey,
 } from "./constants";
+import type { VistoriaStatus } from "@/types";
 
 const SELECT_BASE = `
   SELECT
@@ -24,6 +29,7 @@ const SELECT_BASE = `
     f.velocidadefield AS velocidade,
     f.motivofield AS motivo,
     f.plugin_fields_statusvistoriafielddropdowns_id AS status_vistoria_id,
+    sv.name AS status_vistoria_name,
     f.plugin_fields_pendnciafielddropdowns_id AS pendencia_id,
     f.datadavistoriafield AS data_vistoria,
     d_ta.name AS tipodeantena,
@@ -33,9 +39,12 @@ const SELECT_BASE = `
     d_tm.name AS tipodematerial,
     d_tn.name AS tensao,
     d_al.name AS alimentacaodoequipamento,
-    d_li.name AS localdeinstalacao
+    d_li.name AS localdeinstalacao,
+    COALESCE(aux.is_repeat, 0) AS is_repeat,
+    aux.project_status AS aux_project_status
   FROM \`${TABLE_NE}\` ne
   INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+  LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
   LEFT JOIN \`${DROPDOWN_TABLES.tipodeantena}\` d_ta ON d_ta.id = f.${DROPDOWN_COLUMNS.tipodeantena}
   LEFT JOIN \`${DROPDOWN_TABLES.ganhodbi}\` d_gd ON d_gd.id = f.${DROPDOWN_COLUMNS.ganhodbi}
   LEFT JOIN \`${DROPDOWN_TABLES.mododeoperacao}\` d_mo ON d_mo.id = f.${DROPDOWN_COLUMNS.mododeoperacao}
@@ -44,6 +53,7 @@ const SELECT_BASE = `
   LEFT JOIN \`${DROPDOWN_TABLES.tensao}\` d_tn ON d_tn.id = f.${DROPDOWN_COLUMNS.tensao}
   LEFT JOIN \`${DROPDOWN_TABLES.alimentacaodoequipamento}\` d_al ON d_al.id = f.${DROPDOWN_COLUMNS.alimentacaodoequipamento}
   LEFT JOIN \`${DROPDOWN_TABLES.localdeinstalacao}\` d_li ON d_li.id = f.${DROPDOWN_COLUMNS.localdeinstalacao}
+  LEFT JOIN \`${TABLE_AUX}\` aux ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
   WHERE ne.is_deleted = 0
 `;
 
@@ -69,6 +79,7 @@ interface RawRow {
   velocidade: string | null;
   motivo: string | null;
   status_vistoria_id: number | null;
+  status_vistoria_name: string | null;
   pendencia_id: number | null;
   data_vistoria: string | null;
   tipodeantena: string | null;
@@ -79,9 +90,18 @@ interface RawRow {
   tensao: string | null;
   alimentacaodoequipamento: string | null;
   localdeinstalacao: string | null;
+  is_repeat: number | string | null;
+  aux_project_status: string | null;
+}
+
+function resolveStatus(name: string | null): VistoriaStatus {
+  if (!name) return "PENDENTE";
+  const mapped = STATE_NAME_TO_STATUS[name] ?? STATE_NAME_TO_STATUS[name.trim()];
+  return (mapped as VistoriaStatus | undefined) ?? "PENDENTE";
 }
 
 function mapRow(r: RawRow) {
+  const isRepeat = Number(r.is_repeat ?? 0) === 1;
   return {
     id: String(r.id),
     glpiId: `NE-${r.id}`,
@@ -91,7 +111,8 @@ function mapRow(r: RawRow) {
     endereco: r.endereco ?? null,
     latitude: r.latitude == null ? null : Number(r.latitude),
     longitude: r.longitude == null ? null : Number(r.longitude),
-    status: "PENDENTE" as const,
+    status: resolveStatus(r.status_vistoria_name),
+    isRepeat,
     prioridade: "MEDIA" as const,
     tecnico: { id: "0", nome: "—", email: "" },
     fields: {
@@ -119,6 +140,7 @@ function mapRow(r: RawRow) {
     dataVistoria: r.data_vistoria,
     categoria: "Rede",
     online: r.status_vistoria_id == null,
+    auxProjectStatus: r.aux_project_status,
   };
 }
 

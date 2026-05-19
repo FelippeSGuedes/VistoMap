@@ -50,7 +50,17 @@ export const AUX_STATUS_GERANDO = "GERANDO";
 export const AUX_STATUS_GERADO = "GERADO";
 export const AUX_STATUS_ERRO = "ERRO";
 
-/** Mapeia GLPI state.name → VistoriaStatus do frontend. */
+/** Tabela de dropdowns que armazena o nome do status da vistoria (FK de TABLE_FIELDS). */
+export const TABLE_STATUS_VISTORIA =
+  "glpi_plugin_fields_statusvistoriafielddropdowns";
+
+/**
+ * Mapeia GLPI `statusvistoriafielddropdowns.name` → VistoriaStatus do frontend.
+ *
+ * "Em análise" é o status gravado pelo backend quando o técnico finaliza (id=5).
+ * Mapeamos para FINALIZADA para que a ordem saia da fila de pendentes
+ * imediatamente após o envio.
+ */
 export const STATE_NAME_TO_STATUS: Record<string, string> = {
   Pendente: "PENDENTE",
   pendente: "PENDENTE",
@@ -67,5 +77,6 @@ export const STATE_NAME_TO_STATUS: Record<string, string> = {
   Aprovada: "APROVADA",
   Aprovado: "APROVADA",
   APROVADA: "APROVADA",
-  "Em análise": "PENDENTE",
+  "Em análise": "FINALIZADA",
+  "Em Análise": "FINALIZADA",
 };

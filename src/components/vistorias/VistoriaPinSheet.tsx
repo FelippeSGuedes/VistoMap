@@ -15,7 +15,7 @@ import type { ApiError } from "@/services/api";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
-import { openNavigation } from "@/services/maps";
+import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
 import { vistoriasService } from "@/services/vistorias";
 
 interface VistoriaPinSheetProps {
@@ -32,9 +32,13 @@ export function VistoriaPinSheet({
   onStart,
 }: VistoriaPinSheetProps) {
   const [starting, setStarting] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (!open) setStarting(false);
+    if (!open) {
+      setStarting(false);
+      setNavOpen(false);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -144,9 +148,7 @@ export function VistoriaPinSheet({
                 variant="outline"
                 size="lg"
                 leftIcon={<Navigation className="h-4 w-4" />}
-                onClick={() =>
-                  openNavigation(vistoria.latitude, vistoria.longitude)
-                }
+                onClick={() => setNavOpen(true)}
               >
                 Navegar
               </Button>
@@ -163,6 +165,14 @@ export function VistoriaPinSheet({
               <p className="mt-2 text-center text-xs text-red-500">{startError}</p>
             )}
           </motion.div>
+
+          <NavigationOptionsSheet
+            open={navOpen}
+            onClose={() => setNavOpen(false)}
+            lat={vistoria.latitude}
+            lng={vistoria.longitude}
+            label={vistoria.equipamento}
+          />
         </motion.div>
       )}
     </AnimatePresence>
