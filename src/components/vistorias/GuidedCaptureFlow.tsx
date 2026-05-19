@@ -174,45 +174,30 @@ function validateAgainstStep(
   step: StepDef,
   image: LoadedImage
 ): Feedback {
-  if (!step.resolution) return { tone: "ok", message: "Captura válida" };
-  const targetW = step.resolution.w;
-  const targetH = step.resolution.h;
-  const aspectTarget = targetW / targetH;
-  const aspectActual = image.width / image.height;
-  const aspectDelta = Math.abs(aspectActual - aspectTarget) / aspectTarget;
+  // Só barra orientação claramente errada (horizontal quando é p/ ser vertical).
+  // Resolução do sensor não é critério de qualidade — qualquer foto serve.
+  if (!step.resolution) return { tone: "ok", message: "Captura válida." };
 
-  // Aspect muito fora — captura na orientação errada
-  if (aspectDelta > 0.4) {
-    if (aspectActual > aspectTarget) {
-      return {
-        tone: "error",
-        message: "Imagem horizontal — gire o celular na vertical.",
-      };
-    }
+  const aspectTarget = step.resolution.w / step.resolution.h;
+  const aspectActual = image.width / image.height;
+
+  // Target é sempre vertical (w<h → aspect<1). Bloqueia apenas se vier horizontal.
+  if (aspectTarget < 1 && aspectActual > 1.15) {
     return {
       tone: "error",
-      message: "Proporção fora do padrão — centralize o poste.",
+      message: "Foto na horizontal. Gire o celular para a vertical e tente novamente.",
     };
   }
 
-  const minPixels = targetW * targetH * 0.6;
-  const actualPixels = image.width * image.height;
-  if (actualPixels < minPixels * 0.5) {
-    return { tone: "warn", message: "Imagem muito pequena — aproxime mais." };
-  }
-  if (actualPixels > minPixels * 30) {
-    return { tone: "warn", message: "Imagem muito ampla — afaste-se um pouco." };
-  }
-  if (aspectDelta > 0.18) {
+  // Imagem minúscula (raríssimo após compressImage) — avisa mas aceita.
+  if (image.width < 400 || image.height < 400) {
     return {
       tone: "warn",
-      message:
-        aspectActual > aspectTarget
-          ? "Incline a câmera para cima e enquadre o poste vertical."
-          : "Centralize o poste verticalmente.",
+      message: "Resolução baixa, mas aceita. Aproxime mais se possível.",
     };
   }
-  return { tone: "ok", message: "Imagem capturada corretamente." };
+
+  return { tone: "ok", message: "Foto capturada com sucesso." };
 }
 
 /* ------------------------------------------------------------------ */
@@ -440,6 +425,8 @@ function Confetti() {
 interface GuidedCaptureFlowProps {
   bundle: CaptureBundle;
   onChange: (bundle: CaptureBundle) => void;
+  /** Disparado ~2s depois que TODAS as 6 capturas válidas estão no bundle. */
+  onComplete?: () => void;
 }
 
 interface PreviewState {
@@ -447,7 +434,7 @@ interface PreviewState {
   feedback: Feedback;
 }
 
-export function GuidedCaptureFlow({ bundle, onChange }: GuidedCaptureFlowProps) {
+export function GuidedCaptureFlow({ bundle, onChange, onComplete }: GuidedCaptureFlowProps) {
   const [stepIdx, setStepIdx] = useState(0);
   const [previews, setPreviews] = useState<Partial<Record<StepKey, PreviewState>>>({});
   const [busy, setBusy] = useState(false);
@@ -457,7 +444,21 @@ export function GuidedCaptureFlow({ bundle, onChange }: GuidedCaptureFlowProps) 
   const step = STEPS[stepIdx];
   const total = STEPS.length;
   const isLast = stepIdx === total - 1;
-  const allDone = STEPS.every((s) => previews[s.key]?.feedback.tone === "ok");
+  // Sucesso = todas 6 entradas existem no bundle (ok OU warn — error não persiste).
+  const allDone =
+    !!bundle.imagem1 &&
+    !!bundle.imagem2 &&
+    !!bundle.imagem3 &&
+    !!bundle.video360 &&
+    !!bundle.imagem4 &&
+    !!bundle.imagem5;
+
+  // Auto-fechar 2s após completar (mostra banner antes de voltar pro form).
+  useEffect(() => {
+    if (!allDone || !onComplete) return;
+    const t = window.setTimeout(() => onComplete(), 2000);
+    return () => window.clearTimeout(t);
+  }, [allDone, onComplete]);
 
   /* Cleanup blob urls */
   useEffect(() => {
@@ -654,7 +655,7 @@ export function GuidedCaptureFlow({ bundle, onChange }: GuidedCaptureFlowProps) 
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            {current?.feedback.tone !== "ok" ? null : (
+            {current && current.feedback.tone !== "error" && (
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
@@ -666,11 +667,11 @@ export function GuidedCaptureFlow({ bundle, onChange }: GuidedCaptureFlowProps) 
             )}
             <button
               type="button"
-              onClick={goNext}
-              disabled={!current || current.feedback.tone === "error" || isLast}
+              onClick={isLast ? onComplete : goNext}
+              disabled={!current || current.feedback.tone === "error" || (isLast && !allDone)}
               className="ml-auto inline-flex h-12 items-center gap-2 rounded-2xl bg-grad-emerald px-5 text-sm font-semibold text-white shadow-glow transition disabled:opacity-50"
             >
-              Próximo
+              {isLast ? "Concluir" : "Próximo"}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -712,10 +713,10 @@ export function GuidedCaptureFlow({ bundle, onChange }: GuidedCaptureFlowProps) 
               </span>
               <div>
                 <p className="text-[15px] font-semibold tracking-tight">
-                  🎉 Vistoria concluída com sucesso!
+                  🎉 6/6 evidências capturadas!
                 </p>
                 <p className="text-xs text-white/85">
-                  Todas as 6 evidências foram validadas. Finalize abaixo.
+                  Voltando ao formulário em instantes…
                 </p>
               </div>
             </div>

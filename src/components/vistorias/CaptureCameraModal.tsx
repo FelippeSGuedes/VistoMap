@@ -87,7 +87,11 @@ export function CaptureCameraModal({
             <div className="flex-1 overflow-y-auto overscroll-contain bg-[#0A1A24]">
               <div className="mx-auto w-full max-w-xl px-4 py-4 pb-8">
                 <div className="rounded-3xl bg-white p-4 shadow-elev">
-                  <GuidedCaptureFlow bundle={bundle} onChange={onChange} />
+                  <GuidedCaptureFlow
+                    bundle={bundle}
+                    onChange={onChange}
+                    onComplete={onClose}
+                  />
                 </div>
               </div>
             </div>

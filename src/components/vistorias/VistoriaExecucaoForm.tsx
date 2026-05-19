@@ -30,6 +30,7 @@ import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
 import { reverseGeocode } from "@/services/geocoding";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import { cn } from "@/utils/cn";
 import type {
   CaptureBundle,
   DropdownKey,
@@ -114,6 +115,7 @@ export function VistoriaExecucaoForm({
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [done, setDone] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy?: number }>({
     lat: vistoria.latitude,
     lng: vistoria.longitude,
@@ -181,23 +183,25 @@ export function VistoriaExecucaoForm({
   const setField = <K extends keyof FormState>(key: K, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  /** Concatena rua/numero/estado/cep em um campo único pro GLPI. */
+  /**
+   * Formato pro GLPI:
+   *   ENDEREÇO : {RUA},{NUMERO},{ESTADO},{CEP}
+   * Campos vazios viram "—" pra manter o número fixo de tokens.
+   */
   const buildEndereco = (): string => {
-    const parts: string[] = [];
-    const ruaNum = [form.endereco_rua, form.endereco_numero]
-      .filter((s) => s.trim())
-      .join(", ");
-    if (ruaNum) parts.push(ruaNum);
-    if (form.endereco_estado.trim()) parts.push(form.endereco_estado.trim());
-    if (form.endereco_cep.trim()) parts.push(`CEP ${form.endereco_cep.trim()}`);
-    const built = parts.join(" — ");
-    return built || form.endereofield;
+    const r = form.endereco_rua.trim();
+    const n = form.endereco_numero.trim();
+    const e = form.endereco_estado.trim();
+    const c = form.endereco_cep.trim();
+    if (!r && !n && !e && !c) return form.endereofield;
+    return `ENDEREÇO : ${r || "—"},${n || "—"},${e || "—"},${c || "—"}`;
   };
 
   const onFinalize = async () => {
     if (!coords) return;
     setSubmitting(true);
     setDone(false);
+    setSubmitError(null);
     let pct = 8;
     setProgress(pct);
     const tick = window.setInterval(() => {
@@ -242,10 +246,18 @@ export function VistoriaExecucaoForm({
       window.clearInterval(tick);
       setProgress(100);
       setDone(true);
-      setTimeout(() => onDone?.(), 900);
-    } catch {
+      setTimeout(() => onDone?.(), 1400);
+    } catch (err) {
       window.clearInterval(tick);
       setSubmitting(false);
+      setProgress(0);
+      const msg =
+        (err as { response?: { data?: { message?: string; error?: string } } })
+          ?.response?.data?.message ||
+        (err as { response?: { data?: { message?: string; error?: string } } })
+          ?.response?.data?.error ||
+        (err instanceof Error ? err.message : "Falha ao enviar vistoria. Tente novamente.");
+      setSubmitError(msg);
     }
   };
 
@@ -372,10 +384,9 @@ export function VistoriaExecucaoForm({
 
             {/* Estrutura física */}
             <div className="relative mt-3 grid grid-cols-2 gap-2">
-              <EditableField
+              <BoolToggle
                 label="Aterramento"
                 value={form.aterramentofield}
-                placeholder="NBR 5419"
                 onChange={(v) => setField("aterramentofield", v)}
               />
               <EditableField
@@ -424,31 +435,36 @@ export function VistoriaExecucaoForm({
                 </button>
               </div>
 
+              <p className="mt-1 text-[11px] leading-relaxed text-ink-muted">
+                Preenchimento <strong className="text-ink">somente via GPS</strong>.
+                Toque em <em>Detectar via GPS</em> para resolver via OpenStreetMap.
+              </p>
+
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <EditableField
                   label="Rua"
                   value={form.endereco_rua}
-                  placeholder="Ex.: Av. Paulista"
-                  onChange={(v) => setField("endereco_rua", v)}
+                  placeholder="—"
+                  readOnly
                   colSpan
                 />
                 <EditableField
                   label="Número"
                   value={form.endereco_numero}
-                  placeholder="Ex.: 1578"
-                  onChange={(v) => setField("endereco_numero", v)}
+                  placeholder="—"
+                  readOnly
                 />
                 <EditableField
                   label="Estado"
                   value={form.endereco_estado}
-                  placeholder="SP"
-                  onChange={(v) => setField("endereco_estado", v)}
+                  placeholder="—"
+                  readOnly
                 />
                 <EditableField
                   label="CEP"
                   value={form.endereco_cep}
-                  placeholder="00000-000"
-                  onChange={(v) => setField("endereco_cep", v)}
+                  placeholder="—"
+                  readOnly
                   colSpan
                 />
               </div>
@@ -611,6 +627,22 @@ export function VistoriaExecucaoForm({
       </main>
 
       <div className={bottomBarClass}>
+        {submitError && (
+          <div className="mx-auto mb-2 flex w-full max-w-xl items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] font-medium text-red-700">
+            <span aria-hidden>❌</span>
+            <div className="flex-1">
+              <p className="font-semibold">Falha ao finalizar vistoria</p>
+              <p className="mt-0.5 text-[11px] font-normal text-red-600/90">{submitError}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSubmitError(null)}
+              className="rounded-lg px-2 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
         <div className="mx-auto flex w-full max-w-xl items-center gap-3">
           <div className="hidden flex-col text-xs text-ink-muted sm:flex">
             <span className="font-semibold text-ink">Pronto para enviar</span>
@@ -632,7 +664,7 @@ export function VistoriaExecucaoForm({
             }
             onClick={onFinalize}
           >
-            {done ? "Finalizada" : submitting ? "Enviando…" : "Finalizar Vistoria"}
+            {done ? "Finalizada ✓" : submitting ? "Enviando…" : "Finalizar Vistoria"}
           </Button>
         </div>
       </div>
@@ -769,6 +801,52 @@ function ThumbPreview({
     <video src={url} className="h-full w-full object-cover" muted playsInline />
   ) : (
     <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+  );
+}
+
+function BoolToggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const is1 = value === "1";
+  const is0 = value === "0";
+  return (
+    <div className="rounded-2xl border border-brand-steel/70 bg-white px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+        {label}
+      </p>
+      <div className="mt-1.5 grid grid-cols-2 gap-1 rounded-xl bg-brand-ice p-1">
+        <button
+          type="button"
+          onClick={() => onChange("1")}
+          className={cn(
+            "h-9 rounded-lg text-[13px] font-semibold transition",
+            is1
+              ? "bg-brand-emerald text-white shadow-soft"
+              : "text-ink-muted hover:text-ink"
+          )}
+        >
+          Sim
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("0")}
+          className={cn(
+            "h-9 rounded-lg text-[13px] font-semibold transition",
+            is0
+              ? "bg-red-500 text-white shadow-soft"
+              : "text-ink-muted hover:text-ink"
+          )}
+        >
+          Não
+        </button>
+      </div>
+    </div>
   );
 }
 

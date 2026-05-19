@@ -63,15 +63,12 @@ export async function finalizarVistoria(
   }
   if (captures.video360) fd.append("video360", captures.video360, "video360.mp4");
 
-  return tryReal(
-    api
-      .post(`/vistorias/${payload.vistoria_id}/finalizar`, fd, {
-        timeout: 180_000,
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      .then(() => ({ ok: true }) as const),
-    { ok: true } as const
-  );
+  // WRITE operation: NUNCA mascara erro com mock. Backend falhar = front falhar.
+  await api.post(`/vistorias/${payload.vistoria_id}/finalizar`, fd, {
+    timeout: 180_000,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return { ok: true } as const;
 }
 
 export const vistoriasService = {
