@@ -2,20 +2,12 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import {
-  Building2,
-  MapPin,
-  Navigation,
-  Play,
-  User,
-  X,
-} from "lucide-react";
+import { Building2, MapPin, Navigation, Play, User } from "lucide-react";
 import type { Vistoria } from "@/types";
 import type { ApiError } from "@/services/api";
 import { Button } from "@/components/ui/Button";
-import { StatusBadge } from "./StatusBadge";
-import { PriorityBadge } from "./PriorityBadge";
-import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
+import { VistoriaHeaderHero } from "./VistoriaHeaderHero";
+import { openNavigation } from "@/services/maps";
 import { vistoriasService } from "@/services/vistorias";
 
 interface VistoriaPinSheetProps {
@@ -32,13 +24,9 @@ export function VistoriaPinSheet({
   onStart,
 }: VistoriaPinSheetProps) {
   const [starting, setStarting] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (!open) {
-      setStarting(false);
-      setNavOpen(false);
-    }
+    if (!open) setStarting(false);
   }, [open]);
 
   useEffect(() => {
@@ -106,27 +94,10 @@ export function VistoriaPinSheet({
               <span className="h-1.5 w-12 rounded-full bg-brand-steel" />
             </div>
 
-            <header className="flex items-start justify-between gap-3 px-5 pb-1 pt-3">
-              <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
-                  GLPI · {vistoria.glpiId}
-                </span>
-                <h3 className="mt-0.5 truncate text-[17px] font-semibold tracking-tight text-ink">
-                  {vistoria.equipamento}
-                </h3>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <StatusBadge status={vistoria.status} />
-                  <PriorityBadge priority={vistoria.prioridade} />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-steel/60 text-ink hover:bg-brand-steel"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </header>
+            {/* HEADER CINEMATOGRÁFICO — componente compartilhado */}
+            <div className="mt-3">
+              <VistoriaHeaderHero vistoria={vistoria} onClose={onClose} />
+            </div>
 
             <section className="space-y-2 px-5 py-4">
               <Row icon={<Building2 className="h-4 w-4" />} label="Município">
@@ -148,7 +119,9 @@ export function VistoriaPinSheet({
                 variant="outline"
                 size="lg"
                 leftIcon={<Navigation className="h-4 w-4" />}
-                onClick={() => setNavOpen(true)}
+                onClick={() =>
+                  openNavigation(vistoria.latitude, vistoria.longitude)
+                }
               >
                 Navegar
               </Button>
@@ -165,14 +138,6 @@ export function VistoriaPinSheet({
               <p className="mt-2 text-center text-xs text-red-500">{startError}</p>
             )}
           </motion.div>
-
-          <NavigationOptionsSheet
-            open={navOpen}
-            onClose={() => setNavOpen(false)}
-            lat={vistoria.latitude}
-            lng={vistoria.longitude}
-            label={vistoria.equipamento}
-          />
         </motion.div>
       )}
     </AnimatePresence>

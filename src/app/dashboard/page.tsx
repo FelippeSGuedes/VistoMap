@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useScroll, useTransform } from "framer-motion";
@@ -18,9 +18,12 @@ import {
 import { BottomNav } from "@/components/layout/BottomNav";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { MunicipioField } from "@/components/dashboard/MunicipioField";
+import { SyncFilterPill } from "@/components/dashboard/SyncFilterPill";
+import { SyncFilterSheet } from "@/components/dashboard/SyncFilterSheet";
 import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
-import type { DashboardStats } from "@/types";
+import { MOCK_SYNC_SNAPSHOTS } from "@/utils/mock";
+import type { DashboardStats, SyncSnapshot } from "@/types";
 
 function greeting() {
   const h = new Date().getHours();
@@ -176,7 +179,7 @@ const ACTIONS = [
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { hydrated, session, logout } = useAuthStore();
+  const { hydrated, session } = useAuthStore();
   const [stats, setStats]     = useState<DashboardStats | null>(null);
   const [online, setOnline]   = useState(true);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -194,15 +197,75 @@ export default function DashboardPage() {
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
+  // Combina stats (mock) + lista REAL de vistorias do GLPI para extrair
+  // municípios atendidos pelo técnico + recalcular totals operacionais.
   useEffect(() => {
     let alive = true;
-    vistoriasService.fetchDashboardStats().then((d) => { if (alive) setStats(d); });
-    return () => { alive = false; };
+    Promise.all([
+      vistoriasService.fetchDashboardStats(),
+      vistoriasService.fetchVistorias(),
+    ]).then(([s, vistorias]) => {
+      if (!alive) return;
+      // SELECT DISTINCT cidade + COUNT(*) FROM vistorias do técnico
+      const counts = new Map<string, number>();
+      for (const v of vistorias) {
+        const nome = v.cidade?.trim();
+        if (!nome) continue;
+        counts.set(nome, (counts.get(nome) ?? 0) + 1);
+      }
+      const municipios = Array.from(counts.entries())
+        .map(([nome, totalVistorias]) => ({ nome, totalVistorias }))
+        .sort((a, b) => b.totalVistorias - a.totalVistorias);
+
+      // KPIs reais agregados do GLPI.
+      const pendentes = vistorias.filter((v) => v.status === "PENDENTE").length;
+      const concluidas = vistorias.filter(
+        (v) => v.status === "FINALIZADA" || v.status === "APROVADA"
+      ).length;
+      const reprovadas = vistorias.filter(
+        (v) => v.status === "REPROVADA" || v.isRepeat
+      ).length;
+
+      setStats({
+        ...s,
+        total: vistorias.length,
+        pendentes,
+        concluidas,
+        reprovadas,
+        municipios,
+        ultimaSincronizacao: new Date().toISOString(),
+      });
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  // ── Filtro de sincronização ─────────────────────────────────────
+  // Default: snapshot mais recente (id "sync-now"). Quando o stats real
+  // chega, criamos um snapshot "Última" no topo da lista; histórico mock fica.
+  const [syncSheetOpen, setSyncSheetOpen] = useState(false);
+  const [selectedSyncId, setSelectedSyncId] = useState<string>("sync-now");
+
+  const snapshots: SyncSnapshot[] = useMemo(() => {
+    if (!stats) return MOCK_SYNC_SNAPSHOTS;
+    const live: SyncSnapshot = {
+      id: "sync-now",
+      timestamp: stats.ultimaSincronizacao,
+      stats,
+      label: "Última",
+    };
+    return [live, ...MOCK_SYNC_SNAPSHOTS.filter((s) => s.id !== "sync-now")];
+  }, [stats]);
+
+  const selectedSnapshot =
+    snapshots.find((s) => s.id === selectedSyncId) ?? snapshots[0];
+  const displayStats: DashboardStats | null = selectedSnapshot?.stats ?? null;
+  const isLatestSelected = selectedSyncId === "sync-now";
 
   const nome      = session?.tecnico.nome ?? "Tecnico";
   const firstName = firstNameOf(nome);
-  const animatedTotal = useCountUp(stats !== null ? stats.total : null, 1400);
+  const animatedTotal = useCountUp(displayStats !== null ? displayStats.total : null, 1400);
 
   return (
     <div className="relative flex min-h-[100dvh] flex-col" style={{ background: "#F7F9FB" }}>
@@ -249,10 +312,9 @@ export default function DashboardPage() {
             {online ? "Online" : "Offline"}
           </div>
 
-          <button
-            type="button"
-            onClick={logout}
-            title="Sair"
+          <Link
+            href="/perfil"
+            title="Abrir perfil"
             className="flex h-[38px] w-[38px] items-center justify-center rounded-full text-[12px] font-bold text-white"
             style={{
               background:    "linear-gradient(145deg,#063B3B 0%,#0A5252 100%)",
@@ -261,7 +323,7 @@ export default function DashboardPage() {
             }}
           >
             {initials(nome)}
-          </button>
+          </Link>
         </div>
       </motion.header>
 
@@ -406,14 +468,14 @@ export default function DashboardPage() {
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {stats !== null ? animatedTotal : <Skeleton className="h-14 w-20 rounded-xl bg-white/10" />}
+                {displayStats !== null ? animatedTotal : <Skeleton className="h-14 w-20 rounded-xl bg-white/10" />}
               </div>
               <p className="mt-1 text-[13.5px] font-medium" style={{ color: "rgba(255,255,255,0.52)", letterSpacing: "0.005em" }}>
                 Vistorias Sincronizadas
               </p>
-              {stats && (
+              {displayStats && (
                 <p className="mt-[3px] text-[10.5px] font-medium" style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.04em" }}>
-                  {fmtDateTime(stats.ultimaSincronizacao)}
+                  {fmtDateTime(displayStats.ultimaSincronizacao)}
                 </p>
               )}
             </div>
@@ -422,9 +484,9 @@ export default function DashboardPage() {
 
         {/* MUNICÍPIO FIELD — card horizontal premium dos municípios ativos */}
         <MunicipioField
-          municipios={stats?.municipios}
-          ultimaSincronizacao={stats?.ultimaSincronizacao}
-          loading={stats === null}
+          municipios={displayStats?.municipios}
+          ultimaSincronizacao={displayStats?.ultimaSincronizacao}
+          loading={displayStats === null}
         />
 
         {/* STATS GRID — Enterprise KPI cards com sparkline + delta */}
@@ -433,16 +495,30 @@ export default function DashboardPage() {
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
               Resumo operacional
             </p>
-            <p className="text-[10px] font-medium" style={{ color: "#B0BAC5" }}>
-              últimos 7 dias
-            </p>
+            {/* Filtro de sincronização — sutil, no lugar de "últimos 7 dias" */}
+            <button
+              type="button"
+              onClick={() => setSyncSheetOpen(true)}
+              className="group inline-flex items-center gap-1 text-[10px] font-medium transition-colors"
+              style={{ color: "#B0BAC5" }}
+            >
+              {isLatestSelected
+                ? "última sync"
+                : selectedSnapshot?.label ??
+                  fmtDateTime(
+                    selectedSnapshot?.timestamp ?? new Date().toISOString()
+                  )}
+              <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-brand-emerald transition-opacity group-hover:opacity-80">
+                editar
+              </span>
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-2.5">
             {STATS.map(({ key, label, icon: Icon, hex, pill, grad }, i) => {
-              const value = stats ? stats[key] : null;
-              const series = stats?.trend7d?.[key];
+              const value = displayStats ? displayStats[key] : null;
+              const series = displayStats?.trend7d?.[key];
               const delta = deltaPct(series);
-              const max = Math.max(stats?.total ?? 1, 1);
+              const max = Math.max(displayStats?.total ?? 1, 1);
               const pct = value != null ? Math.min(100, (value / max) * 100) : 0;
               // 3º card (Revisitas) ocupa linha inteira pra destacar
               const isRevisita = key === "reprovadas";
@@ -581,6 +657,14 @@ export default function DashboardPage() {
       </main>
 
       <BottomNav />
+
+      <SyncFilterSheet
+        open={syncSheetOpen}
+        snapshots={snapshots}
+        selectedId={selectedSyncId}
+        onSelect={(s) => setSelectedSyncId(s.id)}
+        onClose={() => setSyncSheetOpen(false)}
+      />
     </div>
   );
 }

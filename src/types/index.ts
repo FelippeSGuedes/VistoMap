@@ -192,6 +192,75 @@ export interface AuthSession {
   expiresAt: number;
 }
 
+/** Snapshot de uma sincronização — usado no filtro do dashboard. */
+export interface SyncSnapshot {
+  id: string;
+  /** ISO timestamp da sincronização. */
+  timestamp: string;
+  /** Estatísticas agregadas naquele momento. */
+  stats: DashboardStats;
+  /** Label legível: "Hoje 08:40", "Ontem 18:22", "13/05 09:10". */
+  label?: string;
+}
+
+/** Perfil enriquecido do técnico para a rota /perfil. */
+export interface ProfileInfo {
+  tecnico: Tecnico;
+  cargo: string;
+  equipe: string;
+  municipioOperacional: string;
+  /** Status operacional: em campo, base, off-shift, etc. */
+  statusOperacional: "em-campo" | "base" | "off-shift";
+  /** KPIs pessoais acumulados. */
+  kpis: {
+    vistoriasConcluidas: number;
+    revisitas: number;
+    aprovadas: number;
+    distanciaKm: number;
+    diasAtivos: number;
+  };
+}
+
+/** Atividade do histórico operacional — eventos da timeline. */
+export type HistoricoTipo =
+  | "vistoria-finalizada"
+  | "vistoria-iniciada"
+  | "mudanca-poste"
+  | "revisita"
+  | "pdf-gerado"
+  | "sincronizacao"
+  | "rota-iniciada"
+  | "aprovacao"
+  | "reprovacao";
+
+export interface HistoricoEntry {
+  id: string;
+  tipo: HistoricoTipo;
+  timestamp: string;
+  titulo: string;
+  descricao?: string;
+  equipamento?: string;
+  municipio?: string;
+  glpiId?: string;
+}
+
+/** Resumo do histórico operacional (KPIs + timeline). */
+export interface HistoricoSummary {
+  periodo: { inicio: string; fim: string };
+  vistoriasEnviadas: number;
+  vistoriasEntregues: number;
+  aprovadas: number;
+  reprovadas: number;
+  revisitas: number;
+  pdfsGerados: number;
+  rotasExecutadas: number;
+  tempoOperacionalHoras: number;
+  distanciaPercorridaKm: number;
+  municipiosAtendidos: string[];
+  sincronizacoes: number;
+  timeline: HistoricoEntry[];
+}
+
 export interface FilterState {
   query: string;
   status: VistoriaStatus[];

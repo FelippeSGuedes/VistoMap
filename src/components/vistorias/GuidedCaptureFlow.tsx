@@ -142,7 +142,141 @@ interface LoadedImage {
   size: number;
 }
 
-async function readFileAsImage(file: File): Promise<LoadedImage> {
+/** Dados estampados nas fotos (lat/lng/data/técnico) + logo no canto. */
+export interface WatermarkInfo {
+  lat?: number;
+  lng?: number;
+  vistoriador?: string;
+}
+
+/** Cache module-level do logo carregado — evita re-decode em cada foto. */
+let LOGO_PROMISE: Promise<HTMLImageElement | null> | null = null;
+function loadLogo(): Promise<HTMLImageElement | null> {
+  if (LOGO_PROMISE) return LOGO_PROMISE;
+  LOGO_PROMISE = new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null); // sem logo: continua sem watermark de logo
+    img.src = "/logo-marca.png";
+  });
+  return LOGO_PROMISE;
+}
+
+/**
+ * Desenha marca-d'água sobre o canvas:
+ *  - canto inferior esquerdo: lat/lng, data/hora, vistoriador
+ *  - canto superior direito: logo
+ * Mantém legibilidade com bg semi-transparente + text-shadow.
+ */
+async function stampWatermark(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  info: WatermarkInfo
+): Promise<void> {
+  const W = canvas.width;
+  const H = canvas.height;
+  // Padding e tipografia escalonadas ao tamanho da imagem (legíveis em 1600px).
+  const scale = Math.max(1, W / 1200);
+  const pad = Math.round(14 * scale);
+  const fontSize = Math.round(15 * scale);
+  const lineGap = Math.round(6 * scale);
+
+  // ── Textos canto inferior esquerdo ──────────────────────────────
+  const lines: string[] = [];
+  if (info.lat != null && info.lng != null) {
+    lines.push(`${info.lat.toFixed(6)}, ${info.lng.toFixed(6)}`);
+  }
+  lines.push(
+    new Date().toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  );
+  if (info.vistoriador) {
+    lines.push(info.vistoriador);
+  }
+
+  ctx.save();
+  ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.textBaseline = "alphabetic";
+  // Calcula width máximo do bloco
+  const widths = lines.map((l) => ctx.measureText(l).width);
+  const blockW = Math.max(...widths) + pad * 1.4;
+  const lineHeight = fontSize + lineGap;
+  const blockH = lineHeight * lines.length + pad * 0.8;
+  const blockX = pad;
+  const blockY = H - pad - blockH;
+
+  // Fundo pill arredondado semi-transparente
+  ctx.fillStyle = "rgba(0,0,0,0.42)";
+  roundRect(ctx, blockX, blockY, blockW, blockH, Math.round(8 * scale));
+  ctx.fill();
+  // Borda fina teal
+  ctx.strokeStyle = "rgba(94,255,217,0.35)";
+  ctx.lineWidth = Math.max(1, scale * 0.7);
+  roundRect(ctx, blockX, blockY, blockW, blockH, Math.round(8 * scale));
+  ctx.stroke();
+
+  // Textos brancos com leve shadow
+  ctx.fillStyle = "#fff";
+  ctx.shadowColor = "rgba(0,0,0,0.85)";
+  ctx.shadowBlur = Math.round(3 * scale);
+  for (let i = 0; i < lines.length; i++) {
+    const x = blockX + pad * 0.7;
+    const y =
+      blockY + pad * 0.55 + (i + 1) * lineHeight - lineGap;
+    // primeira linha (coords) em teal claro pra destacar
+    ctx.fillStyle = i === 0 && info.lat != null ? "#5EFFD9" : "#fff";
+    ctx.fillText(lines[i], x, y);
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // ── Logo canto superior direito ─────────────────────────────────
+  const logo = await loadLogo();
+  if (logo && logo.width > 0) {
+    const targetW = Math.round(78 * scale);
+    const ratio = logo.height / logo.width;
+    const targetH = Math.round(targetW * ratio);
+    ctx.save();
+    // sombra suave
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = Math.round(6 * scale);
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(logo, W - targetW - pad, pad, targetW, targetH);
+    ctx.restore();
+  }
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+async function readFileAsImage(
+  file: File,
+  watermark?: WatermarkInfo
+): Promise<LoadedImage> {
   const compressed = await compressImage(file, 1600, 0.85);
   const img = new Image();
   img.src = compressed.dataUrl;
@@ -154,6 +288,12 @@ async function readFileAsImage(file: File): Promise<LoadedImage> {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas indisponível");
   ctx.drawImage(img, 0, 0);
+
+  // Estampa lat/lng/data/técnico + logo (se watermark fornecido).
+  if (watermark) {
+    await stampWatermark(canvas, ctx, watermark);
+  }
+
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("Falha ao gerar PNG"))),
@@ -161,9 +301,11 @@ async function readFileAsImage(file: File): Promise<LoadedImage> {
       0.95
     )
   );
+  // Regenera dataUrl com watermark aplicado (pra preview refletir o stamp).
+  const stampedDataUrl = watermark ? canvas.toDataURL("image/png", 0.92) : compressed.dataUrl;
   return {
     blob,
-    dataUrl: compressed.dataUrl,
+    dataUrl: stampedDataUrl,
     width: img.naturalWidth,
     height: img.naturalHeight,
     size: blob.size,
@@ -427,6 +569,8 @@ interface GuidedCaptureFlowProps {
   onChange: (bundle: CaptureBundle) => void;
   /** Disparado ~2s depois que TODAS as 6 capturas válidas estão no bundle. */
   onComplete?: () => void;
+  /** Aplica marca-d'água nas fotos (lat/lng/data/técnico + logo). */
+  watermark?: WatermarkInfo;
 }
 
 interface PreviewState {
@@ -434,7 +578,12 @@ interface PreviewState {
   feedback: Feedback;
 }
 
-export function GuidedCaptureFlow({ bundle, onChange, onComplete }: GuidedCaptureFlowProps) {
+export function GuidedCaptureFlow({
+  bundle,
+  onChange,
+  onComplete,
+  watermark,
+}: GuidedCaptureFlowProps) {
   const [stepIdx, setStepIdx] = useState(0);
   const [previews, setPreviews] = useState<Partial<Record<StepKey, PreviewState>>>({});
   const [busy, setBusy] = useState(false);
@@ -511,7 +660,7 @@ export function GuidedCaptureFlow({ bundle, onChange, onComplete }: GuidedCaptur
           buzz(80);
         }
       } else {
-        const image = await readFileAsImage(file);
+        const image = await readFileAsImage(file, watermark);
         const feedback = validateAgainstStep(step, image);
         const previousUrl = previews[step.key]?.url;
         if (previousUrl) URL.revokeObjectURL(previousUrl);

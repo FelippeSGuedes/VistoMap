@@ -1,4 +1,12 @@
-import type { Vistoria, DashboardStats, Tecnico } from "@/types";
+import type {
+  Vistoria,
+  DashboardStats,
+  Tecnico,
+  SyncSnapshot,
+  ProfileInfo,
+  HistoricoSummary,
+  HistoricoEntry,
+} from "@/types";
 
 export const MOCK_TECNICO: Tecnico = {
   id: "tec-001",
@@ -120,4 +128,136 @@ export const MOCK_STATS: DashboardStats = {
     concluidas: [6, 7, 8, 9, 10, 11, 12],
     reprovadas: [1, 1, 2, 2, 3, 2, 3],
   },
+};
+
+/* ── SYNC SNAPSHOTS ────────────────────────────────────────────────── */
+
+function isoDaysAgo(days: number, hour = 8, minute = 40): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  d.setHours(hour, minute, 0, 0);
+  return d.toISOString();
+}
+
+export const MOCK_SYNC_SNAPSHOTS: SyncSnapshot[] = [
+  {
+    id: "sync-now",
+    timestamp: MOCK_STATS.ultimaSincronizacao,
+    stats: MOCK_STATS,
+    label: "Última",
+  },
+  {
+    id: "sync-d-1",
+    timestamp: isoDaysAgo(1, 18, 22),
+    stats: { ...MOCK_STATS, total: 22, pendentes: 11, concluidas: 9, reprovadas: 2 },
+    label: "Ontem 18:22",
+  },
+  {
+    id: "sync-d-2",
+    timestamp: isoDaysAgo(2, 16, 5),
+    stats: { ...MOCK_STATS, total: 20, pendentes: 13, concluidas: 6, reprovadas: 1 },
+    label: "Anteontem 16:05",
+  },
+  {
+    id: "sync-d-4",
+    timestamp: isoDaysAgo(4, 9, 12),
+    stats: { ...MOCK_STATS, total: 18, pendentes: 15, concluidas: 3, reprovadas: 0 },
+  },
+  {
+    id: "sync-d-7",
+    timestamp: isoDaysAgo(7, 14, 30),
+    stats: { ...MOCK_STATS, total: 15, pendentes: 14, concluidas: 1, reprovadas: 0 },
+  },
+];
+
+/* ── PERFIL ────────────────────────────────────────────────────────── */
+
+export const MOCK_PROFILE: ProfileInfo = {
+  tecnico: MOCK_TECNICO,
+  cargo: "Técnico de Campo Sênior",
+  equipe: "VistoMap-Tecnicos",
+  municipioOperacional: "Campinas",
+  statusOperacional: "em-campo",
+  kpis: {
+    vistoriasConcluidas: 142,
+    revisitas: 18,
+    aprovadas: 128,
+    distanciaKm: 1284,
+    diasAtivos: 87,
+  },
+};
+
+/* ── HISTÓRICO OPERACIONAL ─────────────────────────────────────────── */
+
+function entry(
+  id: string,
+  tipo: HistoricoEntry["tipo"],
+  hoursAgo: number,
+  titulo: string,
+  extra: Partial<HistoricoEntry> = {}
+): HistoricoEntry {
+  const d = new Date();
+  d.setHours(d.getHours() - hoursAgo);
+  return { id, tipo, timestamp: d.toISOString(), titulo, ...extra };
+}
+
+export const MOCK_HISTORICO: HistoricoSummary = {
+  periodo: { inicio: isoDaysAgo(7), fim: new Date().toISOString() },
+  vistoriasEnviadas: 18,
+  vistoriasEntregues: 16,
+  aprovadas: 12,
+  reprovadas: 3,
+  revisitas: 4,
+  pdfsGerados: 16,
+  rotasExecutadas: 9,
+  tempoOperacionalHoras: 52,
+  distanciaPercorridaKm: 312,
+  municipiosAtendidos: ["Campinas", "Valinhos", "Vinhedo", "Itatiba"],
+  sincronizacoes: 14,
+  timeline: [
+    entry("h1", "vistoria-finalizada", 1, "Vistoria finalizada", {
+      equipamento: "CAM-S-GE-002",
+      municipio: "Campinas",
+      glpiId: "NE-6",
+      descricao: "Evidências enviadas, status atualizado para Em análise.",
+    }),
+    entry("h2", "pdf-gerado", 2, "PDF gerado pelo worker", {
+      equipamento: "CAM-S-GE-002",
+      municipio: "Campinas",
+    }),
+    entry("h3", "sincronizacao", 3, "Sincronização operacional", {
+      descricao: "8 vistorias atualizadas do GLPI.",
+    }),
+    entry("h4", "mudanca-poste", 5, "Mudança de PSPOSTE registrada", {
+      equipamento: "CAM-S-A-013",
+      municipio: "Valinhos",
+      descricao: "Motivo: POSTE_INACESSIVEL · 84m da coord. original.",
+    }),
+    entry("h5", "vistoria-iniciada", 7, "Vistoria iniciada", {
+      equipamento: "CAM-S-A-013",
+      municipio: "Valinhos",
+      glpiId: "NE-12",
+    }),
+    entry("h6", "rota-iniciada", 9, "Rota operacional iniciada", {
+      descricao: "Campinas → Valinhos → Vinhedo (3 paradas).",
+    }),
+    entry("h7", "revisita", 22, "Revisita marcada", {
+      equipamento: "CAM-V-N-005",
+      municipio: "Vinhedo",
+      descricao: "Reprovada anteriormente — motivo: aterramento.",
+    }),
+    entry("h8", "aprovacao", 26, "Vistoria aprovada", {
+      equipamento: "CAM-V-N-001",
+      municipio: "Vinhedo",
+      glpiId: "NE-3",
+    }),
+    entry("h9", "reprovacao", 30, "Vistoria reprovada", {
+      equipamento: "CAM-I-T-008",
+      municipio: "Itatiba",
+      descricao: "Foto do topo do poste fora do padrão.",
+    }),
+    entry("h10", "sincronizacao", 48, "Sincronização operacional", {
+      descricao: "6 vistorias atualizadas do GLPI.",
+    }),
+  ],
 };

@@ -3,7 +3,7 @@ import { STATUS_LABEL } from "@/utils/format";
 import type { VistoriaStatus } from "@/types";
 
 const TONE: Record<VistoriaStatus, Parameters<typeof Badge>[0]["tone"]> = {
-  PENDENTE: "amber",
+  PENDENTE: "amberSolid",
   EM_CAMPO: "blue",
   FINALIZADA: "emerald",
   REPROVADA: "amber",

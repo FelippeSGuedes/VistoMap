@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
 import { Camera, X } from "lucide-react";
-import { GuidedCaptureFlow } from "./GuidedCaptureFlow";
+import { GuidedCaptureFlow, type WatermarkInfo } from "./GuidedCaptureFlow";
 import type { CaptureBundle } from "@/types";
 
 interface CaptureCameraModalProps {
@@ -12,6 +12,7 @@ interface CaptureCameraModalProps {
   onChange: (bundle: CaptureBundle) => void;
   onClose: () => void;
   equipmentName?: string;
+  watermark?: WatermarkInfo;
 }
 
 export function CaptureCameraModal({
@@ -20,6 +21,7 @@ export function CaptureCameraModal({
   onChange,
   onClose,
   equipmentName,
+  watermark,
 }: CaptureCameraModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -91,6 +93,7 @@ export function CaptureCameraModal({
                     bundle={bundle}
                     onChange={onChange}
                     onComplete={onClose}
+                    watermark={watermark}
                   />
                 </div>
               </div>

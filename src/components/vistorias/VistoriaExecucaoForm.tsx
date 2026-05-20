@@ -20,20 +20,19 @@ import {
   ShieldCheck,
   Sparkles,
   Video,
-  Wrench,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { StatusBadge } from "./StatusBadge";
-import { PriorityBadge } from "./PriorityBadge";
 import { EditableField } from "./EditableField";
+import { VistoriaHeaderHero } from "./VistoriaHeaderHero";
 import { CaptureCameraModal } from "./CaptureCameraModal";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
 import { reverseGeocode } from "@/services/geocoding";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import { useAuthStore } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import type {
   CaptureBundle,
@@ -171,6 +170,11 @@ export function VistoriaExecucaoForm({
   const [detectingAddress, setDetectingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   const geoForAddress = useGeolocation(false);
+
+  // Técnico SEMPRE puxado da sessão logada (não do `vistoria.tecnico` do GLPI,
+  // que vem com placeholder "—"). Mostra nome completo.
+  const sessionTecnico = useAuthStore((s) => s.session?.tecnico);
+  const tecnicoLogadoNome = sessionTecnico?.nome ?? vistoria.tecnico?.nome ?? "—";
 
   useEffect(() => {
     setCoords({ lat: vistoria.latitude, lng: vistoria.longitude });
@@ -327,33 +331,23 @@ export function VistoriaExecucaoForm({
       >
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="overflow-hidden p-0">
-            <div className="relative h-32 overflow-hidden bg-grad-deep p-5 text-white">
-              <div
-                aria-hidden
-                className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-brand-emerald/30 blur-3xl"
-              />
-              <div className="relative flex items-start justify-between">
-                <div>
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-white/70">
-                    GLPI · {vistoria.glpiId}
-                  </span>
-                  <h2 className="mt-1 text-xl font-semibold tracking-tight">
-                    {vistoria.equipamento}
-                  </h2>
-                </div>
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/12">
-                  <Wrench className="h-5 w-5" />
-                </span>
-              </div>
-              <div className="relative mt-3 flex flex-wrap items-center gap-2">
-                <StatusBadge status={vistoria.status} />
-                <PriorityBadge priority={vistoria.prioridade} />
-              </div>
-            </div>
+            <VistoriaHeaderHero vistoria={vistoria} height={150} />
             <div className="grid grid-cols-2 gap-px bg-brand-steel/70 text-sm">
               <ReadField label="Cidade" value={vistoria.cidade || "—"} />
               <ReadField label="Estado" value={vistoria.estado ?? "—"} />
-              <ReadField label="Técnico" value={vistoria.tecnico.nome} colSpan />
+              <ReadField label="Técnico" value={tecnicoLogadoNome} colSpan />
+              <ReadField
+                label="Revisita?"
+                value={vistoria.isRepeat ? "Sim" : "Não"}
+                tone={vistoria.isRepeat ? "warn" : "ok"}
+                colSpan={!vistoria.isRepeat}
+              />
+              {vistoria.isRepeat && (
+                <ReadField
+                  label="Motivo"
+                  value={vistoria.fields?.motivofield?.trim() || "Não informado"}
+                />
+              )}
             </div>
           </Card>
         </motion.div>
@@ -738,6 +732,11 @@ export function VistoriaExecucaoForm({
         onChange={setCaptures}
         onClose={() => setCameraOpen(false)}
         equipmentName={vistoria.equipamento}
+        watermark={{
+          lat: coords?.lat,
+          lng: coords?.lng,
+          vistoriador: tecnicoLogadoNome,
+        }}
       />
 
       <MudarPosteFlow
@@ -1014,17 +1013,31 @@ function ReadField({
   label,
   value,
   colSpan,
+  tone,
 }: {
   label: string;
   value: string;
   colSpan?: boolean;
+  /** Tom semântico — "warn" = âmbar (revisita), "ok" = esmeralda (primeira). */
+  tone?: "warn" | "ok";
 }) {
+  const toneStyle =
+    tone === "warn"
+      ? { color: "#B45309", fontWeight: 600 as const }
+      : tone === "ok"
+      ? { color: "#00875F", fontWeight: 600 as const }
+      : undefined;
   return (
     <div className={`bg-white p-4 ${colSpan ? "col-span-2" : ""}`}>
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
         {label}
       </p>
-      <p className="mt-1 truncate text-[14px] font-medium text-ink">{value}</p>
+      <p
+        className="mt-1 truncate text-[14px] font-medium text-ink"
+        style={toneStyle}
+      >
+        {value}
+      </p>
     </div>
   );
 }
