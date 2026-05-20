@@ -9,7 +9,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ClipboardList,
-  Map,
+  Map as MapIcon,
   RotateCw,
   Signal,
   TrendingDown,
@@ -155,7 +155,7 @@ const ACTIONS = [
     href: "/vistorias",
     label: "Mapa operacional",
     sub: "Ordens em tempo real",
-    icon: Map,
+    icon: MapIcon,
     iconBg: "rgba(0,179,136,0.14)",
     iconColor: "#00B388",
   },
@@ -623,7 +623,7 @@ export default function DashboardPage() {
             >
               <div className="flex items-center gap-3.5">
                 <span className="flex h-11 w-11 items-center justify-center rounded-[14px]" style={{ background: "rgba(0,179,136,0.16)", border: "1px solid rgba(0,179,136,0.25)" }}>
-                  <Map className="h-5 w-5" style={{ color: "#5EFFD9" }} strokeWidth={1.8} />
+                  <MapIcon className="h-5 w-5" style={{ color: "#5EFFD9" }} strokeWidth={1.8} />
                 </span>
                 <div>
                   <p className="text-[15px] font-semibold tracking-[-0.2px] text-white">{ACTIONS[0].label}</p>
