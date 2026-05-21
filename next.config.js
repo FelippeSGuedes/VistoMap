@@ -5,6 +5,8 @@ const withPWA = require("next-pwa")({
   skipWaiting: true,
   disable: process.env.NODE_ENV === "development",
   buildExcludes: [/middleware-manifest\.json$/],
+  // Handler customizado de notificationclick (foca aba existente / abre URL).
+  importScripts: ["/notification-handler.js"],
   // Não deixar o Service Worker interceptar rotas /api/* nem o próprio _next/data.
   // Caso o SW pegue um POST multipart, alguns navegadores retornam 404/0 silenciosamente.
   exclude: [
@@ -33,15 +35,11 @@ const withPWA = require("next-pwa")({
       },
     },
     {
-      // Imagens estáticas: tenta rede primeiro (2s) e cai pro cache se offline.
-      // Evita servir asset antigo após deploy/troca de arquivo.
       urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
-      handler: "NetworkFirst",
+      handler: "StaleWhileRevalidate",
       options: {
         cacheName: "static-images",
-        networkTimeoutSeconds: 2,
-        expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 7 },
-        cacheableResponse: { statuses: [0, 200] },
+        expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
       },
     },
     {
@@ -75,19 +73,6 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "100mb",
     },
-  },
-  async rewrites() {
-    // Proxy server-side: /postes/* → Fastify postes-api.
-    // Em dev local aponta pra localhost:3001; em prod o POSTES_API_URL do
-    // container pode ser "http://postes-api:3001" (nome Docker interno).
-    const postesApiUrl =
-      process.env.POSTES_API_URL || "http://localhost:3001";
-    return [
-      {
-        source: "/postes/:path*",
-        destination: `${postesApiUrl}/postes/:path*`,
-      },
-    ];
   },
 };
 

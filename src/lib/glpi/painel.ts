@@ -331,6 +331,10 @@ interface RevisitaRow {
 }
 
 export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
+  // Inclui:
+  //  • Reprovadas pela 1ª vez (is_repeat=0) → AGUARDANDO_REVISITA
+  //  • Em revisita em andamento (is_repeat=1) sem status final
+  // Exclui: Aprovada/Em análise/Finalizada (essas já saíram da fila).
   const rows = await query<RevisitaRow>(
     `
       SELECT
@@ -347,15 +351,20 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
         aux.pdf_path
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
-      INNER JOIN \`${TABLE_AUX}\` aux
+      LEFT JOIN \`${TABLE_AUX}\` aux
               ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
               ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
       LEFT JOIN \`${TABLE_USERS}\` u
               ON u.id = f.users_id_vistoriadorafield
       WHERE ne.is_deleted = 0
-        AND COALESCE(aux.is_repeat, 0) = 1
-        AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Em análise','Em analise','Finalizada'))
+        AND (
+              sv.name = 'Reprovada'
+           OR (
+                COALESCE(aux.is_repeat, 0) = 1
+            AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Em análise','Em analise','Finalizada'))
+              )
+        )
       ORDER BY f.datadavistoriafield DESC
       LIMIT 100
     `

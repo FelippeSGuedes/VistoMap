@@ -1,15 +1,17 @@
-﻿"use client";
+"use client";
 
 /**
- * /painel/login — Central Operacional · Tela de acesso enterprise premium.
- * Dark glassmorphism sobre login_painel.png.
+ * /painel/login — Central Operacional · Tela de acesso enterprise.
+ *
+ * Hero image cobre toda viewport (cover, sem bordas vazias). Sidebar de
+ * autenticação flutuante à esquerda em desktop; full-width em mobile.
  */
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { ArrowRight, Eye, EyeOff, Lock, User } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck, User } from "lucide-react";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/auth";
 
@@ -54,141 +56,158 @@ export default function PainelLoginPage() {
 
   return (
     <>
-      {/* CSS: placeholder + focus + bg responsivo retraído */}
       <style suppressHydrationWarning>{`
-        .field-dark::placeholder { color: rgba(255,255,255,0.22); }
+        .field-dark::placeholder { color: rgba(255,255,255,0.26); }
         .field-dark:focus { outline: none; }
-        .input-wrap-focus { border-color: rgba(0,201,155,0.45) !important; box-shadow: 0 0 0 3px rgba(0,179,136,0.08), 0 1px 2px rgba(0,0,0,0.25) !important; }
-        .btn-enter::before { content:""; position:absolute; inset:0; background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,0.07) 50%,transparent 60%); opacity:0; transition:opacity 0.25s; }
-        .btn-enter:hover::before { opacity:1; }
-        /* BG retraído — mostra mais da imagem (contain). Sem corte agressivo. */
-        .painel-bg-img {
-          object-fit: contain !important;
-          object-position: center center !important;
-          image-rendering: -webkit-optimize-contrast;
-          image-rendering: high-quality;
+        .input-shell {
+          background: rgba(255,255,255,0.035);
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 0 0 0 rgba(0,201,155,0);
+          transition: border-color 220ms, box-shadow 220ms, background 220ms;
         }
-        /* Mobile/portrait: cover (vertical não cabe em contain) */
-        @media (max-width: 768px) {
-          .painel-bg-img {
-            object-fit: cover !important;
-            object-position: center 35% !important;
-          }
+        .input-shell.is-focused {
+          background: rgba(255,255,255,0.05);
+          border-color: rgba(0,201,155,0.55);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.22), 0 0 0 4px rgba(0,179,136,0.10);
         }
+        .btn-primary { position: relative; overflow: hidden; }
+        .btn-primary::after {
+          content: ""; position: absolute; inset: 0;
+          background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,0.16) 50%, transparent 62%);
+          transform: translateX(-100%);
+          transition: transform 700ms cubic-bezier(.22,.7,.2,1);
+        }
+        .btn-primary:hover::after { transform: translateX(100%); }
       `}</style>
 
       <div
         className="relative flex min-h-[100dvh] overflow-hidden"
         style={{ background: "#02060F" }}
       >
-        {/* BG full-screen — next/image otimiza WebP/AVIF + srcset por DPR */}
+        {/* ─────── BG hero (cover, sem bordas) ─────── */}
         <Image
           src="/login_painel.png"
           alt=""
           aria-hidden
           fill
           priority
-          quality={95}
+          quality={92}
           sizes="100vw"
-          className="painel-bg-img z-0"
+          className="z-0 select-none"
+          style={{
+            objectFit: "cover",
+            objectPosition: "center center",
+          }}
           draggable={false}
         />
-        {/* Global dark scrim */}
-        <div
-          className="pointer-events-none absolute inset-0 z-[1]"
-          style={{ background: "rgba(2,6,23,0.42)" }}
-        />
 
-        {/* ───────── LEFT PANEL ───────── */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.7, ease: [0.22, 0.7, 0.2, 1] }}
-          className="relative z-10 flex h-[100dvh] w-full flex-col md:w-[360px] xl:w-[390px]"
+        {/* Scrim cinematográfico: sombra esquerda forte → centro/dir mais claro */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-[1]"
           style={{
             background:
-              "linear-gradient(160deg, rgba(2,6,23,0.97) 0%, rgba(2,6,23,0.88) 50%, rgba(2,6,23,0.62) 100%)",
-            backdropFilter: "blur(28px) saturate(130%)",
-            WebkitBackdropFilter: "blur(28px) saturate(130%)",
-            borderRight: "1px solid rgba(255,255,255,0.04)",
+              "linear-gradient(90deg, rgba(2,6,15,0.92) 0%, rgba(2,6,15,0.78) 22%, rgba(2,6,15,0.38) 55%, rgba(2,6,15,0.20) 100%)",
           }}
-        >
-          {/* Ambient green glow — top */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full"
-            style={{
-              background: "radial-gradient(circle, rgba(0,179,136,0.14) 0%, transparent 70%)",
-              filter: "blur(40px)",
-            }}
-          />
-          {/* Subtle grid texture */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 opacity-[0.025]"
-            style={{
-              backgroundImage:
-                "linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)",
-              backgroundSize: "52px 52px",
-            }}
-          />
-          {/* Top highlight line */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        />
+        {/* Vinheta sutil bordas */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-[1]"
+          style={{
+            background:
+              "radial-gradient(120% 80% at 50% 50%, transparent 55%, rgba(0,0,0,0.45) 100%)",
+          }}
+        />
+
+        {/* ─────── SIDEBAR FORM ─────── */}
+        <div className="relative z-10 flex w-full items-center justify-start md:px-10 lg:px-16">
+          <motion.section
+            initial={{ opacity: 0, x: -28 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, ease: [0.22, 0.7, 0.2, 1] }}
+            className="relative flex h-[100dvh] w-full flex-col md:h-auto md:w-[440px] md:rounded-[22px] xl:w-[460px]"
             style={{
               background:
-                "linear-gradient(to right, transparent, rgba(0,179,136,0.3), transparent)",
+                "linear-gradient(170deg, rgba(8,14,28,0.86) 0%, rgba(4,9,20,0.82) 60%, rgba(4,9,20,0.78) 100%)",
+              backdropFilter: "blur(36px) saturate(140%)",
+              WebkitBackdropFilter: "blur(36px) saturate(140%)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              boxShadow:
+                "0 24px 60px -12px rgba(0,0,0,0.5), 0 8px 20px -8px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.02) inset",
             }}
-          />
+          >
+            {/* glow esmeralda topo */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full"
+              style={{
+                background:
+                  "radial-gradient(circle, rgba(0,179,136,0.22) 0%, transparent 70%)",
+                filter: "blur(48px)",
+              }}
+            />
+            {/* highlight line topo */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-px"
+              style={{
+                background:
+                  "linear-gradient(to right, transparent, rgba(0,179,136,0.55), transparent)",
+              }}
+            />
+            {/* grid sutil */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-[0.03]"
+              style={{
+                backgroundImage:
+                  "linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)",
+                backgroundSize: "56px 56px",
+              }}
+            />
 
-          {/* Inner layout */}
-          <div className="relative flex flex-1 flex-col justify-between px-7 py-8 xl:px-9">
-
-            {/* ── TOPO: Logo ── */}
-            <motion.header
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25, duration: 0.5 }}
-            >
-              <div className="flex items-center gap-3">
-                {/* Favicon container */}
+            <div className="relative flex flex-1 flex-col justify-between px-8 py-10 md:px-10 md:py-12 xl:px-12">
+              {/* ─── BRAND ─── */}
+              <motion.header
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.55 }}
+                className="flex items-center gap-3.5"
+              >
                 <div
-                  className="flex h-[42px] w-[42px] items-center justify-center overflow-hidden rounded-[13px]"
+                  className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-[14px]"
                   style={{
                     background:
-                      "linear-gradient(145deg, rgba(0,179,136,0.2) 0%, rgba(0,135,95,0.12) 100%)",
-                    border: "1px solid rgba(0,179,136,0.25)",
+                      "linear-gradient(145deg, rgba(0,201,155,0.22) 0%, rgba(0,135,95,0.10) 100%)",
+                    border: "1px solid rgba(0,201,155,0.32)",
                     boxShadow:
-                      "0 0 0 1px rgba(0,0,0,0.3), 0 4px 16px rgba(0,179,136,0.12)",
+                      "0 0 0 1px rgba(0,0,0,0.3), 0 6px 22px rgba(0,179,136,0.18), 0 1px 0 rgba(255,255,255,0.06) inset",
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/logo_favicon.PNG"
-                    alt="VistoMap icon"
-                    className="h-6 w-6 object-contain"
+                    alt=""
+                    className="h-7 w-7 object-contain"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display =
-                        "none";
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
                     }}
                   />
                 </div>
-
-                {/* Brand name */}
                 <div>
-                  <div className="flex items-baseline">
+                  <div className="flex items-baseline gap-px">
                     <span
-                      className="text-[21px] font-semibold leading-none tracking-[-0.4px]"
+                      className="text-[24px] font-semibold leading-none tracking-[-0.5px]"
                       style={{
-                        color: "rgba(255,255,255,0.94)",
+                        color: "rgba(255,255,255,0.96)",
                         fontFamily: "'Inter', 'SF Pro Display', sans-serif",
                       }}
                     >
                       Visto
                     </span>
                     <span
-                      className="text-[21px] font-semibold leading-none tracking-[-0.4px]"
+                      className="text-[24px] font-semibold leading-none tracking-[-0.5px]"
                       style={{
                         color: "#00C99B",
                         fontFamily: "'Inter', 'SF Pro Display', sans-serif",
@@ -198,237 +217,261 @@ export default function PainelLoginPage() {
                     </span>
                   </div>
                   <p
-                    className="mt-[3px] text-[9px] font-medium uppercase tracking-[0.22em]"
-                    style={{ color: "rgba(255,255,255,0.28)" }}
+                    className="mt-1.5 text-[9.5px] font-semibold uppercase tracking-[0.24em]"
+                    style={{ color: "rgba(0,201,155,0.62)" }}
                   >
                     Central Operacional
                   </p>
                 </div>
-              </div>
-            </motion.header>
+              </motion.header>
 
-            {/* ── MAIN: Título + Form ── */}
-            <motion.main
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35, duration: 0.55, ease: [0.22, 0.7, 0.2, 1] }}
-              className="space-y-5"
-            >
-              {/* Título */}
-              <div className="space-y-2">
-                <h1
-                  className="text-[22px] font-semibold leading-tight tracking-[-0.5px]"
-                  style={{
-                    color: "rgba(255,255,255,0.95)",
-                    fontFamily: "'Inter', 'Plus Jakarta Sans', sans-serif",
-                  }}
-                >
-                  Bem-vindo de volta
-                </h1>
-                <p
-                  className="text-[12.5px] leading-relaxed"
-                  style={{ color: "rgba(255,255,255,0.38)" }}
-                >
-                  Acesse o painel operacional e gerencie vistorias, técnicos e
-                  operações em campo.
-                </p>
-              </div>
-
-              {/* Form */}
-              <form onSubmit={handleSubmit} className="space-y-2.5">
-                {/* Campo Usuário */}
-                <div className="space-y-1.5">
-                  <label
-                    className="block text-[9px] font-semibold uppercase tracking-[0.18em]"
-                    style={{ color: "rgba(255,255,255,0.28)" }}
-                  >
-                    Usuário
-                  </label>
+              {/* ─── MAIN ─── */}
+              <motion.main
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.32, duration: 0.6, ease: [0.22, 0.7, 0.2, 1] }}
+                className="my-10 space-y-7"
+              >
+                {/* Título */}
+                <div className="space-y-2.5">
                   <div
-                    className={`flex items-center gap-2.5 rounded-[11px] px-3.5 py-2.5 transition-all duration-200 ${focusUser ? "input-wrap-focus" : ""}`}
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
                     style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
+                      background: "rgba(0,201,155,0.10)",
+                      border: "1px solid rgba(0,201,155,0.22)",
                     }}
                   >
-                    <User
-                      className="h-[15px] w-[15px] shrink-0"
-                      style={{ color: focusUser ? "rgba(0,201,155,0.6)" : "rgba(255,255,255,0.22)" }}
-                      strokeWidth={1.8}
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{
+                        background: "#00C99B",
+                        boxShadow: "0 0 8px rgba(0,201,155,0.7)",
+                      }}
                     />
-                    <input
-                      type="text"
-                      autoComplete="username"
-                      value={login}
-                      onChange={(e) => setLogin(e.target.value)}
-                      onFocus={() => setFocusUser(true)}
-                      onBlur={() => setFocusUser(false)}
-                      placeholder="Digite seu usuário GLPI"
-                      className="field-dark flex-1 bg-transparent text-[13px] font-medium"
-                      style={{ color: "rgba(255,255,255,0.88)", caretColor: "#00C99B" }}
-                      required
-                    />
+                    <span
+                      className="text-[9.5px] font-semibold uppercase tracking-[0.18em]"
+                      style={{ color: "rgba(0,201,155,0.9)" }}
+                    >
+                      Acesso restrito
+                    </span>
                   </div>
-                </div>
-
-                {/* Campo Senha */}
-                <div className="space-y-1.5">
-                  <label
-                    className="block text-[9px] font-semibold uppercase tracking-[0.18em]"
-                    style={{ color: "rgba(255,255,255,0.28)" }}
-                  >
-                    Senha
-                  </label>
-                  <div
-                    className={`flex items-center gap-2.5 rounded-[11px] px-3.5 py-2.5 transition-all duration-200 ${focusPwd ? "input-wrap-focus" : ""}`}
+                  <h1
+                    className="text-[28px] font-semibold leading-[1.1] tracking-[-0.6px]"
                     style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
+                      color: "rgba(255,255,255,0.98)",
+                      fontFamily: "'Inter', 'Plus Jakarta Sans', sans-serif",
                     }}
                   >
-                    <Lock
-                      className="h-[15px] w-[15px] shrink-0"
-                      style={{ color: focusPwd ? "rgba(0,201,155,0.6)" : "rgba(255,255,255,0.22)" }}
-                      strokeWidth={1.8}
-                    />
-                    <input
-                      type={showPwd ? "text" : "password"}
-                      autoComplete="current-password"
-                      value={senha}
-                      onChange={(e) => setSenha(e.target.value)}
-                      onFocus={() => setFocusPwd(true)}
-                      onBlur={() => setFocusPwd(false)}
-                      placeholder="Digite sua senha"
-                      className="field-dark flex-1 bg-transparent text-[13px] font-medium"
-                      style={{ color: "rgba(255,255,255,0.88)", caretColor: "#00C99B" }}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPwd(!showPwd)}
-                      className="shrink-0 transition hover:opacity-70"
-                      style={{ color: "rgba(255,255,255,0.22)" }}
-                    >
-                      {showPwd ? (
-                        <EyeOff className="h-[15px] w-[15px]" strokeWidth={1.8} />
-                      ) : (
-                        <Eye className="h-[15px] w-[15px]" strokeWidth={1.8} />
-                      )}
-                    </button>
-                  </div>
+                    Bem-vindo de
+                    <br />
+                    <span style={{ color: "#00C99B" }}>volta.</span>
+                  </h1>
+                  <p
+                    className="text-[13px] leading-[1.55]"
+                    style={{ color: "rgba(255,255,255,0.46)" }}
+                  >
+                    Entre com sua conta GLPI para gerenciar vistorias,
+                    técnicos e a operação em campo.
+                  </p>
                 </div>
 
-                {/* Erro */}
-                <AnimatePresence>
-                  {error && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4, height: 0 }}
-                      animate={{ opacity: 1, y: 0, height: "auto" }}
-                      exit={{ opacity: 0, y: -4, height: 0 }}
-                      className="overflow-hidden"
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="space-y-3.5">
+                  {/* Usuário */}
+                  <div className="space-y-1.5">
+                    <label
+                      className="block text-[9.5px] font-semibold uppercase tracking-[0.2em]"
+                      style={{ color: "rgba(255,255,255,0.42)" }}
                     >
-                      <p
-                        className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-medium"
+                      Usuário GLPI
+                    </label>
+                    <div
+                      className={`input-shell flex items-center gap-3 rounded-[12px] px-4 py-3.5 ${focusUser ? "is-focused" : ""}`}
+                    >
+                      <User
+                        className="h-[17px] w-[17px] shrink-0"
                         style={{
-                          background: "rgba(239,68,68,0.09)",
-                          color: "#FCA5A5",
-                          border: "1px solid rgba(239,68,68,0.18)",
+                          color: focusUser
+                            ? "rgba(0,201,155,0.85)"
+                            : "rgba(255,255,255,0.32)",
                         }}
+                        strokeWidth={1.9}
+                      />
+                      <input
+                        type="text"
+                        autoComplete="username"
+                        value={login}
+                        onChange={(e) => setLogin(e.target.value)}
+                        onFocus={() => setFocusUser(true)}
+                        onBlur={() => setFocusUser(false)}
+                        placeholder="seu.usuario"
+                        className="field-dark flex-1 bg-transparent text-[14px] font-medium tracking-[-0.1px]"
+                        style={{
+                          color: "rgba(255,255,255,0.95)",
+                          caretColor: "#00C99B",
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Senha */}
+                  <div className="space-y-1.5">
+                    <label
+                      className="block text-[9.5px] font-semibold uppercase tracking-[0.2em]"
+                      style={{ color: "rgba(255,255,255,0.42)" }}
+                    >
+                      Senha
+                    </label>
+                    <div
+                      className={`input-shell flex items-center gap-3 rounded-[12px] px-4 py-3.5 ${focusPwd ? "is-focused" : ""}`}
+                    >
+                      <Lock
+                        className="h-[17px] w-[17px] shrink-0"
+                        style={{
+                          color: focusPwd
+                            ? "rgba(0,201,155,0.85)"
+                            : "rgba(255,255,255,0.32)",
+                        }}
+                        strokeWidth={1.9}
+                      />
+                      <input
+                        type={showPwd ? "text" : "password"}
+                        autoComplete="current-password"
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                        onFocus={() => setFocusPwd(true)}
+                        onBlur={() => setFocusPwd(false)}
+                        placeholder="••••••••"
+                        className="field-dark flex-1 bg-transparent text-[14px] font-medium tracking-[-0.1px]"
+                        style={{
+                          color: "rgba(255,255,255,0.95)",
+                          caretColor: "#00C99B",
+                          letterSpacing: showPwd ? "-0.1px" : "0.18em",
+                        }}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPwd(!showPwd)}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition hover:bg-white/[0.06]"
+                        style={{ color: "rgba(255,255,255,0.42)" }}
+                        aria-label={showPwd ? "Ocultar senha" : "Mostrar senha"}
                       >
-                        {error}
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                        {showPwd ? (
+                          <EyeOff className="h-[15px] w-[15px]" strokeWidth={1.9} />
+                        ) : (
+                          <Eye className="h-[15px] w-[15px]" strokeWidth={1.9} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
 
-                {/* Botão */}
-                <motion.button
-                  type="submit"
-                  disabled={loading || !login || !senha}
-                  whileHover={!loading ? { scale: 1.008 } : undefined}
-                  whileTap={!loading ? { scale: 0.994 } : undefined}
-                  className="btn-enter relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-[11px] py-2.5 text-[13px] font-semibold tracking-[-0.1px] text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  {/* Erro */}
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4, height: 0 }}
+                        animate={{ opacity: 1, y: 0, height: "auto" }}
+                        exit={{ opacity: 0, y: -4, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <p
+                          className="rounded-[11px] px-4 py-3 text-[12px] font-medium leading-[1.45]"
+                          style={{
+                            background: "rgba(239,68,68,0.10)",
+                            color: "#FCA5A5",
+                            border: "1px solid rgba(239,68,68,0.22)",
+                          }}
+                        >
+                          {error}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Botão */}
+                  <motion.button
+                    type="submit"
+                    disabled={loading || !login || !senha}
+                    whileHover={!loading ? { scale: 1.01 } : undefined}
+                    whileTap={!loading ? { scale: 0.992 } : undefined}
+                    className="btn-primary mt-1.5 flex w-full items-center justify-center gap-2.5 rounded-[12px] py-3.5 text-[14px] font-semibold tracking-[-0.15px] text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #00D6A6 0%, #00B388 50%, #00875F 100%)",
+                      boxShadow:
+                        "0 1px 0 rgba(255,255,255,0.22) inset, 0 12px 32px -6px rgba(0,179,136,0.42), 0 4px 12px -2px rgba(0,0,0,0.28)",
+                    }}
+                  >
+                    {loading ? (
+                      <div className="h-[18px] w-[18px] animate-spin rounded-full border-[2.4px] border-white/30 border-t-white" />
+                    ) : (
+                      <>
+                        <span>Entrar no Painel</span>
+                        <ArrowRight className="h-4 w-4" strokeWidth={2.4} />
+                      </>
+                    )}
+                  </motion.button>
+                </form>
+
+                {/* Auth badge */}
+                <div
+                  className="flex items-center gap-2.5 rounded-[11px] px-3.5 py-2.5"
                   style={{
-                    background:
-                      "linear-gradient(135deg, #00C99B 0%, #00875F 100%)",
-                    boxShadow:
-                      "0 1px 0 rgba(255,255,255,0.18) inset, 0 8px 28px rgba(0,179,136,0.3), 0 2px 8px rgba(0,0,0,0.22)",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
                   }}
                 >
-                  {loading ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
-                  ) : (
-                    <>
-                      <span>Entrar no Painel</span>
-                      <ArrowRight className="h-[15px] w-[15px]" strokeWidth={2.3} />
-                    </>
-                  )}
-                </motion.button>
-              </form>
+                  <ShieldCheck
+                    className="h-[14px] w-[14px] shrink-0"
+                    style={{ color: "rgba(0,201,155,0.7)" }}
+                    strokeWidth={2}
+                  />
+                  <p
+                    className="text-[11.5px] leading-tight"
+                    style={{ color: "rgba(255,255,255,0.5)" }}
+                  >
+                    Autenticação integrada e auditada via GLPI
+                  </p>
+                </div>
+              </motion.main>
 
-              {/* Auth badge */}
-              <div
-                className="flex items-center gap-2 rounded-[10px] px-3.5 py-2.5"
-                style={{
-                  background: "rgba(255,255,255,0.025)",
-                  border: "1px solid rgba(255,255,255,0.055)",
-                }}
+              {/* ─── FOOTER ─── */}
+              <motion.footer
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.5 }}
+                className="flex items-end justify-between gap-3"
               >
-                <Lock
-                  className="h-3 w-3 shrink-0"
-                  style={{ color: "rgba(0,201,155,0.45)" }}
-                  strokeWidth={1.8}
-                />
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-[10px] font-medium"
+                    style={{ color: "rgba(255,255,255,0.28)" }}
+                  >
+                    Desenvolvido por
+                  </span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/logo-marca.PNG"
+                    alt="Nansen"
+                    className="h-[15px] object-contain"
+                    style={{ filter: "brightness(0) invert(1)", opacity: 0.38 }}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                </div>
                 <p
-                  className="text-[11px]"
-                  style={{ color: "rgba(255,255,255,0.28)" }}
+                  className="text-[9.5px] font-medium"
+                  style={{ color: "rgba(255,255,255,0.22)" }}
                 >
-                  Autenticação integrada com GLPI
+                  © 2025 VistoMap
                 </p>
-              </div>
-            </motion.main>
-
-            {/* ── RODAPÉ ── */}
-            <motion.footer
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6, duration: 0.5 }}
-              className="space-y-3"
-            >
-              {/* Nansen */}
-              <div className="flex items-center gap-2">
-                <span
-                  className="text-[9.5px]"
-                  style={{ color: "rgba(255,255,255,0.2)" }}
-                >
-                  Desenvolvido por
-                </span>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/logo-marca.PNG"
-                  alt="Nansen"
-                  className="h-[14px] object-contain"
-                  style={{ filter: "brightness(0) invert(1)", opacity: 0.3 }}
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              </div>
-              {/* Copyright */}
-              <p
-                className="text-[9px]"
-                style={{ color: "rgba(255,255,255,0.14)" }}
-              >
-                © 2025 VistoMap. Todos os direitos reservados.
-              </p>
-            </motion.footer>
-          </div>
-        </motion.div>
-
-        {/* RIGHT SIDE: transparent — shows bg */}
-        <div className="relative z-[2] hidden flex-1 md:block" />
+              </motion.footer>
+            </div>
+          </motion.section>
+        </div>
       </div>
     </>
   );

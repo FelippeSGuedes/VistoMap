@@ -93,8 +93,14 @@ function buzz(tone: NotifyTone) {
 /**
  * Dispara notificação se permissão concedida. Sempre dispara som+vibração
  * (a menos que silent=true), funciona como feedback mesmo sem Notification.
+ *
+ * Estratégia:
+ *  1. Tenta `ServiceWorkerRegistration.showNotification()` — único caminho
+ *     que funciona em Chrome Android (o construtor `new Notification()`
+ *     lança "Illegal constructor" lá).
+ *  2. Fallback: `new Notification()` (desktop sem SW).
  */
-export function notify(opts: NotifyOptions): boolean {
+export function notify(opts: NotifyOptions): boolean | Promise<boolean> {
   const tone = opts.tone ?? "info";
   if (!opts.silent) {
     chime(tone);
@@ -106,16 +112,41 @@ export function notify(opts: NotifyOptions): boolean {
   }
   if (Notification.permission !== "granted") return false;
 
+  const payload = {
+    body: opts.body,
+    icon: opts.icon ?? "/logo_favicon.PNG",
+    tag: opts.tag,
+    badge: "/logo_favicon.PNG",
+    renotify: !!opts.tag,
+    silent: false,
+    data: { url: opts.tag?.startsWith("vistoria-") ? `/vistorias/${opts.tag.replace("vistoria-", "")}` : "/vistorias" },
+    vibrate: [120, 60, 120],
+  } as NotificationOptions;
+
+  // Caminho 1: Service Worker (obrigatório no Chrome Android).
+  if ("serviceWorker" in navigator) {
+    return navigator.serviceWorker.ready
+      .then(async (reg) => {
+        try {
+          await reg.showNotification(opts.title, payload);
+          return true;
+        } catch (err) {
+          console.warn("[notify] SW.showNotification falhou:", err);
+          return tryConstructor(opts, payload);
+        }
+      })
+      .catch((err) => {
+        console.warn("[notify] serviceWorker.ready falhou:", err);
+        return tryConstructor(opts, payload);
+      });
+  }
+
+  return tryConstructor(opts, payload);
+}
+
+function tryConstructor(opts: NotifyOptions, payload: NotificationOptions): boolean {
   try {
-    const n = new Notification(opts.title, {
-      body: opts.body,
-      icon: opts.icon ?? "/logo_favicon.PNG",
-      tag: opts.tag,
-      badge: "/logo_favicon.PNG",
-      // @ts-expect-error renotify existe em Chrome/Android mas não no DOM lib
-      renotify: !!opts.tag,
-      silent: false,
-    });
+    const n = new Notification(opts.title, payload);
     if (opts.onClick) {
       n.onclick = () => {
         window.focus();
@@ -123,7 +154,6 @@ export function notify(opts: NotifyOptions): boolean {
         n.close();
       };
     }
-    // Auto-close depois de 8s pra não poluir.
     window.setTimeout(() => {
       try {
         n.close();
@@ -132,7 +162,8 @@ export function notify(opts: NotifyOptions): boolean {
       }
     }, 8000);
     return true;
-  } catch {
+  } catch (err) {
+    console.warn("[notify] new Notification falhou:", err);
     return false;
   }
 }
