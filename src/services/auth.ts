@@ -1,8 +1,11 @@
-import { setAuthToken } from "./api";
+import { api, setAuthToken } from "./api";
 import type { AuthSession } from "@/types";
 
 export interface LoginInput {
-  login: string;
+  /** Usuário (username GLPI) ou e-mail. */
+  login?: string;
+  /** Compat: chave alternativa quando só temos email. */
+  email?: string;
   senha: string;
 }
 
@@ -37,20 +40,13 @@ export function loadSession(): AuthSession | null {
 }
 
 export async function login(input: LoginInput): Promise<AuthSession> {
-  const res = await fetch("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ login: input.login, senha: input.senha }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(
-      (data as { message?: string }).message || "Credenciais inválidas"
-    );
-  }
-  const session = (await res.json()) as AuthSession;
-  persist(session);
-  return session;
+  const payload = {
+    login: input.login ?? input.email,
+    senha: input.senha,
+  };
+  const { data } = await api.post<AuthSession>("/auth/login", payload);
+  persist(data);
+  return data;
 }
 
 export function logout() {

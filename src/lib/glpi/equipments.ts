@@ -144,9 +144,22 @@ function mapRow(r: RawRow) {
   };
 }
 
-export async function listVistorias() {
+export interface ListVistoriasFilters {
+  /** Filtra por técnico atribuído (users_id_vistoriadorafield). Admin omite. */
+  tecnicoId?: number;
+}
+
+export async function listVistorias(filters: ListVistoriasFilters = {}) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (filters.tecnicoId != null) {
+    where.push("f.users_id_vistoriadorafield = ?");
+    params.push(filters.tecnicoId);
+  }
+  const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";
   const rows = await query<RawRow>(
-    `${SELECT_BASE} ${HAS_COORDS} ORDER BY ne.name LIMIT 500`
+    `${SELECT_BASE} ${HAS_COORDS} ${extraWhere} ORDER BY ne.name LIMIT 500`,
+    params
   );
   return rows.map(mapRow);
 }

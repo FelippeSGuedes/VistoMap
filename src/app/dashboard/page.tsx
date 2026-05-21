@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { MunicipioField } from "@/components/dashboard/MunicipioField";
 import { SyncFilterPill } from "@/components/dashboard/SyncFilterPill";
 import { SyncFilterSheet } from "@/components/dashboard/SyncFilterSheet";
+import { NotificationPermissionCard } from "@/components/feedback/NotificationPermissionCard";
 import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
 import { MOCK_SYNC_SNAPSHOTS } from "@/utils/mock";
@@ -332,6 +333,9 @@ export default function DashboardPage() {
         className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-5 overflow-y-auto px-4 pb-32 pt-5"
         style={{ scrollbarWidth: "none" }}
       >
+
+        {/* Banner permissão de notificações — some quando concedida/negada */}
+        <NotificationPermissionCard />
 
         {/* HERO CARD */}
         <motion.div

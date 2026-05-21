@@ -186,10 +186,15 @@ export interface DashboardStats {
   };
 }
 
+/** Papel operacional — admin acessa /painel, tecnico acessa /app (raiz). */
+export type SessionRole = "admin" | "tecnico";
+
 export interface AuthSession {
   token: string;
   tecnico: Tecnico;
   expiresAt: number;
+  /** Derivado dos grupos GLPI: VistoMap-Administradores → admin, VistoMap-Tecnicos → tecnico. */
+  role: SessionRole;
 }
 
 /** Snapshot de uma sincronização — usado no filtro do dashboard. */
@@ -220,6 +225,150 @@ export interface ProfileInfo {
     diasAtivos: number;
   };
 }
+
+/* ─── PAINEL OPERACIONAL ADMIN ────────────────────────────────────── */
+
+/**
+ * Status operacionais do `/painel` — derivados de `situaodavistoriafield`
+ * (campo GLPI). 6 valores que cobrem o ciclo completo da operação.
+ *
+ * Mapeamento legacy (enquanto o campo `situaodavistoriafield` não existe
+ * no banco GLPI, derivamos a partir do `plugin_fields_statusvistoriafielddropdowns_id`
+ * + `is_repeat` da aux table).
+ */
+export type AdminStatus =
+  | "A_VISTORIAR"
+  | "EM_VISTORIA"
+  | "VISTORIADO"
+  | "AGUARDANDO_REVISITA"
+  | "EM_REVISITA"
+  | "REVISITADO";
+
+export const ADMIN_STATUS_LABEL: Record<AdminStatus, string> = {
+  A_VISTORIAR: "A Vistoriar",
+  EM_VISTORIA: "Em Vistoria",
+  VISTORIADO: "Vistoriado",
+  AGUARDANDO_REVISITA: "Aguardando Revisita",
+  EM_REVISITA: "Em Revisita",
+  REVISITADO: "Revisitado",
+};
+
+export const ADMIN_STATUS_COLOR: Record<AdminStatus, string> = {
+  A_VISTORIAR: "#F59E0B",          // amarelo — pendente
+  EM_VISTORIA: "#3B82F6",          // azul — em andamento
+  VISTORIADO: "#00B388",           // verde — concluído
+  AGUARDANDO_REVISITA: "#F97316",  // laranja — pra revisitar
+  EM_REVISITA: "#0EA5E9",          // azul claro — em revisita
+  REVISITADO: "#10B981",           // verde claro — revisitado
+};
+
+/** Técnico ativo no campo — usado no mapa operacional e na gestão de equipe. */
+export interface TecnicoAtivo {
+  id: string;
+  nome: string;
+  email?: string;
+  avatarUrl?: string;
+  /** Status operacional momentâneo do técnico. */
+  status: "em-campo" | "base" | "off-shift" | "offline";
+  /** Posição GPS atual (se compartilhada). */
+  lat?: number;
+  lng?: number;
+  municipio?: string;
+  /** Vistorias atribuídas hoje. */
+  atribuidas: number;
+  concluidasHoje: number;
+  /** Última atividade ISO. */
+  ultimaAtividade?: string;
+  /** Bateria do dispositivo, 0-100. */
+  bateria?: number;
+}
+
+/** Atribuição de vistoria a um técnico — registro da operação. */
+export interface AtribuicaoOperacional {
+  id: string;
+  vistoriaId: string;
+  equipamento: string;
+  municipio: string;
+  tecnicoId: string;
+  tecnicoNome: string;
+  prioridade: VistoriaPriority;
+  atribuidoPor: string;
+  atribuidoEm: string;
+  status: AdminStatus;
+  isRevisita: boolean;
+  motivoRevisita?: string;
+}
+
+/** Registro de auditoria — ação operacional registrada na timeline admin. */
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  /** Quem realizou a ação. */
+  ator: { id: string; nome: string; role: SessionRole };
+  /** Tipo de ação executada. */
+  acao:
+    | "vistoria-atribuida"
+    | "vistoria-finalizada"
+    | "revisita-criada"
+    | "revisita-atribuida"
+    | "revisita-finalizada"
+    | "vistoria-aprovada"
+    | "vistoria-reprovada"
+    | "pdf-regenerado"
+    | "motivo-alterado"
+    | "dados-editados"
+    | "sincronizacao"
+    | "login-admin"
+    | "login-tecnico";
+  /** Alvo da ação. */
+  alvo?: {
+    tipo: "vistoria" | "tecnico" | "revisita" | "sistema";
+    id: string;
+    label: string;
+  };
+  descricao?: string;
+  /** Diff opcional (campo: antes → depois). */
+  diff?: Array<{ campo: string; antes?: string; depois?: string }>;
+}
+
+/** Linha da fila de revisitas — Central de Revisitas. */
+export interface RevisitaPendente {
+  id: string;
+  equipamento: string;
+  glpiId: string;
+  municipio: string;
+  motivoReprovacao: string;
+  reprovadoEm: string;
+  reprovadoPor: string;
+  /** Técnico atual atribuído (se já houver). */
+  tecnicoAtribuido?: { id: string; nome: string };
+  prioridade: VistoriaPriority;
+  /** PDF antigo (último gerado antes da reprovação). */
+  pdfAnteriorPath?: string;
+}
+
+/** KPIs agregados do painel admin (overview). */
+export interface PainelStats {
+  pendentes: number;
+  emVistoria: number;
+  vistoriadas: number;
+  aguardandoRevisita: number;
+  emRevisita: number;
+  revisitadas: number;
+  reprovadasMes: number;
+  municipiosAtivos: number;
+  tecnicosAtivos: number;
+  pdfsGerados: number;
+  ultimaSincronizacao: string;
+  /** Série diária dos últimos 14 dias por status (sparkline). */
+  trend14d?: {
+    pendentes: number[];
+    vistoriadas: number[];
+    revisitas: number[];
+  };
+}
+
+/* ─── histórico (mantido) ─────────────────────────────────────────── */
 
 /** Atividade do histórico operacional — eventos da timeline. */
 export type HistoricoTipo =

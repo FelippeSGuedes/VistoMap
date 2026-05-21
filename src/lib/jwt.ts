@@ -22,20 +22,27 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
+/** Papéis operacionais — derivados dos grupos GLPI no momento do login. */
+export type SessionRole = "admin" | "tecnico";
+
 export interface SessionClaims extends JWTPayload {
   sub: string;
   email?: string;
   tecnicoId?: string;
+  /** admin = grupo VistoMap-Administradores. tecnico = VistoMap-Tecnicos. */
+  role?: SessionRole;
 }
 
 export async function signSessionJwt(claims: {
   sub: string;
   email?: string;
   tecnicoId?: string;
+  role?: SessionRole;
 }): Promise<string> {
   return new SignJWT({
     email: claims.email,
     tecnicoId: claims.tecnicoId,
+    role: claims.role ?? "tecnico",
   })
     .setProtectedHeader({ alg: ALG })
     .setSubject(claims.sub)
