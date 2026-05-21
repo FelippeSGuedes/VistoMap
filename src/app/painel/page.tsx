@@ -37,7 +37,7 @@ import {
   AreaChart,
   BarRanking,
   CalendarHeatmap,
-  FunnelChart,
+  ConversionFunnel,
   GaugeRate,
 } from "@/components/painel/Charts";
 
@@ -351,8 +351,16 @@ export default function PainelOverviewPage() {
             </span>
           </div>
         </div>
-        <div className="mt-3 h-[300px]">
-          {stats && funnelStages.length > 0 && <FunnelChart stages={funnelStages} height={300} />}
+        <div className="mt-4">
+          {stats && funnelStages.length > 0 && (
+            <ConversionFunnel
+              stages={funnelStages.map((s) => ({
+                label: s.label,
+                value: s.value,
+                color: s.color,
+              }))}
+            />
+          )}
         </div>
       </motion.section>
 

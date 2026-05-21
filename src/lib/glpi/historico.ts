@@ -125,12 +125,14 @@ export async function fetchHistoricoAnalytics(
       s === "em análise" ||
       s === "em analise" ||
       s === "finalizada" ||
-      s === "aprovada"
+      s === "finalizado" ||
+      s === "aprovada" ||
+      s === "aprovado"
     ) {
       ref.finalizadas += Number(r.total) || 0;
     }
-    if (s === "aprovada") ref.aprovadas += Number(r.total) || 0;
-    if (s === "reprovada") ref.reprovadas += Number(r.total) || 0;
+    if (s === "aprovada" || s === "aprovado") ref.aprovadas += Number(r.total) || 0;
+    if (s === "reprovada" || s === "reprovado") ref.reprovadas += Number(r.total) || 0;
   }
   const serieDiaria = Array.from(diasMap.entries()).map(([dia, v]) => ({
     dia,
@@ -149,10 +151,10 @@ export async function fetchHistoricoAnalytics(
   }>(
     `
       SELECT
-        SUM(CASE WHEN sv.name IN ('Em análise','Em analise','Finalizada','Aprovada') THEN 1 ELSE 0 END) AS finalizadas,
-        SUM(CASE WHEN sv.name = 'Aprovada' THEN 1 ELSE 0 END) AS aprovadas,
-        SUM(CASE WHEN sv.name = 'Reprovada' THEN 1 ELSE 0 END) AS reprovadas,
-        SUM(CASE WHEN sv.name IN ('Em análise','Em analise','Finalizada','Aprovada')
+        SUM(CASE WHEN sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado') THEN 1 ELSE 0 END) AS finalizadas,
+        SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
+        SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovadas,
+        SUM(CASE WHEN sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
                   AND COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas_finalizadas,
         (SELECT COUNT(*) FROM \`${TABLE_AUX}\` WHERE project_status = 'GERADO') AS pdfs
         FROM \`${TABLE_FIELDS}\` f
@@ -202,7 +204,7 @@ export async function fetchHistoricoAnalytics(
     `
       SELECT u.id, u.name, u.firstname, u.realname,
              COUNT(*) AS total,
-             SUM(CASE WHEN sv.name = 'Aprovada' THEN 1 ELSE 0 END) AS aprovadas,
+             SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
              SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
@@ -213,7 +215,7 @@ export async function fetchHistoricoAnalytics(
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
-         AND sv.name IN ('Em análise','Em analise','Finalizada','Aprovada')
+         AND sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
        GROUP BY u.id
        ORDER BY total DESC
        LIMIT 10

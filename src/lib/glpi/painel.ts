@@ -44,11 +44,11 @@ function resolveAdminStatus(
     return hasTecnico ? "EM_VISTORIA" : "A_VISTORIAR";
   }
   if (s === "em campo") return "EM_VISTORIA";
-  if (s === "em análise" || s === "em analise" || s === "finalizada") {
+  if (s === "em análise" || s === "em analise" || s === "finalizada" || s === "finalizado") {
     return isRepeat ? "REVISITADO" : "VISTORIADO";
   }
-  if (s === "reprovada") return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
-  if (s === "aprovada") return isRepeat ? "REVISITADO" : "VISTORIADO";
+  if (s === "reprovada" || s === "reprovado") return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
+  if (s === "aprovada" || s === "aprovado") return isRepeat ? "REVISITADO" : "VISTORIADO";
   // fallback: a vistoriar
   return "A_VISTORIAR";
 }
@@ -208,7 +208,7 @@ export async function fetchTecnicos(): Promise<TecnicoAtivo[]> {
             LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                    ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
            WHERE f.users_id_vistoriadorafield = u.id
-             AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Em análise','Em analise','Finalizada'))
+             AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Em análise','Em analise','Finalizada','Finalizado'))
         ) AS atribuidas,
         (
           SELECT COUNT(*) FROM \`${TABLE_FIELDS}\` f2
@@ -216,7 +216,7 @@ export async function fetchTecnicos(): Promise<TecnicoAtivo[]> {
             LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv2
                    ON sv2.id = f2.plugin_fields_statusvistoriafielddropdowns_id
            WHERE f2.users_id_vistoriadorafield = u.id
-             AND sv2.name IN ('Em análise','Em analise','Finalizada','Aprovada')
+             AND sv2.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
              AND DATE(f2.datadavistoriafield) = CURDATE()
         ) AS concluidasHoje,
         (
@@ -359,10 +359,10 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
               ON u.id = f.users_id_vistoriadorafield
       WHERE ne.is_deleted = 0
         AND (
-              sv.name = 'Reprovada'
+              sv.name IN ('Reprovada','Reprovado')
            OR (
                 COALESCE(aux.is_repeat, 0) = 1
-            AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Em análise','Em analise','Finalizada'))
+            AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Em análise','Em analise','Finalizada','Finalizado'))
               )
         )
       ORDER BY f.datadavistoriafield DESC
@@ -501,7 +501,7 @@ export async function fetchFilaVistorias(
       WHERE ${where.join(" AND ")}
       ORDER BY
         CASE WHEN sv.name IS NULL OR sv.name = 'Pendente' THEN 0
-             WHEN sv.name IN ('Reprovada') THEN 1
+             WHEN sv.name IN ('Reprovada','Reprovado') THEN 1
              ELSE 2 END,
         f.datadavistoriafield DESC,
         ne.id DESC
@@ -677,7 +677,7 @@ function resolveMapaVistoriaStatus(
 ): PainelMapaVistoria["status"] {
   const s = (statusName ?? "").trim().toLowerCase();
   if (isRepeat) return "REVISITA";
-  if (s === "reprovada") return "REPROVADO";
+  if (s === "reprovada" || s === "reprovado") return "REPROVADO";
   if (s === "em campo") return "EM_VISTORIA";
   if (
     s === "aprovada" ||

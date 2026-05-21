@@ -458,22 +458,13 @@ export function GaugeRate({ value, label, color, size = 160 }: GaugeRateProps) {
   );
 }
 
-/* ── FunnelChart ───────────────────────────────────────────────────── */
+/* ── FunnelChart (SVG — legado, mantido para compat) ──────────────── */
 
 export interface FunnelChartProps {
   stages: Array<{ label: string; value: number; color: string }>;
   height?: number;
 }
 
-/**
- * Funil vertical clássico estilo enterprise: cada estágio é uma "tira"
- * com largura proporcional ao valor relativo (vs estágio anterior, não
- * vs total). Curvas suaves Bezier conectam as transições.
- *
- * Mostra simultaneamente:
- *  • silhueta visual do drop-off
- *  • valor absoluto + % do estágio anterior na lateral
- */
 export function FunnelChart({ stages, height = 260 }: FunnelChartProps) {
   if (!stages.length) return null;
   const w = 720;
@@ -639,6 +630,154 @@ export function FunnelChart({ stages, height = 260 }: FunnelChartProps) {
         );
       })}
     </svg>
+  );
+}
+
+/* ── ConversionFunnel (HTML lanes, estilo Mixpanel/Amplitude) ─────── */
+
+export interface ConversionFunnelProps {
+  stages: Array<{ label: string; value: number; color: string; hint?: string }>;
+  /** Mostrar setas/conversões entre estágios. Default true. */
+  showConversions?: boolean;
+}
+
+/**
+ * Funil de conversão horizontal, lanes empilhadas.
+ *
+ * Cada lane mostra label, barra horizontal proporcional ao maior valor,
+ * valor absoluto e percentual do total. Entre lanes, uma linha sutil
+ * mostra a taxa de conversão para o próximo estágio.
+ *
+ * Visual: clean, sem floreios desnecessários. Foco em legibilidade.
+ */
+export function ConversionFunnel({
+  stages,
+  showConversions = true,
+}: ConversionFunnelProps) {
+  if (!stages.length) return null;
+  const max = Math.max(...stages.map((s) => s.value), 1);
+  const total = stages.reduce((acc, s) => acc + s.value, 0);
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      {stages.map((s, i) => {
+        const pctMax = (s.value / max) * 100;
+        const pctTotal = total > 0 ? (s.value / total) * 100 : 0;
+        const next = stages[i + 1];
+        let conv: { rate: number; drop: number } | null = null;
+        if (next && s.value > 0) {
+          conv = {
+            rate: Math.round((next.value / s.value) * 100),
+            drop: Math.max(0, s.value - next.value),
+          };
+        }
+
+        return (
+          <div key={s.label}>
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.45, delay: i * 0.08, ease: [0.22, 0.7, 0.2, 1] }}
+              className="group relative flex items-center gap-4 rounded-[12px] px-3 py-2.5 transition hover:bg-black/[0.015]"
+            >
+              {/* Indicador */}
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[11px] font-bold tabular-nums"
+                style={{
+                  background: `${s.color}14`,
+                  color: s.color,
+                  border: `1px solid ${s.color}22`,
+                }}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </span>
+
+              {/* Label + barra */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="min-w-0 flex items-baseline gap-2">
+                    <span
+                      className="truncate text-[13px] font-semibold tracking-tight"
+                      style={{ color: "#063B3B" }}
+                    >
+                      {s.label}
+                    </span>
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+                      style={{ color: "#A0ACBA" }}
+                    >
+                      {pctTotal.toFixed(1).replace(".", ",")}% do total
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2 tabular-nums">
+                    <span
+                      className="text-[18px] font-semibold leading-none tracking-[-0.3px]"
+                      style={{ color: "#063B3B" }}
+                    >
+                      {s.value.toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Track + fill */}
+                <div
+                  className="relative mt-1.5 h-[10px] overflow-hidden rounded-full"
+                  style={{ background: "rgba(6,59,59,0.05)" }}
+                >
+                  <motion.div
+                    className="absolute inset-y-0 left-0 rounded-full"
+                    style={{
+                      background: `linear-gradient(90deg, ${s.color} 0%, ${s.color}D9 100%)`,
+                      boxShadow: `0 1px 0 rgba(255,255,255,0.32) inset, 0 0 12px ${s.color}55`,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.max(pctMax, 2)}%` }}
+                    transition={{ duration: 0.9, delay: i * 0.08 + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
+                  />
+                </div>
+
+                {s.hint && (
+                  <p className="mt-1 text-[10.5px]" style={{ color: "#7A8896" }}>
+                    {s.hint}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Conversão para próximo estágio */}
+            {showConversions && conv && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.4, delay: i * 0.08 + 0.4 }}
+                className="ml-[26px] flex items-center gap-2 py-1.5 pl-3"
+              >
+                <span
+                  className="block h-[18px] w-px"
+                  style={{ background: `linear-gradient(180deg, ${s.color}55, ${next!.color}55)` }}
+                />
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[9.5px] font-bold uppercase tracking-[0.12em]"
+                    style={{
+                      background: conv.rate >= 60 ? "#ECFDF5" : conv.rate >= 30 ? "#FFFBEB" : "#FEF2F2",
+                      color: conv.rate >= 60 ? "#00875F" : conv.rate >= 30 ? "#92400E" : "#B91C1C",
+                    }}
+                  >
+                    {conv.rate}% conversão
+                  </span>
+                  {conv.drop > 0 && (
+                    <span className="text-[10px]" style={{ color: "#A0ACBA" }}>
+                      · −{conv.drop.toLocaleString("pt-BR")} drop-off
+                    </span>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
