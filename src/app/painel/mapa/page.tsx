@@ -12,10 +12,14 @@ import type {
 } from "@/types/painel-mapa";
 import {
   Activity,
+  CheckCircle2,
+  ClipboardList,
   Clock,
   MapPin,
   RefreshCw,
+  RotateCw,
   Route,
+  Search,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,6 +56,24 @@ function statusLabel(status: PainelMapaTecnico["status_operacional"]): string {
   if (status === "parado") return "Parado";
   return "Offline";
 }
+
+const SITUACAO_COR: Record<string, string> = {
+  A_VISTORIAR: "#F59E0B",
+  EM_VISTORIA: "#3B82F6",
+  VISTORIADO: "#00B388",
+  AGUARDANDO_REVISITA: "#F97316",
+  EM_REVISITA: "#A855F7",
+  REVISITADO: "#0EA5E9",
+};
+
+const SITUACAO_LABEL: Record<string, string> = {
+  A_VISTORIAR: "A vistoriar",
+  EM_VISTORIA: "Em vistoria",
+  VISTORIADO: "Vistoriado",
+  AGUARDANDO_REVISITA: "Aguardando rev.",
+  EM_REVISITA: "Em revisita",
+  REVISITADO: "Revisitado",
+};
 
 function vistoriaColor(status: PainelMapaVistoria["status"]): string {
   switch (status) {
@@ -130,6 +152,9 @@ export default function PainelMapaPage() {
   const [data, setData] = useState<PainelMapaResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedTec, setSelectedTec] = useState<PainelMapaTecnico | null>(null);
+  const [aba, setAba] = useState<"tecnicos" | "vistorias">("tecnicos");
+  const [filtroSit, setFiltroSit] = useState<"todas" | PainelMapaVistoria["situacao"]>("todas");
+  const [buscaVis, setBuscaVis] = useState("");
 
   const fetchMapa = useCallback(async () => {
     if (!session?.token) return;
@@ -295,6 +320,31 @@ export default function PainelMapaPage() {
     [data]
   );
 
+  // Vistorias "enviadas" = situação saiu de A_Vistoriar (técnico ja interagiu).
+  // Mostra todas pra dar visibilidade — agrupadas + filtraveis.
+  const vistoriasFiltradas = useMemo(() => {
+    const all = data?.vistorias ?? [];
+    const q = buscaVis.trim().toLowerCase();
+    return all.filter((v) => {
+      if (filtroSit !== "todas" && v.situacao !== filtroSit) return false;
+      if (!q) return true;
+      return (
+        v.equipamento.toLowerCase().includes(q) ||
+        (v.municipio ?? "").toLowerCase().includes(q) ||
+        (v.tecnico_nome ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [data, filtroSit, buscaVis]);
+
+  const contagemSit = useMemo(() => {
+    const acc: Record<string, number> = {
+      A_VISTORIAR: 0, EM_VISTORIA: 0, VISTORIADO: 0,
+      AGUARDANDO_REVISITA: 0, EM_REVISITA: 0, REVISITADO: 0,
+    };
+    for (const v of data?.vistorias ?? []) acc[v.situacao] = (acc[v.situacao] ?? 0) + 1;
+    return acc;
+  }, [data]);
+
   return (
     <div className="flex h-[calc(100dvh-56px)] flex-col gap-3">
       <motion.div
@@ -324,45 +374,192 @@ export default function PainelMapaPage() {
         </div>
       </motion.div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr] gap-3">
-        <aside className="min-h-0 overflow-y-auto rounded-[18px] border bg-white p-3" style={{ borderColor: "rgba(6,59,59,0.08)" }}>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[11px] font-semibold" style={{ color: "#063B3B" }}>Equipe em campo</p>
-            <span className="text-[10px]" style={{ color: "#94A3B8" }}>15s</span>
+      <div className="grid min-h-0 flex-1 grid-cols-[320px_1fr] gap-3">
+        <aside
+          className="flex min-h-0 flex-col overflow-hidden rounded-[18px] border bg-white"
+          style={{ borderColor: "rgba(6,59,59,0.08)" }}
+        >
+          {/* Tabs */}
+          <div
+            className="flex shrink-0 items-center gap-1 p-1.5"
+            style={{ borderBottom: "1px solid rgba(6,59,59,0.06)" }}
+          >
+            <TabBtn
+              active={aba === "tecnicos"}
+              onClick={() => setAba("tecnicos")}
+              icon={<Users className="h-3 w-3" strokeWidth={2.2} />}
+              label="Equipe"
+              badge={data?.tecnicos.length}
+            />
+            <TabBtn
+              active={aba === "vistorias"}
+              onClick={() => setAba("vistorias")}
+              icon={<ClipboardList className="h-3 w-3" strokeWidth={2.2} />}
+              label="Vistorias"
+              badge={data?.vistorias.length}
+            />
           </div>
-          <div className="space-y-2">
-            {(data?.tecnicos ?? []).map((t) => {
-              const c = statusColor(t.status_operacional);
-              return (
-                <button
-                  key={t.users_id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedTec(t);
-                    if (t.latitude != null && t.longitude != null) {
-                      mapRef.current?.flyTo({
-                        center: [t.longitude, t.latitude],
-                        zoom: Math.max(13.5, mapRef.current?.getZoom() ?? 13.5),
-                        duration: 700,
-                      });
-                    }
-                  }}
-                  className="w-full rounded-xl border p-2.5 text-left transition hover:bg-[#F8FBFA]"
-                  style={{ borderColor: "rgba(6,59,59,0.08)" }}
+
+          {aba === "tecnicos" && (
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "#7A8896" }}>
+                  Equipe em campo
+                </p>
+                <span className="text-[10px]" style={{ color: "#94A3B8" }}>polling 15s</span>
+              </div>
+              <div className="space-y-2">
+                {(data?.tecnicos ?? []).map((t) => {
+                  const c = statusColor(t.status_operacional);
+                  return (
+                    <button
+                      key={t.users_id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTec(t);
+                        if (t.latitude != null && t.longitude != null) {
+                          mapRef.current?.flyTo({
+                            center: [t.longitude, t.latitude],
+                            zoom: Math.max(13.5, mapRef.current?.getZoom() ?? 13.5),
+                            duration: 700,
+                          });
+                        }
+                      }}
+                      className="w-full rounded-xl border p-2.5 text-left transition hover:bg-[#F8FBFA]"
+                      style={{ borderColor: "rgba(6,59,59,0.08)" }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
+                        <p className="truncate text-[12px] font-semibold" style={{ color: "#063B3B" }}>{t.nome}</p>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[10px]" style={{ color: "#7A8896" }}>
+                        <span>{statusLabel(t.status_operacional)}</span>
+                        <span>•</span>
+                        <span>{relTime(t.created_at)}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+                {(data?.tecnicos ?? []).length === 0 && (
+                  <p className="py-8 text-center text-[11px]" style={{ color: "#94A3B8" }}>
+                    Nenhum técnico ativo.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {aba === "vistorias" && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {/* Busca */}
+              <div className="shrink-0 p-2.5">
+                <div
+                  className="flex items-center gap-2 rounded-xl px-2.5 py-1.5"
+                  style={{ background: "#F7F9FB", border: "1px solid rgba(6,59,59,0.06)" }}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />
-                    <p className="truncate text-[12px] font-semibold" style={{ color: "#063B3B" }}>{t.nome}</p>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2 text-[10px]" style={{ color: "#7A8896" }}>
-                    <span>{statusLabel(t.status_operacional)}</span>
-                    <span>•</span>
-                    <span>Ultimo ping: {relTime(t.created_at)}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  <Search className="h-3 w-3" style={{ color: "#94A3B8" }} strokeWidth={2.2} />
+                  <input
+                    type="search"
+                    value={buscaVis}
+                    onChange={(e) => setBuscaVis(e.target.value)}
+                    placeholder="Equipamento, técnico, município…"
+                    className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
+                    style={{ color: "#063B3B" }}
+                  />
+                </div>
+              </div>
+
+              {/* Filtros situação */}
+              <div className="shrink-0 px-2.5">
+                <div className="flex flex-wrap gap-1">
+                  <FiltroPill
+                    active={filtroSit === "todas"}
+                    label="Todas"
+                    n={data?.vistorias.length ?? 0}
+                    color="#063B3B"
+                    onClick={() => setFiltroSit("todas")}
+                  />
+                  {(
+                    [
+                      ["A_VISTORIAR", "A vistoriar", "#F59E0B"],
+                      ["EM_VISTORIA", "Em vistoria", "#3B82F6"],
+                      ["VISTORIADO", "Vistoriado", "#00B388"],
+                      ["AGUARDANDO_REVISITA", "Aguardando rev.", "#F97316"],
+                      ["EM_REVISITA", "Em revisita", "#A855F7"],
+                      ["REVISITADO", "Revisitado", "#0EA5E9"],
+                    ] as const
+                  ).map(([key, label, cor]) => (
+                    <FiltroPill
+                      key={key}
+                      active={filtroSit === key}
+                      label={label}
+                      n={contagemSit[key] ?? 0}
+                      color={cor}
+                      onClick={() => setFiltroSit(key)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Lista */}
+              <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+                <div className="space-y-1.5">
+                  {vistoriasFiltradas.slice(0, 200).map((v) => {
+                    const cor = SITUACAO_COR[v.situacao] ?? "#94A3B8";
+                    const label = SITUACAO_LABEL[v.situacao];
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => {
+                          mapRef.current?.flyTo({
+                            center: [v.longitude, v.latitude],
+                            zoom: Math.max(16, mapRef.current?.getZoom() ?? 16),
+                            duration: 700,
+                          });
+                        }}
+                        className="w-full rounded-lg border p-2 text-left transition hover:bg-[#F8FBFA]"
+                        style={{
+                          borderColor: "rgba(6,59,59,0.06)",
+                          borderLeft: `3px solid ${cor}`,
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-[11.5px] font-semibold" style={{ color: "#063B3B" }}>
+                            {v.equipamento}
+                          </p>
+                          <span
+                            className="shrink-0 rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-[0.08em]"
+                            style={{ background: `${cor}1A`, color: cor }}
+                          >
+                            {label}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[9.5px]" style={{ color: "#7A8896" }}>
+                          <MapPin className="h-2.5 w-2.5" />
+                          <span className="truncate">{v.municipio ?? "—"}</span>
+                          <span>·</span>
+                          <span className="truncate">
+                            {v.tecnico_nome ? v.tecnico_nome : <em style={{ color: "#CBD5E1" }}>sem técnico</em>}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {vistoriasFiltradas.length === 0 && (
+                    <p className="py-8 text-center text-[11px]" style={{ color: "#94A3B8" }}>
+                      Nenhuma vistoria nesse filtro.
+                    </p>
+                  )}
+                  {vistoriasFiltradas.length > 200 && (
+                    <p className="pt-2 text-center text-[10px]" style={{ color: "#94A3B8" }}>
+                      Mostrando 200 de {vistoriasFiltradas.length}. Refine a busca.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </aside>
 
         <section className="relative min-h-0 overflow-hidden rounded-[18px] border" style={{ borderColor: "rgba(6,59,59,0.08)" }}>
@@ -420,6 +617,86 @@ function Chip({
       <span className="text-[10px]" style={{ color: "#7A8896" }}>{label}</span>
       <span className="text-[12px] font-semibold" style={{ color: "#063B3B" }}>{value}</span>
     </div>
+  );
+}
+
+function TabBtn({
+  active,
+  onClick,
+  icon,
+  label,
+  badge,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  badge?: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition"
+      style={{
+        background: active
+          ? "linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)"
+          : "transparent",
+        color: active ? "#00875F" : "#64748B",
+        border: active ? "1px solid rgba(0,179,136,0.25)" : "1px solid transparent",
+      }}
+    >
+      {icon}
+      {label}
+      {badge != null && badge > 0 && (
+        <span
+          className="rounded-full px-1.5 py-[1px] text-[9px] font-bold tabular-nums"
+          style={{
+            background: active ? "rgba(0,179,136,0.18)" : "rgba(6,59,59,0.06)",
+            color: active ? "#00875F" : "#7A8896",
+          }}
+        >
+          {badge >= 1000 ? `${(badge / 1000).toFixed(1)}k` : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function FiltroPill({
+  active,
+  label,
+  n,
+  color,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  n: number;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-semibold transition"
+      style={{
+        background: active ? `${color}1A` : "#F7F9FB",
+        color: active ? color : "#7A8896",
+        border: `1px solid ${active ? `${color}55` : "rgba(6,59,59,0.05)"}`,
+      }}
+    >
+      {label}
+      <span
+        className="rounded-full px-1 text-[9px] font-bold tabular-nums"
+        style={{
+          background: active ? "rgba(255,255,255,0.7)" : "rgba(6,59,59,0.04)",
+        }}
+      >
+        {n}
+      </span>
+    </button>
   );
 }
 

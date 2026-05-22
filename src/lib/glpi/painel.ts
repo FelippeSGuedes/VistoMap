@@ -809,8 +809,53 @@ interface MapaVistoriaRow {
   latitude: number;
   longitude: number;
   status_name: string | null;
+  situacao_id: number | null;
   is_repeat: number;
   tecnico_id: number | null;
+  tecnico_firstname: string | null;
+  tecnico_realname: string | null;
+  tecnico_username: string | null;
+  data_vistoria: string | null;
+}
+
+function resolveSituacaoOperacional(
+  situacaoId: number | null,
+  statusName: string | null,
+  isRepeat: boolean,
+  hasTecnico: boolean
+): import("@/types/painel-mapa").SituacaoOperacional {
+  // 1ª prioridade: campo nativo situaodavistoriafield (1..6)
+  switch (Number(situacaoId ?? 0)) {
+    case 2: return "EM_VISTORIA";
+    case 3: return "VISTORIADO";
+    case 4: return "AGUARDANDO_REVISITA";
+    case 5: return "EM_REVISITA";
+    case 6: return "REVISITADO";
+    case 1: return "A_VISTORIAR";
+  }
+  // Fallback: deriva de statusvistoria + is_repeat
+  const s = (statusName ?? "").trim().toLowerCase();
+  if (s === "reprovada" || s === "reprovado") {
+    return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
+  }
+  if (
+    s === "aprovada" || s === "aprovado" ||
+    s === "finalizada" || s === "finalizado" ||
+    s === "em análise" || s === "em analise"
+  ) {
+    return isRepeat ? "REVISITADO" : "VISTORIADO";
+  }
+  return hasTecnico ? "EM_VISTORIA" : "A_VISTORIAR";
+}
+
+function resolveStatusAprovacao(
+  statusName: string | null
+): PainelMapaVistoria["status_aprovacao"] {
+  const s = (statusName ?? "").trim().toLowerCase();
+  if (s === "aprovada" || s === "aprovado") return "APROVADO";
+  if (s === "reprovada" || s === "reprovado") return "REPROVADO";
+  if (s === "em análise" || s === "em analise") return "EM_ANALISE";
+  return "PENDENTE";
 }
 
 function resolveMapaVistoriaStatus(
@@ -926,14 +971,21 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         REPLACE(f.latitudefield, ',', '.') + 0.0 AS latitude,
         REPLACE(f.longitudefield, ',', '.') + 0.0 AS longitude,
         sv.name AS status_name,
+        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
-        f.users_id_vistoriadorafield AS tecnico_id
+        f.users_id_vistoriadorafield AS tecnico_id,
+        u.firstname AS tecnico_firstname,
+        u.realname AS tecnico_realname,
+        u.name AS tecnico_username,
+        f.datadavistoriafield AS data_vistoria
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
       LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
         ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
       LEFT JOIN \`${TABLE_AUX}\` aux
         ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+      LEFT JOIN \`${TABLE_USERS}\` u
+        ON u.id = f.users_id_vistoriadorafield
       WHERE ne.is_deleted = 0
         AND f.latitudefield IS NOT NULL AND f.longitudefield IS NOT NULL
         AND TRIM(f.latitudefield) <> '' AND TRIM(f.longitudefield) <> ''
@@ -973,6 +1025,12 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
 
   const vistorias: PainelMapaVistoria[] = vistoriasRows.map((r) => {
     const isRevisita = Number(r.is_repeat) === 1;
+    const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
+    const tecnicoNome = hasTecnico
+      ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
+        r.tecnico_username ||
+        null
+      : null;
     return {
       id: r.id,
       equipamento: r.equipamento,
@@ -982,6 +1040,16 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       status: resolveMapaVistoriaStatus(r.status_name, isRevisita),
       is_revisita: isRevisita,
       tecnico_id: r.tecnico_id,
+      tecnico_nome: tecnicoNome,
+      situacao_id: Number(r.situacao_id ?? 0) || 0,
+      situacao: resolveSituacaoOperacional(
+        r.situacao_id,
+        r.status_name,
+        isRevisita,
+        hasTecnico
+      ),
+      status_aprovacao: resolveStatusAprovacao(r.status_name),
+      data_vistoria: r.data_vistoria,
     };
   });
 

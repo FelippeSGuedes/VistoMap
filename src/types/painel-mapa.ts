@@ -28,6 +28,19 @@ export type MapaVistoriaStatus =
   | "REVISITA"
   | "REPROVADO";
 
+/**
+ * Situação operacional consolidada (alinhada ao dropdown GLPI
+ * `situaodavistoriafield`). Usada na nova aba de acompanhamento
+ * operacional do mapa.
+ */
+export type SituacaoOperacional =
+  | "A_VISTORIAR"
+  | "EM_VISTORIA"
+  | "VISTORIADO"
+  | "AGUARDANDO_REVISITA"
+  | "EM_REVISITA"
+  | "REVISITADO";
+
 export interface PainelMapaVistoria {
   id: number;
   equipamento: string;
@@ -37,6 +50,16 @@ export interface PainelMapaVistoria {
   status: MapaVistoriaStatus;
   is_revisita: boolean;
   tecnico_id: number | null;
+  /** Nome do técnico atribuído (null = sem atribuição). */
+  tecnico_nome: string | null;
+  /** ID do dropdown situaodavistoria (1..6). 0 = não definido. */
+  situacao_id: number;
+  /** Situação operacional consolidada (deriva de situacao_id + flags). */
+  situacao: SituacaoOperacional;
+  /** Status de aprovação (Em análise / Aprovado / Reprovado) — pra UI. */
+  status_aprovacao: "EM_ANALISE" | "APROVADO" | "REPROVADO" | "PENDENTE";
+  /** Data da vistoria GLPI (datadavistoriafield). */
+  data_vistoria: string | null;
 }
 
 export interface PainelMapaResponse {
