@@ -154,11 +154,21 @@ let LOGO_PROMISE: Promise<HTMLImageElement | null> | null = null;
 function loadLogo(): Promise<HTMLImageElement | null> {
   if (LOGO_PROMISE) return LOGO_PROMISE;
   LOGO_PROMISE = new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null); // sem logo: continua sem watermark de logo
-    img.src = "/logo-marca.png";
+    // Tenta múltiplas variações de casing (Linux case-sensitive).
+    const candidatos = ["/logo-marca.PNG", "/logo-marca.png", "/logo_app.png"];
+    let i = 0;
+    const tentar = () => {
+      if (i >= candidatos.length) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        i++;
+        tentar();
+      };
+      img.src = candidatos[i];
+    };
+    tentar();
   });
   return LOGO_PROMISE;
 }
@@ -176,11 +186,13 @@ async function stampWatermark(
 ): Promise<void> {
   const W = canvas.width;
   const H = canvas.height;
-  // Padding e tipografia escalonadas ao tamanho da imagem (legíveis em 1600px).
-  const scale = Math.max(1, W / 1200);
-  const pad = Math.round(14 * scale);
-  const fontSize = Math.round(15 * scale);
-  const lineGap = Math.round(6 * scale);
+  // Escala generosa: a menor dimensão garante visibilidade em retrato/paisagem.
+  // Base 1200px; min 1.0 / max 3.0 pra não saturar em fotos enormes.
+  const base = Math.min(W, H);
+  const scale = Math.min(3.0, Math.max(1.4, base / 900));
+  const pad = Math.round(22 * scale);
+  const fontSize = Math.round(28 * scale);
+  const lineGap = Math.round(10 * scale);
 
   // ── Textos canto inferior esquerdo ──────────────────────────────
   const lines: string[] = [];
@@ -211,20 +223,20 @@ async function stampWatermark(
   const blockX = pad;
   const blockY = H - pad - blockH;
 
-  // Fundo pill arredondado semi-transparente
-  ctx.fillStyle = "rgba(0,0,0,0.42)";
-  roundRect(ctx, blockX, blockY, blockW, blockH, Math.round(8 * scale));
+  // Fundo pill arredondado mais opaco pra legibilidade forte
+  ctx.fillStyle = "rgba(0,0,0,0.62)";
+  roundRect(ctx, blockX, blockY, blockW, blockH, Math.round(14 * scale));
   ctx.fill();
-  // Borda fina teal
-  ctx.strokeStyle = "rgba(94,255,217,0.35)";
-  ctx.lineWidth = Math.max(1, scale * 0.7);
-  roundRect(ctx, blockX, blockY, blockW, blockH, Math.round(8 * scale));
+  // Borda teal mais visível
+  ctx.strokeStyle = "rgba(94,255,217,0.55)";
+  ctx.lineWidth = Math.max(1.5, scale * 1.1);
+  roundRect(ctx, blockX, blockY, blockW, blockH, Math.round(14 * scale));
   ctx.stroke();
 
-  // Textos brancos com leve shadow
+  // Textos brancos com shadow forte
   ctx.fillStyle = "#fff";
-  ctx.shadowColor = "rgba(0,0,0,0.85)";
-  ctx.shadowBlur = Math.round(3 * scale);
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = Math.round(5 * scale);
   for (let i = 0; i < lines.length; i++) {
     const x = blockX + pad * 0.7;
     const y =
@@ -239,14 +251,27 @@ async function stampWatermark(
   // ── Logo canto superior direito ─────────────────────────────────
   const logo = await loadLogo();
   if (logo && logo.width > 0) {
-    const targetW = Math.round(78 * scale);
+    // Largura alvo: ~16% da menor dimensão da foto (visível mas não invasivo).
+    const targetW = Math.round(Math.min(W, H) * 0.18);
     const ratio = logo.height / logo.width;
     const targetH = Math.round(targetW * ratio);
     ctx.save();
-    // sombra suave
-    ctx.shadowColor = "rgba(0,0,0,0.55)";
-    ctx.shadowBlur = Math.round(6 * scale);
-    ctx.globalAlpha = 0.95;
+    // Backdrop sutil escuro atrás do logo pra garantir contraste em fundo claro
+    const bgPad = Math.round(10 * scale);
+    ctx.fillStyle = "rgba(0,0,0,0.34)";
+    roundRect(
+      ctx,
+      W - targetW - pad - bgPad,
+      pad - bgPad / 2,
+      targetW + bgPad * 2,
+      targetH + bgPad,
+      Math.round(12 * scale)
+    );
+    ctx.fill();
+    // Logo com sombra
+    ctx.shadowColor = "rgba(0,0,0,0.65)";
+    ctx.shadowBlur = Math.round(10 * scale);
+    ctx.globalAlpha = 1.0;
     ctx.drawImage(logo, W - targetW - pad, pad, targetW, targetH);
     ctx.restore();
   }
