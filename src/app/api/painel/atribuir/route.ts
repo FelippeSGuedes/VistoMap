@@ -36,7 +36,11 @@ export async function POST(req: Request) {
       ).then((r) => r[0]),
     ]);
 
-    const affected = await atribuirVistoria(vId, tId, !!body.regenerar_pdf);
+    const { affected, situacao } = await atribuirVistoria(
+      vId,
+      tId,
+      !!body.regenerar_pdf
+    );
 
     // Audit fire-and-forget — não bloqueia resposta.
     const tecNome = tecRow
@@ -57,7 +61,7 @@ export async function POST(req: Request) {
         : `Atribuída a ${tecNome}`,
     });
 
-    return NextResponse.json({ ok: true, affected });
+    return NextResponse.json({ ok: true, affected, situacao });
   } catch (err) {
     console.error("[api/painel/atribuir] error", err);
     return NextResponse.json(

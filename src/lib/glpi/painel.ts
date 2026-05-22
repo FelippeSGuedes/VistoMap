@@ -2,12 +2,13 @@ import "server-only";
 import { execute, query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
+  PENDENCIA_CPFL,
   SITUACAO_AGUARDANDO_REVISITA,
   SITUACAO_COLUMN,
   SITUACAO_EM_REVISITA,
+  SITUACAO_EM_VISTORIA,
   SITUACAO_REVISITADO,
-  SITUACAO_VISTORIADO,
-  STATUS_VISTORIA_APROVADO,
+  STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
   TABLE_FIELDS,
@@ -642,17 +643,20 @@ function nowDateTime(): string {
 }
 
 /**
- * Aprova uma vistoria:
- *   - statusvistoria = Aprovado (3)
- *   - situaodavistoria = Vistoriado (3) ou Revisitado (6) se era revisita
- *   - dataaprovaoconcessionriafield = agora
- *   - aux.approval_status = 'APROVADO'
- *   - aux.is_repeat = 0 (sai da fila de revisitas)
+ * Aprova uma vistoria (admin internamente, antes do envio à CPFL).
+ *
+ * Comportamento alinhado ao fluxo operacional real:
+ *   - statusvistoria = Em Análise (5)
+ *   - situaodavistoria = Revisitado (6) — caso encerrado pelo admin
+ *   - pendencia = Pendência CPFL (1)
+ *   - datadavistoriafield = agora
+ *   - dataenvioconcessionriafield = agora
+ *   - NÃO preenche dataaprovaoconcessionria (esse campo é da CPFL)
+ *   - aux.approval_status = 'APROVADO'; is_repeat = 0 (sai da fila revisitas)
  */
 export async function aprovarVistoria(vistoriaId: number): Promise<{
   affected: number;
   eraRevisita: boolean;
-  situacaoFinal: number;
 }> {
   const [auxRow] = await query<{ is_repeat: number }>(
     `SELECT COALESCE(is_repeat,0) AS is_repeat
@@ -661,29 +665,38 @@ export async function aprovarVistoria(vistoriaId: number): Promise<{
     [vistoriaId]
   );
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
-  const situacaoFinal = eraRevisita ? SITUACAO_REVISITADO : SITUACAO_VISTORIADO;
   const now = nowDateTime();
 
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET plugin_fields_statusvistoriafielddropdowns_id = ?,
+            plugin_fields_pendnciafielddropdowns_id = ?,
             \`${SITUACAO_COLUMN}\` = ?,
-            dataaprovaoconcessionriafield = ?
+            datadavistoriafield = ?,
+            dataenvioconcessionriafield = ?
       WHERE items_id = ?`,
-    [STATUS_VISTORIA_APROVADO, situacaoFinal, now, vistoriaId]
+    [
+      STATUS_VISTORIA_EM_ANALISE,
+      PENDENCIA_CPFL,
+      SITUACAO_REVISITADO,
+      now,
+      now,
+      vistoriaId,
+    ]
   );
 
-  // Aux: limpa flag revisita + marca approval_status aprovado.
+  // Aux: marca como aprovado internamente + remove flag revisita.
   await execute(
     `UPDATE \`${TABLE_AUX}\`
         SET approval_status = 'APROVADO',
             is_repeat = 0,
-            approved_at = NOW()
+            approved_at = NOW(),
+            project_status = 'PENDENTE'
       WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
     [vistoriaId]
   );
 
-  return { affected: r.affectedRows, eraRevisita, situacaoFinal };
+  return { affected: r.affectedRows, eraRevisita };
 }
 
 /**
@@ -728,20 +741,35 @@ export async function reprovarVistoria(
 /* ── Atribuir vistoria a técnico ────────────────────────────────── */
 
 /**
- * Atualiza `users_id_vistoriadorafield` no GLPI Fields.
- * Marca também project_status='PENDENTE' na aux table para que o worker
- * regere o PDF se for o caso.
+ * Atribui vistoria a um técnico + ajusta situação operacional.
+ *
+ *   - users_id_vistoriadorafield = tecnicoId
+ *   - situaodavistoria:
+ *       • Em Revisita (5) se aux.is_repeat=1
+ *       • Em Vistoria (2) caso contrário
+ *   - Opcional: project_status='PENDENTE' (worker regera PDF)
  */
 export async function atribuirVistoria(
   vistoriaId: number,
   tecnicoId: number,
   marcarProjetoPendente: boolean
-): Promise<number> {
+): Promise<{ affected: number; situacao: number }> {
+  // Detecta se é revisita pra decidir situação.
+  const [auxRow] = await query<{ is_repeat: number }>(
+    `SELECT COALESCE(is_repeat,0) AS is_repeat
+       FROM \`${TABLE_AUX}\`
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}' LIMIT 1`,
+    [vistoriaId]
+  );
+  const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
+  const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_EM_VISTORIA;
+
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`
-        SET users_id_vistoriadorafield = ?
+        SET users_id_vistoriadorafield = ?,
+            \`${SITUACAO_COLUMN}\` = ?
       WHERE items_id = ?`,
-    [tecnicoId, vistoriaId]
+    [tecnicoId, situacao, vistoriaId]
   );
   if (marcarProjetoPendente) {
     await execute(
@@ -751,7 +779,7 @@ export async function atribuirVistoria(
       [vistoriaId]
     );
   }
-  return r.affectedRows;
+  return { affected: r.affectedRows, situacao };
 }
 
 /* ── Mapa operacional (tempo real) ─────────────────────────────── */

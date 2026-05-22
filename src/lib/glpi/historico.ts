@@ -200,12 +200,14 @@ export async function fetchHistoricoAnalytics(
     total: number;
     aprovadas: number;
     revisitas: number;
+    cidades: number;
   }>(
     `
       SELECT u.id, u.name, u.firstname, u.realname,
              COUNT(*) AS total,
              SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
-             SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas
+             SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas,
+             COUNT(DISTINCT TRIM(f.municipiofield)) AS cidades
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         INNER JOIN glpi_users u ON u.id = f.users_id_vistoriadorafield
@@ -218,7 +220,7 @@ export async function fetchHistoricoAnalytics(
          AND sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
        GROUP BY u.id
        ORDER BY total DESC
-       LIMIT 10
+       LIMIT 50
     `,
     [inicio]
   );
@@ -271,6 +273,7 @@ export async function fetchHistoricoAnalytics(
     total: Number(r.total) || 0,
     aprovadas: Number(r.aprovadas) || 0,
     revisitas: Number(r.revisitas) || 0,
+    cidades: Number(r.cidades) || 0,
     kmPercorrido:
       kmPorTecnico.get(r.id) != null
         ? Math.round((kmPorTecnico.get(r.id) ?? 0) * 10) / 10

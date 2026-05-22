@@ -193,6 +193,7 @@ export interface HistoricoAnalytics {
     total: number;
     aprovadas: number;
     revisitas: number;
+    cidades: number;
     kmPercorrido?: number;
   }>;
   kmOperacional: number;

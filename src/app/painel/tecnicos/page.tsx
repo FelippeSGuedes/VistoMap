@@ -8,15 +8,27 @@
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import {
+  CheckCircle2,
   Clock,
   Mail,
   MapPin,
+  Navigation,
   Phone,
   Search,
   Send,
+  TrendingUp,
 } from "lucide-react";
-import { painelService } from "@/services/painel";
+import { painelService, type HistoricoAnalytics } from "@/services/painel";
 import type { TecnicoAtivo } from "@/types";
+
+interface TecnicoEnriquecido extends TecnicoAtivo {
+  total30d: number;
+  aprovadas30d: number;
+  revisitas30d: number;
+  cidades30d: number;
+  kmPercorrido30d: number;
+  produtividadePct: number;
+}
 
 const STATUS_CFG: Record<
   TecnicoAtivo["status"],
@@ -41,14 +53,20 @@ function relativo(iso?: string): string {
 
 export default function TecnicosPage() {
   const [tecnicos, setTecnicos] = useState<TecnicoAtivo[]>([]);
+  const [historico, setHistorico] = useState<HistoricoAnalytics | null>(null);
   const [query, setQuery] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<TecnicoAtivo["status"] | "todos">("todos");
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const t = await painelService.fetchTecnicos();
-      if (alive) setTecnicos(t);
+      const [t, h] = await Promise.all([
+        painelService.fetchTecnicos(),
+        painelService.fetchHistorico(30),
+      ]);
+      if (!alive) return;
+      setTecnicos(t);
+      setHistorico(h);
     };
     load();
     const id = window.setInterval(load, 20000);
@@ -58,9 +76,29 @@ export default function TecnicosPage() {
     };
   }, []);
 
+  // Merge tecnicos + ranking p/ KPIs 30d. Produtividade = total / topo do ranking.
+  const enriquecidos = useMemo<TecnicoEnriquecido[]>(() => {
+    const ranking = historico?.rankingTecnicos ?? [];
+    const topo = Math.max(...ranking.map((r) => r.total), 1);
+    const byId = new Map(ranking.map((r) => [String(r.id), r]));
+    return tecnicos.map((t) => {
+      const r = byId.get(t.id);
+      const total = r?.total ?? 0;
+      return {
+        ...t,
+        total30d: total,
+        aprovadas30d: r?.aprovadas ?? 0,
+        revisitas30d: r?.revisitas ?? 0,
+        cidades30d: r?.cidades ?? 0,
+        kmPercorrido30d: r?.kmPercorrido ?? 0,
+        produtividadePct: Math.round((total / topo) * 100),
+      };
+    });
+  }, [tecnicos, historico]);
+
   const lista = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return tecnicos.filter((t) => {
+    return enriquecidos.filter((t) => {
       if (filtroStatus !== "todos" && t.status !== filtroStatus) return false;
       if (!q) return true;
       return (
@@ -69,7 +107,7 @@ export default function TecnicosPage() {
         t.municipio?.toLowerCase().includes(q)
       );
     });
-  }, [query, filtroStatus, tecnicos]);
+  }, [query, filtroStatus, enriquecidos]);
 
   const ativos = tecnicos.filter((t) => t.status === "em-campo").length;
   const naBase = tecnicos.filter((t) => t.status === "base").length;
@@ -236,41 +274,63 @@ export default function TecnicosPage() {
                 </Meta>
               </div>
 
-              {/* KPIs */}
+              {/* KPIs atuais (atribuídas + hoje) */}
               <div className="relative mt-3 grid grid-cols-2 gap-1.5">
-                <div
-                  className="rounded-xl px-2.5 py-1.5"
-                  style={{
-                    background: "#F7F9FB",
-                    border: "1px solid rgba(6,59,59,0.05)",
-                  }}
-                >
-                  <p
-                    className="text-[8.5px] font-bold uppercase tracking-[0.12em]"
-                    style={{ color: "#A0ACBA" }}
-                  >
-                    Atribuídas
+                <KpiBox
+                  label="Atribuídas"
+                  value={t.atribuidas}
+                  bg="#F7F9FB"
+                  borderColor="rgba(6,59,59,0.05)"
+                  labelColor="#A0ACBA"
+                  valueColor="#063B3B"
+                />
+                <KpiBox
+                  label="Hoje"
+                  value={t.concluidasHoje}
+                  bg="#ECFDF5"
+                  borderColor="rgba(0,179,136,0.22)"
+                  labelColor="#00875F"
+                  valueColor="#00875F"
+                />
+              </div>
+
+              {/* KPIs 30 dias — produtividade operacional */}
+              <div className="relative mt-2 rounded-xl p-2.5" style={{ background: "#FAFBFC", border: "1px solid rgba(6,59,59,0.05)" }}>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>
+                    Últimos 30 dias
                   </p>
-                  <p className="mt-0.5 text-[18px] font-semibold tabular-nums" style={{ color: "#063B3B" }}>
-                    {t.atribuidas}
-                  </p>
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold tabular-nums" style={{ color: t.produtividadePct >= 70 ? "#00875F" : t.produtividadePct >= 30 ? "#92400E" : "#94A3B8" }}>
+                    <TrendingUp className="h-2.5 w-2.5" strokeWidth={2.5} />
+                    {t.produtividadePct}%
+                  </span>
                 </div>
-                <div
-                  className="rounded-xl px-2.5 py-1.5"
-                  style={{
-                    background: "#ECFDF5",
-                    border: "1px solid rgba(0,179,136,0.22)",
-                  }}
-                >
-                  <p
-                    className="text-[8.5px] font-bold uppercase tracking-[0.12em]"
-                    style={{ color: "#00875F" }}
-                  >
-                    Concluídas hoje
-                  </p>
-                  <p className="mt-0.5 text-[18px] font-semibold tabular-nums" style={{ color: "#00875F" }}>
-                    {t.concluidasHoje}
-                  </p>
+                {/* progress produtividade */}
+                <div className="mb-2 h-1 overflow-hidden rounded-full" style={{ background: "rgba(6,59,59,0.06)" }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.max(t.produtividadePct, 2)}%`,
+                      background: t.produtividadePct >= 70 ? "#00B388" : t.produtividadePct >= 30 ? "#F59E0B" : "#94A3B8",
+                    }}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <MiniStat
+                    icon={<CheckCircle2 className="h-2.5 w-2.5" strokeWidth={2.3} />}
+                    value={t.total30d}
+                    label="vistorias"
+                  />
+                  <MiniStat
+                    icon={<MapPin className="h-2.5 w-2.5" strokeWidth={2.3} />}
+                    value={t.cidades30d}
+                    label="cidades"
+                  />
+                  <MiniStat
+                    icon={<Navigation className="h-2.5 w-2.5" strokeWidth={2.3} />}
+                    value={t.kmPercorrido30d > 0 ? `${t.kmPercorrido30d}` : "0"}
+                    label="km"
+                  />
                 </div>
               </div>
 
@@ -318,6 +378,70 @@ export default function TecnicosPage() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function KpiBox({
+  label,
+  value,
+  bg,
+  borderColor,
+  labelColor,
+  valueColor,
+}: {
+  label: string;
+  value: number | string;
+  bg: string;
+  borderColor: string;
+  labelColor: string;
+  valueColor: string;
+}) {
+  return (
+    <div
+      className="rounded-xl px-2.5 py-1.5"
+      style={{ background: bg, border: `1px solid ${borderColor}` }}
+    >
+      <p
+        className="text-[8.5px] font-bold uppercase tracking-[0.12em]"
+        style={{ color: labelColor }}
+      >
+        {label}
+      </p>
+      <p
+        className="mt-0.5 text-[18px] font-semibold tabular-nums"
+        style={{ color: valueColor }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function MiniStat({
+  icon,
+  value,
+  label,
+}: {
+  icon: React.ReactNode;
+  value: number | string;
+  label: string;
+}) {
+  return (
+    <div className="flex flex-col">
+      <span
+        className="flex items-center gap-1 text-[13px] font-semibold tabular-nums leading-none"
+        style={{ color: "#063B3B" }}
+      >
+        <span style={{ color: "#7A8896" }}>{icon}</span>
+        {value}
+      </span>
+      <span
+        className="mt-0.5 text-[8.5px] font-medium uppercase tracking-[0.1em]"
+        style={{ color: "#94A3B8" }}
+      >
+        {label}
+      </span>
     </div>
   );
 }

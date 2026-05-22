@@ -10,7 +10,7 @@ import { upsertAuxiliaryProject } from "@/lib/glpi/auxiliary";
 import {
   AUX_STATUS_PENDENTE,
   PENDENCIA_CPFL,
-  SITUACAO_EM_REVISITA,
+  SITUACAO_REVISITADO,
   SITUACAO_VISTORIADO,
   STATUS_VISTORIA_EM_ANALISE,
   type DropdownKey,
@@ -151,7 +151,8 @@ export async function POST(
       [id]
     );
     const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
-    const situacaoFinal = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_VISTORIADO;
+    // Técnico terminou: Revisitado (6) se era revisita, Vistoriado (3) caso contrário.
+    const situacaoFinal = eraRevisita ? SITUACAO_REVISITADO : SITUACAO_VISTORIADO;
 
     await updateVistoriaFields(id, {
       latitudefield: String(payload.latitude),
