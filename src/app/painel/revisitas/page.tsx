@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
+import { classificarMotivoClient } from "@/utils/motivos-client";
 import type {
   RevisitaPendente,
   TecnicoAtivo,
@@ -177,7 +178,7 @@ function RevisitaCard({
         </div>
       </div>
 
-      {/* MOTIVO — bloco de destaque visual */}
+      {/* MOTIVO — bloco de destaque visual com categoria classificada */}
       <div
         className="mx-5 mb-3 ml-6 rounded-xl px-3 py-2.5"
         style={{
@@ -185,9 +186,28 @@ function RevisitaCard({
           border: `1px solid ${pri.border}`,
         }}
       >
-        <p className="mb-0.5 text-[9px] font-bold uppercase tracking-[0.16em]" style={{ color: pri.fg }}>
-          Motivo da reprovação
-        </p>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="text-[9px] font-bold uppercase tracking-[0.16em]" style={{ color: pri.fg }}>
+            Motivo da reprovação
+          </p>
+          {(() => {
+            const cat = classificarMotivoClient(r.motivoReprovacao);
+            return (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-[0.12em]"
+                style={{
+                  background: `${cat.color}1F`,
+                  color: cat.color,
+                  border: `1px solid ${cat.color}55`,
+                }}
+                title={cat.label}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: cat.color }} />
+                {cat.short}
+              </span>
+            );
+          })()}
+        </div>
         <p className="text-[12.5px] font-medium leading-snug" style={{ color: "#1E293B" }}>
           {r.motivoReprovacao || "Não informado"}
         </p>

@@ -197,6 +197,14 @@ export interface HistoricoAnalytics {
     kmPercorrido?: number;
   }>;
   kmOperacional: number;
+  motivosReprovacao: Array<{
+    id: string;
+    label: string;
+    color: string;
+    total: number;
+    pct: number;
+    exemplos: string[];
+  }>;
 }
 
 export async function fetchHistorico(dias = 30): Promise<HistoricoAnalytics> {
@@ -209,6 +217,7 @@ export async function fetchHistorico(dias = 30): Promise<HistoricoAnalytics> {
     topMunicipios: [],
     rankingTecnicos: [],
     kmOperacional: 0,
+    motivosReprovacao: [],
   };
   return tryReal(
     api.get<HistoricoAnalytics>(`/painel/historico?dias=${dias}`).then((r) => r.data),

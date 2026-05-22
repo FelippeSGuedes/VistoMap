@@ -7,6 +7,7 @@ import {
   TABLE_NE,
   TABLE_STATUS_VISTORIA,
 } from "./constants";
+import { agregarMotivos, type MotivoAgregado } from "./motivos";
 
 /**
  * Histórico operacional agregado para /painel/historico.
@@ -57,6 +58,7 @@ export interface HistoricoAnalytics {
     kmPercorrido?: number;
   }>;
   kmOperacional: number;
+  motivosReprovacao: MotivoAgregado[];
 }
 
 function isoDaysAgo(d: number): string {
@@ -280,6 +282,35 @@ export async function fetchHistoricoAnalytics(
         : undefined,
   }));
 
+  /* ── Motivos de reprovação (classificados) ───────────────────── */
+  // Coleta motivofield bruto de vistorias reprovadas no período +
+  // de revisitas pendentes (is_repeat=1) — qualquer registro com motivo.
+  // Classifica por keywords (lib motivos.ts) → distribuição %.
+  const motivosRows = await query<{ motivo: string | null }>(
+    `
+      SELECT f.motivofield AS motivo
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+                ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+        LEFT JOIN \`${TABLE_AUX}\` aux
+                ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+       WHERE f.motivofield IS NOT NULL
+         AND TRIM(f.motivofield) <> ''
+         AND (
+              sv.name IN ('Reprovada','Reprovado')
+           OR COALESCE(aux.is_repeat, 0) = 1
+         )
+         AND (
+              f.datadavistoriafield IS NULL
+           OR DATE(f.datadavistoriafield) >= ?
+         )
+       LIMIT 2000
+    `,
+    [inicio]
+  );
+  const motivosReprovacao = agregarMotivos(motivosRows.map((r) => r.motivo));
+
   const aprovacaoPct = finalizadas > 0
     ? Math.round((aprovadas / finalizadas) * 100)
     : 0;
@@ -307,5 +338,6 @@ export async function fetchHistoricoAnalytics(
     })),
     rankingTecnicos,
     kmOperacional: Math.round(kmTotal * 10) / 10,
+    motivosReprovacao,
   };
 }
