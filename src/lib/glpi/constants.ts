@@ -39,10 +39,32 @@ export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
   localdeinstalacao: "plugin_fields_localdeinstalaofielddropdowns_id",
 };
 
-/** Status do plugin: 5 = "Em análise". */
+/** Status do plugin: 3=Aprovado, 4=Reprovado, 5=Em análise. */
+export const STATUS_VISTORIA_APROVADO = 3;
+export const STATUS_VISTORIA_REPROVADO = 4;
 export const STATUS_VISTORIA_EM_ANALISE = 5;
 /** Pendência: 1 = "Pendência CPFL". */
 export const PENDENCIA_CPFL = 1;
+
+/**
+ * Situação operacional da vistoria (campo separado de statusvistoria).
+ * Dropdown: glpi_plugin_fields_situaodavistoriafielddropdowns.
+ *   1 = A Vistoriar
+ *   2 = Em Vistoria
+ *   3 = Vistoriado
+ *   4 = Aguardando Revisita
+ *   5 = Em Revisita
+ *   6 = Revisitado
+ */
+export const SITUACAO_A_VISTORIAR = 1;
+export const SITUACAO_EM_VISTORIA = 2;
+export const SITUACAO_VISTORIADO = 3;
+export const SITUACAO_AGUARDANDO_REVISITA = 4;
+export const SITUACAO_EM_REVISITA = 5;
+export const SITUACAO_REVISITADO = 6;
+
+export const SITUACAO_COLUMN =
+  "plugin_fields_situaodavistoriafielddropdowns_id";
 
 /** Status válidos da aux table (`project_status` ENUM do plugin). */
 export const AUX_STATUS_PENDENTE = "PENDENTE";

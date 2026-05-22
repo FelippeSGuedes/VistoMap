@@ -146,6 +146,29 @@ export async function editarVistoria(input: EditarVistoriaInput) {
   return data;
 }
 
+export async function aprovarVistoria(vistoriaId: number | string) {
+  const id = String(vistoriaId).replace(/^NE-|^rev-/, "");
+  const { data } = await api.post<{
+    ok: true;
+    affected: number;
+    eraRevisita: boolean;
+    situacaoFinal: number;
+  }>(`/painel/vistoria/${id}/aprovar`);
+  return data;
+}
+
+export async function reprovarVistoria(
+  vistoriaId: number | string,
+  motivo?: string
+) {
+  const id = String(vistoriaId).replace(/^NE-|^rev-/, "");
+  const { data } = await api.post<{
+    ok: true;
+    affected: number;
+  }>(`/painel/vistoria/${id}/reprovar`, motivo ? { motivo } : {});
+  return data;
+}
+
 export interface HistoricoAnalytics {
   periodo: { inicio: string; fim: string; dias: number };
   totais: {
@@ -221,4 +244,6 @@ export const painelService = {
   fetchVistoriaFiles,
   atribuir,
   editarVistoria,
+  aprovarVistoria,
+  reprovarVistoria,
 };

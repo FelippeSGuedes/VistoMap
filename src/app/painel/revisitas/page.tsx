@@ -66,12 +66,14 @@ function RevisitaCard({
   onAtribuir,
   onEditar,
   onRegerar,
+  onAprovar,
   submitting,
 }: {
   r: RevisitaPendente;
   onAtribuir: () => void;
   onEditar: () => void;
   onRegerar: () => void;
+  onAprovar: () => void;
   submitting: boolean;
 }) {
   const pri = PRIORIDADE_CONFIG[r.prioridade];
@@ -247,11 +249,12 @@ function RevisitaCard({
         </button>
         <button
           type="button"
-          onClick={onEditar}
-          className="ml-auto flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
-          style={{ background: "#FFF7ED", color: "#C2410C", border: "1px solid rgba(249,115,22,0.18)" }}
+          onClick={onAprovar}
+          disabled={submitting}
+          className="ml-auto flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
+          style={{ background: "linear-gradient(135deg,#00C99B,#00875F)", color: "#fff", border: "1px solid rgba(0,135,95,0.45)" }}
         >
-          <CheckCircle2 className="h-3 w-3" strokeWidth={2.2} />
+          <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
           Aprovar Revisita
         </button>
       </div>
@@ -325,6 +328,29 @@ export default function RevisitasPage() {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? "Falha ao atribuir.";
+      setToast(`❌ ${msg}`);
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const handleAprovar = async (r: RevisitaPendente) => {
+    if (!confirm(`Aprovar ${r.equipamento}? Sai da fila de revisitas.`)) return;
+    setSubmitting(r.id);
+    try {
+      const res = await painelService.aprovarVistoria(r.id);
+      setToast(
+        res.eraRevisita
+          ? `Revisita de ${r.equipamento} aprovada · situação: Revisitado.`
+          : `${r.equipamento} aprovada · situação: Vistoriado.`
+      );
+      setTimeout(() => setToast(null), 3000);
+      carregar();
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Falha ao aprovar.";
       setToast(`❌ ${msg}`);
       setTimeout(() => setToast(null), 4000);
     } finally {
@@ -452,6 +478,7 @@ export default function RevisitasPage() {
                 onAtribuir={() => setAtribuirOpen(r)}
                 onEditar={() => setEditarOpen(r)}
                 onRegerar={() => handleRegerarPdf(r)}
+                onAprovar={() => handleAprovar(r)}
                 submitting={submitting === r.id}
               />
             ))}

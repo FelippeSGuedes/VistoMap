@@ -2,6 +2,13 @@ import "server-only";
 import { execute, query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
+  SITUACAO_AGUARDANDO_REVISITA,
+  SITUACAO_COLUMN,
+  SITUACAO_EM_REVISITA,
+  SITUACAO_REVISITADO,
+  SITUACAO_VISTORIADO,
+  STATUS_VISTORIA_APROVADO,
+  STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
   TABLE_FIELDS,
   TABLE_NE,
@@ -359,15 +366,23 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
               ON u.id = f.users_id_vistoriadorafield
       WHERE ne.is_deleted = 0
         AND (
-              sv.name IN ('Reprovada','Reprovado')
+              -- Situacao operacional explicita (campo novo): aguardando ou em revisita
+              f.\`${SITUACAO_COLUMN}\` IN (?, ?)
+              -- OU statusvistoria = Reprovado e ainda nao foi aprovado
+           OR sv.name IN ('Reprovada','Reprovado')
+              -- OU flag is_repeat=1 sem status final
            OR (
                 COALESCE(aux.is_repeat, 0) = 1
             AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Em análise','Em analise','Finalizada','Finalizado'))
               )
         )
+        -- Sempre exclui aprovados (qualquer caminho)
+        AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado'))
+        AND COALESCE(aux.approval_status, '') <> 'APROVADO'
       ORDER BY f.datadavistoriafield DESC
       LIMIT 100
-    `
+    `,
+    [SITUACAO_AGUARDANDO_REVISITA, SITUACAO_EM_REVISITA]
   );
 
   return rows.map((r) => {
@@ -609,6 +624,105 @@ export async function atualizarCamposVistoria(
     );
   }
   return { affected: result.affectedRows, before };
+}
+
+/* ── Aprovar / Reprovar (admin) ──────────────────────────────────── */
+
+function nowDateTime(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    d.getFullYear() +
+    "-" + pad(d.getMonth() + 1) +
+    "-" + pad(d.getDate()) +
+    " " + pad(d.getHours()) +
+    ":" + pad(d.getMinutes()) +
+    ":" + pad(d.getSeconds())
+  );
+}
+
+/**
+ * Aprova uma vistoria:
+ *   - statusvistoria = Aprovado (3)
+ *   - situaodavistoria = Vistoriado (3) ou Revisitado (6) se era revisita
+ *   - dataaprovaoconcessionriafield = agora
+ *   - aux.approval_status = 'APROVADO'
+ *   - aux.is_repeat = 0 (sai da fila de revisitas)
+ */
+export async function aprovarVistoria(vistoriaId: number): Promise<{
+  affected: number;
+  eraRevisita: boolean;
+  situacaoFinal: number;
+}> {
+  const [auxRow] = await query<{ is_repeat: number }>(
+    `SELECT COALESCE(is_repeat,0) AS is_repeat
+       FROM \`${TABLE_AUX}\`
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}' LIMIT 1`,
+    [vistoriaId]
+  );
+  const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
+  const situacaoFinal = eraRevisita ? SITUACAO_REVISITADO : SITUACAO_VISTORIADO;
+  const now = nowDateTime();
+
+  const r = await execute(
+    `UPDATE \`${TABLE_FIELDS}\`
+        SET plugin_fields_statusvistoriafielddropdowns_id = ?,
+            \`${SITUACAO_COLUMN}\` = ?,
+            dataaprovaoconcessionriafield = ?
+      WHERE items_id = ?`,
+    [STATUS_VISTORIA_APROVADO, situacaoFinal, now, vistoriaId]
+  );
+
+  // Aux: limpa flag revisita + marca approval_status aprovado.
+  await execute(
+    `UPDATE \`${TABLE_AUX}\`
+        SET approval_status = 'APROVADO',
+            is_repeat = 0,
+            approved_at = NOW()
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
+    [vistoriaId]
+  );
+
+  return { affected: r.affectedRows, eraRevisita, situacaoFinal };
+}
+
+/**
+ * Reprova uma vistoria → vai pra fila de revisitas:
+ *   - statusvistoria = Reprovado (4)
+ *   - situaodavistoria = Aguardando Revisita (4)
+ *   - aux.approval_status = 'REPROVADO'
+ *   - aux.is_repeat = 1
+ */
+export async function reprovarVistoria(
+  vistoriaId: number,
+  motivo?: string
+): Promise<{ affected: number }> {
+  const sets: string[] = [
+    "plugin_fields_statusvistoriafielddropdowns_id = ?",
+    `\`${SITUACAO_COLUMN}\` = ?`,
+  ];
+  const params: unknown[] = [STATUS_VISTORIA_REPROVADO, SITUACAO_AGUARDANDO_REVISITA];
+  if (motivo != null) {
+    sets.push("motivofield = ?");
+    params.push(motivo);
+  }
+  params.push(vistoriaId);
+  const r = await execute(
+    `UPDATE \`${TABLE_FIELDS}\` SET ${sets.join(", ")} WHERE items_id = ?`,
+    params
+  );
+
+  // Aux: marca como revisita + project_status PENDENTE p/ worker regerar PDF.
+  await execute(
+    `UPDATE \`${TABLE_AUX}\`
+        SET approval_status = 'REPROVADO',
+            is_repeat = 1,
+            project_status = 'PENDENTE'
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
+    [vistoriaId]
+  );
+
+  return { affected: r.affectedRows };
 }
 
 /* ── Atribuir vistoria a técnico ────────────────────────────────── */

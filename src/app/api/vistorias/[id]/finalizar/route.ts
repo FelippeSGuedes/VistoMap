@@ -10,9 +10,12 @@ import { upsertAuxiliaryProject } from "@/lib/glpi/auxiliary";
 import {
   AUX_STATUS_PENDENTE,
   PENDENCIA_CPFL,
+  SITUACAO_EM_REVISITA,
+  SITUACAO_VISTORIADO,
   STATUS_VISTORIA_EM_ANALISE,
   type DropdownKey,
 } from "@/lib/glpi/constants";
+import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -139,6 +142,17 @@ export async function POST(
 
     const datavistoria = formatGlpiDateTime(payload.finalizadaEm);
 
+    // Detecta se já era revisita (is_repeat=1 na aux) p/ decidir situação.
+    const [auxRow] = await query<{ is_repeat: number }>(
+      `SELECT COALESCE(is_repeat,0) AS is_repeat
+         FROM glpi_plugin_vistomap_projects
+        WHERE items_id = ? AND itemtype = 'NetworkEquipment'
+        LIMIT 1`,
+      [id]
+    );
+    const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
+    const situacaoFinal = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_VISTORIADO;
+
     await updateVistoriaFields(id, {
       latitudefield: String(payload.latitude),
       longitudefield: String(payload.longitude),
@@ -152,8 +166,10 @@ export async function POST(
       velocidadefield: payload.velocidadefield,
       motivofield: payload.motivofield,
       datadavistoriafield: datavistoria,
+      dataenvioconcessionriafield: datavistoria,
       plugin_fields_statusvistoriafielddropdowns_id: STATUS_VISTORIA_EM_ANALISE,
       plugin_fields_pendnciafielddropdowns_id: PENDENCIA_CPFL,
+      plugin_fields_situaodavistoriafielddropdowns_id: situacaoFinal,
       dropdowns: dropdownIds,
     });
 

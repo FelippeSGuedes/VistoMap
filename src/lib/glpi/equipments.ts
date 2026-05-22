@@ -182,8 +182,11 @@ export interface UpdateFieldsInput {
   velocidadefield?: string;
   motivofield?: string;
   datadavistoriafield?: string;
+  dataenvioconcessionriafield?: string;
+  dataaprovaoconcessionriafield?: string;
   plugin_fields_statusvistoriafielddropdowns_id?: number;
   plugin_fields_pendnciafielddropdowns_id?: number;
+  plugin_fields_situaodavistoriafielddropdowns_id?: number;
   dropdowns?: Partial<Record<DropdownKey, number | null>>;
 }
 
@@ -200,8 +203,11 @@ const UPDATABLE_COLUMNS = new Set([
   "velocidadefield",
   "motivofield",
   "datadavistoriafield",
+  "dataenvioconcessionriafield",
+  "dataaprovaoconcessionriafield",
   "plugin_fields_statusvistoriafielddropdowns_id",
   "plugin_fields_pendnciafielddropdowns_id",
+  "plugin_fields_situaodavistoriafielddropdowns_id",
 ]);
 
 export async function updateVistoriaFields(
