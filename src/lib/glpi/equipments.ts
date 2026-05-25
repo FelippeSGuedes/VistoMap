@@ -155,6 +155,14 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
   if (filters.tecnicoId != null) {
     where.push("f.users_id_vistoriadorafield = ?");
     params.push(filters.tecnicoId);
+
+    // Regra operacional: técnico NÃO deve ver vistorias que ele já finalizou
+    // (Em análise / Aprovado / Reprovado) — essas saem do mapa dele.
+    // Mantém apenas: status NULL/Pendente OU situação A_Vistoriar/Em_Vistoria/Em_Revisita.
+    where.push(`(
+      (sv.name IS NULL OR sv.name IN ('Pendente','pendente','PENDENTE','Em campo'))
+      AND COALESCE(f.plugin_fields_situaodavistoriafielddropdowns_id, 0) NOT IN (3, 6)
+    )`);
   }
   const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";
   const rows = await query<RawRow>(

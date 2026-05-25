@@ -2,7 +2,7 @@
 
 /**
  * /painel/tecnicos — gestão de equipe de campo.
- * Light theme + dados reais (grupo VistoMap-Tecnicos do GLPI).
+ * Light theme + dados reais (grupo VistoMap-Tecnicos do GIOC).
  */
 
 import { motion } from "framer-motion";

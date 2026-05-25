@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /painel/login — Central Operacional · Tela de acesso enterprise.
+ * /painel/login — CENTRAL OPERACIONAL GIOC · Tela de acesso enterprise.
  *
  * Hero image cobre toda viewport (cover, sem bordas vazias). Sidebar de
  * autenticação flutuante à esquerda em desktop; full-width em mobile.
@@ -78,6 +78,34 @@ export default function PainelLoginPage() {
           transition: transform 700ms cubic-bezier(.22,.7,.2,1);
         }
         .btn-primary:hover::after { transform: translateX(100%); }
+
+        /* BG responsivo: ultrawide cover central, telas medias/pequenas
+           anchora a direita pra preservar a parte visualmente forte da
+           arte (form fica à esquerda sobre area dim). Mobile recebe
+           overlay extra pra legibilidade. */
+        .login-hero-bg {
+          object-fit: cover !important;
+          object-position: center center !important;
+        }
+        @media (max-width: 1280px) {
+          .login-hero-bg { object-position: 75% center !important; }
+        }
+        @media (max-width: 768px) {
+          .login-hero-bg { object-position: center center !important; }
+        }
+        /* Scrim adicional em telas estreitas — garante contraste do form */
+        .login-scrim-mobile { display: none; }
+        @media (max-width: 1024px) {
+          .login-scrim-mobile {
+            display: block;
+            position: absolute; inset: 0; z-index: 1;
+            background: linear-gradient(180deg,
+              rgba(2,6,15,0.55) 0%,
+              rgba(2,6,15,0.78) 60%,
+              rgba(2,6,15,0.92) 100%);
+            pointer-events: none;
+          }
+        }
       `}</style>
 
       <div
@@ -93,11 +121,7 @@ export default function PainelLoginPage() {
           priority
           quality={92}
           sizes="100vw"
-          className="z-0 select-none"
-          style={{
-            objectFit: "cover",
-            objectPosition: "center center",
-          }}
+          className="login-hero-bg z-0 select-none"
           draggable={false}
         />
 
@@ -110,6 +134,8 @@ export default function PainelLoginPage() {
               "linear-gradient(90deg, rgba(2,6,15,0.92) 0%, rgba(2,6,15,0.78) 22%, rgba(2,6,15,0.38) 55%, rgba(2,6,15,0.20) 100%)",
           }}
         />
+        {/* Scrim adicional em telas estreitas */}
+        <div aria-hidden className="login-scrim-mobile" />
         {/* Vinheta sutil bordas */}
         <div
           aria-hidden
@@ -220,7 +246,7 @@ export default function PainelLoginPage() {
                     className="mt-1.5 text-[9.5px] font-semibold uppercase tracking-[0.24em]"
                     style={{ color: "rgba(0,201,155,0.62)" }}
                   >
-                    Central Operacional
+                    CENTRAL OPERACIONAL GIOC
                   </p>
                 </div>
               </motion.header>
@@ -270,7 +296,7 @@ export default function PainelLoginPage() {
                     className="text-[13px] leading-[1.55]"
                     style={{ color: "rgba(255,255,255,0.46)" }}
                   >
-                    Entre com sua conta GLPI para gerenciar vistorias,
+                    Entre com sua conta GIOC para gerenciar vistorias,
                     técnicos e a operação em campo.
                   </p>
                 </div>
@@ -283,7 +309,7 @@ export default function PainelLoginPage() {
                       className="block text-[9.5px] font-semibold uppercase tracking-[0.2em]"
                       style={{ color: "rgba(255,255,255,0.42)" }}
                     >
-                      Usuário GLPI
+                      Usuário GIOC
                     </label>
                     <div
                       className={`input-shell flex items-center gap-3 rounded-[12px] px-4 py-3.5 ${focusUser ? "is-focused" : ""}`}
@@ -432,7 +458,7 @@ export default function PainelLoginPage() {
                     className="text-[11.5px] leading-tight"
                     style={{ color: "rgba(255,255,255,0.5)" }}
                   >
-                    Autenticação integrada e auditada via GLPI
+                    Autenticação integrada e auditada via GIOC
                   </p>
                 </div>
               </motion.main>

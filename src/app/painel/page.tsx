@@ -843,7 +843,7 @@ export default function PainelOverviewPage() {
       <div className="flex items-center justify-center gap-1.5 pb-2 text-[10.5px]" style={{ color: "#A0ACBA" }}>
         <Sparkle className="h-3 w-3" style={{ color: "#00B388" }} />
         <span>
-          Dados via GLPI · {historico?.totais.pdfsGerados ?? 0} PDFs gerados nos últimos {historico?.periodo.dias ?? 30} dias.
+          Dados via GIOC · {historico?.totais.pdfsGerados ?? 0} PDFs gerados nos últimos {historico?.periodo.dias ?? 30} dias.
         </span>
       </div>
     </div>

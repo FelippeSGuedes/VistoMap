@@ -360,7 +360,7 @@ function MunicipioCard({
                   className="w-20 shrink-0 text-[8.5px] font-bold uppercase tracking-[0.14em]"
                   style={{ color: "#A0ACBA" }}
                 >
-                  GLPI ID
+                  GIOC ID
                 </span>
                 <span
                   className="flex-1 text-[8.5px] font-bold uppercase tracking-[0.14em]"
@@ -1022,7 +1022,7 @@ export default function FilaVistoriasPage() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar equipamento, município, endereço, GLPI ID…"
+            placeholder="Buscar equipamento, município, endereço, GIOC ID…"
             className="flex-1 bg-transparent text-[13px] font-medium outline-none placeholder:text-[#C0C8D2]"
             style={{ color: "#063B3B" }}
           />

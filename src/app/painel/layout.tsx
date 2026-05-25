@@ -138,7 +138,7 @@ export default function PainelLayout({
               className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.18em]"
               style={{ color: "#00B388" }}
             >
-              Painel · Admin
+              Central Op. GIOC
             </span>
           </div>
         </div>

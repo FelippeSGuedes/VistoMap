@@ -357,7 +357,7 @@ export default function PainelMapaPage() {
             Operacao viva · mapa em tempo real
           </p>
           <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.5px]" style={{ color: "#063B3B" }}>
-            Central Operacional
+            CENTRAL OPERACIONAL GIOC
           </h1>
         </div>
         <div className="flex items-center gap-2">

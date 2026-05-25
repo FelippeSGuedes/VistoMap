@@ -463,7 +463,7 @@ export default function HistoricoPainelPage() {
               Categorização automática · {(data?.motivosReprovacao ?? []).reduce((a, m) => a + m.total, 0)} casos
             </h3>
             <p className="mt-0.5 text-[11px]" style={{ color: "#7A8896" }}>
-              Motivos brutos do GLPI agrupados por padrão semântico (poste, antena, aterramento, etc).
+              Motivos brutos do GIOC agrupados por padrão semântico (poste, antena, aterramento, etc).
             </p>
           </div>
           <span className="text-[10.5px]" style={{ color: "#A0ACBA" }}>
