@@ -25,6 +25,11 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_BASE_PATH=
 ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 
+# Controla se basePath strip (Next remove prefix da URL) ou só assetPrefix.
+# "true" = basePath ativo (tecnico /app). "false" = só assetPrefix (painel /painel).
+ARG NEXT_PUBLIC_USE_BASE_PATH=true
+ENV NEXT_PUBLIC_USE_BASE_PATH=$NEXT_PUBLIC_USE_BASE_PATH
+
 RUN npm run build
 
 # ── 3. Runner (imagem final mínima) ───────────────────────────────────────────

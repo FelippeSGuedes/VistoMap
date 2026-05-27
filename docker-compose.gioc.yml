@@ -12,6 +12,7 @@ services:
       args:
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
         NEXT_PUBLIC_BASE_PATH: /app
+        NEXT_PUBLIC_USE_BASE_PATH: "true"
     container_name: vistomap-tecnico
     restart: unless-stopped
     ports:
@@ -22,6 +23,7 @@ services:
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0
       - NEXT_PUBLIC_BASE_PATH=/app
+      - NEXT_PUBLIC_USE_BASE_PATH=true
     volumes:
       - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
     networks:
@@ -45,6 +47,7 @@ services:
       args:
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
         NEXT_PUBLIC_BASE_PATH: /painel
+        NEXT_PUBLIC_USE_BASE_PATH: "false"
     container_name: vistomap-painel
     restart: unless-stopped
     ports:
@@ -55,6 +58,7 @@ services:
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0
       - NEXT_PUBLIC_BASE_PATH=/painel
+      - NEXT_PUBLIC_USE_BASE_PATH=false
     volumes:
       - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
     networks:

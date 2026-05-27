@@ -55,15 +55,22 @@ const withPWA = require("next-pwa")({
   ],
 });
 
-// basePath/assetPrefix dinâmicos via env — habilita rodar como /app, /painel
-// ou raiz dependendo do deploy. Em prod (nginx reverse proxy):
-//   container vistomap-tecnico → NEXT_PUBLIC_BASE_PATH=/app
-//   container vistomap-painel  → NEXT_PUBLIC_BASE_PATH=/painel
+// basePath/assetPrefix dinâmicos via env.
+//
+// Cuidado: basePath faz o Next STRIPAR o prefix da URL antes de rotear,
+// então /painel/login -> rota interna /login (= src/app/login = TECNICO!).
+//
+// Por isso usamos:
+//   • tecnico (/app):  basePath=/app  → src/app/* renderiza certo
+//   • painel  (/painel): SEM basePath, SO assetPrefix=/painel
+//     (rota /painel/login bate com src/app/painel/login natural).
+//     nginx faz rewrite /painel/_next/* -> /_next/* pros assets.
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+const USE_BASE_PATH = process.env.NEXT_PUBLIC_USE_BASE_PATH !== "false";
 
 const nextConfig = {
   output: "standalone",
-  basePath: BASE_PATH || undefined,
+  basePath: USE_BASE_PATH && BASE_PATH ? BASE_PATH : undefined,
   assetPrefix: BASE_PATH || undefined,
   reactStrictMode: true,
   poweredByHeader: false,
