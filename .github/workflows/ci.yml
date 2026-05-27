@@ -8,15 +8,32 @@ on:
 jobs:
   deploy:
     name: Deploy on company server
-    runs-on: self-hosted
+    # Label "gioc" garante que apenas o runner do servidor destino pega esse job.
+    runs-on: [self-hosted, gioc]
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Deploy with Docker Compose
+      # Sincroniza repo persistente em /opt/vistomap (worker + outras refs
+      # ainda apontam pra esse path). Runner clona em diretorio efemero;
+      # copiamos pra /opt/vistomap pra manter o estado oficial.
+      - name: Sync /opt/vistomap
+        run: |
+          sudo rsync -a --delete --exclude='.git' "${GITHUB_WORKSPACE}/" /opt/vistomap/
+          sudo chown -R zabbmap:zabbmap /opt/vistomap
+
+      - name: Deploy with Docker Compose (GIOC)
+        working-directory: /opt/vistomap
         run: |
           set -a && source /etc/vistomap/.env.local && set +a
-          docker compose down --remove-orphans || true
-          docker compose build --no-cache
-          docker compose up -d
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local down --remove-orphans || true
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local build
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local up -d
+          docker ps --format "{{.Names}}: {{.Status}}"
+
+      - name: Restart worker (Python systemd)
+        run: |
+          sudo systemctl restart vistomap-worker
+          sleep 2
+          sudo systemctl status vistomap-worker --no-pager | head -5
