@@ -20,6 +20,11 @@ ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+# basePath/assetPrefix — embarcado em build time. Vazio = raiz.
+# Pra rodar como /app ou /painel, passar --build-arg NEXT_PUBLIC_BASE_PATH=/app
+ARG NEXT_PUBLIC_BASE_PATH=
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
+
 RUN npm run build
 
 # ── 3. Runner (imagem final mínima) ───────────────────────────────────────────

@@ -1,0 +1,150 @@
+services:
+  # ─────────────────────────────────────────────────────────────────
+  # VistoMap App técnico — basePath=/app
+  # Acessível em https://zabbmap.nansen.com.br/app via nginx
+  # ─────────────────────────────────────────────────────────────────
+  vistomap-tecnico:
+    image: vistomap:gioc-tecnico
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
+        NEXT_PUBLIC_BASE_PATH: /app
+    container_name: vistomap-tecnico
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - /etc/vistomap/.env.local
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_BASE_PATH=/app
+    volumes:
+      - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
+    networks:
+      - vistomap-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────────
+  # VistoMap Painel admin — basePath=/painel
+  # Acessível em https://zabbmap.nansen.com.br/painel via nginx
+  # ─────────────────────────────────────────────────────────────────
+  vistomap-painel:
+    image: vistomap:gioc-painel
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
+        NEXT_PUBLIC_BASE_PATH: /painel
+    container_name: vistomap-painel
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3002:3000"
+    env_file:
+      - /etc/vistomap/.env.local
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_BASE_PATH=/painel
+    volumes:
+      - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
+    networks:
+      - vistomap-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────────
+  # PostGIS — geoespacial postes (1.46M)
+  # ─────────────────────────────────────────────────────────────────
+  postgis:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: vistomap-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-vistomap}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DATABASE:-vistomap}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - jit=off
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+    networks:
+      - vistomap-net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${PG_USER:-vistomap} -d ${PG_DATABASE:-vistomap}
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────
+  # Fastify postes-api — interno, sem expor porta no host
+  # vistomap-tecnico/painel acessam via http://postes-api:3001 na rede
+  # ─────────────────────────────────────────────────────────────────
+  postes-api:
+    image: vistomap-postes-api:gioc
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vistomap-postes-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3001"
+      PG_HOST: postgis
+      PG_PORT: "5432"
+      PG_USER: ${PG_USER:-vistomap}
+      PG_PASSWORD: ${PG_PASSWORD}
+      PG_DATABASE: ${PG_DATABASE:-vistomap}
+      PG_POOL_MIN: "2"
+      PG_POOL_MAX: "20"
+      JWT_SECRET: ${JWT_SECRET}
+      POSTE_TROCA_RAIO_M: ${POSTE_TROCA_RAIO_M:-50}
+      INTERNAL_ALLOWLIST: "127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8"
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      LOG_LEVEL: info
+    networks:
+      - vistomap-net
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+networks:
+  vistomap-net:
+    driver: bridge
+
+volumes:
+  postgis-data:
+    driver: local
