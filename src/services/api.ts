@@ -1,6 +1,13 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 
-const baseURL = process.env.NEXT_PUBLIC_API_URL || "/api";
+// Quando basePath está ativo (NEXT_PUBLIC_BASE_PATH=/app ou /painel),
+// o Next NÃO injeta automaticamente no fetch/axios — precisa prefixar manual.
+// Mantém suporte ao override via NEXT_PUBLIC_API_URL (caso o backend
+// esteja em outro host).
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const baseURL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (BASE_PATH ? `${BASE_PATH}/api` : "/api");
 
 export const api: AxiosInstance = axios.create({
   baseURL,

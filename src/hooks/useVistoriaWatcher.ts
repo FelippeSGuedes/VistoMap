@@ -38,6 +38,9 @@ export function useVistoriaWatcher(enabled: boolean) {
 
     if (novos.length === 0) return;
 
+    // Prefix com basePath quando ativo (Next NÃO injeta em window.location).
+    const PREFIX = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
     if (novos.length === 1) {
       const v = novos[0];
       notify({
@@ -47,7 +50,7 @@ export function useVistoriaWatcher(enabled: boolean) {
         tag: `vistoria-${v.id}`,
         onClick: () => {
           if (typeof window !== "undefined") {
-            window.location.href = `/vistorias/${v.id}`;
+            window.location.href = `${PREFIX}/vistorias/${v.id}`;
           }
         },
       });
@@ -62,7 +65,7 @@ export function useVistoriaWatcher(enabled: boolean) {
         tag: "vistorias-batch",
         onClick: () => {
           if (typeof window !== "undefined") {
-            window.location.href = "/vistorias";
+            window.location.href = `${PREFIX}/vistorias`;
           }
         },
       });
