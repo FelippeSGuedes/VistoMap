@@ -10,7 +10,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck, User } from "lucide-react";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/auth";
@@ -113,15 +112,14 @@ export default function PainelLoginPage() {
         style={{ background: "#02060F" }}
       >
         {/* ─────── BG hero (cover, sem bordas) ─────── */}
-        <Image
-          src="/login_painel.png"
+        {/* Usa <img> regular pra evitar problemas de basePath/optimization
+            do next/image em deploys com prefix (/painel). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/login_painel.png`}
           alt=""
           aria-hidden
-          fill
-          priority
-          quality={92}
-          sizes="100vw"
-          className="login-hero-bg z-0 select-none"
+          className="login-hero-bg absolute inset-0 z-0 h-full w-full select-none"
           draggable={false}
         />
 
