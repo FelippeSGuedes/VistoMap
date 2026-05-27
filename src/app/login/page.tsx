@@ -60,7 +60,7 @@ export default function LoginPage() {
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden bg-[#073B4C] text-brand-ice">
       {/* logo_video.mp4 como fundo full-screen — mobile only */}
       <video
-        src="/logo_video.mp4"
+        src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo_video.mp4`}
         aria-hidden
         autoPlay
         loop

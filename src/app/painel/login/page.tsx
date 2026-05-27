@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck, User } from "lucide-react";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/auth";
+import { asset } from "@/utils/asset";
 
 export default function PainelLoginPage() {
   const router = useRouter();
@@ -116,7 +117,7 @@ export default function PainelLoginPage() {
             do next/image em deploys com prefix (/painel). */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/login_painel.png`}
+          src={asset("/login_painel.png")}
           alt=""
           aria-hidden
           className="login-hero-bg absolute inset-0 z-0 h-full w-full select-none"
@@ -211,7 +212,7 @@ export default function PainelLoginPage() {
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src="/logo_favicon.PNG"
+                    src={asset("/logo_favicon.PNG")}
                     alt=""
                     className="h-7 w-7 object-contain"
                     onError={(e) => {
@@ -477,7 +478,7 @@ export default function PainelLoginPage() {
                   </span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src="/logo-marca.PNG"
+                    src={asset("/logo-marca.PNG")}
                     alt="Nansen"
                     className="h-[15px] object-contain"
                     style={{ filter: "brightness(0) invert(1)", opacity: 0.38 }}

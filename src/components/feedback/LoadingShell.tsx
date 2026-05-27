@@ -309,7 +309,7 @@ export function LoadingShell({ label }: LoadingShellProps) {
           />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo_favicon.PNG"
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo_favicon.PNG`}
             alt="VistoMap"
             className="relative h-10 w-10 rounded-xl"
             style={{ objectFit: "contain" }}

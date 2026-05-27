@@ -30,6 +30,7 @@ import {
   Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
+import { asset } from "@/utils/asset";
 import { cn } from "@/utils/cn";
 
 const NAV_ITEMS: Array<{
@@ -118,7 +119,7 @@ export default function PainelLayout({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo_favicon.PNG"
+              src={asset("/logo_favicon.PNG")}
               alt="VistoMap"
               className="h-5 w-5"
               style={{ objectFit: "contain" }}

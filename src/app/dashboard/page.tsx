@@ -288,7 +288,7 @@ export default function DashboardPage() {
       >
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo_favicon.PNG" alt="VistoMap" className="h-8 w-8 rounded-xl" style={{ objectFit: "contain" }} />
+          <img src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo_favicon.PNG`} alt="VistoMap" className="h-8 w-8 rounded-xl" style={{ objectFit: "contain" }} />
           <div className="flex flex-col">
             <span className="text-[21px] font-semibold leading-none tracking-[-0.4px]">
               <span style={{ color: "#00B388" }}>{greeting()},&nbsp;</span>
@@ -359,7 +359,7 @@ export default function DashboardPage() {
           {/* BACKGROUND IMAGE -- full card, brightened */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/banner.png"
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner.png`}
             alt=""
             aria-hidden="true"
             className="absolute inset-0 h-full w-full"

@@ -32,7 +32,7 @@ export function VistoriaHeaderHero({
     >
       {/* ── IMG base — parallax sutil + filter cinematográfico ──────── */}
       <motion.img
-        src="/fundo_img.png"
+        src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_img.png`}
         alt=""
         aria-hidden
         initial={{ scale: 1.12, opacity: 0 }}

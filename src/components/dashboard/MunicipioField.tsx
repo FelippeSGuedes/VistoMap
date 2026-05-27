@@ -132,7 +132,7 @@ export function MunicipioField({
         {imgOk ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src="/municipio.png"
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/municipio.png`}
             alt=""
             className="absolute inset-0 h-full w-full"
             style={{
