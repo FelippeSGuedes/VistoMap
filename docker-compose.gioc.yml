@@ -8,6 +8,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      network: host
       args:
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
         NEXT_PUBLIC_BASE_PATH: /app
@@ -40,6 +41,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      network: host
       args:
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
         NEXT_PUBLIC_BASE_PATH: /painel
