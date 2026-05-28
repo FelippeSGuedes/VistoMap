@@ -66,16 +66,25 @@ const withPWA = require("next-pwa")({
 //
 // Por isso usamos:
 //   • tecnico (/app):  basePath=/app  → src/app/* renderiza certo
-//   • painel  (/painel): SEM basePath, SO assetPrefix=/painel
+//   • painel  (/painel): SEM basePath, assetPrefix=/painel-cdn (DISTINTO de /painel)
 //     (rota /painel/login bate com src/app/painel/login natural).
-//     nginx faz rewrite /painel/_next/* -> /_next/* pros assets.
+//
+// IMPORTANTE: assetPrefix NÃO pode ser prefix das rotas, senão Next 14.2.18
+// router-server faz pathname.startsWith(assetPrefix) e STRIPA o prefix das
+// URLs de página, mandando /painel/mapa pra lookup em /mapa (que não existe
+// no técnico) e retornando 404. Solução: assetPrefix=/painel-cdn pra painel.
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const USE_BASE_PATH = process.env.NEXT_PUBLIC_USE_BASE_PATH !== "false";
+const BUILD_VARIANT = process.env.BUILD_VARIANT || "tecnico";
+
+const ASSET_PREFIX = BUILD_VARIANT === "painel"
+  ? "/painel-cdn"
+  : (BASE_PATH || undefined);
 
 const nextConfig = {
   output: "standalone",
   basePath: USE_BASE_PATH && BASE_PATH ? BASE_PATH : undefined,
-  assetPrefix: BASE_PATH || undefined,
+  assetPrefix: ASSET_PREFIX,
   reactStrictMode: true,
   poweredByHeader: false,
   eslint: {
