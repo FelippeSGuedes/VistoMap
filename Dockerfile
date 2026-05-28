@@ -30,6 +30,11 @@ ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 ARG NEXT_PUBLIC_USE_BASE_PATH=true
 ENV NEXT_PUBLIC_USE_BASE_PATH=$NEXT_PUBLIC_USE_BASE_PATH
 
+# Build variant — usado pra next.config.js desabilitar next-pwa no painel
+# (PWA quebra com assetPrefix-only quando basePath nao ta ativo).
+ARG BUILD_VARIANT=tecnico
+ENV BUILD_VARIANT=$BUILD_VARIANT
+
 RUN npm run build
 
 # ── 3. Runner (imagem final mínima) ───────────────────────────────────────────

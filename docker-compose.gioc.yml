@@ -48,6 +48,7 @@ services:
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
         NEXT_PUBLIC_BASE_PATH: /painel
         NEXT_PUBLIC_USE_BASE_PATH: "false"
+        BUILD_VARIANT: painel
     container_name: vistomap-painel
     restart: unless-stopped
     ports:

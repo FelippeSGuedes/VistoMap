@@ -1,9 +1,13 @@
 /** @type {import('next').NextConfig} */
+// Desabilita PWA no build do PAINEL (admin nao precisa de offline/install).
+// PWA tambem complica assetPrefix quando basePath nao esta ativo.
+const PWA_DISABLED = process.env.NODE_ENV === "development" ||
+                     process.env.BUILD_VARIANT === "painel";
 const withPWA = require("next-pwa")({
   dest: "public",
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === "development",
+  disable: PWA_DISABLED,
   buildExcludes: [/middleware-manifest\.json$/],
   // Handler customizado de notificationclick (foca aba existente / abre URL).
   importScripts: ["/notification-handler.js"],
