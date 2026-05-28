@@ -87,7 +87,8 @@ export function useLocationReporter() {
       console.log("[useLocationReporter] Enviando localização:", payload);
 
       try {
-        const resp = await fetch("/api/locations", {
+        const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+        const resp = await fetch(`${base}/api/locations`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

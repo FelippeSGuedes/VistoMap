@@ -160,7 +160,8 @@ export default function PainelMapaPage() {
     if (!session?.token) return;
     setLoading(true);
     try {
-      const r = await fetch("/api/painel/mapa", {
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      const r = await fetch(`${base}/api/painel/mapa`, {
         headers: { Authorization: `Bearer ${session.token}` },
         cache: "no-store",
       });
