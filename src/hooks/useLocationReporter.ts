@@ -116,41 +116,55 @@ export function useLocationReporter() {
     if (isNative && cap?.Plugins?.BackgroundGeolocation) {
       const BG = cap.Plugins.BackgroundGeolocation;
       console.log("[useLocationReporter] Modo nativo: BackgroundGeolocation");
-      BG.addWatcher(
-        {
-          backgroundMessage:
-            "VistoMap rastreando sua localizacao em tempo real",
-          backgroundTitle: "Rastreamento ativo",
-          requestPermissions: true,
-          stale: false,
-          distanceFilter: 30,
-        },
-        async (loc, err) => {
-          if (err) {
-            console.warn("[useLocationReporter] BG erro:", err);
-            return;
+      try {
+        // addWatcher do @capacitor-community/background-geolocation v1.x
+        // retorna string sincrona OU Promise<string> dependendo da versao.
+        // Promise.resolve normaliza ambos.
+        const watcherReturn = BG.addWatcher(
+          {
+            backgroundMessage:
+              "VistoMap rastreando sua localizacao em tempo real",
+            backgroundTitle: "Rastreamento ativo",
+            requestPermissions: true,
+            stale: false,
+            distanceFilter: 30,
+          },
+          async (loc, err) => {
+            if (err) {
+              console.warn("[useLocationReporter] BG erro:", err);
+              return;
+            }
+            if (!loc) return;
+            const battery = await getBatteryLevel();
+            await postLocation({
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              accuracy_meters: loc.accuracy ?? null,
+              speed_kmh:
+                loc.speed != null ? Math.round(loc.speed * 3.6) : null,
+              battery_level: battery,
+            });
           }
-          if (!loc) return;
-          const battery = await getBatteryLevel();
-          await postLocation({
-            latitude: loc.latitude,
-            longitude: loc.longitude,
-            accuracy_meters: loc.accuracy ?? null,
-            speed_kmh: loc.speed != null ? Math.round(loc.speed * 3.6) : null,
-            battery_level: battery,
+        );
+        Promise.resolve(watcherReturn)
+          .then((id) => {
+            if (typeof id === "string") watcherIdRef.current = id;
+          })
+          .catch((e) => {
+            console.error("[useLocationReporter] addWatcher falhou:", e);
           });
-        }
-      )
-        .then((id) => {
-          watcherIdRef.current = id;
-        })
-        .catch((e) => {
-          console.error("[useLocationReporter] addWatcher falhou:", e);
-        });
+      } catch (e) {
+        console.error("[useLocationReporter] addWatcher exception:", e);
+      }
 
       return () => {
         if (watcherIdRef.current && BG.removeWatcher) {
-          BG.removeWatcher({ id: watcherIdRef.current }).catch(() => {});
+          try {
+            const r = BG.removeWatcher({ id: watcherIdRef.current });
+            Promise.resolve(r).catch(() => {});
+          } catch {
+            /* ignore */
+          }
           watcherIdRef.current = null;
         }
       };

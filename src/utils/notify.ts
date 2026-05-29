@@ -112,11 +112,12 @@ export function notify(opts: NotifyOptions): boolean | Promise<boolean> {
   }
   if (Notification.permission !== "granted") return false;
 
+  const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   const payload = {
     body: opts.body,
-    icon: opts.icon ?? "/logo_favicon.PNG",
+    icon: opts.icon ?? `${BP}/logo_favicon.PNG`,
     tag: opts.tag,
-    badge: "/logo_favicon.PNG",
+    badge: `${BP}/logo_favicon.PNG`,
     renotify: !!opts.tag,
     silent: false,
     data: { url: opts.tag?.startsWith("vistoria-") ? `/vistorias/${opts.tag.replace("vistoria-", "")}` : "/vistorias" },
