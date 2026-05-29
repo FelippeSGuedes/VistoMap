@@ -1,0 +1,115 @@
+"use client";
+
+/**
+ * usePushRegistration
+ *
+ * Registra token FCM do dispositivo quando rodando dentro do APK Capacitor.
+ * No-op em browser.
+ *
+ * Fluxo:
+ * 1. Pede permissao (Android 13+ exige POST_NOTIFICATIONS).
+ * 2. Chama Push.register() — dispara evento "registration" com token FCM.
+ * 3. POST do token pro backend (/api/push/register) associando ao usuario.
+ * 4. Adiciona listeners pra notificacao recebida + action (deep link).
+ *
+ * Backend envia push via FCM HTTP API quando admin atribui vistoria etc.
+ */
+
+import { useEffect } from "react";
+import { useAuthStore } from "@/store/auth";
+
+interface PushPlugin {
+  requestPermissions: () => Promise<{ receive: "granted" | "denied" | "prompt" }>;
+  register: () => Promise<void>;
+  addListener: (
+    event: string,
+    cb: (data: unknown) => void
+  ) => Promise<{ remove: () => Promise<void> }>;
+}
+
+interface CapacitorBridge {
+  isNativePlatform?: () => boolean;
+  Plugins?: { PushNotifications?: PushPlugin };
+}
+
+function getCapacitor(): CapacitorBridge | null {
+  if (typeof window === "undefined") return null;
+  return (window as Window & { Capacitor?: CapacitorBridge }).Capacitor ?? null;
+}
+
+export function usePushRegistration() {
+  const { session } = useAuthStore();
+
+  useEffect(() => {
+    if (!session?.token) return;
+
+    const cap = getCapacitor();
+    if (!cap?.isNativePlatform?.()) return;
+
+    const Push = cap.Plugins?.PushNotifications;
+    if (!Push) {
+      console.warn("[usePushRegistration] Plugin PushNotifications nao disponivel.");
+      return;
+    }
+
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    const removers: Array<() => Promise<void>> = [];
+
+    (async () => {
+      try {
+        const perm = await Push.requestPermissions();
+        if (perm.receive !== "granted") {
+          console.warn("[usePushRegistration] Permissao negada.");
+          return;
+        }
+        await Push.register();
+
+        const r1 = await Push.addListener("registration", async (data) => {
+          const token = (data as { value: string }).value;
+          console.log("[usePushRegistration] FCM token:", token.slice(0, 30) + "...");
+          try {
+            await fetch(`${base}/api/push/register`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${session!.token}`,
+              },
+              body: JSON.stringify({ token, platform: "android" }),
+            });
+          } catch (err) {
+            console.error("[usePushRegistration] Falha registrar token:", err);
+          }
+        });
+        removers.push(r1.remove);
+
+        const r2 = await Push.addListener("registrationError", (data) => {
+          console.error("[usePushRegistration] Erro FCM:", data);
+        });
+        removers.push(r2.remove);
+
+        const r3 = await Push.addListener("pushNotificationReceived", (data) => {
+          console.log("[usePushRegistration] Push recebido:", data);
+        });
+        removers.push(r3.remove);
+
+        const r4 = await Push.addListener(
+          "pushNotificationActionPerformed",
+          (data) => {
+            const payload = (data as { notification: { data?: { url?: string } } })
+              .notification.data;
+            if (payload?.url) {
+              window.location.href = payload.url;
+            }
+          }
+        );
+        removers.push(r4.remove);
+      } catch (err) {
+        console.error("[usePushRegistration] Setup falhou:", err);
+      }
+    })();
+
+    return () => {
+      removers.forEach((r) => r().catch(() => {}));
+    };
+  }, [session?.token]);
+}

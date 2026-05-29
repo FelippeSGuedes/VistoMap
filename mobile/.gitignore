@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Capacitor sync output (regenerado pelo cap sync)
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Build outputs
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+
+# Keystore + secrets
+*.keystore
+*.jks
+keystore.properties
+android/app/google-services.json
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+local.properties

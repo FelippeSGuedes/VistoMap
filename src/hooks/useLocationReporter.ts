@@ -3,12 +3,16 @@
 /**
  * useLocationReporter
  *
- * Envia GPS do técnico via POST /api/locations a cada INTERVAL_MS.
+ * Envia GPS do tecnico via POST /api/locations.
  *
- * Monitoramento contínuo: continua reportando enquanto a aba estiver
- * carregada (mesmo em background). Browsers móveis podem throttle ou
- * suspender em background — Wake Lock API mantém a tela ativa quando
- * possível pra reduzir suspensão.
+ * Modos:
+ * - Native (Capacitor APK): plugin BackgroundGeolocation com foreground service.
+ *   Continua rastreando mesmo com tela bloqueada. Ping aproximadamente a cada
+ *   distanceFilter metros OU intervalo via timer interno.
+ * - Web (browser): polling navigator.geolocation a cada INTERVAL_MS.
+ *   Throttled em background, suspende com tela bloqueada.
+ *
+ * Detecta runtime via window.Capacitor.isNativePlatform().
  */
 
 import { useEffect, useRef } from "react";
@@ -21,8 +25,40 @@ const GEO_OPTIONS: PositionOptions = {
   timeout: 10_000,
 };
 
+interface CapacitorBridge {
+  isNativePlatform?: () => boolean;
+  Plugins?: {
+    BackgroundGeolocation?: {
+      addWatcher: (
+        opts: {
+          backgroundMessage?: string;
+          backgroundTitle?: string;
+          requestPermissions?: boolean;
+          stale?: boolean;
+          distanceFilter?: number;
+        },
+        cb: (
+          loc: {
+            latitude: number;
+            longitude: number;
+            accuracy: number;
+            speed: number | null;
+            time: number;
+          } | null,
+          err?: { code: string; message: string }
+        ) => void
+      ) => Promise<string>;
+      removeWatcher: (opts: { id: string }) => Promise<void>;
+    };
+  };
+}
+
+function getCapacitor(): CapacitorBridge | null {
+  if (typeof window === "undefined") return null;
+  return (window as Window & { Capacitor?: CapacitorBridge }).Capacitor ?? null;
+}
+
 function getBatteryLevel(): Promise<number | null> {
-  // Battery Status API — não disponível em todos os browsers.
   if (typeof navigator === "undefined") return Promise.resolve(null);
   const nav = navigator as Navigator & {
     getBattery?: () => Promise<{ level: number }>;
@@ -37,52 +73,26 @@ function getBatteryLevel(): Promise<number | null> {
 export function useLocationReporter() {
   const { session } = useAuthStore();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const watcherIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Qualquer usuário autenticado transmite posição (admin pode estar em campo também).
     if (!session?.token) {
-      console.log("[useLocationReporter] Sem token, não reporta localização.");
+      console.log("[useLocationReporter] Sem token, nao reporta.");
       return;
     }
 
-    async function report() {
-      if (!navigator?.geolocation) {
-        console.warn("[useLocationReporter] Geolocalização não disponível no navegador.");
-        return;
-      }
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    const endpoint = `${base}/api/locations`;
 
-      const pos = await new Promise<GeolocationPosition | null>((res) => {
-        navigator.geolocation.getCurrentPosition(
-          (p) => res(p),
-          (err) => {
-            console.warn("[useLocationReporter] Erro ao obter localização:", err);
-            res(null);
-          },
-          GEO_OPTIONS
-        );
-      });
-      if (!pos) {
-        console.warn("[useLocationReporter] Não obteve posição, não envia ping.");
-        return;
-      }
-
-      const battery = await getBatteryLevel();
-
-      const payload = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        accuracy_meters: pos.coords.accuracy ?? null,
-        speed_kmh:
-          pos.coords.speed != null
-            ? Math.round(pos.coords.speed * 3.6)
-            : null,
-        battery_level: battery,
-      };
-      console.log("[useLocationReporter] Enviando localização:", payload);
-
+    async function postLocation(payload: {
+      latitude: number;
+      longitude: number;
+      accuracy_meters: number | null;
+      speed_kmh: number | null;
+      battery_level: number | null;
+    }) {
       try {
-        const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-        const resp = await fetch(`${base}/api/locations`, {
+        const resp = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -90,24 +100,98 @@ export function useLocationReporter() {
           },
           body: JSON.stringify(payload),
         });
-        if (resp.ok) {
-          console.log("[useLocationReporter] Localização enviada com sucesso.");
-        } else {
+        if (!resp.ok) {
           const errMsg = await resp.text();
-          console.error("[useLocationReporter] Falha ao enviar localização:", errMsg);
+          console.error("[useLocationReporter] Falha POST:", errMsg);
         }
       } catch (err) {
-        console.error("[useLocationReporter] Erro de rede ao enviar localização:", err);
+        console.error("[useLocationReporter] Erro rede:", err);
       }
     }
 
-    report(); // imediato ao montar
+    const cap = getCapacitor();
+    const isNative = cap?.isNativePlatform?.() ?? false;
+
+    // ─────── Modo native: BackgroundGeolocation ───────
+    if (isNative && cap?.Plugins?.BackgroundGeolocation) {
+      const BG = cap.Plugins.BackgroundGeolocation;
+      console.log("[useLocationReporter] Modo nativo: BackgroundGeolocation");
+      BG.addWatcher(
+        {
+          backgroundMessage:
+            "VistoMap rastreando sua localizacao em tempo real",
+          backgroundTitle: "Rastreamento ativo",
+          requestPermissions: true,
+          stale: false,
+          distanceFilter: 30,
+        },
+        async (loc, err) => {
+          if (err) {
+            console.warn("[useLocationReporter] BG erro:", err);
+            return;
+          }
+          if (!loc) return;
+          const battery = await getBatteryLevel();
+          await postLocation({
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            accuracy_meters: loc.accuracy ?? null,
+            speed_kmh: loc.speed != null ? Math.round(loc.speed * 3.6) : null,
+            battery_level: battery,
+          });
+        }
+      )
+        .then((id) => {
+          watcherIdRef.current = id;
+        })
+        .catch((e) => {
+          console.error("[useLocationReporter] addWatcher falhou:", e);
+        });
+
+      return () => {
+        if (watcherIdRef.current && BG.removeWatcher) {
+          BG.removeWatcher({ id: watcherIdRef.current }).catch(() => {});
+          watcherIdRef.current = null;
+        }
+      };
+    }
+
+    // ─────── Modo web: polling navigator.geolocation ───────
+    async function report() {
+      if (!navigator?.geolocation) {
+        console.warn("[useLocationReporter] Geolocalizacao indisponivel.");
+        return;
+      }
+      const pos = await new Promise<GeolocationPosition | null>((res) => {
+        navigator.geolocation.getCurrentPosition(
+          (p) => res(p),
+          (err) => {
+            console.warn("[useLocationReporter] Erro getCurrentPosition:", err);
+            res(null);
+          },
+          GEO_OPTIONS
+        );
+      });
+      if (!pos) return;
+      const battery = await getBatteryLevel();
+      await postLocation({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy_meters: pos.coords.accuracy ?? null,
+        speed_kmh:
+          pos.coords.speed != null ? Math.round(pos.coords.speed * 3.6) : null,
+        battery_level: battery,
+      });
+    }
+
+    report();
     intervalRef.current = setInterval(report, INTERVAL_MS);
 
-    // Wake Lock: mantém tela ativa em mobile pra reduzir suspensão da aba.
-    // Falha silenciosa em browsers que não suportam.
+    // Wake Lock: mantem tela ativa em mobile pra reduzir suspensao da aba.
     type WakeLockSentinel = { release: () => Promise<void> };
-    type WakeLockAPI = { request: (type: "screen") => Promise<WakeLockSentinel> };
+    type WakeLockAPI = {
+      request: (type: "screen") => Promise<WakeLockSentinel>;
+    };
     let wakeLock: WakeLockSentinel | null = null;
     const wl = (navigator as Navigator & { wakeLock?: WakeLockAPI }).wakeLock;
     if (wl) {
@@ -115,10 +199,7 @@ export function useLocationReporter() {
         .then((s) => {
           wakeLock = s;
         })
-        .catch(() => {
-          /* sem permissão / não suportado */
-        });
-      // Re-adquire quando a aba volta a ficar visível.
+        .catch(() => {});
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible" && !wakeLock) {
           wl.request("screen")

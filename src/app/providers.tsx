@@ -5,10 +5,16 @@ import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useLocationReporter } from "@/hooks/useLocationReporter";
+import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 
 function LocationReporterMount() {
   useLocationReporter();
+  return null;
+}
+
+function PushRegistrationMount() {
+  usePushRegistration();
   return null;
 }
 
@@ -49,6 +55,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
       <LocationReporterMount />
+      <PushRegistrationMount />
       <TecnicoNotificationsMount />
       {children}
     </>

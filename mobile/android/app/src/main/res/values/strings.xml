@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VistoMap</string>
+    <string name="title_activity_main">VistoMap</string>
+    <string name="package_name">br.com.nansen.vistomap</string>
+    <string name="custom_url_scheme">br.com.nansen.vistomap</string>
+</resources>
