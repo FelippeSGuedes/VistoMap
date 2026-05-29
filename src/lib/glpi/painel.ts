@@ -300,13 +300,14 @@ export async function fetchTecnicos(): Promise<TecnicoAtivo[]> {
       : 0;
     const minutesSince = ultimaMs ? (Date.now() - ultimaMs) / 60_000 : Infinity;
     // Heurística orientada a GPS:
-    // <2min em-campo, <15min base, <90min off-shift, senão offline.
+    // <5min em-campo, <30min base, <120min off-shift, senão offline.
+    // Thresholds afrouxados pra reduzir flicker entre verde e amarelo.
     const status: TecnicoAtivo["status"] =
-      minutesSince < 2
+      minutesSince < 5
         ? "em-campo"
-        : minutesSince < 15
+        : minutesSince < 30
         ? "base"
-        : minutesSince < 90
+        : minutesSince < 120
         ? "off-shift"
         : "offline";
     return {
@@ -882,9 +883,11 @@ function resolveMapaTecnicoStatus(
   emVistoriaCount: number,
   speedKmh: number | null
 ): PainelMapaTecnico["status_operacional"] {
-  if (minutosAtras == null || minutosAtras > 20) return "offline";
+  // Tolerância maior: ping a cada 30s, polling do mapa a cada 15s.
+  // Threshold curto demais fazia status oscilar entre verde e amarelo.
+  if (minutosAtras == null || minutosAtras > 30) return "offline";
   if (emVistoriaCount > 0) return "em-vistoria";
-  if ((speedKmh ?? 0) >= 3 || minutosAtras < 2) return "em-operacao";
+  if ((speedKmh ?? 0) >= 3 || minutosAtras < 5) return "em-operacao";
   return "parado";
 }
 

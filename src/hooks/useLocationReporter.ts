@@ -3,13 +3,12 @@
 /**
  * useLocationReporter
  *
- * Envia a posição GPS do técnico para o backend via POST /api/locations
- * a cada INTERVAL_MS (padrão 30s) enquanto:
- *   - a sessão estiver ativa
- *   - a página estiver visível (Page Visibility API)
- *   - a geolocalização estiver disponível e autorizada
+ * Envia GPS do técnico via POST /api/locations a cada INTERVAL_MS.
  *
- * Sem WebSocket — polling simples conforme especificado.
+ * Monitoramento contínuo: continua reportando enquanto a aba estiver
+ * carregada (mesmo em background). Browsers móveis podem throttle ou
+ * suspender em background — Wake Lock API mantém a tela ativa quando
+ * possível pra reduzir suspensão.
  */
 
 import { useEffect, useRef } from "react";
@@ -47,11 +46,6 @@ export function useLocationReporter() {
     }
 
     async function report() {
-      // Não reporta se a aba estiver oculta.
-      if (typeof document !== "undefined" && document.hidden) {
-        console.log("[useLocationReporter] Aba oculta, não reporta localização.");
-        return;
-      }
       if (!navigator?.geolocation) {
         console.warn("[useLocationReporter] Geolocalização não disponível no navegador.");
         return;
@@ -110,8 +104,35 @@ export function useLocationReporter() {
     report(); // imediato ao montar
     intervalRef.current = setInterval(report, INTERVAL_MS);
 
+    // Wake Lock: mantém tela ativa em mobile pra reduzir suspensão da aba.
+    // Falha silenciosa em browsers que não suportam.
+    type WakeLockSentinel = { release: () => Promise<void> };
+    type WakeLockAPI = { request: (type: "screen") => Promise<WakeLockSentinel> };
+    let wakeLock: WakeLockSentinel | null = null;
+    const wl = (navigator as Navigator & { wakeLock?: WakeLockAPI }).wakeLock;
+    if (wl) {
+      wl.request("screen")
+        .then((s) => {
+          wakeLock = s;
+        })
+        .catch(() => {
+          /* sem permissão / não suportado */
+        });
+      // Re-adquire quando a aba volta a ficar visível.
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && !wakeLock) {
+          wl.request("screen")
+            .then((s) => {
+              wakeLock = s;
+            })
+            .catch(() => {});
+        }
+      });
+    }
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (wakeLock) wakeLock.release().catch(() => {});
     };
   }, [session?.token]);
 }

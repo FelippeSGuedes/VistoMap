@@ -25,8 +25,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const VISTORIAS_SRC = "vm-vistorias-src";
-const VISTORIAS_CLUSTER = "vm-vistorias-cluster";
-const VISTORIAS_CLUSTER_COUNT = "vm-vistorias-cluster-count";
 const VISTORIAS_POINTS = "vm-vistorias-points";
 
 function relTime(iso?: string | null): string {
@@ -92,53 +90,100 @@ function vistoriaColor(status: PainelMapaVistoria["status"]): string {
   }
 }
 
+/**
+ * Pin moderno SVG — gota invertida, gradiente esmeralda, iniciais centradas,
+ * ícone checklist topo, cápsula com nome abaixo, status dot canto sup direito.
+ * Spec: SaaS premium de rastreamento.
+ */
 function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
-  const color = statusColor(t.status_operacional);
+  const onlineStatus = t.status_operacional;
+  const dotColor =
+    onlineStatus === "em-operacao" || onlineStatus === "em-vistoria"
+      ? "#10B981" // verde online
+      : onlineStatus === "parado"
+      ? "#F59E0B" // amarelo pausa
+      : "#EF4444"; // vermelho offline
+  const initialsText = initials(t.nome);
+  const firstName = t.nome.split(/\s+/)[0] ?? t.nome;
+  const gradId = `vm-pin-grad-${t.users_id}`;
+  const isOnline =
+    onlineStatus === "em-operacao" || onlineStatus === "em-vistoria";
+
   const root = document.createElement("div");
-  root.style.cssText = "position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;";
+  root.className = "vm-pin-root";
+  root.style.cssText =
+    "position:relative;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .18s cubic-bezier(.2,.8,.2,1);will-change:transform;";
 
-  const avatar = document.createElement("div");
-  avatar.style.cssText = `
-    width:40px;height:40px;border-radius:14px;
-    display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(145deg,${color},${color}CC);
-    color:white;font-size:12px;font-weight:700;letter-spacing:.04em;
-    border:2px solid #fff;
-    box-shadow:0 6px 14px ${color}33,0 0 0 1px ${color}22;
+  const pinWrap = document.createElement("div");
+  pinWrap.className = "vm-pin-drop";
+  pinWrap.style.cssText =
+    "position:relative;width:54px;height:68px;filter:drop-shadow(0 6px 12px rgba(0,150,136,.32));transition:filter .18s ease;";
+
+  pinWrap.innerHTML = `
+    <svg viewBox="0 0 54 68" width="54" height="68" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00C896"/>
+          <stop offset="100%" stop-color="#009688"/>
+        </linearGradient>
+        <radialGradient id="${gradId}-hl" cx="35%" cy="30%" r="55%">
+          <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".35"/>
+          <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <path d="M27 2 C12.6 2 2 12.4 2 26 C2 42.5 27 64.5 27 64.5 C27 64.5 52 42.5 52 26 C52 12.4 41.4 2 27 2 Z"
+            fill="url(#${gradId})" stroke="#FFFFFF" stroke-width="2.5"/>
+      <path d="M27 2 C12.6 2 2 12.4 2 26 C2 42.5 27 64.5 27 64.5 C27 64.5 52 42.5 52 26 C52 12.4 41.4 2 27 2 Z"
+            fill="url(#${gradId}-hl)"/>
+      <circle cx="27" cy="26" r="15.5" fill="#FFFFFF"/>
+      <g transform="translate(20.5, 13)" stroke="#009688" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="0.5" y="0.5" width="12" height="5.5" rx="1.2"/>
+        <path d="M3 3 L4.2 4.1 L6.2 1.8"/>
+      </g>
+      <text x="27" y="35" text-anchor="middle"
+            font-family="-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif"
+            font-size="11" font-weight="700" fill="#063B3B" letter-spacing="0.6">
+        ${initialsText}
+      </text>
+    </svg>
+    <div style="position:absolute;top:1px;right:1px;width:14px;height:14px;border-radius:50%;
+                background:${dotColor};border:2px solid #fff;
+                box-shadow:0 2px 4px rgba(0,0,0,.22);${isOnline ? "animation:vm-status-pulse 1.6s ease-out infinite;" : ""}"></div>
   `;
-  avatar.textContent = initials(t.nome);
-
-  if (t.status_operacional === "em-operacao" || t.status_operacional === "em-vistoria") {
-    const pulse = document.createElement("div");
-    pulse.style.cssText = `
-      position:absolute;top:-3px;left:50%;transform:translateX(-50%);
-      width:46px;height:46px;border-radius:18px;border:2px solid ${color};
-      opacity:.35;animation:vm-tech-pulse 2s ease-out infinite;
-      pointer-events:none;
-    `;
-    root.appendChild(pulse);
-  }
 
   const label = document.createElement("div");
   label.style.cssText = `
-    padding:2px 8px;border-radius:999px;
-    background:rgba(255,255,255,.92);
-    border:1px solid rgba(6,59,59,.09);
-    box-shadow:0 2px 8px rgba(6,59,59,.10);
-    color:#063B3B;font-size:10px;font-weight:600;
+    padding:3px 10px;border-radius:999px;
+    background:rgba(255,255,255,.96);
+    border:1px solid rgba(6,59,59,.08);
+    box-shadow:0 2px 6px rgba(6,59,59,.14),0 1px 2px rgba(6,59,59,.06);
+    color:#063B3B;
+    font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif;
+    font-size:11px;font-weight:600;letter-spacing:.2px;
     white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;
   `;
-  label.textContent = t.nome.split(/\s+/)[0] ?? t.nome;
+  label.textContent = firstName;
 
-  root.appendChild(avatar);
+  root.appendChild(pinWrap);
   root.appendChild(label);
+
+  root.addEventListener("mouseenter", () => {
+    root.style.transform = "translateY(-3px) scale(1.05)";
+    pinWrap.style.filter = "drop-shadow(0 10px 18px rgba(0,150,136,.5))";
+  });
+  root.addEventListener("mouseleave", () => {
+    root.style.transform = "";
+    pinWrap.style.filter = "drop-shadow(0 6px 12px rgba(0,150,136,.32))";
+  });
+
   return root;
 }
 
-if (typeof document !== "undefined" && !document.getElementById("vm-tech-pulse-style")) {
+if (typeof document !== "undefined" && !document.getElementById("vm-pin-style")) {
   const style = document.createElement("style");
-  style.id = "vm-tech-pulse-style";
-  style.textContent = "@keyframes vm-tech-pulse{0%{transform:translateX(-50%) scale(1);opacity:.35}75%{transform:translateX(-50%) scale(1.45);opacity:0}100%{transform:translateX(-50%) scale(1.45);opacity:0}}";
+  style.id = "vm-pin-style";
+  style.textContent =
+    "@keyframes vm-status-pulse{0%{box-shadow:0 0 0 0 currentColor,0 2px 4px rgba(0,0,0,.22)}70%{box-shadow:0 0 0 8px transparent,0 2px 4px rgba(0,0,0,.22)}100%{box-shadow:0 0 0 0 transparent,0 2px 4px rgba(0,0,0,.22)}}";
   document.head.appendChild(style);
 }
 
@@ -250,48 +295,16 @@ export default function PainelMapaPage() {
 
     const syncVistorias = () => {
       if (!map.getSource(VISTORIAS_SRC)) {
+        // Sem cluster — pontos individuais ficam mais leves visualmente.
         map.addSource(VISTORIAS_SRC, {
           type: "geojson",
           data: geojson,
-          cluster: true,
-          clusterRadius: 50,
-          clusterMaxZoom: 14,
-        });
-
-        map.addLayer({
-          id: VISTORIAS_CLUSTER,
-          type: "circle",
-          source: VISTORIAS_SRC,
-          filter: ["has", "point_count"],
-          paint: {
-            "circle-color": "#063B3B",
-            "circle-opacity": 0.86,
-            "circle-stroke-color": "#FFFFFF",
-            "circle-stroke-width": 2,
-            "circle-radius": ["step", ["get", "point_count"], 16, 20, 20, 60, 24],
-          },
-        });
-
-        map.addLayer({
-          id: VISTORIAS_CLUSTER_COUNT,
-          type: "symbol",
-          source: VISTORIAS_SRC,
-          filter: ["has", "point_count"],
-          layout: {
-            "text-field": ["get", "point_count_abbreviated"],
-            "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
-            "text-size": 12,
-          },
-          paint: {
-            "text-color": "#FFFFFF",
-          },
         });
 
         map.addLayer({
           id: VISTORIAS_POINTS,
           type: "circle",
           source: VISTORIAS_SRC,
-          filter: ["!", ["has", "point_count"]],
           paint: {
             "circle-color": ["get", "color"],
             "circle-radius": 6,
