@@ -3,6 +3,7 @@ import { atribuirVistoria } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { query } from "@/lib/db";
+import { sendPushTo } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -60,6 +61,17 @@ export async function POST(req: Request) {
         ? `PDF marcado para regeneração · atribuído a ${tecNome}`
         : `Atribuída a ${tecNome}`,
     });
+
+    // Push fire-and-forget pro técnico atribuído (só nas atribuições reais,
+    // não em regenerações de PDF).
+    if (!body.regenerar_pdf) {
+      void sendPushTo({
+        usersIds: [tId],
+        title: "Nova vistoria atribuída",
+        body: equipLabel,
+        data: { url: "/app/vistorias", vistoria_id: String(vId) },
+      });
+    }
 
     return NextResponse.json({ ok: true, affected, situacao });
   } catch (err) {

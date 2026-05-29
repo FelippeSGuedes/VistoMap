@@ -109,15 +109,19 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
   const isOnline =
     onlineStatus === "em-operacao" || onlineStatus === "em-vistoria";
 
+  // IMPORTANTE: outer e' do tamanho EXATO do pin (54x68) pra mapboxgl.Marker
+  // com anchor="bottom" alinhar a ponta do pin no lng/lat. Label fica em
+  // position:absolute fora do box, nao desloca o anchor (antes o label era
+  // fluxo flex e empurrava o anchor pra baixo dele).
   const root = document.createElement("div");
   root.className = "vm-pin-root";
   root.style.cssText =
-    "position:relative;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .18s cubic-bezier(.2,.8,.2,1);will-change:transform;";
+    "position:relative;width:54px;height:68px;cursor:pointer;transition:transform .18s cubic-bezier(.2,.8,.2,1);will-change:transform;";
 
   const pinWrap = document.createElement("div");
   pinWrap.className = "vm-pin-drop";
   pinWrap.style.cssText =
-    "position:relative;width:54px;height:68px;filter:drop-shadow(0 6px 12px rgba(0,150,136,.32));transition:filter .18s ease;";
+    "position:absolute;inset:0;filter:drop-shadow(0 6px 12px rgba(0,150,136,.32));transition:filter .18s ease;";
 
   pinWrap.innerHTML = `
     <svg viewBox="0 0 54 68" width="54" height="68" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -153,6 +157,8 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
 
   const label = document.createElement("div");
   label.style.cssText = `
+    position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    margin-top:6px;
     padding:3px 10px;border-radius:999px;
     background:rgba(255,255,255,.96);
     border:1px solid rgba(6,59,59,.08);
@@ -161,6 +167,7 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
     font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif;
     font-size:11px;font-weight:600;letter-spacing:.2px;
     white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;
+    pointer-events:none;
   `;
   label.textContent = firstName;
 

@@ -209,6 +209,9 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    const POSTE_ICON_ID = "vm-poste-icon";
+
     const ensure = () => {
       if (map.getSource(POSTES_SRC)) return;
       map.addSource(POSTES_SRC, {
@@ -216,27 +219,8 @@ export function MapView({
         data: { type: "FeatureCollection", features: [] },
         promoteId: "id",
       });
-      // anel verde (estado padrão)
-      map.addLayer({
-        id: POSTES_LAYER,
-        source: POSTES_SRC,
-        type: "circle",
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            10, 4,
-            14, 8,
-            18, 13,
-          ],
-          "circle-color": "#06D6A0",
-          "circle-stroke-color": "#073B4C",
-          "circle-stroke-width": 1.5,
-          "circle-opacity": 0.9,
-        },
-      });
-      // estrela amarela sobreposta (selecionado)
+
+      // halo amarelo sobreposto (selecionado) — DESENHADO POR BAIXO do icone
       map.addLayer({
         id: POSTES_LAYER_SELECTED,
         source: POSTES_SRC,
@@ -247,28 +231,79 @@ export function MapView({
             "interpolate",
             ["linear"],
             ["zoom"],
-            10, 10,
-            14, 17,
-            18, 26,
+            10, 12,
+            14, 22,
+            18, 32,
           ],
           "circle-color": "#FFD166",
           "circle-stroke-color": "#073B4C",
           "circle-stroke-width": 3,
-          "circle-opacity": 1,
+          "circle-opacity": 0.95,
         },
       });
 
-      map.on("click", POSTES_LAYER, (e) => {
-        const feat = e.features?.[0];
-        const id = Number(feat?.properties?.id);
-        if (Number.isFinite(id)) onPosteSelectRef.current?.(id);
-      });
-      map.on("mouseenter", POSTES_LAYER, () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", POSTES_LAYER, () => {
-        map.getCanvas().style.cursor = "";
-      });
+      // Icone PNG (posteico.png) — symbol layer com imagem custom
+      const addIconLayer = () => {
+        if (map.getLayer(POSTES_LAYER)) return;
+        map.addLayer({
+          id: POSTES_LAYER,
+          source: POSTES_SRC,
+          type: "symbol",
+          layout: {
+            "icon-image": POSTE_ICON_ID,
+            "icon-allow-overlap": true,
+            "icon-anchor": "bottom",
+            "icon-size": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              10, 0.15,
+              14, 0.3,
+              18, 0.55,
+            ],
+          },
+        });
+        map.on("click", POSTES_LAYER, (e) => {
+          const feat = e.features?.[0];
+          const id = Number(feat?.properties?.id);
+          if (Number.isFinite(id)) onPosteSelectRef.current?.(id);
+        });
+        map.on("mouseenter", POSTES_LAYER, () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", POSTES_LAYER, () => {
+          map.getCanvas().style.cursor = "";
+        });
+      };
+
+      if (map.hasImage(POSTE_ICON_ID)) {
+        addIconLayer();
+      } else {
+        map.loadImage(`${BP}/posteico.png`, (err, image) => {
+          if (err || !image) {
+            console.warn("[MapView] loadImage posteico falhou:", err);
+            // Fallback circle layer pra nao perder o ponto
+            if (!map.getLayer(POSTES_LAYER)) {
+              map.addLayer({
+                id: POSTES_LAYER,
+                source: POSTES_SRC,
+                type: "circle",
+                paint: {
+                  "circle-radius": 6,
+                  "circle-color": "#06D6A0",
+                  "circle-stroke-color": "#073B4C",
+                  "circle-stroke-width": 1.5,
+                },
+              });
+            }
+            return;
+          }
+          if (!map.hasImage(POSTE_ICON_ID)) {
+            map.addImage(POSTE_ICON_ID, image);
+          }
+          addIconLayer();
+        });
+      }
     };
     if (map.loaded()) ensure();
     else map.once("load", ensure);
