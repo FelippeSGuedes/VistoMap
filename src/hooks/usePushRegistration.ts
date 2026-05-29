@@ -57,12 +57,32 @@ export function usePushRegistration() {
 
     (async () => {
       try {
-        const perm = await Push.requestPermissions();
+        if (typeof Push.requestPermissions !== "function") {
+          console.warn(
+            "[usePushRegistration] Plugin sem requestPermissions — APK antigo?"
+          );
+          return;
+        }
+        let perm: { receive: string };
+        try {
+          perm = await Push.requestPermissions();
+        } catch (e) {
+          console.error("[usePushRegistration] requestPermissions falhou:", e);
+          return;
+        }
         if (perm.receive !== "granted") {
           console.warn("[usePushRegistration] Permissao negada.");
           return;
         }
-        await Push.register();
+        try {
+          await Push.register();
+        } catch (e) {
+          console.error(
+            "[usePushRegistration] register falhou (FCM/google-services nao config?):",
+            e
+          );
+          return;
+        }
 
         const r1 = await Push.addListener("registration", async (data) => {
           const token = (data as { value: string }).value;
