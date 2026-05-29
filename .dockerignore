@@ -23,6 +23,9 @@ public/fallback-*.js
 backend
 csv
 
+# Capacitor APK Android — projeto separado, não vai no build do Next
+mobile
+
 # Pastas que ficam locais (dev)
 uploads-dev
 docs
