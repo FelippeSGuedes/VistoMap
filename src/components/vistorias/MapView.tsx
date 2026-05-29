@@ -88,6 +88,12 @@ export function MapView({
     return DEFAULT_CENTER;
   }, [userPosition, vistorias]);
 
+  // initialCenter no useMemo eh recalculado quando vistorias muda, gerando
+  // nova ref. Antes essa ref ficava em deps deste effect → mapa era destruido
+  // + recriado a cada filtro → effect 1 dos postes (deps []) nao re-rodava
+  // → source POSTES_SRC perdido → circles nao apareciam.
+  // Fix: re-init so quando token muda. initialCenter so importa na 1a montagem.
+  const initialCenterRef = useRef(initialCenter);
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     if (!token) return;
@@ -95,7 +101,7 @@ export function MapView({
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
-      center: initialCenter,
+      center: initialCenterRef.current,
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
       pitchWithRotate: false,
@@ -113,7 +119,7 @@ export function MapView({
       markersRef.current.clear();
       userMarkerRef.current = null;
     };
-  }, [initialCenter, token]);
+  }, [token]);
 
   // user position marker
   useEffect(() => {
