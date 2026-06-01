@@ -257,9 +257,9 @@ export function MapView({
               "interpolate",
               ["linear"],
               ["zoom"],
-              10, 0.15,
-              14, 0.3,
-              18, 0.55,
+              10, 0.04,
+              14, 0.08,
+              18, 0.16,
             ],
           },
         });

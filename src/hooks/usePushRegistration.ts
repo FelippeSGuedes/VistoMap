@@ -17,6 +17,7 @@
 
 import { useEffect } from "react";
 import { useAuthStore } from "@/store/auth";
+import { useVistoriasStore } from "@/store/vistorias";
 
 interface PushPlugin {
   requestPermissions: () => Promise<{ receive: "granted" | "denied" | "prompt" }>;
@@ -109,6 +110,13 @@ export function usePushRegistration() {
 
         const r3 = await Push.addListener("pushNotificationReceived", (data) => {
           console.log("[usePushRegistration] Push recebido:", data);
+          // Refetch imediato — admin atribuiu uma vistoria, traz pra lista agora
+          // sem esperar o polling de 60s do TecnicoNotificationsMount.
+          try {
+            void useVistoriasStore.getState().fetchAll();
+          } catch (err) {
+            console.warn("[usePushRegistration] fetchAll falhou:", err);
+          }
         });
         removers.push(r3.remove);
 
