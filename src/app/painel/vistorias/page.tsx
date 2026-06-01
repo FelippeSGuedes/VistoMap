@@ -445,8 +445,8 @@ function AtribuirDrawer({
   }, [items, selecionados]);
 
   const sugestoes = useMemo(() => {
+    // Mostra todos — admin pode atribuir mesmo a offline (ex: tecnico chegando agora)
     return tecnicos
-      .filter((t) => t.status !== "offline")
       .map((t) => {
         const temMunicipio = t.municipio
           ? Array.from(municipiosSel.keys()).some(
@@ -622,7 +622,7 @@ function AtribuirModal({
   onClose: () => void;
   onAtribuir: (tec: TecnicoAtivo) => void;
 }) {
-  const ativos = tecnicos.filter((t) => t.status !== "offline");
+  const ativos = tecnicos; // mostra todos, incluindo offline (admin decide)
   return (
     <motion.div
       initial={{ opacity: 0 }}

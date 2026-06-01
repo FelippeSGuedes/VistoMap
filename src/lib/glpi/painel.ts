@@ -765,10 +765,16 @@ export async function atribuirVistoria(
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
   const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_EM_VISTORIA;
 
+  // Reseta status (Aprovado/Reprovado/Em análise) pra 0 quando atribui —
+  // listVistorias do tecnico filtra `sv.name IS NULL OR IN (Pendente, Em campo)`,
+  // e LEFT JOIN com id=0 (inexistente na dropdown) tambem retorna sv.name=NULL.
+  // Coluna eh NOT NULL DEFAULT 0, entao nao da pra usar NULL direto.
+  // Situacao (em-vistoria / em-revisita) ja indica o tipo de trabalho.
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET users_id_vistoriadorafield = ?,
-            \`${SITUACAO_COLUMN}\` = ?
+            \`${SITUACAO_COLUMN}\` = ?,
+            plugin_fields_statusvistoriafielddropdowns_id = 0
       WHERE items_id = ?`,
     [tecnicoId, situacao, vistoriaId]
   );

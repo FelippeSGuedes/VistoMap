@@ -152,7 +152,11 @@ export interface ListVistoriasFilters {
 export async function listVistorias(filters: ListVistoriasFilters = {}) {
   const where: string[] = [];
   const params: unknown[] = [];
+  // HAS_COORDS so para visualizacao admin (mapa publico). Tecnico precisa
+  // ver vistorias SEM coords pra ir ao local marcar o GPS — esse e o trabalho.
+  let coordsFilter = HAS_COORDS;
   if (filters.tecnicoId != null) {
+    coordsFilter = "";
     where.push("f.users_id_vistoriadorafield = ?");
     params.push(filters.tecnicoId);
 
@@ -166,7 +170,7 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
   }
   const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";
   const rows = await query<RawRow>(
-    `${SELECT_BASE} ${HAS_COORDS} ${extraWhere} ORDER BY ne.name LIMIT 500`,
+    `${SELECT_BASE} ${coordsFilter} ${extraWhere} ORDER BY ne.name LIMIT 500`,
     params
   );
   return rows.map(mapRow);
