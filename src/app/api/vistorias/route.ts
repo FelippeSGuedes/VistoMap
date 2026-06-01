@@ -6,10 +6,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Lista vistorias do técnico logado.
+ * Lista vistorias do usuario logado (sempre filtrado pelo seu id).
  *
- * Regra: técnico só enxerga o que está atribuído a ele (via
- * users_id_vistoriadorafield). Admin enxerga tudo. Sem JWT válido → 401.
+ * Endpoint usado SOMENTE pelo /app (mobile do tecnico). Mesmo se o user
+ * for admin+tecnico, no /app ele atua como tecnico — so ve atribuidas.
+ * View admin "todas" vive em /api/painel/* .
  */
 export async function GET(req: Request) {
   try {
@@ -20,8 +21,7 @@ export async function GET(req: Request) {
         { status: 401 }
       );
     }
-    const tecnicoId = actor.role === "admin" ? undefined : actor.id;
-    const items = await listVistorias({ tecnicoId });
+    const items = await listVistorias({ tecnicoId: actor.id });
     return NextResponse.json(items);
   } catch (error) {
     console.error("[api/vistorias] GET error", error);

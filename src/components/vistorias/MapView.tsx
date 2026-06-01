@@ -52,16 +52,36 @@ if (typeof document !== "undefined" && !document.getElementById("vm-pin-style"))
   document.head.appendChild(style);
 }
 
-function buildMarkerEl(status: Vistoria["status"]) {
+function buildMarkerEl(v: Vistoria) {
+  const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  // Outer e' do tamanho EXATO do icone (44x56) pra anchor "bottom" alinhar
+  // a ponta na coord. Label vai em position:absolute fora do box.
   const root = document.createElement("div");
   root.className = "vm-pin";
-  root.style.cssText = "width:44px;height:56px;";
+  root.style.cssText = "position:relative;width:44px;height:56px;";
+
   const img = document.createElement("img");
-  img.src = PIN_ICON[status];
+  img.src = `${BP}${PIN_ICON[v.status]}`;
   img.width = 44;
   img.height = 56;
-  img.alt = status;
+  img.alt = v.status;
+  img.style.cssText = "display:block;width:44px;height:56px;";
   root.appendChild(img);
+
+  const label = document.createElement("div");
+  label.style.cssText = `
+    position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    margin-top:4px;padding:2px 8px;border-radius:999px;
+    background:rgba(255,255,255,.95);border:1px solid rgba(6,59,59,.08);
+    box-shadow:0 2px 6px rgba(6,59,59,.14);
+    color:#063B3B;font-family:Inter,system-ui,sans-serif;
+    font-size:10.5px;font-weight:600;white-space:nowrap;
+    max-width:160px;overflow:hidden;text-overflow:ellipsis;
+    pointer-events:none;
+  `;
+  label.textContent = v.equipamento ?? v.glpiId ?? `NE-${v.id}`;
+  root.appendChild(label);
+
   return root;
 }
 
@@ -161,7 +181,7 @@ export function MapView({
           existing.setLngLat([v.longitude, v.latitude]);
           return;
         }
-        const el = buildMarkerEl(v.status);
+        const el = buildMarkerEl(v);
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([v.longitude, v.latitude])
           .addTo(map);
