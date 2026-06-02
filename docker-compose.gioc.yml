@@ -15,6 +15,12 @@ services:
         NEXT_PUBLIC_USE_BASE_PATH: "true"
     container_name: vistomap-tecnico
     restart: unless-stopped
+    # Container roda como uid 1001 (nextjs). O volume /uploads e do GLPI
+    # (uid:gid 33:33, modo 775). group_add 33 coloca o processo no grupo 33
+    # -> escreve via group-write, sem precisar de world-writable. Sem isso,
+    # saveEquipmentFiles falha com EACCES e o finalizar retorna 500.
+    group_add:
+      - "33"
     ports:
       - "127.0.0.1:3000:3000"
     env_file:
@@ -52,6 +58,9 @@ services:
         BUILD_VARIANT: painel
     container_name: vistomap-painel
     restart: unless-stopped
+    # Mesmo motivo do tecnico: acesso de escrita ao volume /uploads (GLPI 33:33).
+    group_add:
+      - "33"
     ports:
       - "127.0.0.1:3002:3000"
     env_file:
