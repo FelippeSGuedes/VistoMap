@@ -95,7 +95,7 @@ async function executor(op: QueuedOperation): Promise<void> {
 
 export function useOfflineSync() {
   const { session } = useAuthStore();
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
   const runningRef = useRef(false);
 
   useEffect(() => {
