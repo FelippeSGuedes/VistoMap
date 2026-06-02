@@ -52,36 +52,27 @@ if (typeof document !== "undefined" && !document.getElementById("vm-pin-style"))
   document.head.appendChild(style);
 }
 
-function buildMarkerEl(v: Vistoria) {
-  const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  // Outer e' do tamanho EXATO do icone (44x56) pra anchor "bottom" alinhar
-  // a ponta na coord. Label vai em position:absolute fora do box.
+// Tecnico recebe vistorias SEM coord (vai ao local marcar GPS). O SQL
+// converte coord vazia -> 0, entao (0,0) = "sem GPS ainda". NAO plotar essas:
+// cairiam em Null Island (meio do Atlantico). A LISTA ainda as mostra.
+function hasValidCoords(v: Vistoria): boolean {
+  return (
+    Number.isFinite(v.latitude) &&
+    Number.isFinite(v.longitude) &&
+    (v.latitude !== 0 || v.longitude !== 0)
+  );
+}
+
+function buildMarkerEl(status: Vistoria["status"]) {
   const root = document.createElement("div");
   root.className = "vm-pin";
-  root.style.cssText = "position:relative;width:44px;height:56px;";
-
+  root.style.cssText = "width:44px;height:56px;";
   const img = document.createElement("img");
-  img.src = `${BP}${PIN_ICON[v.status]}`;
+  img.src = PIN_ICON[status];
   img.width = 44;
   img.height = 56;
-  img.alt = v.status;
-  img.style.cssText = "display:block;width:44px;height:56px;";
+  img.alt = status;
   root.appendChild(img);
-
-  const label = document.createElement("div");
-  label.style.cssText = `
-    position:absolute;top:100%;left:50%;transform:translateX(-50%);
-    margin-top:4px;padding:2px 8px;border-radius:999px;
-    background:rgba(255,255,255,.95);border:1px solid rgba(6,59,59,.08);
-    box-shadow:0 2px 6px rgba(6,59,59,.14);
-    color:#063B3B;font-family:Inter,system-ui,sans-serif;
-    font-size:10.5px;font-weight:600;white-space:nowrap;
-    max-width:160px;overflow:hidden;text-overflow:ellipsis;
-    pointer-events:none;
-  `;
-  label.textContent = v.equipamento ?? v.glpiId ?? `NE-${v.id}`;
-  root.appendChild(label);
-
   return root;
 }
 
@@ -102,18 +93,15 @@ export function MapView({
 
   const token = getMapboxToken();
 
+  // So vistorias com coord real entram no mapa (ver hasValidCoords).
+  const plottable = useMemo(() => vistorias.filter(hasValidCoords), [vistorias]);
+
   const initialCenter = useMemo<LngLatLike>(() => {
     if (userPosition) return [userPosition.lng, userPosition.lat];
-    if (vistorias[0]) return [vistorias[0].longitude, vistorias[0].latitude];
+    if (plottable[0]) return [plottable[0].longitude, plottable[0].latitude];
     return DEFAULT_CENTER;
-  }, [userPosition, vistorias]);
+  }, [userPosition, plottable]);
 
-  // initialCenter no useMemo eh recalculado quando vistorias muda, gerando
-  // nova ref. Antes essa ref ficava em deps deste effect → mapa era destruido
-  // + recriado a cada filtro → effect 1 dos postes (deps []) nao re-rodava
-  // → source POSTES_SRC perdido → circles nao apareciam.
-  // Fix: re-init so quando token muda. initialCenter so importa na 1a montagem.
-  const initialCenterRef = useRef(initialCenter);
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     if (!token) return;
@@ -121,7 +109,7 @@ export function MapView({
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
-      center: initialCenterRef.current,
+      center: initialCenter,
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
       pitchWithRotate: false,
@@ -139,7 +127,7 @@ export function MapView({
       markersRef.current.clear();
       userMarkerRef.current = null;
     };
-  }, [token]);
+  }, [initialCenter, token]);
 
   // user position marker
   useEffect(() => {
@@ -174,14 +162,14 @@ export function MapView({
 
     const sync = () => {
       const seen = new Set<string>();
-      vistorias.forEach((v) => {
+      plottable.forEach((v) => {
         seen.add(v.id);
         const existing = markersRef.current.get(v.id);
         if (existing) {
           existing.setLngLat([v.longitude, v.latitude]);
           return;
         }
-        const el = buildMarkerEl(v);
+        const el = buildMarkerEl(v.status);
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([v.longitude, v.latitude])
           .addTo(map);
@@ -201,14 +189,14 @@ export function MapView({
 
     if (map.loaded()) sync();
     else map.once("load", sync);
-  }, [vistorias, onSelect]);
+  }, [plottable, onSelect]);
 
   // selected fly-to (vistoria)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedId) return;
     const v = vistorias.find((x) => x.id === selectedId);
-    if (!v) return;
+    if (!v || !hasValidCoords(v)) return;
     map.flyTo({
       center: [v.longitude, v.latitude],
       zoom: Math.max(map.getZoom(), 13.5),
@@ -229,9 +217,6 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    const POSTE_ICON_ID = "vm-poste-icon";
-
     const ensure = () => {
       if (map.getSource(POSTES_SRC)) return;
       map.addSource(POSTES_SRC, {
@@ -239,8 +224,27 @@ export function MapView({
         data: { type: "FeatureCollection", features: [] },
         promoteId: "id",
       });
-
-      // halo amarelo sobreposto (selecionado) — DESENHADO POR BAIXO do icone
+      // anel verde (estado padrão)
+      map.addLayer({
+        id: POSTES_LAYER,
+        source: POSTES_SRC,
+        type: "circle",
+        paint: {
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10, 4,
+            14, 8,
+            18, 13,
+          ],
+          "circle-color": "#06D6A0",
+          "circle-stroke-color": "#073B4C",
+          "circle-stroke-width": 1.5,
+          "circle-opacity": 0.9,
+        },
+      });
+      // estrela amarela sobreposta (selecionado)
       map.addLayer({
         id: POSTES_LAYER_SELECTED,
         source: POSTES_SRC,
@@ -251,79 +255,28 @@ export function MapView({
             "interpolate",
             ["linear"],
             ["zoom"],
-            10, 12,
-            14, 22,
-            18, 32,
+            10, 10,
+            14, 17,
+            18, 26,
           ],
           "circle-color": "#FFD166",
           "circle-stroke-color": "#073B4C",
           "circle-stroke-width": 3,
-          "circle-opacity": 0.95,
+          "circle-opacity": 1,
         },
       });
 
-      // Icone PNG (posteico.png) — symbol layer com imagem custom
-      const addIconLayer = () => {
-        if (map.getLayer(POSTES_LAYER)) return;
-        map.addLayer({
-          id: POSTES_LAYER,
-          source: POSTES_SRC,
-          type: "symbol",
-          layout: {
-            "icon-image": POSTE_ICON_ID,
-            "icon-allow-overlap": true,
-            "icon-anchor": "bottom",
-            "icon-size": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              10, 0.04,
-              14, 0.08,
-              18, 0.16,
-            ],
-          },
-        });
-        map.on("click", POSTES_LAYER, (e) => {
-          const feat = e.features?.[0];
-          const id = Number(feat?.properties?.id);
-          if (Number.isFinite(id)) onPosteSelectRef.current?.(id);
-        });
-        map.on("mouseenter", POSTES_LAYER, () => {
-          map.getCanvas().style.cursor = "pointer";
-        });
-        map.on("mouseleave", POSTES_LAYER, () => {
-          map.getCanvas().style.cursor = "";
-        });
-      };
-
-      if (map.hasImage(POSTE_ICON_ID)) {
-        addIconLayer();
-      } else {
-        map.loadImage(`${BP}/posteico.png`, (err, image) => {
-          if (err || !image) {
-            console.warn("[MapView] loadImage posteico falhou:", err);
-            // Fallback circle layer pra nao perder o ponto
-            if (!map.getLayer(POSTES_LAYER)) {
-              map.addLayer({
-                id: POSTES_LAYER,
-                source: POSTES_SRC,
-                type: "circle",
-                paint: {
-                  "circle-radius": 6,
-                  "circle-color": "#06D6A0",
-                  "circle-stroke-color": "#073B4C",
-                  "circle-stroke-width": 1.5,
-                },
-              });
-            }
-            return;
-          }
-          if (!map.hasImage(POSTE_ICON_ID)) {
-            map.addImage(POSTE_ICON_ID, image);
-          }
-          addIconLayer();
-        });
-      }
+      map.on("click", POSTES_LAYER, (e) => {
+        const feat = e.features?.[0];
+        const id = Number(feat?.properties?.id);
+        if (Number.isFinite(id)) onPosteSelectRef.current?.(id);
+      });
+      map.on("mouseenter", POSTES_LAYER, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", POSTES_LAYER, () => {
+        map.getCanvas().style.cursor = "";
+      });
     };
     if (map.loaded()) ensure();
     else map.once("load", ensure);
