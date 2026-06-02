@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listVistorias } from "@/lib/glpi/equipments";
 import { getActorFromRequest } from "@/lib/auth-request";
+import { expedienteAtual } from "@/lib/expediente";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,6 +22,28 @@ export async function GET(req: Request) {
         { status: 401 }
       );
     }
+
+    const exp = await expedienteAtual(actor.id);
+    if (!exp?.emAndamento) {
+      return NextResponse.json(
+        {
+          message: "Inicie o expediente antes de abrir o mapa e acessar as vistorias do dia.",
+          precisaIniciarExpediente: true,
+        },
+        { status: 403 }
+      );
+    }
+
+    if (exp.emPausa) {
+      return NextResponse.json(
+        {
+          message: "Você está em pausa para almoço. Retorne do almoço para acessar as vistorias.",
+          emPausaAlmoco: true,
+        },
+        { status: 403 }
+      );
+    }
+
     const items = await listVistorias({ tecnicoId: actor.id });
     return NextResponse.json(items);
   } catch (error) {

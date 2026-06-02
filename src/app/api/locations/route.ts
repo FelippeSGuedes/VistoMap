@@ -25,16 +25,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Token sem ID de usuário" }, { status: 401 });
   }
 
-  // Gating LGPD: GPS so eh aceito durante expediente aberto.
-  // Fora de expediente: 403 — app deve parar de pingar.
-  const exp = await expedienteAtual(usersId);
-  if (!exp || !exp.emAndamento) {
-    return NextResponse.json(
-      { message: "Sem expediente aberto — GPS desativado" },
-      { status: 403 }
-    );
-  }
-
   let body: {
     latitude?: number;
     longitude?: number;
@@ -58,6 +48,20 @@ export async function POST(req: NextRequest) {
   // Validação básica de range
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
     return NextResponse.json({ message: "Coordenadas fora de range" }, { status: 400 });
+  }
+
+  const expediente = await expedienteAtual(usersId);
+  if (!expediente?.emAndamento) {
+    return NextResponse.json(
+      { message: "Rastreio indisponível fora de expediente" },
+      { status: 403 }
+    );
+  }
+  if (expediente.emPausa) {
+    return NextResponse.json(
+      { message: "Rastreio pausado durante o horário de almoço" },
+      { status: 403 }
+    );
   }
 
   try {

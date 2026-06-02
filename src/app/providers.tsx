@@ -3,13 +3,13 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { useExpedienteStore } from "@/store/expediente";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useLocationReporter } from "@/hooks/useLocationReporter";
 import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
-import { useExpedienteStore } from "@/store/expediente";
-import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
 
 function LocationReporterMount() {
   useLocationReporter();
@@ -23,19 +23,6 @@ function PushRegistrationMount() {
 
 function OfflineSyncMount() {
   useOfflineSync();
-  return null;
-}
-
-/** Mantem useExpedienteStore atualizado em qualquer pagina do app. */
-function ExpedienteSync() {
-  const refresh = useExpedienteStore((s) => s.refresh);
-  const session = useAuthStore((s) => s.session);
-  useEffect(() => {
-    if (!session?.token) return;
-    void refresh();
-    const id = window.setInterval(refresh, 30_000);
-    return () => window.clearInterval(id);
-  }, [refresh, session?.token]);
   return null;
 }
 
@@ -68,14 +55,25 @@ function TecnicoNotificationsMount() {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const hydrate = useAuthStore((s) => s.hydrate);
+  const session = useAuthStore((s) => s.session);
+  const refreshExpediente = useExpedienteStore((s) => s.refresh);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
+  // Mantem useExpedienteStore atualizado em qualquer pagina do app.
+  // Refresh imediato no login + polling de 30s pra captar mudancas de estado
+  // que nao vieram de acao local (fim automatico, finalizacao remota, etc).
+  useEffect(() => {
+    if (!session?.token) return;
+    void refreshExpediente();
+    const id = window.setInterval(refreshExpediente, 30_000);
+    return () => window.clearInterval(id);
+  }, [refreshExpediente, session?.token]);
+
   return (
     <>
-      <ExpedienteSync />
       <LocationReporterMount />
       <PushRegistrationMount />
       <TecnicoNotificationsMount />

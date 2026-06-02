@@ -74,24 +74,24 @@ function getBatteryLevel(): Promise<number | null> {
 export function useLocationReporter() {
   const { session } = useAuthStore();
   const expediente = useExpedienteStore((s) => s.expediente);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshExpediente = useExpedienteStore((s) => s.refresh);
+  const intervalRef = useRef<number | null>(null);
   const watcherIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (session?.token) {
+      void refreshExpediente();
+    }
+  }, [session?.token, refreshExpediente]);
 
   useEffect(() => {
     if (!session?.token) {
       console.log("[useLocationReporter] Sem token, nao reporta.");
       return;
     }
-    // Gating LGPD: so reporta GPS durante expediente aberto.
-    if (!expediente?.emAndamento) {
-      console.log(
-        "[useLocationReporter] Sem expediente aberto, GPS reporter desativado."
-      );
-      return;
-    }
-    // Em pausa-almoco tambem nao reporta (privacidade durante almoco).
-    if (expediente.emPausa) {
-      console.log("[useLocationReporter] Pausa-almoco, GPS pausado.");
+
+    if (!expediente?.emAndamento || expediente.emPausa) {
+      console.log("[useLocationReporter] Fora de expediente ativo, rastreio suspenso.");
       return;
     }
 
@@ -213,7 +213,7 @@ export function useLocationReporter() {
     }
 
     report();
-    intervalRef.current = setInterval(report, INTERVAL_MS);
+    intervalRef.current = window.setInterval(report, INTERVAL_MS);
 
     // Wake Lock: mantem tela ativa em mobile pra reduzir suspensao da aba.
     type WakeLockSentinel = { release: () => Promise<void> };
@@ -240,8 +240,8 @@ export function useLocationReporter() {
     }
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current != null) window.clearInterval(intervalRef.current);
       if (wakeLock) wakeLock.release().catch(() => {});
     };
-  }, [session?.token, expediente?.emAndamento, expediente?.emPausa]);
+  }, [expediente?.emAndamento, expediente?.emPausa, session?.token, refreshExpediente]);
 }

@@ -6,6 +6,7 @@ import { Building2, MapPin, Navigation, Play, User } from "lucide-react";
 import type { Vistoria } from "@/types";
 import type { ApiError } from "@/services/api";
 import { Button } from "@/components/ui/Button";
+import { useExpedienteStore } from "@/store/expediente";
 import { VistoriaHeaderHero } from "./VistoriaHeaderHero";
 import { openNavigation } from "@/services/maps";
 import { vistoriasService } from "@/services/vistorias";
@@ -24,6 +25,7 @@ export function VistoriaPinSheet({
   onStart,
 }: VistoriaPinSheetProps) {
   const [starting, setStarting] = useState(false);
+  const expediente = useExpedienteStore((s) => s.expediente);
 
   useEffect(() => {
     if (!open) setStarting(false);
@@ -39,9 +41,18 @@ export function VistoriaPinSheet({
   }, [open]);
 
   const [startError, setStartError] = useState<string | null>(null);
+  const startBlockedReason = !expediente?.emAndamento
+    ? "Inicie o expediente antes de começar a vistoria."
+    : expediente.emPausa
+    ? "Você está em pausa para almoço. Retorne do almoço para iniciar a vistoria."
+    : null;
 
   const handleStart = async () => {
     if (!vistoria) return;
+    if (startBlockedReason) {
+      setStartError(startBlockedReason);
+      return;
+    }
     setStarting(true);
     setStartError(null);
     try {
@@ -128,6 +139,7 @@ export function VistoriaPinSheet({
               <Button
                 size="lg"
                 loading={starting}
+                disabled={!!startBlockedReason}
                 leftIcon={<Play className="h-4 w-4" />}
                 onClick={handleStart}
               >

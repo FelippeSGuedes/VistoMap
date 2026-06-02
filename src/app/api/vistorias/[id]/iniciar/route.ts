@@ -53,6 +53,16 @@ export async function POST(
             { status: 403 }
           );
         }
+        if (exp.emPausa) {
+          return NextResponse.json(
+            {
+              message:
+                "Você está em pausa para almoço. Retorne do almoço antes de iniciar a vistoria.",
+              emPausaAlmoco: true,
+            },
+            { status: 403 }
+          );
+        }
       }
     } catch {
       /* token inválido cai no try abaixo na verificacao normal */

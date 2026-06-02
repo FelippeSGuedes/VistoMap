@@ -219,7 +219,8 @@ function LGPDModal({
           <li>Base legal: LGPD art. 7º V (execução de contrato).</li>
         </ul>
         <p className="mb-4 text-[12px] text-slate-500">
-          Você pode revogar o consentimento a qualquer momento contatando o RH.
+          Você pode revogar o consentimento a qualquer momento comunicando ao
+          Administrador do Sistema ou ao seu Gestor Imediato.
           Sem aceite, o app não permite iniciar vistorias.
         </p>
         <div className="flex gap-2">

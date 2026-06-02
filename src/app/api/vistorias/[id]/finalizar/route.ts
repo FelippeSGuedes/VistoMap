@@ -86,6 +86,14 @@ export async function POST(
     return NextResponse.json({ message: "ID inválido" }, { status: 400 });
   }
 
+  // Sem gating de expediente aqui: finalizar apenas COMPLETA trabalho ja
+  // autorizado no iniciar (que e gated). Gatear aqui quebraria o sync offline
+  // quando a rede volta apos o expediente fechar (offline scope A).
+  const actor = await getActorFromRequest(request).catch(() => null);
+  if (!actor) {
+    return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
+  }
+
   let payload: FinalizarPayload;
   const files: Array<FilePayload | null> = [];
   let videoFile: FilePayload | null = null;
@@ -192,7 +200,6 @@ export async function POST(
     });
 
     // Audit timestamp "finalizada" — par com "vistoria-iniciada" pra calc tempo
-    const actor = await getActorFromRequest(request).catch(() => null);
     if (actor) {
       void auditInsert({
         ator: actor,
