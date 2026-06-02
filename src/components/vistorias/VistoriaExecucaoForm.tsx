@@ -301,11 +301,15 @@ export function VistoriaExecucaoForm({
       window.clearInterval(tick);
       setSubmitting(false);
       setProgress(0);
+      // O titulo do box ja diz "Falha ao finalizar vistoria"; aqui queremos a
+      // CAUSA real. Backend manda { message: generico, error: causa } no 500 —
+      // entao prioriza `error` sobre `message` pra nao repetir o titulo.
+      const data = (
+        err as { response?: { data?: { message?: string; error?: string } } }
+      )?.response?.data;
       const msg =
-        (err as { response?: { data?: { message?: string; error?: string } } })
-          ?.response?.data?.message ||
-        (err as { response?: { data?: { message?: string; error?: string } } })
-          ?.response?.data?.error ||
+        data?.error ||
+        data?.message ||
         (err instanceof Error ? err.message : "Falha ao enviar vistoria. Tente novamente.");
       setSubmitError(msg);
     }

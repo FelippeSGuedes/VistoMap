@@ -137,6 +137,18 @@ function VistoriasPageInner() {
     origin: position ? { lat: position.lat, lng: position.lng } : null,
   });
 
+  // IMPORTANTE: este useMemo TEM que ficar acima dos early returns abaixo
+  // (!expedienteReady / accessBlockReason). Se ficar depois, em renders que
+  // retornam cedo ele nao roda → contagem de hooks muda → React crasha com
+  // "Rendered more hooks than during the previous render" (Application error).
+  const categorias = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((v) => v.categoria).filter((c): c is string => Boolean(c)))
+      ),
+    [items]
+  );
+
   if (!expedienteReady) {
     return <LoadingShell label="Validando expediente" />;
   }
@@ -164,14 +176,6 @@ function VistoriasPageInner() {
       </div>
     );
   }
-
-  const categorias = useMemo(
-    () =>
-      Array.from(
-        new Set(items.map((v) => v.categoria).filter((c): c is string => Boolean(c)))
-      ),
-    [items]
-  );
 
   const filterCount =
     (filters.status.length ? 1 : 0) +
