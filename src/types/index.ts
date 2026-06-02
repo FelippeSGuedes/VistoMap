@@ -319,7 +319,9 @@ export interface AuditEntry {
     | "dados-editados"
     | "sincronizacao"
     | "login-admin"
-    | "login-tecnico";
+    | "login-tecnico"
+    | "expediente-finalizado"
+    | "expediente-iniciado";
   /** Alvo da ação. */
   alvo?: {
     tipo: "vistoria" | "tecnico" | "revisita" | "sistema";

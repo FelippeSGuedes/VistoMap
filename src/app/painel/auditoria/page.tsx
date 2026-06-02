@@ -47,6 +47,8 @@ const ACAO: Record<
   sincronizacao:         { label: "Sincronização",        icon: RefreshCcw,   fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
   "login-admin":         { label: "Login admin",          icon: LogIn,        fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
   "login-tecnico":       { label: "Login técnico",        icon: LogIn,        fg: "#475569", bg: "#F8FAFC", dot: "#94A3B8" },
+  "expediente-iniciado": { label: "Expediente iniciado",  icon: LogIn,        fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
+  "expediente-finalizado":{ label: "Expediente encerrado",icon: LogIn,        fg: "#475569", bg: "#F8FAFC", dot: "#94A3B8" },
 };
 
 const TIPO_FILTROS: Array<{ id: AuditEntry["acao"] | "todos"; label: string }> = [
