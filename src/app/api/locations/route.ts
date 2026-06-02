@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionJwt } from "@/lib/jwt";
 import { execute } from "@/lib/db";
+import { expedienteAtual } from "@/lib/expediente";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +23,16 @@ export async function POST(req: NextRequest) {
   const usersId = Number(claims.sub);
   if (!usersId || isNaN(usersId)) {
     return NextResponse.json({ message: "Token sem ID de usuário" }, { status: 401 });
+  }
+
+  // Gating LGPD: GPS so eh aceito durante expediente aberto.
+  // Fora de expediente: 403 — app deve parar de pingar.
+  const exp = await expedienteAtual(usersId);
+  if (!exp || !exp.emAndamento) {
+    return NextResponse.json(
+      { message: "Sem expediente aberto — GPS desativado" },
+      { status: 403 }
+    );
   }
 
   let body: {

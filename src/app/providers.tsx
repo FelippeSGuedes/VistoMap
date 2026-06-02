@@ -7,6 +7,7 @@ import { useVistoriasStore } from "@/store/vistorias";
 import { useLocationReporter } from "@/hooks/useLocationReporter";
 import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
+import { useExpedienteStore } from "@/store/expediente";
 
 function LocationReporterMount() {
   useLocationReporter();
@@ -15,6 +16,19 @@ function LocationReporterMount() {
 
 function PushRegistrationMount() {
   usePushRegistration();
+  return null;
+}
+
+/** Mantem useExpedienteStore atualizado em qualquer pagina do app. */
+function ExpedienteSync() {
+  const refresh = useExpedienteStore((s) => s.refresh);
+  const session = useAuthStore((s) => s.session);
+  useEffect(() => {
+    if (!session?.token) return;
+    void refresh();
+    const id = window.setInterval(refresh, 30_000);
+    return () => window.clearInterval(id);
+  }, [refresh, session?.token]);
   return null;
 }
 
@@ -54,6 +68,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <ExpedienteSync />
       <LocationReporterMount />
       <PushRegistrationMount />
       <TecnicoNotificationsMount />

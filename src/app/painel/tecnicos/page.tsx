@@ -20,6 +20,21 @@ import {
 } from "lucide-react";
 import { painelService, type HistoricoAnalytics } from "@/services/painel";
 import type { TecnicoAtivo } from "@/types";
+import { api } from "@/services/api";
+
+interface ExpedienteAtivo {
+  id: number;
+  users_id: number;
+  inicio_at: string;
+  emPausa: boolean;
+}
+
+function elapsedShort(fromIso: string): string {
+  const totalMin = Math.floor((Date.now() - new Date(fromIso).getTime()) / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
+}
 
 interface TecnicoEnriquecido extends TecnicoAtivo {
   total30d: number;
@@ -54,19 +69,25 @@ function relativo(iso?: string): string {
 export default function TecnicosPage() {
   const [tecnicos, setTecnicos] = useState<TecnicoAtivo[]>([]);
   const [historico, setHistorico] = useState<HistoricoAnalytics | null>(null);
+  const [expedientes, setExpedientes] = useState<ExpedienteAtivo[]>([]);
   const [query, setQuery] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<TecnicoAtivo["status"] | "todos">("todos");
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [t, h] = await Promise.all([
+      const [t, h, e] = await Promise.all([
         painelService.fetchTecnicos(),
         painelService.fetchHistorico(30),
+        api
+          .get<{ ativos: ExpedienteAtivo[] }>("/painel/expediente/ativos")
+          .then((r) => r.data.ativos)
+          .catch(() => [] as ExpedienteAtivo[]),
       ]);
       if (!alive) return;
       setTecnicos(t);
       setHistorico(h);
+      setExpedientes(e);
     };
     load();
     const id = window.setInterval(load, 20000);
@@ -75,6 +96,12 @@ export default function TecnicosPage() {
       window.clearInterval(id);
     };
   }, []);
+
+  const expedienteByUser = useMemo(() => {
+    const m = new Map<string, ExpedienteAtivo>();
+    expedientes.forEach((e) => m.set(String(e.users_id), e));
+    return m;
+  }, [expedientes]);
 
   // Merge tecnicos + ranking p/ KPIs 30d. Produtividade = total / topo do ranking.
   const enriquecidos = useMemo<TecnicoEnriquecido[]>(() => {
@@ -200,6 +227,13 @@ export default function TecnicosPage() {
         {lista.map((t, i) => {
           const cfg = STATUS_CFG[t.status];
           const isOffline = t.status === "offline";
+          const exp = expedienteByUser.get(t.id);
+          const expColor = exp ? (exp.emPausa ? "#F59E0B" : "#00B388") : "#94A3B8";
+          const expLabel = exp
+            ? exp.emPausa
+              ? "Pausa-almoço"
+              : `Em expediente · ${elapsedShort(exp.inicio_at)}`
+            : "Fora de expediente";
           return (
             <motion.div
               key={t.id}
@@ -214,6 +248,17 @@ export default function TecnicosPage() {
                   "0 1px 3px rgba(6,59,59,0.04), 0 8px 22px rgba(6,59,59,0.07)",
               }}
             >
+              <div
+                className="absolute right-3 top-3 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+                style={{
+                  background: `${expColor}15`,
+                  color: expColor,
+                  border: `1px solid ${expColor}33`,
+                }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: expColor }} />
+                {expLabel}
+              </div>
               {!isOffline && (
                 <div
                   className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full blur-[28px]"

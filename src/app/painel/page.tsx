@@ -26,6 +26,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
+import { api } from "@/services/api";
 import type {
   AuditEntry,
   PainelStats,
@@ -66,23 +67,35 @@ function initials(nome: string): string {
   return ((p[0]?.[0] ?? "") + (p[1]?.[0] ?? "")).toUpperCase();
 }
 
+interface ExpedienteAtivo {
+  id: number;
+  users_id: number;
+  inicio_at: string;
+  emPausa: boolean;
+}
+
 export default function PainelOverviewPage() {
   const [stats, setStats] = useState<PainelStats | null>(null);
   const [tecnicos, setTecnicos] = useState<TecnicoAtivo[]>([]);
   const [revisitas, setRevisitas] = useState<RevisitaPendente[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [historico, setHistorico] = useState<HistoricoAnalytics | null>(null);
+  const [expedientes, setExpedientes] = useState<ExpedienteAtivo[]>([]);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [s, t, r, a, h] = await Promise.all([
+      const [s, t, r, a, h, e] = await Promise.all([
         painelService.fetchStats(),
         painelService.fetchTecnicos(),
         painelService.fetchRevisitas(),
         painelService.fetchAudit({ limit: 8 }),
         painelService.fetchHistorico(30),
+        api
+          .get<{ ativos: ExpedienteAtivo[] }>("/painel/expediente/ativos")
+          .then((res) => res.data.ativos)
+          .catch(() => [] as ExpedienteAtivo[]),
       ]);
       if (!alive) return;
       setStats(s);
@@ -90,6 +103,7 @@ export default function PainelOverviewPage() {
       setRevisitas(r);
       setAudit(a);
       setHistorico(h);
+      setExpedientes(e);
       setNow(new Date());
     };
     load();
@@ -221,8 +235,10 @@ export default function PainelOverviewPage() {
                   <>
                     <span className="font-semibold text-white">{stats.pendentes + stats.emVistoria}</span>{" "}
                     vistorias na fila ·{" "}
+                    <span className="font-semibold text-white">{expedientes.length}</span>/
+                    <span className="font-semibold text-white">{tecnicos.length}</span> em expediente ·{" "}
                     <span className="font-semibold text-white">{emCampo}</span> técnico
-                    {emCampo === 1 ? "" : "s"} em campo agora ·{" "}
+                    {emCampo === 1 ? "" : "s"} em campo ·{" "}
                     <span className="font-semibold text-white">{stats.municipiosAtivos}</span> município
                     {stats.municipiosAtivos === 1 ? "" : "s"} ativos.
                   </>

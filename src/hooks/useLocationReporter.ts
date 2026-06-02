@@ -17,6 +17,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/auth";
+import { useExpedienteStore } from "@/store/expediente";
 
 const INTERVAL_MS = 30_000;
 const GEO_OPTIONS: PositionOptions = {
@@ -72,12 +73,25 @@ function getBatteryLevel(): Promise<number | null> {
 
 export function useLocationReporter() {
   const { session } = useAuthStore();
+  const expediente = useExpedienteStore((s) => s.expediente);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const watcherIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!session?.token) {
       console.log("[useLocationReporter] Sem token, nao reporta.");
+      return;
+    }
+    // Gating LGPD: so reporta GPS durante expediente aberto.
+    if (!expediente?.emAndamento) {
+      console.log(
+        "[useLocationReporter] Sem expediente aberto, GPS reporter desativado."
+      );
+      return;
+    }
+    // Em pausa-almoco tambem nao reporta (privacidade durante almoco).
+    if (expediente.emPausa) {
+      console.log("[useLocationReporter] Pausa-almoco, GPS pausado.");
       return;
     }
 
@@ -229,5 +243,5 @@ export function useLocationReporter() {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (wakeLock) wakeLock.release().catch(() => {});
     };
-  }, [session?.token]);
+  }, [session?.token, expediente?.emAndamento, expediente?.emPausa]);
 }

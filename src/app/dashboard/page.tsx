@@ -21,6 +21,7 @@ import { MunicipioField } from "@/components/dashboard/MunicipioField";
 import { SyncFilterPill } from "@/components/dashboard/SyncFilterPill";
 import { SyncFilterSheet } from "@/components/dashboard/SyncFilterSheet";
 import { NotificationPermissionCard } from "@/components/feedback/NotificationPermissionCard";
+import { ExpedienteCard } from "@/components/expediente/ExpedienteCard";
 import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
 import { MOCK_SYNC_SNAPSHOTS } from "@/utils/mock";
@@ -336,6 +337,9 @@ export default function DashboardPage() {
 
         {/* Banner permissão de notificações — some quando concedida/negada */}
         <NotificationPermissionCard />
+
+        {/* Card de expediente — sempre visivel, gate de inicio de vistorias */}
+        <ExpedienteCard />
 
         {/* HERO CARD */}
         <motion.div
