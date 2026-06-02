@@ -5,6 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/store/auth";
 import { DEFAULT_CENTER, MAP_STYLE, getMapboxToken } from "@/services/maps";
+import { api } from "@/services/api";
 import type {
   PainelMapaResponse,
   PainelMapaTecnico,
@@ -26,6 +27,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const VISTORIAS_SRC = "vm-vistorias-src";
 const VISTORIAS_POINTS = "vm-vistorias-points";
+const HEATMAP_LAYER = "vm-heatmap";
+const TRAIL_SRC = "vm-trail-src";
+const TRAIL_LAYER = "vm-trail-layer";
 
 function relTime(iso?: string | null): string {
   if (!iso) return "sem sinal";
@@ -88,6 +92,38 @@ function vistoriaColor(status: PainelMapaVistoria["status"]): string {
     default:
       return "#94A3B8";
   }
+}
+
+// ─── Smooth marker movement ─────────────────────────────────────────────────
+function animateMarkerTo(
+  marker: mapboxgl.Marker,
+  targetLng: number,
+  targetLat: number,
+  durationMs = 800
+) {
+  const start = marker.getLngLat();
+  const startLng = start.lng;
+  const startLat = start.lat;
+  const startTime = performance.now();
+
+  function step(now: number) {
+    const t = Math.min((now - startTime) / durationMs, 1);
+    // ease-out cubic
+    const ease = 1 - Math.pow(1 - t, 3);
+    marker.setLngLat([
+      startLng + (targetLng - startLng) * ease,
+      startLat + (targetLat - startLat) * ease,
+    ]);
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ─── Tecnico hover card types ────────────────────────────────────────────────
+interface TechTodayMetrics {
+  vistorias_hoje: number;
+  km_hoje: number;
+  tempo_medio_min: number | null;
 }
 
 /**
@@ -204,9 +240,14 @@ export default function PainelMapaPage() {
   const [data, setData] = useState<PainelMapaResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedTec, setSelectedTec] = useState<PainelMapaTecnico | null>(null);
+  const [hoveredTec, setHoveredTec] = useState<PainelMapaTecnico | null>(null);
+  const [hoveredMetrics, setHoveredMetrics] = useState<TechTodayMetrics | null>(null);
+  const [hoveredMetricsLoading, setHoveredMetricsLoading] = useState(false);
+  const [hoveredPos, setHoveredPos] = useState<{ x: number; y: number } | null>(null);
   const [aba, setAba] = useState<"tecnicos" | "vistorias">("tecnicos");
   const [filtroSit, setFiltroSit] = useState<"todas" | PainelMapaVistoria["situacao"]>("todas");
   const [buscaVis, setBuscaVis] = useState("");
+  const [trailUsersId, setTrailUsersId] = useState<number | null>(null);
 
   const fetchMapa = useCallback(async () => {
     if (!session?.token) return;
@@ -225,11 +266,73 @@ export default function PainelMapaPage() {
     }
   }, [session?.token]);
 
+  // Fetch & render trail for selected technician, polling every 30s
+  const fetchTrail = useCallback(async (usersId: number) => {
+    const map = mapRef.current;
+    if (!map || !map.loaded()) return;
+    try {
+      const r = await api.get<{ coords: [number, number][] }>(
+        `/painel/tecnico-trail?users_id=${usersId}&hours=8`
+      );
+      const coords = r.data.coords;
+      const geojson: GeoJSON.Feature<GeoJSON.LineString> = {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: coords },
+      };
+      if (map.getSource(TRAIL_SRC)) {
+        (map.getSource(TRAIL_SRC) as GeoJSONSource).setData(geojson);
+      } else {
+        map.addSource(TRAIL_SRC, { type: "geojson", data: geojson });
+        map.addLayer(
+          {
+            id: TRAIL_LAYER,
+            type: "line",
+            source: TRAIL_SRC,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-width": 3,
+              "line-gradient": [
+                "interpolate",
+                ["linear"],
+                ["line-progress"],
+                0, "rgba(0,200,150,0.0)",
+                0.4, "rgba(0,200,150,0.35)",
+                1, "rgba(0,200,150,0.9)",
+              ],
+            },
+          },
+          VISTORIAS_POINTS // insert below vistoria pins
+        );
+      }
+    } catch {
+      // trail is non-critical, ignore errors silently
+    }
+  }, []);
+
+  const removeTrail = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (map.getLayer(TRAIL_LAYER)) map.removeLayer(TRAIL_LAYER);
+    if (map.getSource(TRAIL_SRC)) map.removeSource(TRAIL_SRC);
+  }, []);
+
   useEffect(() => {
     fetchMapa();
     const id = window.setInterval(fetchMapa, 15_000);
     return () => window.clearInterval(id);
   }, [fetchMapa]);
+
+  // Trail polling when a technician is selected
+  useEffect(() => {
+    if (!trailUsersId) { removeTrail(); return; }
+    fetchTrail(trailUsersId);
+    const id = window.setInterval(() => fetchTrail(trailUsersId), 30_000);
+    return () => {
+      window.clearInterval(id);
+      removeTrail();
+    };
+  }, [trailUsersId, fetchTrail, removeTrail]);
 
   useEffect(() => {
     if (!token || !mapElRef.current || mapRef.current) return;
@@ -264,14 +367,34 @@ export default function PainelMapaPage() {
         seen.add(t.users_id);
         const existing = techMarkersRef.current.get(t.users_id);
         if (existing) {
-          existing.setLngLat([t.longitude!, t.latitude!]);
+          // Animate to new position instead of snapping
+          animateMarkerTo(existing, t.longitude!, t.latitude!);
           return;
         }
         const el = techMarkerEl(t);
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([t.longitude!, t.latitude!])
           .addTo(map);
-        el.addEventListener("click", () => setSelectedTec(t));
+        el.addEventListener("click", () => {
+          setSelectedTec(t);
+          setTrailUsersId(t.users_id);
+        });
+        el.addEventListener("mouseenter", (ev) => {
+          const rect = el.getBoundingClientRect();
+          setHoveredTec(t);
+          setHoveredPos({ x: rect.left + rect.width / 2, y: rect.top });
+          setHoveredMetrics(null);
+          setHoveredMetricsLoading(true);
+          api
+            .get<TechTodayMetrics>(`/painel/tecnico-today?users_id=${t.users_id}`)
+            .then((r) => setHoveredMetrics(r.data))
+            .catch(() => setHoveredMetrics(null))
+            .finally(() => setHoveredMetricsLoading(false));
+        });
+        el.addEventListener("mouseleave", () => {
+          setHoveredTec(null);
+          setHoveredPos(null);
+        });
         techMarkersRef.current.set(t.users_id, marker);
       });
 
@@ -302,10 +425,33 @@ export default function PainelMapaPage() {
 
     const syncVistorias = () => {
       if (!map.getSource(VISTORIAS_SRC)) {
-        // Sem cluster — pontos individuais ficam mais leves visualmente.
         map.addSource(VISTORIAS_SRC, {
           type: "geojson",
           data: geojson,
+        });
+
+        // Heatmap below individual pins — density-based intensity
+        map.addLayer({
+          id: HEATMAP_LAYER,
+          type: "heatmap",
+          source: VISTORIAS_SRC,
+          maxzoom: 15,
+          paint: {
+            "heatmap-weight": 1,
+            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 14, 2],
+            "heatmap-color": [
+              "interpolate",
+              ["linear"],
+              ["heatmap-density"],
+              0, "rgba(0,200,150,0)",
+              0.2, "rgba(0,200,150,0.18)",
+              0.5, "rgba(0,180,136,0.45)",
+              0.8, "rgba(0,150,100,0.72)",
+              1, "rgba(0,110,70,0.88)",
+            ],
+            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 8, 18, 14, 40],
+            "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.7, 15, 0],
+          },
         });
 
         map.addLayer({
@@ -438,6 +584,7 @@ export default function PainelMapaPage() {
                       type="button"
                       onClick={() => {
                         setSelectedTec(t);
+                        setTrailUsersId(t.users_id);
                         if (t.latitude != null && t.longitude != null) {
                           mapRef.current?.flyTo({
                             center: [t.longitude, t.latitude],
@@ -594,6 +741,59 @@ export default function PainelMapaPage() {
           )}
           <div ref={mapElRef} className="h-full w-full" />
 
+          {/* Hover mini-profile card — fixed over pin on mouseenter */}
+          {hoveredTec && hoveredPos && (
+            <div
+              className="pointer-events-none fixed z-[200] rounded-2xl border p-3 w-[220px]"
+              style={{
+                left: hoveredPos.x - 110,
+                top: hoveredPos.y - 8,
+                transform: "translateY(-100%)",
+                background: "rgba(255,255,255,0.97)",
+                backdropFilter: "blur(12px)",
+                borderColor: "rgba(6,59,59,0.1)",
+                boxShadow: "0 12px 32px rgba(6,59,59,0.16)",
+              }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white"
+                  style={{ background: "linear-gradient(135deg,#00C896,#009688)" }}
+                >
+                  {initials(hoveredTec.nome)}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-semibold" style={{ color: "#063B3B" }}>
+                    {hoveredTec.nome}
+                  </p>
+                  <p className="text-[10px]" style={{ color: statusColor(hoveredTec.status_operacional) }}>
+                    {statusLabel(hoveredTec.status_operacional)}
+                  </p>
+                </div>
+              </div>
+              {hoveredMetricsLoading ? (
+                <p className="text-[10px] text-center" style={{ color: "#94A3B8" }}>carregando…</p>
+              ) : hoveredMetrics ? (
+                <div className="grid grid-cols-3 gap-1.5 text-center">
+                  <div className="rounded-lg py-1.5 px-1" style={{ background: "#F8FAFB" }}>
+                    <p className="text-[15px] font-bold" style={{ color: "#063B3B" }}>{hoveredMetrics.vistorias_hoje}</p>
+                    <p className="text-[9px] leading-tight" style={{ color: "#7A8896" }}>vistorias</p>
+                  </div>
+                  <div className="rounded-lg py-1.5 px-1" style={{ background: "#F8FAFB" }}>
+                    <p className="text-[15px] font-bold" style={{ color: "#063B3B" }}>{hoveredMetrics.km_hoje.toFixed(1)}</p>
+                    <p className="text-[9px] leading-tight" style={{ color: "#7A8896" }}>km hoje</p>
+                  </div>
+                  <div className="rounded-lg py-1.5 px-1" style={{ background: "#F8FAFB" }}>
+                    <p className="text-[15px] font-bold" style={{ color: "#063B3B" }}>
+                      {hoveredMetrics.tempo_medio_min != null ? `${hoveredMetrics.tempo_medio_min}m` : "—"}
+                    </p>
+                    <p className="text-[9px] leading-tight" style={{ color: "#7A8896" }}>média/vis.</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {selectedTec && (
             <div
               className="absolute bottom-4 left-4 z-10 w-[280px] rounded-2xl border p-3"
@@ -604,8 +804,23 @@ export default function PainelMapaPage() {
                 boxShadow: "0 10px 28px rgba(6,59,59,0.12)",
               }}
             >
-              <p className="text-[13px] font-semibold" style={{ color: "#063B3B" }}>{selectedTec.nome}</p>
-              <p className="mt-0.5 text-[10.5px]" style={{ color: "#7A8896" }}>{statusLabel(selectedTec.status_operacional)}</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[13px] font-semibold" style={{ color: "#063B3B" }}>{selectedTec.nome}</p>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedTec(null); setTrailUsersId(null); }}
+                  className="text-[10px] rounded-full px-2 py-0.5 hover:bg-black/5 transition"
+                  style={{ color: "#94A3B8" }}
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-[10.5px]" style={{ color: "#7A8896" }}>{statusLabel(selectedTec.status_operacional)}</p>
+              {trailUsersId === selectedTec.users_id && (
+                <p className="mt-1 text-[9.5px] font-medium" style={{ color: "#00B388" }}>
+                  ● rastro 8h ativo (30s)
+                </p>
+              )}
               <div className="mt-2 grid grid-cols-2 gap-2 text-[10.5px]">
                 <MiniMetric label="Municipios" value={selectedTec.municipios_ativos} icon={<MapPin className="h-3 w-3" />} />
                 <MiniMetric label="Vistorias" value={selectedTec.vistorias_ativas} icon={<Activity className="h-3 w-3" />} />

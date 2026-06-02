@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * /painel/vistorias — Central de Distribuição Operacional.
@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { painelService, type FilaItem } from "@/services/painel";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
+import { VistoriaMetricsBadge } from "@/components/painel/VistoriaMetricsBadge";
 import type { TecnicoAtivo } from "@/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -126,6 +127,9 @@ function EquipamentoRow({
             {item.endereco}
           </p>
         )}
+        <div className="mt-0.5">
+          <VistoriaMetricsBadge vistoriaId={item.id} />
+        </div>
       </div>
       {item.dataVistoria && (
         <span className="shrink-0 text-[10px] tabular-nums" style={{ color: "#94A3B8" }}>
@@ -445,8 +449,8 @@ function AtribuirDrawer({
   }, [items, selecionados]);
 
   const sugestoes = useMemo(() => {
-    // Mostra todos — admin pode atribuir mesmo a offline (ex: tecnico chegando agora)
     return tecnicos
+      .filter((t) => t.status !== "offline")
       .map((t) => {
         const temMunicipio = t.municipio
           ? Array.from(municipiosSel.keys()).some(
@@ -622,7 +626,7 @@ function AtribuirModal({
   onClose: () => void;
   onAtribuir: (tec: TecnicoAtivo) => void;
 }) {
-  const ativos = tecnicos; // mostra todos, incluindo offline (admin decide)
+  const ativos = tecnicos.filter((t) => t.status !== "offline");
   return (
     <motion.div
       initial={{ opacity: 0 }}
