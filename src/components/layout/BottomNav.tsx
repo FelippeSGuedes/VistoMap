@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Map, ListChecks, User } from "lucide-react";
+import { useVistoriasAccessGuard } from "@/hooks/useVistoriasAccessGuard";
 import { cn } from "@/utils/cn";
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const openVistorias = useVistoriasAccessGuard();
 
   return (
     <nav
@@ -43,6 +45,10 @@ export function BottomNav() {
                 key={tab.href}
                 href={tab.href}
                 className="relative -mt-5 flex flex-1 flex-col items-center"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openVistorias(tab.href);
+                }}
               >
                 <span
                   className="flex h-[54px] w-[54px] items-center justify-center rounded-[18px] transition active:scale-95"

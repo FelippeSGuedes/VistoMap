@@ -23,7 +23,6 @@
  */
 
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
 import {
   Activity,
   CalendarDays,
@@ -32,6 +31,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import { useState } from "react";
+import { useVistoriasAccessGuard } from "@/hooks/useVistoriasAccessGuard";
 import type { MunicipioOperacional } from "@/types";
 
 interface MunicipioFieldProps {
@@ -86,8 +86,8 @@ export function MunicipioField({
   ultimaSincronizacao,
   loading = false,
 }: MunicipioFieldProps) {
-  const router = useRouter();
   const [imgOk, setImgOk] = useState(true);
+  const openVistorias = useVistoriasAccessGuard();
 
   const nomes = municipios.map((m) => m.nome);
   const totalVistorias = municipios.reduce((s, m) => s + m.totalVistorias, 0);
@@ -104,7 +104,7 @@ export function MunicipioField({
   // Clicar em qualquer município → filtra mapa por nome.
   const onTapMunicipio = (nome: string) => {
     const params = new URLSearchParams({ municipio: nome });
-    router.push(`/vistorias?${params.toString()}`);
+    void openVistorias(`/vistorias?${params.toString()}`);
   };
 
   return (

@@ -15,11 +15,13 @@ import { MobileMapShell } from "@/components/vistorias/MobileMapShell";
 import { VistoriaPinSheet } from "@/components/vistorias/VistoriaPinSheet";
 import { VistoriaExecucaoSheet } from "@/components/vistorias/VistoriaExecucaoSheet";
 import { EmptyState } from "@/components/feedback/EmptyState";
+import { LoadingShell } from "@/components/feedback/LoadingShell";
 import { LocationPermissionModal } from "@/components/feedback/LocationPermissionModal";
 import { PostesProximosFAB } from "@/components/postes/PostesProximosFAB";
 import { PostesProximosPanel } from "@/components/postes/PostesProximosPanel";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useAuthStore } from "@/store/auth";
+import { useExpedienteStore } from "@/store/expediente";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { usePostesProximos } from "@/hooks/usePostesProximos";
@@ -27,6 +29,7 @@ import { useFilteredVistorias } from "@/hooks/useFilteredVistorias";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { STATUS_LABEL } from "@/utils/format";
 import type { VistoriaStatus } from "@/types";
+import { getVistoriasAccessBlockReason } from "@/hooks/useVistoriasAccessGuard";
 
 const MapView = dynamic(
   () => import("@/components/vistorias/MapView").then((m) => m.MapView),
@@ -39,6 +42,8 @@ function VistoriasPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { hydrated, session } = useAuthStore();
+  const expediente = useExpedienteStore((s) => s.expediente);
+  const refreshExpediente = useExpedienteStore((s) => s.refresh);
   const { items, loading, fetchAll, filters, setFilters, resetFilters, selectedId, setSelected } =
     useVistoriasStore();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -46,8 +51,10 @@ function VistoriasPageInner() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [permissionDismissed, setPermissionDismissed] = useState(false);
+  const [expedienteReady, setExpedienteReady] = useState(false);
   const { position, refresh: refreshGeo } = useGeolocation(false);
   const permission = useLocationPermission();
+  const accessBlockReason = getVistoriasAccessBlockReason(expediente);
 
   // /postes — visualização operacional. Liga/desliga via FAB.
   const postesProximos = usePostesProximos();
@@ -103,8 +110,19 @@ function VistoriasPageInner() {
   }, [hydrated, session, router]);
 
   useEffect(() => {
+    if (!session?.token) {
+      setExpedienteReady(true);
+      return;
+    }
+    setExpedienteReady(false);
+    refreshExpediente().finally(() => setExpedienteReady(true));
+  }, [refreshExpediente, session?.token]);
+
+  useEffect(() => {
+    if (!expedienteReady) return;
+    if (accessBlockReason) return;
     fetchAll();
-  }, [fetchAll]);
+  }, [accessBlockReason, expedienteReady, fetchAll]);
 
   // Veio do MunicipioField do dashboard → aplica busca pelo nome do município.
   // O search header já fica pré-preenchido, sinalizando ao técnico que há filtro.
@@ -118,6 +136,34 @@ function VistoriasPageInner() {
     filters,
     origin: position ? { lat: position.lat, lng: position.lng } : null,
   });
+
+  if (!expedienteReady) {
+    return <LoadingShell label="Validando expediente" />;
+  }
+
+  if (accessBlockReason) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col bg-brand-ice">
+        <SearchHeader
+          query={filters.query}
+          onQuery={(query) => setFilters({ query })}
+          onOpenFilters={() => {}}
+          filterCount={0}
+          pills={null}
+        />
+        <main className="flex flex-1 items-center px-4 pb-24 pt-6">
+          <EmptyState
+            icon={Compass}
+            tone="default"
+            title={expediente?.emPausa ? "Almoço em andamento" : "Expediente não iniciado"}
+            description={accessBlockReason}
+            actionLabel="Ir para o dashboard"
+            onAction={() => router.push("/dashboard")}
+          />
+        </main>
+      </div>
+    );
+  }
 
   const categorias = useMemo(
     () =>

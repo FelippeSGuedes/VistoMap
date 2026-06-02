@@ -22,6 +22,7 @@ import { SyncFilterPill } from "@/components/dashboard/SyncFilterPill";
 import { SyncFilterSheet } from "@/components/dashboard/SyncFilterSheet";
 import { NotificationPermissionCard } from "@/components/feedback/NotificationPermissionCard";
 import { ExpedienteCard } from "@/components/expediente/ExpedienteCard";
+import { useVistoriasAccessGuard } from "@/hooks/useVistoriasAccessGuard";
 import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
 import { MOCK_SYNC_SNAPSHOTS } from "@/utils/mock";
@@ -181,6 +182,7 @@ const ACTIONS = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const openVistorias = useVistoriasAccessGuard();
   const { hydrated, session } = useAuthStore();
   const [stats, setStats]     = useState<DashboardStats | null>(null);
   const [online, setOnline]   = useState(true);
@@ -268,6 +270,13 @@ export default function DashboardPage() {
   const nome      = session?.tecnico.nome ?? "Tecnico";
   const firstName = firstNameOf(nome);
   const animatedTotal = useCountUp(displayStats !== null ? displayStats.total : null, 1400);
+
+  const handleActionClick =
+    (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (href !== "/vistorias") return;
+      event.preventDefault();
+      void openVistorias(href);
+    };
 
   return (
     <div className="relative flex min-h-[100dvh] flex-col" style={{ background: "#F7F9FB" }}>
@@ -624,7 +633,7 @@ export default function DashboardPage() {
             Acesso rapido
           </p>
 
-          <Link href={ACTIONS[0].href} className="block">
+          <Link href={ACTIONS[0].href} className="block" onClick={handleActionClick(ACTIONS[0].href)}>
             <div
               className="flex items-center justify-between gap-3 rounded-[22px] p-4 transition active:scale-[0.98]"
               style={{ background: "linear-gradient(135deg,#042828 0%,#063B3B 45%,#0A5252 100%)", boxShadow: "0 6px 24px rgba(6,59,59,0.28), 0 1px 0 rgba(255,255,255,0.06) inset" }}
@@ -644,7 +653,7 @@ export default function DashboardPage() {
 
           <div className="mt-2.5 grid grid-cols-2 gap-2.5">
             {ACTIONS.slice(1).map((a) => (
-              <Link key={a.label} href={a.href}>
+              <Link key={a.label} href={a.href} onClick={handleActionClick(a.href)}>
                 <div
                   className="flex flex-col gap-3 rounded-[22px] p-4 transition active:scale-[0.98]"
                   style={{ background: "#fff", boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07)", border: "1px solid rgba(6,59,59,0.055)" }}
