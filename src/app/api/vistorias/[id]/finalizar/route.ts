@@ -16,6 +16,8 @@ import {
   type DropdownKey,
 } from "@/lib/glpi/constants";
 import { query } from "@/lib/db";
+import { auditInsert } from "@/lib/glpi/audit";
+import { getActorFromRequest } from "@/lib/auth-request";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -188,6 +190,17 @@ export async function POST(
       image2_path: buildEquipmentFilePath(vistoria.equipamento, "imagem2.png"),
       image3_path: buildEquipmentFilePath(vistoria.equipamento, "imagem3.png"),
     });
+
+    // Audit timestamp "finalizada" — par com "vistoria-iniciada" pra calc tempo
+    const actor = await getActorFromRequest(request).catch(() => null);
+    if (actor) {
+      void auditInsert({
+        ator: actor,
+        acao: "vistoria-finalizada",
+        alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento ?? `NE-${id}` },
+        descricao: `Vistoria finalizada em campo`,
+      });
+    }
 
     return NextResponse.json({
       ok: true,

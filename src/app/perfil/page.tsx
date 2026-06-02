@@ -31,6 +31,33 @@ import {
 import { BottomNav } from "@/components/layout/BottomNav";
 import { useAuthStore } from "@/store/auth";
 import { MOCK_PROFILE } from "@/utils/mock";
+import { useState } from "react";
+import { api } from "@/services/api";
+
+interface ProfileApi {
+  tecnico: { id: string; nome: string; email: string; matricula: string | null };
+  cargo: string;
+  equipe: string;
+  grupos: string[];
+  municipioOperacional: string | null;
+  statusOperacional: "em-expediente" | "pausa" | "fora-expediente";
+  kpis: {
+    vistoriasConcluidas: number;
+    revisitas: number;
+    aprovadas: number;
+    distanciaKm: number;
+    diasAtivos: number;
+  };
+}
+
+// Mapeia o status do API pro shape esperado pelo STATUS_LABELS deste arquivo
+function mapStatusToLabel(
+  s: ProfileApi["statusOperacional"]
+): "em-campo" | "base" | "off-shift" {
+  if (s === "em-expediente") return "em-campo";
+  if (s === "pausa") return "base";
+  return "off-shift";
+}
 
 function initials(nome: string) {
   const p = nome.trim().split(/[\s._-]+/);
@@ -58,13 +85,39 @@ export default function PerfilPage() {
     if (hydrated && !session) router.replace("/login");
   }, [hydrated, session, router]);
 
+  const [realProfile, setRealProfile] = useState<ProfileApi | null>(null);
+  useEffect(() => {
+    if (!session?.token) return;
+    let alive = true;
+    api
+      .get<ProfileApi>("/perfil")
+      .then((r) => {
+        if (alive) setRealProfile(r.data);
+      })
+      .catch((err) => {
+        console.warn("[/perfil] fallback mock:", err);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [session?.token]);
+
   const profile = MOCK_PROFILE;
-  // Sobrescreve com dados reais do GLPI quando disponíveis.
-  const nome = session?.tecnico.nome ?? profile.tecnico.nome;
-  const email = session?.tecnico.email ?? profile.tecnico.email;
-  const matricula = session?.tecnico.matricula ?? profile.tecnico.matricula;
+  // Prefere realProfile (do backend) sobre session sobre mock.
+  const nome = realProfile?.tecnico.nome ?? session?.tecnico.nome ?? profile.tecnico.nome;
+  const email = realProfile?.tecnico.email ?? session?.tecnico.email ?? profile.tecnico.email;
+  const matricula =
+    realProfile?.tecnico.matricula ?? session?.tecnico.matricula ?? profile.tecnico.matricula;
+  const cargo = realProfile?.cargo ?? profile.cargo;
+  const equipe = realProfile?.equipe ?? equipe;
+  const municipioOperacional =
+    realProfile?.municipioOperacional ?? municipioOperacional ?? "—";
+  const kpis = realProfile?.kpis ?? kpis;
   const firstName = firstNameOf(nome);
-  const status = STATUS_LABELS[profile.statusOperacional];
+  const statusKey = realProfile
+    ? mapStatusToLabel(realProfile.statusOperacional)
+    : profile.statusOperacional;
+  const status = STATUS_LABELS[statusKey];
 
   return (
     <div className="relative flex min-h-[100dvh] flex-col" style={{ background: "#F7F9FB" }}>
@@ -188,15 +241,15 @@ export default function PerfilPage() {
                 {firstName}
               </h2>
               <p className="mt-0.5 truncate text-[12px] font-medium" style={{ color: "rgba(255,255,255,0.55)" }}>
-                {profile.cargo}
+                {cargo}
               </p>
             </div>
           </div>
 
           {/* Linha de info */}
           <div className="relative mt-4 grid grid-cols-2 gap-2">
-            <InfoChip icon={<Building2 className="h-3 w-3" />} label="Município op." value={profile.municipioOperacional} />
-            <InfoChip icon={<Users className="h-3 w-3" />} label="Equipe" value={profile.equipe} />
+            <InfoChip icon={<Building2 className="h-3 w-3" />} label="Município op." value={municipioOperacional ?? "—"} />
+            <InfoChip icon={<Users className="h-3 w-3" />} label="Equipe" value={equipe} />
           </div>
         </motion.section>
 
@@ -209,28 +262,28 @@ export default function PerfilPage() {
             <KpiCard
               icon={CheckCircle2}
               label="Vistorias concluídas"
-              value={profile.kpis.vistoriasConcluidas}
+              value={kpis.vistoriasConcluidas}
               hex="#00B388"
               pill="#ECFDF5"
             />
             <KpiCard
               icon={ShieldCheck}
               label="Aprovadas"
-              value={profile.kpis.aprovadas}
+              value={kpis.aprovadas}
               hex="#00B388"
               pill="#ECFDF5"
             />
             <KpiCard
               icon={RotateCw}
               label="Revisitas"
-              value={profile.kpis.revisitas}
+              value={kpis.revisitas}
               hex="#F59E0B"
               pill="#FEF3C7"
             />
             <KpiCard
               icon={Compass}
               label="Quilometragem"
-              value={`${profile.kpis.distanciaKm} km`}
+              value={`${kpis.distanciaKm} km`}
               hex="#6366F1"
               pill="#EEF2FF"
             />
@@ -239,7 +292,7 @@ export default function PerfilPage() {
             <KpiCard
               icon={Award}
               label="Dias ativos na operação"
-              value={profile.kpis.diasAtivos}
+              value={kpis.diasAtivos}
               hex="#00B388"
               pill="#ECFDF5"
               wide
@@ -268,7 +321,7 @@ export default function PerfilPage() {
               value={matricula || "—"}
               mono
             />
-            <InfoRow icon={<MapPin className="h-4 w-4" />} label="Município" value={profile.municipioOperacional} />
+            <InfoRow icon={<MapPin className="h-4 w-4" />} label="Município" value={municipioOperacional ?? "—"} />
           </div>
         </section>
 

@@ -8,6 +8,8 @@ import { useLocationReporter } from "@/hooks/useLocationReporter";
 import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useExpedienteStore } from "@/store/expediente";
+import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 
 function LocationReporterMount() {
   useLocationReporter();
@@ -16,6 +18,11 @@ function LocationReporterMount() {
 
 function PushRegistrationMount() {
   usePushRegistration();
+  return null;
+}
+
+function OfflineSyncMount() {
+  useOfflineSync();
   return null;
 }
 
@@ -72,6 +79,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <LocationReporterMount />
       <PushRegistrationMount />
       <TecnicoNotificationsMount />
+      <OfflineSyncMount />
+      <OfflineIndicator />
       {children}
     </>
   );

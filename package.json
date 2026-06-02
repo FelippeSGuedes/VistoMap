@@ -16,6 +16,7 @@
     "clsx": "^2.1.1",
     "firebase-admin": "^13.10.0",
     "framer-motion": "^11.11.9",
+    "idb": "^8.0.3",
     "jose": "^5.9.6",
     "lucide-react": "^0.460.0",
     "mapbox-gl": "^3.7.0",
