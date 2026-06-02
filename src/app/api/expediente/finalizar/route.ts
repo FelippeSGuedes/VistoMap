@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     ator: { id: userId, nome: userNome, role: "tecnico" },
     acao: "expediente-finalizado",
     alvo: r.expedienteId
-      ? { tipo: "expediente", id: String(r.expedienteId) }
+      ? { tipo: "sistema" as const, id: String(r.expedienteId), label: `Expediente #${r.expedienteId}` }
       : undefined,
     descricao: "Expediente encerrado",
   });
