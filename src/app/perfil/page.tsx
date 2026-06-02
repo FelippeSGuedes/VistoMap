@@ -109,10 +109,10 @@ export default function PerfilPage() {
   const matricula =
     realProfile?.tecnico.matricula ?? session?.tecnico.matricula ?? profile.tecnico.matricula;
   const cargo = realProfile?.cargo ?? profile.cargo;
-  const equipe = realProfile?.equipe ?? equipe;
+  const equipe = realProfile?.equipe ?? profile.equipe;
   const municipioOperacional =
-    realProfile?.municipioOperacional ?? municipioOperacional ?? "—";
-  const kpis = realProfile?.kpis ?? kpis;
+    realProfile?.municipioOperacional ?? profile.municipioOperacional ?? "—";
+  const kpis = realProfile?.kpis ?? profile.kpis;
   const firstName = firstNameOf(nome);
   const statusKey = realProfile
     ? mapStatusToLabel(realProfile.statusOperacional)
