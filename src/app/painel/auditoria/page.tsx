@@ -49,6 +49,7 @@ const ACAO: Record<
   "login-tecnico":       { label: "Login técnico",        icon: LogIn,        fg: "#475569", bg: "#F8FAFC", dot: "#94A3B8" },
   "expediente-iniciado": { label: "Expediente iniciado",  icon: LogIn,        fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
   "expediente-finalizado":{ label: "Expediente encerrado",icon: LogIn,        fg: "#475569", bg: "#F8FAFC", dot: "#94A3B8" },
+  "vistoria-iniciada":   { label: "Vistoria iniciada",    icon: Activity,     fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
 };
 
 const TIPO_FILTROS: Array<{ id: AuditEntry["acao"] | "todos"; label: string }> = [
