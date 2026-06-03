@@ -29,27 +29,24 @@ export function useFilteredVistorias({ vistorias, filters, origin }: Args) {
       if (filters.prioridade.length && !filters.prioridade.includes(v.prioridade)) return false;
       if (filters.categorias.length && v.categoria && !filters.categorias.includes(v.categoria))
         return false;
-      if (
-        filters.distanciaMaxKm &&
-        v.distanciaKm != null &&
-        v.distanciaKm > filters.distanciaMaxKm
-      )
-        return false;
+      // NAO filtrar por distancia: TODAS as vistorias devem aparecer. Os unicos
+      // filtros que escondem item sao query, status, prioridade e categoria.
+      // A distancia so e usada como criterio de ORDENACAO (abaixo), nunca corta.
       return true;
     });
 
     filtered.sort((a, b) => {
       switch (filters.ordenacao) {
+        case "distancia":
+          return (a.distanciaKm ?? Infinity) - (b.distanciaKm ?? Infinity);
         case "prioridade":
           return PRIORITY_RANK[b.prioridade] - PRIORITY_RANK[a.prioridade];
         case "data":
+        default:
           return (
             new Date(a.agendadaPara ?? 0).getTime() -
             new Date(b.agendadaPara ?? 0).getTime()
           );
-        case "distancia":
-        default:
-          return (a.distanciaKm ?? Infinity) - (b.distanciaKm ?? Infinity);
       }
     });
 

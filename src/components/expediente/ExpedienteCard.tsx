@@ -194,36 +194,41 @@ function LGPDModal({
   busy: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 pb-[max(env(safe-area-inset-bottom),1rem)] sm:items-center">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md rounded-3xl bg-white p-5 shadow-xl"
+        className="flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-xl"
       >
-        <div className="mb-3 flex items-center gap-2">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-            <ShieldCheck className="h-5 w-5" />
-          </span>
-          <h3 className="text-base font-semibold text-slate-800">
-            Consentimento de rastreio (LGPD)
-          </h3>
+        {/* Conteudo rolavel — em telas baixas o texto rola sem empurrar os
+            botoes pra fora da viewport. */}
+        <div className="overflow-y-auto p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <ShieldCheck className="h-5 w-5" />
+            </span>
+            <h3 className="text-base font-semibold text-slate-800">
+              Consentimento de rastreio (LGPD)
+            </h3>
+          </div>
+          <p className="mb-2 text-[13px] leading-relaxed text-slate-600">
+            Ao iniciar o expediente, você autoriza a coleta da sua localização GPS{" "}
+            <strong>exclusivamente durante o turno de trabalho declarado</strong>.
+          </p>
+          <ul className="mb-4 list-disc space-y-1 pl-5 text-[12.5px] text-slate-600">
+            <li>Coleta cessa ao finalizar o expediente.</li>
+            <li>Dados usados para coordenação operacional e auditoria.</li>
+            <li>Retenção máxima: 12 meses.</li>
+            <li>Base legal: LGPD art. 7º V (execução de contrato).</li>
+          </ul>
+          <p className="text-[12px] text-slate-500">
+            Você pode revogar o consentimento a qualquer momento comunicando ao
+            Administrador do Sistema ou ao seu Gestor Imediato.
+            Sem aceite, o app não permite iniciar vistorias.
+          </p>
         </div>
-        <p className="mb-2 text-[13px] leading-relaxed text-slate-600">
-          Ao iniciar o expediente, você autoriza a coleta da sua localização GPS{" "}
-          <strong>exclusivamente durante o turno de trabalho declarado</strong>.
-        </p>
-        <ul className="mb-4 list-disc space-y-1 pl-5 text-[12.5px] text-slate-600">
-          <li>Coleta cessa ao finalizar o expediente.</li>
-          <li>Dados usados para coordenação operacional e auditoria.</li>
-          <li>Retenção máxima: 12 meses.</li>
-          <li>Base legal: LGPD art. 7º V (execução de contrato).</li>
-        </ul>
-        <p className="mb-4 text-[12px] text-slate-500">
-          Você pode revogar o consentimento a qualquer momento comunicando ao
-          Administrador do Sistema ou ao seu Gestor Imediato.
-          Sem aceite, o app não permite iniciar vistorias.
-        </p>
-        <div className="flex gap-2">
+        {/* Rodapé fixo — botoes sempre visiveis e clicaveis. */}
+        <div className="flex shrink-0 gap-2 border-t border-slate-100 bg-white p-4">
           <button
             type="button"
             onClick={onRecusar}

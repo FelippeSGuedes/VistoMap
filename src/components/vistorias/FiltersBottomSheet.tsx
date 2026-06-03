@@ -134,25 +134,8 @@ export function FiltersBottomSheet({
           </div>
         )}
 
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
-              Distância máxima
-            </h4>
-            <span className="text-sm font-semibold text-ink">{draft.distanciaMaxKm} km</span>
-          </div>
-          <input
-            type="range"
-            min={5}
-            max={300}
-            step={5}
-            value={draft.distanciaMaxKm}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, distanciaMaxKm: Number(e.target.value) }))
-            }
-            className="w-full accent-brand-emerald"
-          />
-        </div>
+        {/* Filtro de distancia removido: a lista mostra TODAS as vistorias;
+            distancia so ordena, nunca esconde. */}
 
         <div>
           <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">

@@ -152,11 +152,10 @@ export interface ListVistoriasFilters {
 export async function listVistorias(filters: ListVistoriasFilters = {}) {
   const where: string[] = [];
   const params: unknown[] = [];
-  // HAS_COORDS so para visualizacao admin (mapa publico). Tecnico precisa
-  // ver vistorias SEM coords pra ir ao local marcar o GPS — esse e o trabalho.
-  let coordsFilter = HAS_COORDS;
+  // Regra (nova): vistoria SEM coordenada nao aparece em lugar nenhum — nem no
+  // app do tecnico nem no painel. HAS_COORDS sempre aplicado.
+  const coordsFilter = HAS_COORDS;
   if (filters.tecnicoId != null) {
-    coordsFilter = "";
     where.push("f.users_id_vistoriadorafield = ?");
     params.push(filters.tecnicoId);
 

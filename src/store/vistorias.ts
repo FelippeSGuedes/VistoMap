@@ -8,8 +8,8 @@ const DEFAULT_FILTERS: FilterState = {
   query: "",
   status: [],
   prioridade: [],
-  distanciaMaxKm: 100,
-  ordenacao: "distancia",
+  distanciaMaxKm: 100, // mantido no tipo, mas NAO filtra (ver useFilteredVistorias)
+  ordenacao: "data",
   categorias: [],
 };
 

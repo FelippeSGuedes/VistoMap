@@ -32,12 +32,17 @@ const POSTES_SRC = "vm-postes-src";
 const POSTES_LAYER = "vm-postes-circle";
 const POSTES_LAYER_SELECTED = "vm-postes-circle-selected";
 
+// Sob basePath (/app), assets estaticos precisam do prefixo manual senao o
+// browser pede "/icons/..." na origin e toma 404 -> pin sem icone. Ver
+// [[basepath-raw-fetch-bug]].
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 const PIN_ICON: Record<Vistoria["status"], string> = {
-  PENDENTE:   "/icons/pin-pendente.svg",
-  EM_CAMPO:   "/icons/pin-em-campo.svg",
-  FINALIZADA: "/icons/pin-finalizada.svg",
-  APROVADA:   "/icons/pin-finalizada.svg",
-  REPROVADA:  "/icons/pin-reprovada.svg",
+  PENDENTE:   `${BASE_PATH}/icons/pin-pendente.svg`,
+  EM_CAMPO:   `${BASE_PATH}/icons/pin-em-campo.svg`,
+  FINALIZADA: `${BASE_PATH}/icons/pin-finalizada.svg`,
+  APROVADA:   `${BASE_PATH}/icons/pin-finalizada.svg`,
+  REPROVADA:  `${BASE_PATH}/icons/pin-reprovada.svg`,
 };
 
 // Inject hover style once (avoids JS mouseenter/mouseleave flicker)
@@ -102,6 +107,14 @@ export function MapView({
     return DEFAULT_CENTER;
   }, [userPosition, plottable]);
 
+  // Mantem o centro inicial num ref pra LER na criacao SEM colocar nas deps do
+  // efeito de init. Antes initialCenter estava nas deps -> mudava quando a lista
+  // ou a posicao mudava -> map.remove()+recria -> markers e POSTES_SRC somem
+  // (icones e postes sumindo "de novo"). Mapa deve ser criado UMA vez.
+  const initialCenterRef = useRef(initialCenter);
+  initialCenterRef.current = initialCenter;
+  const didFitRef = useRef(false);
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     if (!token) return;
@@ -109,7 +122,7 @@ export function MapView({
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
-      center: initialCenter,
+      center: initialCenterRef.current,
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
       pitchWithRotate: false,
@@ -126,8 +139,9 @@ export function MapView({
       mapRef.current = null;
       markersRef.current.clear();
       userMarkerRef.current = null;
+      didFitRef.current = false;
     };
-  }, [initialCenter, token]);
+  }, [token]);
 
   // user position marker
   useEffect(() => {
@@ -185,11 +199,24 @@ export function MapView({
           markersRef.current.delete(id);
         }
       });
+
+      // Como o mapa nao recria mais, enquadra a primeira leva de markers uma
+      // unica vez (sem userPosition, senao o user marker cuida do enquadre).
+      if (!didFitRef.current && !userPosition && plottable.length > 0) {
+        didFitRef.current = true;
+        if (plottable.length === 1) {
+          map.easeTo({ center: [plottable[0].longitude, plottable[0].latitude], zoom: 14 });
+        } else {
+          const b = new mapboxgl.LngLatBounds();
+          plottable.forEach((v) => b.extend([v.longitude, v.latitude]));
+          map.fitBounds(b, { padding: 64, maxZoom: 15, duration: 600 });
+        }
+      }
     };
 
     if (map.loaded()) sync();
     else map.once("load", sync);
-  }, [plottable, onSelect]);
+  }, [plottable, onSelect, userPosition]);
 
   // selected fly-to (vistoria)
   useEffect(() => {

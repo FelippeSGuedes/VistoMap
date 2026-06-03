@@ -38,17 +38,6 @@ const MapView = dynamic(
 
 const QUICK_STATUSES: VistoriaStatus[] = ["PENDENTE", "FINALIZADA", "REPROVADA"];
 
-// Coord valida = numero finito e nao (0,0). Coord NULL do GLPI vira null/0 aqui.
-function temCoord(v: { latitude: number | null; longitude: number | null }): boolean {
-  return (
-    v.latitude != null &&
-    v.longitude != null &&
-    Number.isFinite(v.latitude) &&
-    Number.isFinite(v.longitude) &&
-    (v.latitude !== 0 || v.longitude !== 0)
-  );
-}
-
 function VistoriasPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -109,8 +98,12 @@ function VistoriasPageInner() {
     }
   }, [permission.state, refreshGeo]);
 
+  // Nao reabrir o modal de permissao se ja temos uma posicao (cache de sessao
+  // do useGeolocation) — evita "pedir localizacao toda hora" ao navegar/voltar
+  // pro mapa quando a permissao ja foi concedida.
   const showPermissionModal =
     !permissionDismissed &&
+    !position &&
     (permission.state === "prompt" ||
       permission.state === "denied" ||
       permission.state === "unsupported" ||
@@ -191,8 +184,7 @@ function VistoriasPageInner() {
   const filterCount =
     (filters.status.length ? 1 : 0) +
     (filters.prioridade.length ? 1 : 0) +
-    (filters.categorias.length ? 1 : 0) +
-    (filters.distanciaMaxKm < 100 ? 1 : 0);
+    (filters.categorias.length ? 1 : 0);
 
   const list = (
     <div className="space-y-3 pt-2">
@@ -245,36 +237,20 @@ function VistoriasPageInner() {
     </div>
   );
 
-  // Vistorias atribuidas SEM GPS nao podem ser plotadas (coord NULL no GLPI ate
-  // o tecnico ir ao local marcar). Em vez de some-las silenciosamente, avisamos
-  // no mapa quantas existem e levamos pra Lista. Ver [[arch-decisions]].
-  const semGpsCount = filtered.filter((v) => !temCoord(v)).length;
-
   const map = (
-    <div className="relative h-full w-full">
-      <MapView
-        vistorias={filtered}
-        userPosition={position ? { lat: position.lat, lng: position.lng } : null}
-        selectedId={selectedId}
-        onSelect={setSelected}
-        postes={postesActive ? postesProximos.items : null}
-        selectedPosteId={postesSelectedId}
-        onPosteSelect={(id) => {
-          setPostesSelectedId(id);
-          setPostesPanelOpen(true);
-        }}
-        className="h-full w-full"
-      />
-      {semGpsCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setView("list")}
-          className="absolute bottom-24 left-1/2 z-20 -translate-x-1/2 rounded-full border border-amber-300 bg-amber-50/95 px-4 py-2 text-[12px] font-semibold text-amber-800 shadow-elev backdrop-blur lg:bottom-4"
-        >
-          📍 {semGpsCount} sem GPS · ver na lista
-        </button>
-      )}
-    </div>
+    <MapView
+      vistorias={filtered}
+      userPosition={position ? { lat: position.lat, lng: position.lng } : null}
+      selectedId={selectedId}
+      onSelect={setSelected}
+      postes={postesActive ? postesProximos.items : null}
+      selectedPosteId={postesSelectedId}
+      onPosteSelect={(id) => {
+        setPostesSelectedId(id);
+        setPostesPanelOpen(true);
+      }}
+      className="h-full w-full"
+    />
   );
 
   const pills = (
