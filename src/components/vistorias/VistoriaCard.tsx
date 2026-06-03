@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight, MapPin, Navigation, Wrench } from "lucide-react";
 import type { Vistoria } from "@/types";
@@ -8,7 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { formatDistanceKm } from "@/utils/format";
-import { openNavigation } from "@/services/maps";
+import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
 
 interface VistoriaCardProps {
   vistoria: Vistoria;
@@ -21,10 +22,12 @@ export function VistoriaCard({
   onSelect,
   highlighted,
 }: VistoriaCardProps) {
+  const [navOpen, setNavOpen] = useState(false);
+
   const handleNavigate = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    openNavigation(vistoria.latitude, vistoria.longitude);
+    setNavOpen(true);
   };
 
   const handleClick = (e: React.MouseEvent) => {
@@ -108,6 +111,14 @@ export function VistoriaCard({
           </div>
         </Card>
       </Link>
+
+      <NavigationOptionsSheet
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        lat={vistoria.latitude}
+        lng={vistoria.longitude}
+        label={vistoria.equipamento}
+      />
     </motion.div>
   );
 }
