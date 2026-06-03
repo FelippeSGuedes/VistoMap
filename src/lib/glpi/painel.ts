@@ -989,13 +989,18 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       INNER JOIN glpi_groups_users gu ON gu.users_id = u.id
       INNER JOIN glpi_groups g ON g.id = gu.groups_id AND g.name IN (?, ?)
       LEFT JOIN (
+        -- Exatamente 1 ping por user (o mais recente). Desempate por id pra
+        -- nao multiplicar quando ha varios pings no MESMO created_at (segundo),
+        -- o que fazia o tecnico aparecer repetido no mapa.
         SELECT l.users_id, l.latitude, l.longitude, l.accuracy_meters, l.speed_kmh, l.battery_level, l.created_at
         FROM glpi_plugin_vistomap_locations l
-        INNER JOIN (
-          SELECT users_id, MAX(created_at) AS max_created
-          FROM glpi_plugin_vistomap_locations
-          GROUP BY users_id
-        ) lm ON lm.users_id = l.users_id AND lm.max_created = l.created_at
+        WHERE l.id = (
+          SELECT l2.id
+          FROM glpi_plugin_vistomap_locations l2
+          WHERE l2.users_id = l.users_id
+          ORDER BY l2.created_at DESC, l2.id DESC
+          LIMIT 1
+        )
       ) loc ON loc.users_id = u.id
       WHERE u.is_deleted = 0 AND u.is_active = 1
       ORDER BY u.name ASC
@@ -1037,7 +1042,15 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
   );
 
   const now = Date.now();
-  const tecnicos: PainelMapaTecnico[] = tecnicosRows.map((r) => {
+  // Dedup defensivo por users_id (caso o user esteja nos dois nomes de grupo).
+  const seenTec = new Set<number>();
+  const tecnicos: PainelMapaTecnico[] = tecnicosRows
+    .filter((r) => {
+      if (seenTec.has(r.users_id)) return false;
+      seenTec.add(r.users_id);
+      return true;
+    })
+    .map((r) => {
     const nome = `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.username;
     const minutos = r.created_at
       ? Math.round((now - new Date(r.created_at).getTime()) / 60000)
