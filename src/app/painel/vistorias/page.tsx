@@ -88,93 +88,100 @@ function EquipamentoRow({
 }) {
   return (
     <div
-      className={`flex items-center gap-2.5 px-4 py-2 transition-colors ${checked ? "bg-emerald-50/60" : "hover:bg-black/[0.015]"}`}
-      style={{ borderBottom: "1px solid rgba(6,59,59,0.04)" }}
+      className="flex items-center gap-3 rounded-2xl p-3 transition"
+      style={{
+        background: checked ? "#ECFDF5" : "#fff",
+        border: checked
+          ? "1px solid rgba(0,179,136,0.4)"
+          : item.isRepeat
+          ? "1px solid rgba(245,158,11,0.28)"
+          : "1px solid rgba(6,59,59,0.07)",
+        boxShadow: checked
+          ? "0 2px 10px rgba(0,179,136,0.12)"
+          : "0 1px 3px rgba(6,59,59,0.04)",
+      }}
     >
       <button
         type="button"
         onClick={onToggle}
-        className="shrink-0 transition hover:text-[#00B388]"
-        style={{ color: "#C0C8D2" }}
+        className="shrink-0 transition hover:scale-110"
+        style={{ color: checked ? "#00B388" : "#C0C8D2" }}
       >
-        {checked ? (
-          <CheckSquare className="h-3.5 w-3.5" style={{ color: "#00B388" }} />
-        ) : (
-          <Square className="h-3.5 w-3.5" />
-        )}
+        {checked ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
       </button>
-      <div className="w-1.5 shrink-0">
-        {item.isRepeat && (
-          <div className="h-4 w-1.5 rounded-full" style={{ background: "#F59E0B" }} />
-        )}
-      </div>
-      <span className="w-20 shrink-0 font-mono text-[9.5px]" style={{ color: "#94A3B8" }}>
-        {item.glpiId}
-      </span>
+
+      {/* avatar do técnico ou placeholder vazio */}
+      {item.tecnico ? (
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white"
+          style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
+        >
+          {initials(item.tecnico.nome)}
+        </span>
+      ) : (
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: "#F1F5F9", color: "#CBD5E1" }}
+        >
+          <UserPlus className="h-4 w-4" strokeWidth={2} />
+        </span>
+      )}
+
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <p className="truncate text-[12px] font-semibold" style={{ color: "#063B3B" }}>
+          <p className="truncate text-[14px] font-semibold" style={{ color: "#063B3B" }}>
             {item.equipamento}
           </p>
           {item.isRepeat && (
             <span
-              className="shrink-0 rounded-full px-1.5 py-[1px] text-[7.5px] font-bold uppercase tracking-[0.1em]"
+              className="shrink-0 rounded-full px-1.5 py-[2px] text-[8px] font-bold uppercase tracking-[0.1em]"
               style={{ background: "#FFFBEB", color: "#B45309" }}
             >
-              Rev
+              Revisita
             </span>
           )}
         </div>
-        {item.endereco && (
-          <p className="truncate text-[10px]" style={{ color: "#94A3B8" }}>
-            {item.endereco}
-          </p>
-        )}
-        <div className="mt-0.5">
+        <p className="truncate text-[11.5px]" style={{ color: "#7A8896" }}>
+          <span className="font-mono">{item.glpiId}</span>
+          {item.endereco ? ` · ${item.endereco}` : ""}
+          {item.tecnico ? (
+            <>
+              {" · "}
+              <span style={{ color: "#00875F", fontWeight: 600 }}>
+                {item.tecnico.nome.split(" ")[0]}
+              </span>
+            </>
+          ) : (
+            <span style={{ color: "#B91C1C", fontWeight: 600 }}> · sem técnico</span>
+          )}
+          {item.dataVistoria ? ` · ${relativo(item.dataVistoria)}` : ""}
+        </p>
+        <div className="mt-1">
           <VistoriaMetricsBadge vistoriaId={item.id} />
         </div>
       </div>
-      {item.dataVistoria && (
-        <span className="shrink-0 text-[10px] tabular-nums" style={{ color: "#94A3B8" }}>
-          {relativo(item.dataVistoria)}
-        </span>
-      )}
-      <div className="w-24 shrink-0">
-        {item.tecnico ? (
-          <div className="flex items-center gap-1">
-            <span
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[7.5px] font-bold text-white"
-              style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
-            >
-              {initials(item.tecnico.nome)}
-            </span>
-            <span className="truncate text-[10px] font-medium" style={{ color: "#475569" }}>
-              {item.tecnico.nome.split(" ")[0]}
-            </span>
-          </div>
-        ) : (
-          <span className="text-[10px] italic" style={{ color: "#CBD5E1" }}>
-            sem técnico
-          </span>
-        )}
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
+
+      <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
           onClick={onAtribuir}
-          className="flex h-6 items-center gap-1 rounded-lg px-2 text-[9.5px] font-semibold transition hover:opacity-80"
-          style={{ background: "#ECFDF5", color: "#00875F", border: "1px solid rgba(0,179,136,0.18)" }}
+          className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-semibold transition hover:opacity-85"
+          style={{
+            background: "#ECFDF5",
+            color: "#00875F",
+            border: "1px solid rgba(0,179,136,0.22)",
+          }}
         >
-          <UserPlus className="h-2.5 w-2.5" strokeWidth={2.3} />
-          {item.tecnico ? "Re" : "Atrib"}
+          <UserPlus className="h-3.5 w-3.5" strokeWidth={2.3} />
+          {item.tecnico ? "Reatribuir" : "Atribuir"}
         </button>
         <button
           type="button"
           onClick={onEditar}
-          className="flex h-6 w-6 items-center justify-center rounded-lg transition hover:bg-black/5"
-          style={{ color: "#94A3B8" }}
+          className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-black/5"
+          style={{ color: "#94A3B8", border: "1px solid rgba(6,59,59,0.07)" }}
         >
-          <Pencil className="h-3 w-3" strokeWidth={2.2} />
+          <Pencil className="h-3.5 w-3.5" strokeWidth={2.2} />
         </button>
       </div>
     </div>
@@ -355,46 +362,10 @@ function MunicipioCard({
             transition={{ duration: 0.18, ease: "easeInOut" }}
             style={{ overflow: "hidden" }}
           >
-            <div className="border-t" style={{ borderColor: "rgba(6,59,59,0.05)" }}>
-              {/* Cabeçalho da tabela */}
-              <div
-                className="flex items-center gap-2.5 border-b px-4 py-1.5"
-                style={{ borderColor: "rgba(6,59,59,0.04)", background: "#FAFBFC" }}
-              >
-                <div className="w-3.5 shrink-0" />
-                <div className="w-1.5 shrink-0" />
-                <span
-                  className="w-20 shrink-0 text-[8.5px] font-bold uppercase tracking-[0.14em]"
-                  style={{ color: "#A0ACBA" }}
-                >
-                  GIOC ID
-                </span>
-                <span
-                  className="flex-1 text-[8.5px] font-bold uppercase tracking-[0.14em]"
-                  style={{ color: "#A0ACBA" }}
-                >
-                  Equipamento
-                </span>
-                <span
-                  className="w-12 shrink-0 text-[8.5px] font-bold uppercase tracking-[0.14em]"
-                  style={{ color: "#A0ACBA" }}
-                >
-                  Data
-                </span>
-                <span
-                  className="w-24 shrink-0 text-[8.5px] font-bold uppercase tracking-[0.14em]"
-                  style={{ color: "#A0ACBA" }}
-                >
-                  Técnico
-                </span>
-                <span
-                  className="w-20 shrink-0 text-right text-[8.5px] font-bold uppercase tracking-[0.14em]"
-                  style={{ color: "#A0ACBA" }}
-                >
-                  Ações
-                </span>
-              </div>
-
+            <div
+              className="space-y-2 border-t p-3"
+              style={{ borderColor: "rgba(6,59,59,0.05)", background: "#F7F9FA" }}
+            >
               {grupo.items.slice(0, visivel).map((item) => (
                 <EquipamentoRow
                   key={item.id}
@@ -410,8 +381,8 @@ function MunicipioCard({
                 <button
                   type="button"
                   onClick={() => setVisivel((c) => c + CHUNK)}
-                  className="flex w-full items-center justify-center gap-1.5 py-2.5 text-[11px] font-medium transition hover:bg-black/[0.02]"
-                  style={{ color: "#7A8896", borderTop: "1px solid rgba(6,59,59,0.04)" }}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11.5px] font-semibold transition hover:bg-white"
+                  style={{ color: "#00875F", border: "1px dashed rgba(0,179,136,0.3)" }}
                 >
                   Mostrar mais {Math.min(CHUNK, grupo.items.length - visivel)} ({grupo.items.length - visivel} restantes)
                 </button>
