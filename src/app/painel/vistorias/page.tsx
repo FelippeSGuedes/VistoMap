@@ -620,13 +620,16 @@ function AtribuirModal({
   tecnicos,
   onClose,
   onAtribuir,
+  onDesvincular,
 }: {
   item: FilaItem;
   tecnicos: TecnicoAtivo[];
   onClose: () => void;
   onAtribuir: (tec: TecnicoAtivo) => void;
+  onDesvincular: () => void;
 }) {
   const ativos = tecnicos.filter((t) => t.status !== "offline");
+  const jaTemTecnico = !!item.tecnico;
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -657,7 +660,7 @@ function AtribuirModal({
               className="text-[9px] font-bold uppercase tracking-[0.18em]"
               style={{ color: "#00B388" }}
             >
-              Atribuir técnico
+              {jaTemTecnico ? "Reatribuir técnico" : "Atribuir técnico"}
             </p>
             <h3
               className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]"
@@ -667,6 +670,12 @@ function AtribuirModal({
             </h3>
             <p className="text-[11px]" style={{ color: "#7A8896" }}>
               {item.municipio} · {item.glpiId}
+              {jaTemTecnico && (
+                <>
+                  {" · atual: "}
+                  <strong style={{ color: "#00875F" }}>{item.tecnico!.nome}</strong>
+                </>
+              )}
             </p>
           </div>
           <button
@@ -679,6 +688,37 @@ function AtribuirModal({
           </button>
         </header>
         <div className="space-y-1 p-3">
+          {jaTemTecnico && (
+            <button
+              type="button"
+              onClick={onDesvincular}
+              className="mb-1 flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-red-50"
+              style={{ border: "1px solid rgba(239,68,68,0.18)" }}
+            >
+              <span
+                className="flex h-8 w-8 items-center justify-center rounded-xl"
+                style={{ background: "#FEF2F2", color: "#B91C1C" }}
+              >
+                <X className="h-4 w-4" strokeWidth={2.4} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] font-semibold" style={{ color: "#B91C1C" }}>
+                  Desvincular técnico atual
+                </p>
+                <p className="text-[10px]" style={{ color: "#94A3B8" }}>
+                  Remove {item.tecnico!.nome.split(" ")[0]} e devolve à fila
+                </p>
+              </div>
+            </button>
+          )}
+          {jaTemTecnico && ativos.length > 0 && (
+            <p
+              className="px-1 pb-0.5 pt-1 text-[8.5px] font-bold uppercase tracking-[0.14em]"
+              style={{ color: "#A0ACBA" }}
+            >
+              Ou reatribuir para
+            </p>
+          )}
           {ativos.map((t) => {
             const noMunicipio = t.municipio
               ? t.municipio.toLowerCase().includes(item.municipio.toLowerCase()) ||
@@ -901,6 +941,18 @@ export default function FilaVistoriasPage() {
       load();
     } catch {
       showToast("Falha ao atribuir.");
+    }
+  };
+
+  // Desvincular (tira o técnico, volta pra fila)
+  const handleDesvincular = async (item: FilaItem) => {
+    try {
+      await painelService.atribuir({ vistoria_id: item.id, tecnico_id: 0 });
+      showToast(`${item.equipamento} desvinculado · de volta à fila.`);
+      setAtribuirItem(null);
+      load();
+    } catch {
+      showToast("Falha ao desvincular.");
     }
   };
 
@@ -1318,6 +1370,7 @@ export default function FilaVistoriasPage() {
             tecnicos={tecnicos}
             onClose={() => setAtribuirItem(null)}
             onAtribuir={(tec) => handleAtribuirItem(atribuirItem, tec)}
+            onDesvincular={() => handleDesvincular(atribuirItem)}
           />
         )}
       </AnimatePresence>

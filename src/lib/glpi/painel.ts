@@ -3,6 +3,7 @@ import { execute, query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
+  SITUACAO_A_VISTORIAR,
   SITUACAO_AGUARDANDO_REVISITA,
   SITUACAO_COLUMN,
   SITUACAO_EM_REVISITA,
@@ -786,6 +787,37 @@ export async function atribuirVistoria(
       [vistoriaId]
     );
   }
+  return { affected: r.affectedRows, situacao };
+}
+
+/**
+ * Desvincula a vistoria do técnico atual (volta pra fila, sem dono).
+ * users_id_vistoriadorafield = 0, situação volta pra "A vistoriar" (ou
+ * "Aguardando revisita" se era revisita) e status_id zera — mesmo racional do
+ * atribuir, pra ela reaparecer como pendente na fila e no app de quem pegar.
+ */
+export async function desvincularVistoria(
+  vistoriaId: number
+): Promise<{ affected: number; situacao: number }> {
+  const [auxRow] = await query<{ is_repeat: number }>(
+    `SELECT COALESCE(is_repeat,0) AS is_repeat
+       FROM \`${TABLE_AUX}\`
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}' LIMIT 1`,
+    [vistoriaId]
+  );
+  const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
+  const situacao = eraRevisita
+    ? SITUACAO_AGUARDANDO_REVISITA
+    : SITUACAO_A_VISTORIAR;
+
+  const r = await execute(
+    `UPDATE \`${TABLE_FIELDS}\`
+        SET users_id_vistoriadorafield = 0,
+            \`${SITUACAO_COLUMN}\` = ?,
+            plugin_fields_statusvistoriafielddropdowns_id = 0
+      WHERE items_id = ?`,
+    [situacao, vistoriaId]
+  );
   return { affected: r.affectedRows, situacao };
 }
 

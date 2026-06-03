@@ -308,6 +308,7 @@ export interface AuditEntry {
   /** Tipo de ação executada. */
   acao:
     | "vistoria-atribuida"
+    | "vistoria-desvinculada"
     | "vistoria-finalizada"
     | "revisita-criada"
     | "revisita-atribuida"

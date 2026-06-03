@@ -35,6 +35,7 @@ const ACAO: Record<
   { label: string; icon: typeof Activity; fg: string; bg: string; dot: string }
 > = {
   "vistoria-atribuida":  { label: "Atribuição",           icon: Send,         fg: "#00875F", bg: "#ECFDF5", dot: "#00B388" },
+  "vistoria-desvinculada":{ label: "Desvinculação",       icon: XCircle,      fg: "#B45309", bg: "#FFF7ED", dot: "#F97316" },
   "vistoria-finalizada": { label: "Vistoria finalizada",  icon: ClipboardCheck,fg: "#00875F", bg: "#ECFDF5", dot: "#00B388" },
   "revisita-criada":     { label: "Revisita criada",      icon: RotateCw,     fg: "#B45309", bg: "#FFFBEB", dot: "#F59E0B" },
   "revisita-atribuida":  { label: "Revisita atribuída",   icon: Send,         fg: "#C2410C", bg: "#FFF7ED", dot: "#F97316" },

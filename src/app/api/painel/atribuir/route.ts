@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { atribuirVistoria } from "@/lib/glpi/painel";
+import { atribuirVistoria, desvincularVistoria } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
+import type { AuditEntry } from "@/types";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { query } from "@/lib/db";
 import { sendPushTo } from "@/lib/push";
@@ -22,6 +23,26 @@ export async function POST(req: Request) {
     const tId = Number(body.tecnico_id);
     if (!Number.isFinite(vId) || !Number.isFinite(tId)) {
       return NextResponse.json({ message: "IDs inválidos" }, { status: 400 });
+    }
+
+    // tecnico_id = 0 → desvincular (volta pra fila, sem dono, sem push).
+    if (tId === 0) {
+      const [actor, neRow] = await Promise.all([
+        getActorFromRequest(req),
+        query<{ name: string }>(
+          `SELECT name FROM glpi_networkequipments WHERE id = ? LIMIT 1`,
+          [vId]
+        ).then((r) => r[0]),
+      ]);
+      const { affected, situacao } = await desvincularVistoria(vId);
+      const equipLabel = neRow?.name ?? `NE-${vId}`;
+      void auditInsert({
+        ator: actor ?? { id: 0, nome: "Sistema", role: "admin" },
+        acao: "vistoria-desvinculada" as AuditEntry["acao"],
+        alvo: { tipo: "vistoria", id: String(vId), label: equipLabel },
+        descricao: "Desvinculada do técnico · de volta à fila",
+      });
+      return NextResponse.json({ ok: true, affected, situacao, desvinculada: true });
     }
 
     // Ator (admin) e labels para auditoria — busca em paralelo com update.
