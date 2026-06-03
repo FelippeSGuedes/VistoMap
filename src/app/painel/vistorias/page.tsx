@@ -10,12 +10,15 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
   Building2,
   CheckCircle2,
   CheckSquare,
   ChevronDown,
   Filter,
+  Layers,
+  MapPin,
   Pencil,
   RefreshCcw,
   RotateCw,
@@ -969,97 +972,81 @@ export default function FilaVistoriasPage() {
   return (
     <div className="space-y-4 pb-20">
       {/* HEADER OPERACIONAL */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-end justify-between gap-4">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="overflow-hidden rounded-[24px]"
+        style={{
+          background:
+            "linear-gradient(135deg,#063B3B 0%,#0A4F4A 48%,#0E5F54 100%)",
+          boxShadow: "0 12px 40px rgba(6,59,59,0.22)",
+        }}
+      >
+        {/* faixa do título */}
+        <div className="flex flex-wrap items-end justify-between gap-4 px-6 pt-6 pb-5">
           <div>
-            <div className="mb-1 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-2">
               <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-[0.18em]"
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]"
                 style={{
-                  background: "#ECFDF5",
-                  color: "#00875F",
-                  border: "1px solid rgba(0,179,136,0.22)",
+                  background: "rgba(0,179,136,0.18)",
+                  color: "#6EE7C7",
+                  border: "1px solid rgba(0,179,136,0.32)",
                 }}
               >
-                <Zap className="h-2.5 w-2.5" /> Central de distribuição
+                <Zap className="h-3 w-3" /> Central de distribuição
               </span>
               {loading && (
-                <RefreshCcw className="h-3 w-3 animate-spin" style={{ color: "#A0ACBA" }} />
+                <RefreshCcw
+                  className="h-3.5 w-3.5 animate-spin"
+                  style={{ color: "rgba(255,255,255,0.55)" }}
+                />
               )}
             </div>
-            <h1
-              className="text-[28px] font-semibold tracking-[-0.5px]"
-              style={{ color: "#063B3B" }}
-            >
+            <h1 className="text-[30px] font-semibold tracking-[-0.6px] text-white">
               Fila de Vistorias
             </h1>
-            <p className="mt-0.5 text-[12.5px]" style={{ color: "#566773" }}>
+            <p className="mt-1 text-[13px]" style={{ color: "rgba(255,255,255,0.66)" }}>
               Distribuição regional · {kpis.municipios} municípios ativos · atualiza a cada 30s
             </p>
           </div>
+        </div>
 
-          {/* KPI strip */}
-          <div className="flex shrink-0 items-center gap-5">
-            <div className="flex flex-col items-end">
+        {/* KPI cards */}
+        <div className="grid grid-cols-2 gap-px sm:grid-cols-4" style={{ background: "rgba(255,255,255,0.08)" }}>
+          {[
+            { label: "Total na fila", value: kpis.total, icon: Layers, accent: "#6EE7C7" },
+            { label: "Revisitas", value: kpis.revisitas, icon: RotateCw, accent: "#FBBF24" },
+            { label: "Sem atribuição", value: kpis.semAtrib, icon: AlertTriangle, accent: "#FCA5A5" },
+            { label: "Municípios", value: kpis.municipios, icon: MapPin, accent: "#A5B4FC" },
+          ].map((k) => (
+            <div
+              key={k.label}
+              className="flex items-center gap-3 px-5 py-4"
+              style={{ background: "rgba(8,46,44,0.55)", backdropFilter: "blur(4px)" }}
+            >
               <span
-                className="text-[22px] font-semibold tabular-nums tracking-tight"
-                style={{ color: "#063B3B" }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: "rgba(255,255,255,0.07)", color: k.accent }}
               >
-                {kpis.total}
+                <k.icon className="h-5 w-5" strokeWidth={2} />
               </span>
-              <span
-                className="text-[9px] font-bold uppercase tracking-[0.14em]"
-                style={{ color: "#7A8896" }}
-              >
-                total
-              </span>
+              <div className="min-w-0">
+                <div
+                  className="text-[24px] font-semibold leading-none tabular-nums tracking-tight"
+                  style={{ color: k.accent }}
+                >
+                  {k.value}
+                </div>
+                <div
+                  className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.13em]"
+                  style={{ color: "rgba(255,255,255,0.5)" }}
+                >
+                  {k.label}
+                </div>
+              </div>
             </div>
-            <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
-            <div className="flex flex-col items-end">
-              <span
-                className="text-[22px] font-semibold tabular-nums tracking-tight"
-                style={{ color: "#B45309" }}
-              >
-                {kpis.revisitas}
-              </span>
-              <span
-                className="text-[9px] font-bold uppercase tracking-[0.14em]"
-                style={{ color: "#B45309" }}
-              >
-                revisitas
-              </span>
-            </div>
-            <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
-            <div className="flex flex-col items-end">
-              <span
-                className="text-[22px] font-semibold tabular-nums tracking-tight"
-                style={{ color: "#B91C1C" }}
-              >
-                {kpis.semAtrib}
-              </span>
-              <span
-                className="text-[9px] font-bold uppercase tracking-[0.14em]"
-                style={{ color: "#94A3B8" }}
-              >
-                sem atrib
-              </span>
-            </div>
-            <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
-            <div className="flex flex-col items-end">
-              <span
-                className="text-[22px] font-semibold tabular-nums tracking-tight"
-                style={{ color: "#4338CA" }}
-              >
-                {kpis.municipios}
-              </span>
-              <span
-                className="text-[9px] font-bold uppercase tracking-[0.14em]"
-                style={{ color: "#7A8896" }}
-              >
-                municípios
-              </span>
-            </div>
-          </div>
+          ))}
         </div>
       </motion.div>
 
