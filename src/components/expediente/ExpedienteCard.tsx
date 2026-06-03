@@ -5,14 +5,6 @@ import { motion } from "framer-motion";
 import { Clock, Play, Square, Coffee, ShieldCheck } from "lucide-react";
 import { useExpedienteStore } from "@/store/expediente";
 
-function elapsedHms(fromIso: string): string {
-  const ms = Date.now() - new Date(fromIso).getTime();
-  const totalMin = Math.floor(ms / 60000);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
 /**
  * Card grande do dashboard do tecnico.
  * Estados: fora-de-expediente | em-expediente | em-pausa.
@@ -25,7 +17,6 @@ export function ExpedienteCard() {
     useExpedienteStore();
   const [showLGPD, setShowLGPD] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [, force] = useState(0);
 
   // refresh inicial + a cada 30s
   useEffect(() => {
@@ -33,13 +24,6 @@ export function ExpedienteCard() {
     const id = window.setInterval(refresh, 30_000);
     return () => window.clearInterval(id);
   }, [refresh]);
-
-  // ticker pra atualizar HH:MM em tempo real
-  useEffect(() => {
-    if (!expediente?.emAndamento) return;
-    const id = window.setInterval(() => force((n) => n + 1), 30_000);
-    return () => window.clearInterval(id);
-  }, [expediente?.emAndamento]);
 
   const handleIniciar = async () => {
     if (!lgpdAceito) {
@@ -117,9 +101,12 @@ export function ExpedienteCard() {
   }
 
   // ─── Em expediente / em pausa ───
-  const elapsed = elapsedHms(expediente.inicio_at);
   const corBase = expediente.emPausa ? "#F59E0B" : "#00B388";
   const labelStatus = expediente.emPausa ? "Pausa-almoço" : "Em expediente";
+  const desde = new Date(expediente.inicio_at).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
     <motion.div
@@ -128,28 +115,34 @@ export function ExpedienteCard() {
       className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
     >
       <div
-        className="px-5 pt-5 pb-4"
-        style={{
-          background: `linear-gradient(135deg, ${corBase}15, ${corBase}05)`,
-        }}
+        className="flex items-center gap-3 px-5 py-4"
+        style={{ background: `linear-gradient(135deg, ${corBase}18, ${corBase}06)` }}
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: corBase }}>
-              {labelStatus}
-            </p>
-            <p className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-800">
-              {elapsed}
-            </p>
-            <p className="text-[11px] text-slate-500">
-              desde {new Date(expediente.inicio_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-            </p>
-          </div>
-          <span
-            className="flex h-3 w-3 rounded-full"
-            style={{ background: corBase, boxShadow: `0 0 12px ${corBase}` }}
-          />
+        <span
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
+          style={{ background: `${corBase}1f`, color: corBase }}
+        >
+          {expediente.emPausa ? (
+            <Coffee className="h-5 w-5" />
+          ) : (
+            <ShieldCheck className="h-5 w-5" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+            style={{ color: corBase }}
+          >
+            {labelStatus}
+          </p>
+          <p className="text-[13px] font-medium text-slate-600">
+            Iniciado às {desde}
+          </p>
         </div>
+        <span
+          className="flex h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ background: corBase, boxShadow: `0 0 10px ${corBase}` }}
+        />
       </div>
       <div className="flex gap-2 p-3">
         <button

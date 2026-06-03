@@ -43,11 +43,26 @@ function TecnicoNotificationsMount() {
 
   useEffect(() => {
     if (!enabled) return;
-    // Refetch silencioso a cada 60s — backend já filtra por user.
+    // Refetch silencioso a cada 20s — backend já filtra por user. (Era 60s; com
+    // 20s a vistoria recém-atribuída aparece sozinha, sem fechar/reabrir o app.)
     const id = window.setInterval(() => {
       void fetchAll();
-    }, 60_000);
-    return () => window.clearInterval(id);
+    }, 20_000);
+
+    // Sincroniza NA HORA quando o app volta ao foco / fica visível (ex.: o
+    // técnico abriu a notificação push). Cobre o caso "abri de novo e não
+    // sincronizou": agora puxa imediatamente.
+    const syncNow = () => {
+      if (document.visibilityState === "visible") void fetchAll();
+    };
+    document.addEventListener("visibilitychange", syncNow);
+    window.addEventListener("focus", syncNow);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", syncNow);
+      window.removeEventListener("focus", syncNow);
+    };
   }, [enabled, fetchAll]);
 
   return null;

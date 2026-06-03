@@ -452,8 +452,8 @@ function AtribuirDrawer({
   }, [items, selecionados]);
 
   const sugestoes = useMemo(() => {
+    // Todos os tecnicos (sem filtrar offline) — apenas ordena por relevancia.
     return tecnicos
-      .filter((t) => t.status !== "offline")
       .map((t) => {
         const temMunicipio = t.municipio
           ? Array.from(municipiosSel.keys()).some(
@@ -631,7 +631,9 @@ function AtribuirModal({
   onAtribuir: (tec: TecnicoAtivo) => void;
   onDesvincular: () => void;
 }) {
-  const ativos = tecnicos.filter((t) => t.status !== "offline");
+  // Mostra TODOS os tecnicos — online, offline, na regiao ou nao. O admin
+  // decide; nao filtramos por disponibilidade.
+  const ativos = tecnicos;
   const jaTemTecnico = !!item.tecnico;
   return (
     <motion.div

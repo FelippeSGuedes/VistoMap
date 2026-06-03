@@ -251,59 +251,71 @@ export function MapView({
         data: { type: "FeatureCollection", features: [] },
         promoteId: "id",
       });
-      // anel verde (estado padrão)
-      map.addLayer({
-        id: POSTES_LAYER,
-        source: POSTES_SRC,
-        type: "circle",
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            10, 4,
-            14, 8,
-            18, 13,
-          ],
-          "circle-color": "#06D6A0",
-          "circle-stroke-color": "#073B4C",
-          "circle-stroke-width": 1.5,
-          "circle-opacity": 0.9,
-        },
-      });
-      // estrela amarela sobreposta (selecionado)
-      map.addLayer({
-        id: POSTES_LAYER_SELECTED,
-        source: POSTES_SRC,
-        type: "circle",
-        filter: ["==", ["get", "id"], -1],
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            10, 10,
-            14, 17,
-            18, 26,
-          ],
-          "circle-color": "#FFD166",
-          "circle-stroke-color": "#073B4C",
-          "circle-stroke-width": 3,
-          "circle-opacity": 1,
-        },
-      });
+      // Usa o icone do poste (posteico.png) num SYMBOL layer em vez de circles
+      // ("bolinhas"). Sob basePath o asset estatico precisa do prefixo.
+      const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-      map.on("click", POSTES_LAYER, (e) => {
-        const feat = e.features?.[0];
-        const id = Number(feat?.properties?.id);
-        if (Number.isFinite(id)) onPosteSelectRef.current?.(id);
-      });
-      map.on("mouseenter", POSTES_LAYER, () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", POSTES_LAYER, () => {
-        map.getCanvas().style.cursor = "";
-      });
+      const addLayers = () => {
+        if (map.getLayer(POSTES_LAYER)) return;
+        // postes (icone padrao)
+        map.addLayer({
+          id: POSTES_LAYER,
+          source: POSTES_SRC,
+          type: "symbol",
+          layout: {
+            "icon-image": "poste-ico",
+            "icon-size": [
+              "interpolate", ["linear"], ["zoom"],
+              10, 0.16,
+              14, 0.28,
+              18, 0.46,
+            ],
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          },
+        });
+        // selecionado — mesmo icone, maior
+        map.addLayer({
+          id: POSTES_LAYER_SELECTED,
+          source: POSTES_SRC,
+          type: "symbol",
+          filter: ["==", ["get", "id"], -1],
+          layout: {
+            "icon-image": "poste-ico",
+            "icon-size": [
+              "interpolate", ["linear"], ["zoom"],
+              10, 0.3,
+              14, 0.52,
+              18, 0.82,
+            ],
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          },
+        });
+
+        map.on("click", POSTES_LAYER, (e) => {
+          const feat = e.features?.[0];
+          const id = Number(feat?.properties?.id);
+          if (Number.isFinite(id)) onPosteSelectRef.current?.(id);
+        });
+        map.on("mouseenter", POSTES_LAYER, () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", POSTES_LAYER, () => {
+          map.getCanvas().style.cursor = "";
+        });
+      };
+
+      if (map.hasImage("poste-ico")) {
+        addLayers();
+      } else {
+        map.loadImage(`${BP}/posteico.png`, (err, img) => {
+          if (!err && img && !map.hasImage("poste-ico")) {
+            map.addImage("poste-ico", img, { pixelRatio: 2 });
+          }
+          addLayers();
+        });
+      }
     };
     if (map.loaded()) ensure();
     else map.once("load", ensure);
