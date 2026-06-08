@@ -648,7 +648,7 @@ export default function PainelMapaPage() {
   }
 
   return (
-    <div className="relative" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="relative h-full"  style={{ minHeight: 0 }}>
       {/* ── MAPA ─────────────────────────────────────────────────────────── */}
       <div ref={mapElRef} className="absolute inset-0" />
 

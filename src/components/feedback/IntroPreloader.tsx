@@ -78,7 +78,6 @@ export function IntroPreloader() {
               onEnded={dismiss}
               onError={dismiss}
               className="absolute inset-0 h-full w-full object-cover"
-              style={{ transform: "scale(1.09)", transformOrigin: "center center" }}
             />
 
             {/* Cobre marca d'água no canto inferior direito */}
@@ -86,10 +85,10 @@ export function IntroPreloader() {
               aria-hidden
               className="pointer-events-none absolute bottom-0 right-0"
               style={{
-                width: 220,
-                height: 80,
+                width: "40vw",
+                height: "14vh",
                 background:
-                  "linear-gradient(135deg, transparent 0%, rgba(0,0,0,0.92) 55%, rgba(0,0,0,0.98) 100%)",
+                  "linear-gradient(225deg, transparent 0%, rgba(0,0,0,0.85) 48%, rgba(0,0,0,0.97) 100%)",
               }}
             />
           </div>
