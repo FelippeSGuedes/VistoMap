@@ -100,21 +100,17 @@ export default function LoginPage() {
           <div className="mt-2 space-y-1.5">
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                E-mail
+                Usuário / E-mail
               </label>
               <div className="group mt-0.5 flex h-[38px] items-center gap-2.5 rounded-[9px] border border-white/12 bg-white/[0.04] px-3 transition focus-within:border-brand-emerald/70 focus-within:bg-white/[0.07] focus-within:shadow-[0_0_0_3px_rgba(6,214,160,0.12)]">
                 <Mail className="h-[13px] w-[13px] shrink-0 text-white/45 transition group-focus-within:text-brand-emerald" />
                 <input
-                  type="email"
-                  placeholder="seu@email.com"
-                  autoComplete="email"
+                  type="text"
+                  placeholder="usuário ou e-mail"
+                  autoComplete="username email"
                   className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
                   {...register("email", {
-                    required: "Informe seu e-mail",
-                    pattern: {
-                      value: /^[\w.+-]+@[\w-]+\.[\w.-]+$/,
-                      message: "E-mail invalido",
-                    },
+                    required: "Informe seu usuário ou e-mail",
                   })}
                 />
               </div>

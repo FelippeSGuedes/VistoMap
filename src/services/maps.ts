@@ -4,6 +4,8 @@ export const DEFAULT_CENTER: [number, number] = [-46.6333, -23.5505];
 export const DEFAULT_ZOOM = 11;
 export const MAP_STYLE = "mapbox://styles/mapbox/streets-v12";
 export const MAP_STYLE_DARK = "mapbox://styles/mapbox/dark-v11";
+export const MAP_STYLE_SATELLITE = "mapbox://styles/mapbox/satellite-v9";
+export const MAP_STYLE_HYBRID = "mapbox://styles/mapbox/satellite-streets-v12";
 
 export function buildWazeUrl(lat: number, lng: number) {
   return `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
