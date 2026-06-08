@@ -10,13 +10,13 @@ import {
   EyeOff,
   Loader2,
   Lock,
-  User,
+  Mail,
 } from "lucide-react";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/auth";
 
 interface FormValues {
-  login: string;
+  email: string;
   senha: string;
 }
 
@@ -35,16 +35,13 @@ export default function LoginPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: { login: "", senha: "" },
+    defaultValues: { email: "", senha: "" },
   });
 
   const onSubmit = async (values: FormValues) => {
     setError(null);
     try {
-      const next = await authService.login({
-        login: values.login,
-        senha: values.senha,
-      });
+      const next = await authService.login(values);
       setSession(next);
       router.replace("/dashboard");
     } catch (err) {
@@ -60,7 +57,7 @@ export default function LoginPage() {
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden bg-[#073B4C] text-brand-ice">
       {/* logo_video.mp4 como fundo full-screen — mobile only */}
       <video
-        src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo_video.mp4`}
+        src="/logo_video.mp4"
         aria-hidden
         autoPlay
         loop
@@ -103,28 +100,27 @@ export default function LoginPage() {
           <div className="mt-2 space-y-1.5">
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                Usuário ou e-mail
+                E-mail
               </label>
               <div className="group mt-0.5 flex h-[38px] items-center gap-2.5 rounded-[9px] border border-white/12 bg-white/[0.04] px-3 transition focus-within:border-brand-emerald/70 focus-within:bg-white/[0.07] focus-within:shadow-[0_0_0_3px_rgba(6,214,160,0.12)]">
-                <User className="h-[13px] w-[13px] shrink-0 text-white/45 transition group-focus-within:text-brand-emerald" />
+                <Mail className="h-[13px] w-[13px] shrink-0 text-white/45 transition group-focus-within:text-brand-emerald" />
                 <input
-                  type="text"
-                  placeholder="usuario.glpi ou seu@email.com"
-                  autoComplete="username"
-                  inputMode="text"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
+                  type="email"
+                  placeholder="seu@email.com"
+                  autoComplete="email"
                   className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
-                  {...register("login", {
-                    required: "Informe seu usuário ou e-mail",
-                    minLength: { value: 2, message: "Identificador inválido" },
+                  {...register("email", {
+                    required: "Informe seu e-mail",
+                    pattern: {
+                      value: /^[\w.+-]+@[\w-]+\.[\w.-]+$/,
+                      message: "E-mail invalido",
+                    },
                   })}
                 />
               </div>
-              {errors.login?.message && (
+              {errors.email?.message && (
                 <span className="mt-1.5 block text-xs text-red-200">
-                  {errors.login.message}
+                  {errors.email.message}
                 </span>
               )}
             </div>

@@ -504,47 +504,18 @@ function OrbitAnim({ progress }: { progress: number }) {
 }
 
 function BrandAnim({ brand }: { brand: "vivo" | "claro" }) {
-  const color = brand === "vivo" ? "#660099" : "#E5097F";
-  const label = brand === "vivo" ? "vivo" : "claro";
+  const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const src = brand === "vivo" ? `${BP}/Logo_VIVO.svg` : `${BP}/claro.svg`;
   return (
-    <svg viewBox="0 0 240 200" className="h-full w-full">
-      <motion.g
+    <div className="flex h-full w-full items-center justify-center p-10">
+      <motion.img
+        src={src}
+        alt={brand === "vivo" ? "Vivo" : "Claro"}
+        className="max-h-full max-w-full object-contain drop-shadow-lg"
         animate={{ y: [0, -8, 0] }}
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-      >
-        <rect x="60" y="50" width="120" height="120" rx="20" fill={color} opacity="0.12" />
-        <rect x="76" y="66" width="88" height="88" rx="16" fill={color} />
-        <text
-          x="120"
-          y="124"
-          textAnchor="middle"
-          fontSize="22"
-          fontWeight="800"
-          fill="#fff"
-          fontFamily="system-ui, sans-serif"
-          letterSpacing="-0.5"
-        >
-          {label}
-        </text>
-      </motion.g>
-      <motion.path
-        d="M30 30 L60 50"
-        stroke={color}
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeDasharray="6 6"
-        animate={{ pathLength: [0, 1, 0] }}
-        transition={{ duration: 2, repeat: Infinity }}
       />
-      <motion.circle
-        cx="30"
-        cy="30"
-        r="6"
-        fill={color}
-        animate={{ scale: [1, 1.4, 1] }}
-        transition={{ duration: 1.6, repeat: Infinity }}
-      />
-    </svg>
+    </div>
   );
 }
 

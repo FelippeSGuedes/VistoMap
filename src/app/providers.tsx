@@ -10,6 +10,7 @@ import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
+import { IntroPreloader } from "@/components/feedback/IntroPreloader";
 
 function LocationReporterMount() {
   useLocationReporter();
@@ -94,6 +95,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <TecnicoNotificationsMount />
       <OfflineSyncMount />
       <OfflineIndicator />
+      {session && <IntroPreloader />}
       {children}
     </>
   );
