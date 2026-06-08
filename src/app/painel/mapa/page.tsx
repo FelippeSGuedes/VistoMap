@@ -363,9 +363,10 @@ export default function PainelMapaPage() {
 
   useEffect(() => {
     if (!token || !mapElRef.current || mapRef.current) return;
+    const container = mapElRef.current;
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
-      container: mapElRef.current,
+      container,
       style: "mapbox://styles/mapbox/dark-v11",
       center: DEFAULT_CENTER,
       zoom: 10,
@@ -376,14 +377,15 @@ export default function PainelMapaPage() {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     mapRef.current = map;
 
-    // Canvas is sized at init time; absolute positioning may not be fully computed yet.
-    // Force a resize after layout settles and watch for future container size changes.
-    const t = setTimeout(() => map.resize(), 0);
+    // Container height comes from a flex layout (definite from first paint), but keep
+    // resize safety nets for late dvh/viewport settling, style load, and panel toggles.
+    map.on("load", () => map.resize());
+    const raf = requestAnimationFrame(() => map.resize());
     const ro = new ResizeObserver(() => map.resize());
-    if (mapElRef.current) ro.observe(mapElRef.current);
+    ro.observe(container);
 
     return () => {
-      clearTimeout(t);
+      cancelAnimationFrame(raf);
       ro.disconnect();
       map.remove();
       mapRef.current = null;
@@ -657,7 +659,7 @@ export default function PainelMapaPage() {
   }
 
   return (
-    <div className="absolute inset-0">
+    <div className="relative h-full w-full overflow-hidden">
       {/* ── MAPA ─────────────────────────────────────────────────────────── */}
       <div ref={mapElRef} className="absolute inset-0" />
 
