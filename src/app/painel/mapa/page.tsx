@@ -45,10 +45,11 @@ const TRAIL_LAYER = "vm-trail-layer";
 const BUILDINGS_LAYER = "vm-3d-buildings";
 
 const LAYER_OPTIONS = [
-  { key: "dark" as const,      label: "Padrão",   style: "mapbox://styles/mapbox/dark-v11" },
+  // key "dark" mantido por compat; estilo agora é claro (Padrão = mapa claro)
+  { key: "dark" as const,      label: "Padrão",   style: "mapbox://styles/mapbox/light-v11" },
   { key: "satellite" as const, label: "Satélite", style: "mapbox://styles/mapbox/satellite-v9" },
   { key: "hybrid" as const,    label: "Híbrido",  style: "mapbox://styles/mapbox/satellite-streets-v12" },
-  { key: "3d" as const,        label: "3D",       style: "mapbox://styles/mapbox/dark-v11" },
+  { key: "3d" as const,        label: "3D",       style: "mapbox://styles/mapbox/light-v11" },
 ] as const;
 type LayerKey = (typeof LAYER_OPTIONS)[number]["key"];
 
@@ -367,7 +368,7 @@ export default function PainelMapaPage() {
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container,
-      style: "mapbox://styles/mapbox/dark-v11",
+      style: "mapbox://styles/mapbox/light-v11",
       center: DEFAULT_CENTER,
       zoom: 10,
       attributionControl: false,
@@ -377,15 +378,17 @@ export default function PainelMapaPage() {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     mapRef.current = map;
 
-    // Container height comes from a flex layout (definite from first paint), but keep
-    // resize safety nets for late dvh/viewport settling, style load, and panel toggles.
-    map.on("load", () => map.resize());
-    const raf = requestAnimationFrame(() => map.resize());
-    const ro = new ResizeObserver(() => map.resize());
+    // Belt-and-suspenders resize: the canvas can mismeasure its container while the
+    // flex/dvh layout settles. Resize on load, every observed size change, and on a
+    // short staggered retry so a late layout pass never leaves the canvas short.
+    const resize = () => map.resize();
+    map.on("load", resize);
+    const ro = new ResizeObserver(resize);
     ro.observe(container);
+    const timers = [0, 150, 400, 800, 1500].map((d) => window.setTimeout(resize, d));
 
     return () => {
-      cancelAnimationFrame(raf);
+      timers.forEach((t) => window.clearTimeout(t));
       ro.disconnect();
       map.remove();
       mapRef.current = null;
