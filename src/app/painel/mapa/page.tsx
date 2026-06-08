@@ -378,17 +378,30 @@ export default function PainelMapaPage() {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     mapRef.current = map;
 
-    // Belt-and-suspenders resize: the canvas can mismeasure its container while the
-    // flex/dvh layout settles. Resize on load, every observed size change, and on a
-    // short staggered retry so a late layout pass never leaves the canvas short.
+    // Bulletproof resize: in some webviews 100dvh settles late (>1.5s) and a single
+    // resize latches onto a transient short height (canvas stays e.g. 272px while the
+    // container is 855px). Keep on(load) + ResizeObserver, AND poll-resize until the
+    // canvas height matches the container for a few consecutive ticks, then stop.
     const resize = () => map.resize();
     map.on("load", resize);
     const ro = new ResizeObserver(resize);
     ro.observe(container);
-    const timers = [0, 150, 400, 800, 1500].map((d) => window.setTimeout(resize, d));
+
+    let stable = 0;
+    const poll = window.setInterval(() => {
+      map.resize();
+      const ch = container.clientHeight;
+      if (ch > 0 && Math.abs(map.getCanvas().clientHeight - ch) <= 1) {
+        if (++stable >= 4) window.clearInterval(poll); // bateu por ~1s → para
+      } else {
+        stable = 0;
+      }
+    }, 250);
+    const stopPoll = window.setTimeout(() => window.clearInterval(poll), 8000);
 
     return () => {
-      timers.forEach((t) => window.clearTimeout(t));
+      window.clearInterval(poll);
+      window.clearTimeout(stopPoll);
       ro.disconnect();
       map.remove();
       mapRef.current = null;
@@ -664,7 +677,8 @@ export default function PainelMapaPage() {
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* ── MAPA ─────────────────────────────────────────────────────────── */}
-      <div ref={mapElRef} className="absolute inset-0" />
+      {/* h-full w-full (fluxo normal) mede correto no init; overlays ficam absolutos por cima */}
+      <div ref={mapElRef} className="h-full w-full" />
 
       {/* ── PAINEL LATERAL (glass, overlaid) ─────────────────────────────── */}
       <aside
