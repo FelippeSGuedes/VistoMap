@@ -375,7 +375,16 @@ export default function PainelMapaPage() {
     map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "top-right");
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     mapRef.current = map;
+
+    // Canvas is sized at init time; absolute positioning may not be fully computed yet.
+    // Force a resize after layout settles and watch for future container size changes.
+    const t = setTimeout(() => map.resize(), 0);
+    const ro = new ResizeObserver(() => map.resize());
+    if (mapElRef.current) ro.observe(mapElRef.current);
+
     return () => {
+      clearTimeout(t);
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
       techMarkersRef.current.clear();

@@ -54,18 +54,18 @@ const LIGHT = {
 } as const;
 
 const DARK = {
-  shell:        "#0D1117",
-  sidebar:      "#161B22",
-  topbar:       "#161B22",
-  border:       "rgba(240,246,252,0.08)",
-  text:         "#CDD9E5",
-  textMuted:    "#545D6A",
-  navActive:    "rgba(16,185,129,0.10)",
-  navActiveTxt: "#3FDDAC",
-  navInactive:  "#4A5568",
-  badge:        "#161B22",
-  search:       "rgba(255,255,255,0.04)",
-  avatarRing:   "#161B22",
+  shell:        "#111318",
+  sidebar:      "#1A1F2E",
+  topbar:       "#1A1F2E",
+  border:       "rgba(255,255,255,0.07)",
+  text:         "#E2E8F0",
+  textMuted:    "#718096",
+  navActive:    "rgba(0,185,136,0.12)",
+  navActiveTxt: "#4EEDC4",
+  navInactive:  "#8B9DBF",
+  badge:        "#1A1F2E",
+  search:       "rgba(255,255,255,0.06)",
+  avatarRing:   "#1A1F2E",
 } as const;
 
 export default function PainelClientLayout({ children }: { children: React.ReactNode }) {
@@ -211,7 +211,7 @@ export default function PainelClientLayout({ children }: { children: React.React
       </aside>
 
       {/* ── COLUNA DIREITA ───────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col" style={{ background: T.shell }}>
 
         {/* Topbar */}
         <header
@@ -280,7 +280,9 @@ export default function PainelClientLayout({ children }: { children: React.React
          */}
         <main
           className={isMapaPage ? "relative overflow-hidden" : "flex-1 overflow-y-auto px-6 py-6"}
-          style={isMapaPage ? { height: "calc(100dvh - 56px)" } : undefined}
+          style={isMapaPage
+            ? { height: "calc(100dvh - 56px)", background: T.shell }
+            : { background: T.shell }}
         >
           {children}
         </main>
