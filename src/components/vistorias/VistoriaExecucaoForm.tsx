@@ -66,8 +66,9 @@ interface FormState {
 }
 
 /**
- * Reverte o formato GLPI "ENDEREÇO : RUA,NUMERO,ESTADO,CEP" para os 4 sub-campos.
- * Token "—" é tratado como vazio. Se não reconhecer o formato, retorna 4 strings vazias.
+ * Reverte o formato CSV "Rua,Numero,Estado,CEP" (novo) ou o legado
+ * "ENDEREÇO : Rua,Numero,Estado,CEP" para os 4 sub-campos.
+ * Token "—" é tratado como vazio.
  */
 function parseGlpiEndereco(raw: string): {
   rua: string;
@@ -77,12 +78,14 @@ function parseGlpiEndereco(raw: string): {
 } {
   const empty = { rua: "", numero: "", estado: "", cep: "" };
   if (!raw) return empty;
+  // Suporte ao formato legado com prefixo
   const m = raw.match(/ENDERE(?:Ç|C)O\s*:\s*(.+)$/i);
-  if (!m) return empty;
-  const parts = m[1].split(",").map((s) => {
+  const csv = m ? m[1] : raw;
+  const parts = csv.split(",").map((s) => {
     const t = s.trim();
     return t === "—" || t === "-" ? "" : t;
   });
+  if (parts.length < 4 && !m) return empty;
   return {
     rua: parts[0] ?? "",
     numero: parts[1] ?? "",
@@ -244,7 +247,7 @@ export function VistoriaExecucaoForm({
     const e = form.endereco_estado.trim();
     const c = form.endereco_cep.trim();
     if (!r && !n && !e && !c) return form.endereofield;
-    return `ENDEREÇO : ${r || "—"},${n || "—"},${e || "—"},${c || "—"}`;
+    return `${r || "—"},${n || "—"},${e || "—"},${c || "—"}`;
   };
 
   const onFinalize = async () => {

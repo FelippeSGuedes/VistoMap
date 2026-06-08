@@ -31,23 +31,32 @@ import type {
 } from "@/types/painel-mapa";
 
 /**
- * Mapeia o nome do status_vistoria_dropdown (GLPI) para AdminStatus do front.
+ * Mapeia para AdminStatus do front.
  *
- * Como ainda não temos os 6 valores no banco (migration pendente), derivamos
- * do dropdown atual + flag is_repeat:
+ * Prioridade 1: situacaoId (campo nativo glpi plugin, atualizado por atribuir/aprovar/reprovar).
+ * Prioridade 2: statusName (dropdown status_vistoria), derivação por is_repeat e hasTecnico.
  *
- *   sem status OU "Pendente"     → A_VISTORIAR
- *   sem status + tem técnico     → EM_VISTORIA (heurística)
- *   "Em análise" / "Finalizada"  → VISTORIADO
- *   "Reprovada" + !is_repeat     → AGUARDANDO_REVISITA
- *   "Reprovada" + is_repeat      → EM_REVISITA   (após reatribuição)
- *   "Aprovada"                   → REVISITADO se foi revisita, senão VISTORIADO
+ *   situacaoId 1 → A_VISTORIAR  (+ heurística técnico)
+ *   situacaoId 2 → EM_VISTORIA
+ *   situacaoId 3 → VISTORIADO
+ *   situacaoId 4 → AGUARDANDO_REVISITA
+ *   situacaoId 5 → EM_REVISITA
+ *   situacaoId 6 → REVISITADO
  */
 function resolveAdminStatus(
   statusName: string | null,
   isRepeat: boolean,
-  hasTecnico: boolean
+  hasTecnico: boolean,
+  situacaoId?: number | null,
 ): AdminStatus {
+  // Situação operacional (campo explícito) tem prioridade sobre o dropdown
+  const sid = Number(situacaoId ?? 0);
+  if (sid === 2) return "EM_VISTORIA";
+  if (sid === 3) return isRepeat ? "REVISITADO" : "VISTORIADO";
+  if (sid === 4) return "AGUARDANDO_REVISITA";
+  if (sid === 5) return "EM_REVISITA";
+  if (sid === 6) return "REVISITADO";
+  // sid===1 ou 0: usa dropdown de status como fallback
   const s = (statusName ?? "").trim().toLowerCase();
   if (s === "" || s === "pendente") {
     return hasTecnico ? "EM_VISTORIA" : "A_VISTORIAR";
@@ -58,12 +67,12 @@ function resolveAdminStatus(
   }
   if (s === "reprovada" || s === "reprovado") return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
   if (s === "aprovada" || s === "aprovado") return isRepeat ? "REVISITADO" : "VISTORIADO";
-  // fallback: a vistoriar
   return "A_VISTORIAR";
 }
 
 interface StatsRow {
   status_name: string | null;
+  situacao_id: number | null;
   is_repeat: number | null;
   tecnico_id: number | null;
   total: number;
@@ -72,15 +81,16 @@ interface StatsRow {
 /**
  * Agrega KPIs do painel.
  *
- * Estratégia: faz JOIN entre NE × Fields × Status × Aux e GROUP BY pelas
- * dimensões que afetam o AdminStatus (status_name, is_repeat, has_tecnico).
- * Depois resolve cada bucket em JS e soma nos slots do PainelStats.
+ * Inclui situacao_id (campo nativo) como discriminador primário — mais
+ * confiável que o dropdown de status, pois é atualizado pelo fluxo de
+ * atribuir/aprovar/reprovar mesmo quando o status_dropdown volta a 0.
  */
 export async function fetchPainelStats(): Promise<PainelStats> {
   const rows = await query<StatsRow>(
     `
       SELECT
         sv.name AS status_name,
+        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
         f.users_id_vistoriadorafield AS tecnico_id,
         COUNT(*) AS total
@@ -91,7 +101,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
       LEFT JOIN \`${TABLE_AUX}\` aux
               ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       WHERE ne.is_deleted = 0
-      GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield
+      GROUP BY sv.name, f.\`${SITUACAO_COLUMN}\`, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield
     `
   );
 
@@ -105,7 +115,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
   for (const r of rows) {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
-    const st = resolveAdminStatus(r.status_name, isRepeat, hasTecnico);
+    const st = resolveAdminStatus(r.status_name, isRepeat, hasTecnico, r.situacao_id);
     const n = Number(r.total) || 0;
     switch (st) {
       case "A_VISTORIAR":
@@ -446,6 +456,7 @@ interface FilaRow {
   endereco: string | null;
   motivo: string | null;
   status_name: string | null;
+  situacao_id: number | null;
   is_repeat: number | null;
   tecnico_id: number | null;
   tecnico_name: string | null;
@@ -500,6 +511,7 @@ export async function fetchFilaVistorias(
         f.endereofield AS endereco,
         f.motivofield AS motivo,
         sv.name AS status_name,
+        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
         f.users_id_vistoriadorafield AS tecnico_id,
         u.name AS tecnico_name,
@@ -531,7 +543,7 @@ export async function fetchFilaVistorias(
   const items: FilaItem[] = rows.map((r) => {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
-    const status = resolveAdminStatus(r.status_name, isRepeat, hasTecnico);
+    const status = resolveAdminStatus(r.status_name, isRepeat, hasTecnico, r.situacao_id);
     const tecnicoNome = hasTecnico
       ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
         r.tecnico_name ||
