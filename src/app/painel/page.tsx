@@ -126,14 +126,36 @@ const CITY_COORDS: Record<string, [number, number]> = {
   "Cascavel":              [-53.4553, -24.9555],
 };
 
-function injectStyle(id: string, css: string) {
-  if (typeof document === "undefined") return;
-  if (!document.getElementById(id)) {
-    const s = document.createElement("style");
-    s.id = id;
-    s.textContent = css;
-    document.head.appendChild(s);
+// SP municipalities polygon GeoJSON (tbrugz/geodata-br, property "name" = title-case name)
+const SP_GEOJSON_URL =
+  "https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-35-mun.json";
+
+function muniColor(value: number, maxVal: number): string {
+  const t = maxVal > 0 ? value / maxVal : 0;
+  if (t <= 0) return "#F8FAFC";
+  if (t < 0.15) return "#D1FAE5";
+  if (t < 0.40) return "#6EE7B7";
+  if (t < 0.70) return "#10B981";
+  return "#047857";
+}
+
+function buildFillExpression(
+  topMunis: Array<{ municipio: string; total: number }>,
+): unknown[] {
+  const maxVal = Math.max(...topMunis.map(m => m.total), 1);
+  const pairs: unknown[] = [];
+  for (const m of topMunis) {
+    pairs.push(m.municipio, muniColor(m.total, maxVal));
   }
+  return ["match", ["get", "name"], ...pairs, "#F8FAFC"];
+}
+
+function injectStyle(id: string, css: string) {
+  if (typeof document === "undefined" || document.getElementById(id)) return;
+  const s = document.createElement("style");
+  s.id = id;
+  s.textContent = css;
+  document.head.appendChild(s);
 }
 
 /* ─── primitives ────────────────────────────────────────────────────────── */
@@ -162,7 +184,7 @@ function Card({
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   WIDGET: Heatmap Geográfico — Padrão Diário · 30 dias
+   WIDGET 02 — Padrão Diário: SP municipalities fill layer
    ══════════════════════════════════════════════════════════════════════════ */
 
 interface HeatmapMapWidgetProps {
@@ -174,85 +196,179 @@ interface HeatmapMapWidgetProps {
 function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const popupRef     = useRef<mapboxgl.Popup | null>(null);
   const token        = getMapboxToken();
+  const [geoLoaded,  setGeoLoaded] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
     injectStyle(
       "vm-dash-heat-css",
-      ".vm-dash-heat .mapboxgl-ctrl-logo,.vm-dash-heat .mapboxgl-ctrl-attrib{display:none!important}",
+      ".vm-dash-heat .mapboxgl-ctrl-logo,.vm-dash-heat .mapboxgl-ctrl-attrib{display:none!important}" +
+      ".mapboxgl-popup-content{padding:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.12)}",
     );
+    let alive = true;
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
-      center: [-47.8, -22.5] as [number, number],
-      zoom: 5.8,
-      interactive: false,
+      center: [-48.5, -22.0] as [number, number],
+      zoom: 5.7,
+      interactive: true,
+      scrollZoom: false,
+      doubleClickZoom: false,
+      dragPan: false,
+      dragRotate: false,
+      boxZoom: false,
       attributionControl: false,
     });
     mapRef.current = map;
 
-    map.on("load", () => {
-      const features = topMunicipios
-        .filter(m => CITY_COORDS[m.municipio])
-        .map(m => ({
-          type: "Feature" as const,
-          geometry: { type: "Point" as const, coordinates: CITY_COORDS[m.municipio]! },
-          properties: { intensity: m.total },
-        }));
-      const maxVal = Math.max(...topMunicipios.map(m => m.total), 1);
-      map.addSource("vm-heat-src", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features },
-      });
-      map.addLayer({
-        id: "vm-heat-layer",
-        type: "heatmap",
-        source: "vm-heat-src",
-        paint: {
-          "heatmap-weight": ["interpolate", ["linear"], ["get", "intensity"], 0, 0, maxVal, 1],
-          "heatmap-intensity": 1.4,
-          "heatmap-color": [
-            "interpolate", ["linear"], ["heatmap-density"],
-            0,   "rgba(255,255,255,0)",
-            0.2, "rgba(209,250,229,0.7)",
-            0.5, "rgba(52,211,153,0.85)",
-            0.8, "rgba(16,185,129,0.95)",
-            1,   "rgba(5,150,105,1)",
-          ],
-          "heatmap-radius": 45,
-          "heatmap-opacity": 0.88,
-        },
-      });
+    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
+    popupRef.current = popup;
+
+    let hoveredId: string | number | null = null;
+
+    map.on("load", async () => {
+      try {
+        const res = await fetch(SP_GEOJSON_URL);
+        const geoJSON = await res.json();
+        if (!alive) return;
+
+        const fillExpr = buildFillExpression(topMunicipios);
+
+        map.addSource("vm-sp-src", {
+          type: "geojson",
+          data: geoJSON,
+          promoteId: "id",
+        });
+
+        // Municipality fill
+        map.addLayer({
+          id: "vm-sp-fill",
+          type: "fill",
+          source: "vm-sp-src",
+          paint: {
+            "fill-color": fillExpr as mapboxgl.Expression,
+            "fill-opacity": [
+              "case",
+              ["boolean", ["feature-state", "hover"], false],
+              1.0,
+              0.82,
+            ] as mapboxgl.Expression,
+          },
+        });
+
+        // Outline
+        map.addLayer({
+          id: "vm-sp-outline",
+          type: "line",
+          source: "vm-sp-src",
+          paint: {
+            "line-color": "#CBD5E1",
+            "line-width": 0.4,
+          },
+        });
+
+        // Hover outline
+        map.addLayer({
+          id: "vm-sp-hover-outline",
+          type: "line",
+          source: "vm-sp-src",
+          paint: {
+            "line-color": "#059669",
+            "line-width": 2,
+            "line-opacity": [
+              "case",
+              ["boolean", ["feature-state", "hover"], false],
+              1,
+              0,
+            ] as mapboxgl.Expression,
+          },
+        });
+
+        // Hover interactions
+        map.on("mousemove", "vm-sp-fill", (e) => {
+          if (!e.features?.length) return;
+          const f  = e.features[0];
+          const id = f.id;
+          map.getCanvas().style.cursor = "crosshair";
+          if (hoveredId !== null && hoveredId !== id) {
+            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: false });
+          }
+          hoveredId = id ?? null;
+          if (hoveredId !== null) {
+            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: true });
+          }
+          const name  = f.properties?.name ?? "";
+          const found = topMunicipios.find(m => m.municipio === name);
+          const total = found?.total ?? 0;
+          const maxV  = Math.max(...topMunicipios.map(m => m.total), 1);
+          const pct   = topMunicipios.reduce((s, m) => s + m.total, 0);
+          const pctStr = pct > 0 ? ((total / pct) * 100).toFixed(1) : "0";
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `<div style="font-family:ui-sans-serif;padding:8px 12px;min-width:130px">
+                <div style="font-size:12px;font-weight:700;color:#111827;margin-bottom:3px">${name || "—"}</div>
+                <div style="font-size:11px;color:#374151">${total > 0 ? `${total} vistorias · ${pctStr}%` : "Sem atividade"}</div>
+              </div>`,
+            )
+            .addTo(map);
+        });
+
+        map.on("mouseleave", "vm-sp-fill", () => {
+          map.getCanvas().style.cursor = "";
+          if (hoveredId !== null) {
+            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: false });
+            hoveredId = null;
+          }
+          popup.remove();
+        });
+
+        setGeoLoaded(true);
+      } catch {
+        /* GeoJSON load failure is silent — widget degrades gracefully */
+      }
     });
 
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      alive = false;
+      popup.remove();
+      map.remove();
+      mapRef.current = null;
+    };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Atualiza source quando dados mudam, sem recriar o mapa
+  // Update fill colors when data changes without recreating the map
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    const src = map.getSource("vm-heat-src") as mapboxgl.GeoJSONSource | undefined;
-    if (!src) return;
-    const features = topMunicipios
-      .filter(m => CITY_COORDS[m.municipio])
-      .map(m => ({
-        type: "Feature" as const,
-        geometry: { type: "Point" as const, coordinates: CITY_COORDS[m.municipio]! },
-        properties: { intensity: m.total },
-      }));
-    src.setData({ type: "FeatureCollection", features });
+    if (!map || !map.isStyleLoaded() || !map.getLayer("vm-sp-fill")) return;
+    map.setPaintProperty("vm-sp-fill", "fill-color", buildFillExpression(topMunicipios) as mapboxgl.Expression);
   }, [topMunicipios]);
 
   return (
     <Card className="h-full">
-      <div className="flex items-center gap-2 px-5 pt-4 pb-3">
-        <Clock className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-        <span className="text-[13px] font-semibold text-[#111827]">Padrão Diário · 30 dias</span>
+      <div className="flex items-center justify-between px-5 pt-4 pb-3">
+        <div className="flex items-center gap-2">
+          <Clock className="h-4 w-4 text-[#059669]" strokeWidth={2} />
+          <span className="text-[13px] font-semibold text-[#111827]">Padrão Diário · 30 dias</span>
+        </div>
+        <div className="flex items-center gap-1 text-[9.5px] text-[#9CA3AF]">
+          {["#D1FAE5", "#6EE7B7", "#10B981", "#047857"].map(c => (
+            <span key={c} className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
+          ))}
+          <span className="ml-0.5">+ ativo</span>
+        </div>
       </div>
-      <div ref={containerRef} className="vm-dash-heat h-[190px] w-full shrink-0" />
+      <div className="relative h-[190px] w-full shrink-0">
+        <div ref={containerRef} className="vm-dash-heat h-full w-full" />
+        {!geoLoaded && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[#F9FAFB]">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#E8EAED] border-t-[#059669]" />
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap gap-x-5 gap-y-1 px-5 py-3 text-[10.5px] text-[#6B7280]">
         <span>Total: <span className="font-semibold text-[#111827]">{totais.vistoriasFinalizadas}</span></span>
         <span>Média semanal: <span className="font-semibold text-[#111827]">{mediaSemanal.toFixed(1).replace(".", ",")}</span></span>
@@ -263,7 +379,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   WIDGET: Equipe ao Vivo — mini mapa + destaque técnico + gauges
+   WIDGET 04 — Equipe ao Vivo
    ══════════════════════════════════════════════════════════════════════════ */
 
 interface TeamMapWidgetProps {
@@ -277,13 +393,15 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
+  const popupRef     = useRef<mapboxgl.Popup | null>(null);
   const token        = getMapboxToken();
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
     injectStyle(
       "vm-dash-team-css",
-      ".vm-dash-team .mapboxgl-ctrl-logo,.vm-dash-team .mapboxgl-ctrl-attrib{display:none!important}",
+      ".vm-dash-team .mapboxgl-ctrl-logo,.vm-dash-team .mapboxgl-ctrl-attrib{display:none!important}" +
+      ".mapboxgl-popup-content{padding:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.12)}",
     );
     injectStyle(
       "vm-pulse-kf",
@@ -299,9 +417,12 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       attributionControl: false,
     });
     mapRef.current = map;
+    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
+    popupRef.current = popup;
     return () => {
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
+      popup.remove();
       map.remove();
       mapRef.current = null;
     };
@@ -318,7 +439,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
         .forEach(t => {
           const color = TECH_STATUS_COLOR[t.status_operacional];
           const el = document.createElement("div");
-          el.style.cssText = "position:relative;width:26px;height:26px;cursor:default";
+          el.style.cssText = "position:relative;width:28px;height:28px;cursor:default";
           el.innerHTML = `
             <div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.22;animation:vm-pulse 2.2s ease-in-out infinite"></div>
             <div style="position:absolute;inset:5px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;letter-spacing:-.3px">${initials(t.nome)}</div>`;
@@ -332,6 +453,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
   }, [mapaTeam]);
 
   const destaque = tecnicosAtivos.find(t => t.status === "em-campo") ?? tecnicosAtivos[0];
+  const emCampoCount = tecnicosAtivos.filter(t => t.status === "em-campo").length;
 
   return (
     <Card className="h-full">
@@ -340,9 +462,17 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
           <Zap className="h-4 w-4 text-[#059669]" strokeWidth={2.2} />
           <span className="text-[13px] font-semibold text-[#111827]">Equipe · ao vivo</span>
         </div>
-        <Link href="/painel/mapa" className="flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline">
-          Mapa <ArrowRight className="h-3 w-3" />
-        </Link>
+        <div className="flex items-center gap-2">
+          {emCampoCount > 0 && (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-[3px] text-[9px] font-bold text-emerald-700">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+              {emCampoCount} em campo
+            </span>
+          )}
+          <Link href="/painel/mapa" className="flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline">
+            Mapa <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
       </div>
       <div ref={containerRef} className="vm-dash-team h-[190px] w-full shrink-0" />
       {destaque && (
@@ -383,117 +513,320 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   WIDGET: Top Municípios — Mapbox circles + ranking
+   WIDGET 03 — Top Municípios: map IS the chart + hover tooltip
    ══════════════════════════════════════════════════════════════════════════ */
 
 interface MunicipiosMapWidgetProps {
   topMunicipios: Array<{ municipio: string; total: number }>;
+  tecnicos: TecnicoAtivo[];
 }
 
-function MunicipiosMapWidget({ topMunicipios }: MunicipiosMapWidgetProps) {
+function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const token        = getMapboxToken();
+
+  const totalGlobal = topMunicipios.reduce((s, m) => s + m.total, 0);
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
     injectStyle(
       "vm-dash-muni-css",
-      ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}",
+      ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}" +
+      ".vm-muni-popup .mapboxgl-popup-content{padding:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.14)}",
     );
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
-      center: [-47.8, -22.5] as [number, number],
+      center: [-48.5, -22.0] as [number, number],
       zoom: 5.6,
-      interactive: false,
+      interactive: true,
+      scrollZoom: false,
+      doubleClickZoom: false,
+      dragPan: false,
+      dragRotate: false,
+      boxZoom: false,
       attributionControl: false,
     });
     mapRef.current = map;
+    const popup = new mapboxgl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+      className: "vm-muni-popup",
+    });
+
+    const totalVal = topMunicipios.reduce((s, m) => s + m.total, 0);
 
     map.on("load", () => {
       const maxVal = Math.max(...topMunicipios.map(m => m.total), 1);
       const features = topMunicipios
         .filter(m => CITY_COORDS[m.municipio])
-        .map(m => ({
+        .map((m, idx) => ({
           type: "Feature" as const,
+          id: idx,
           geometry: { type: "Point" as const, coordinates: CITY_COORDS[m.municipio]! },
-          properties: { total: m.total },
+          properties: {
+            name: m.municipio,
+            total: m.total,
+            pct: totalVal > 0 ? ((m.total / totalVal) * 100).toFixed(1) : "0",
+            tecCount: tecnicos.filter(t => t.municipio === m.municipio).length,
+          },
         }));
+
       map.addSource("vm-muni-src", {
         type: "geojson",
         data: { type: "FeatureCollection", features },
       });
+
+      // Glow ring
       map.addLayer({
         id: "vm-muni-glow",
         type: "circle",
         source: "vm-muni-src",
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["get", "total"], 0, 14, maxVal, 44],
+          "circle-radius": ["interpolate", ["linear"], ["get", "total"], 0, 16, maxVal, 48],
           "circle-color": "#8B5CF6",
-          "circle-opacity": 0.12,
-          "circle-blur": 0.8,
+          "circle-opacity": 0.10,
+          "circle-blur": 1.0,
         },
       });
+
+      // Main circle — radius + hover state color
       map.addLayer({
         id: "vm-muni-circles",
         type: "circle",
         source: "vm-muni-src",
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["get", "total"], 0, 6, maxVal, 24],
-          "circle-color": "#8B5CF6",
-          "circle-opacity": 0.65,
-          "circle-stroke-width": 1.5,
+          "circle-radius": ["interpolate", ["linear"], ["get", "total"], 0, 6, maxVal, 26],
+          "circle-color": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            "#7C3AED",
+            "#8B5CF6",
+          ] as mapboxgl.Expression,
+          "circle-opacity": 0.72,
+          "circle-stroke-width": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            2.5,
+            1.5,
+          ] as mapboxgl.Expression,
           "circle-stroke-color": "#7C3AED",
-          "circle-stroke-opacity": 0.85,
+          "circle-stroke-opacity": 0.88,
         },
+      });
+
+      // Count label inside circles (only for top-3)
+      map.addLayer({
+        id: "vm-muni-labels",
+        type: "symbol",
+        source: "vm-muni-src",
+        filter: [">=", ["get", "total"], Math.max(Math.floor(maxVal * 0.25), 1)],
+        layout: {
+          "text-field": ["to-string", ["get", "total"]],
+          "text-size": 9,
+          "text-font": ["DIN Offc Pro Bold", "Arial Unicode MS Bold"],
+          "text-anchor": "center",
+        },
+        paint: { "text-color": "#fff" },
+      });
+
+      let hoveredId: string | number | null = null;
+
+      map.on("mousemove", "vm-muni-circles", (e) => {
+        if (!e.features?.length) return;
+        const f = e.features[0];
+        map.getCanvas().style.cursor = "pointer";
+        if (hoveredId !== null && hoveredId !== f.id) {
+          map.setFeatureState({ source: "vm-muni-src", id: hoveredId }, { hover: false });
+        }
+        hoveredId = f.id ?? null;
+        if (hoveredId !== null) {
+          map.setFeatureState({ source: "vm-muni-src", id: hoveredId }, { hover: true });
+        }
+        const { name, total: t, pct, tecCount } = f.properties as {
+          name: string; total: number; pct: string; tecCount: number;
+        };
+        const rank = topMunicipios.findIndex(m => m.municipio === name) + 1;
+        popup.setLngLat(e.lngLat).setHTML(`
+          <div style="font-family:ui-sans-serif;padding:10px 13px;min-width:150px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+              ${rank > 0 ? `<span style="display:flex;width:18px;height:18px;border-radius:50%;background:rgba(139,92,246,0.15);color:#8B5CF6;font-size:9px;font-weight:800;align-items:center;justify-content:center">${rank}</span>` : ""}
+              <span style="font-size:12px;font-weight:700;color:#111827">${name}</span>
+            </div>
+            <div style="font-size:11px;color:#374151;margin-bottom:2px"><strong>${t}</strong> vistorias</div>
+            <div style="font-size:10.5px;color:#6B7280">${pct}% do total</div>
+            ${tecCount > 0 ? `<div style="font-size:10px;color:#8B5CF6;margin-top:4px;padding-top:4px;border-top:1px solid #F3F4F6">${tecCount} técnico${tecCount !== 1 ? "s" : ""} ativo${tecCount !== 1 ? "s" : ""}</div>` : ""}
+          </div>`).addTo(map);
+      });
+
+      map.on("mouseleave", "vm-muni-circles", () => {
+        map.getCanvas().style.cursor = "";
+        if (hoveredId !== null) {
+          map.setFeatureState({ source: "vm-muni-src", id: hoveredId }, { hover: false });
+          hoveredId = null;
+        }
+        popup.remove();
       });
     });
 
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      popup.remove();
+      map.remove();
+      mapRef.current = null;
+    };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Card className="h-full">
-      <div className="flex items-center gap-2 px-5 pt-4 pb-3">
-        <Building2 className="h-4 w-4 text-[#8B5CF6]" strokeWidth={2} />
-        <span className="text-[13px] font-semibold text-[#111827]">Top Municípios · 30d</span>
+      <div className="flex items-center justify-between px-5 pt-4 pb-3">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-[#8B5CF6]" strokeWidth={2} />
+          <span className="text-[13px] font-semibold text-[#111827]">Top Municípios · 30d</span>
+        </div>
+        <span className="text-[10px] text-[#9CA3AF]">passe o mouse</span>
       </div>
-      <div ref={containerRef} className="vm-dash-muni h-[160px] w-full shrink-0" />
-      <ol className="flex flex-col gap-1.5 px-4 py-3">
+      <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" />
+      <ol className="flex flex-col gap-1 px-4 py-3">
         {topMunicipios.slice(0, 5).map((m, i) => {
-          const maxTotal = topMunicipios[0]?.total ?? 1;
+          const pct = totalGlobal > 0 ? (m.total / totalGlobal) * 100 : 0;
           return (
-            <li key={m.municipio} className="flex items-center gap-2.5">
+            <li key={m.municipio} className="flex items-center gap-2">
               <span
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold tabular-nums"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[8px] font-bold tabular-nums"
                 style={{
-                  background: i < 3 ? "rgba(139,92,246,0.12)" : "rgba(6,59,59,0.06)",
+                  background: i < 3 ? "rgba(139,92,246,0.12)" : "rgba(6,59,59,0.05)",
                   color:      i < 3 ? "#8B5CF6"               : "#7A8896",
                 }}
               >
                 {i + 1}
               </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="truncate text-[11px] font-medium text-[#374151]">{m.municipio}</span>
-                  <span className="shrink-0 tabular-nums text-[11px] font-semibold text-[#111827]">{m.total}</span>
-                </div>
-                <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-[#F3F4F6]">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: "linear-gradient(90deg,#8B5CF6,#6366F1)" }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(m.total / maxTotal) * 100}%` }}
-                    transition={{ duration: 0.8, delay: 0.06 * i, ease: [0.22, 0.7, 0.2, 1] }}
-                  />
-                </div>
-              </div>
+              <span className="flex-1 truncate text-[10.5px] font-medium text-[#374151]">{m.municipio}</span>
+              <span className="text-[10px] text-[#9CA3AF]">{pct.toFixed(0)}%</span>
+              <span className="w-7 text-right tabular-nums text-[10.5px] font-semibold text-[#111827]">{m.total}</span>
             </li>
           );
         })}
       </ol>
+    </Card>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   WIDGET 07 — Revisitas: SP map background + highlight problem areas
+   ══════════════════════════════════════════════════════════════════════════ */
+
+function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const markersRef   = useRef<mapboxgl.Marker[]>([]);
+  const token        = getMapboxToken();
+  const hasRevisitas = revisitas.length > 0;
+
+  useEffect(() => {
+    if (!containerRef.current || !token) return;
+    injectStyle(
+      "vm-dash-rev-css",
+      ".vm-dash-rev .mapboxgl-ctrl-logo,.vm-dash-rev .mapboxgl-ctrl-attrib{display:none!important}",
+    );
+    mapboxgl.accessToken = token;
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [-48.5, -22.0] as [number, number],
+      zoom: 5.6,
+      interactive: false,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+    return () => {
+      markersRef.current.forEach(mk => mk.remove());
+      markersRef.current = [];
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const place = () => {
+      markersRef.current.forEach(mk => mk.remove());
+      markersRef.current = [];
+      if (revisitas.length === 0) return;
+      const groups = new Map<string, number>();
+      revisitas.forEach(r => groups.set(r.municipio, (groups.get(r.municipio) ?? 0) + 1));
+      groups.forEach((count, muni) => {
+        const coords = CITY_COORDS[muni];
+        if (!coords) return;
+        const el = document.createElement("div");
+        el.style.cssText = "position:relative;width:32px;height:32px";
+        el.innerHTML = `
+          <div style="position:absolute;inset:0;border-radius:50%;background:#F97316;opacity:0.2;animation:vm-pulse 2s ease-in-out infinite"></div>
+          <div style="position:absolute;inset:6px;border-radius:50%;background:#F97316;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff">${count}</div>`;
+        const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
+          .setLngLat(coords)
+          .addTo(map);
+        markersRef.current.push(mk);
+      });
+    };
+    if (map.isStyleLoaded()) place(); else map.once("load", place);
+  }, [revisitas]);
+
+  return (
+    <Card style={{ border: hasRevisitas ? "1px solid rgba(249,115,22,0.22)" : "1px solid #E8EAED" }}>
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: `1px solid ${hasRevisitas ? "#FFEDD5" : "#F3F4F6"}` }}
+      >
+        <div className="flex items-center gap-2">
+          <RotateCw className="h-3.5 w-3.5 text-orange-500" strokeWidth={2} />
+          <span className="text-[12.5px] font-semibold text-[#111827]">
+            Revisitas
+            {hasRevisitas && (
+              <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-bold text-orange-600">
+                {revisitas.length}
+              </span>
+            )}
+          </span>
+        </div>
+        <Link href="/painel/revisitas" className="flex items-center gap-1 text-[10.5px] font-semibold text-orange-500 hover:underline">
+          Central <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+
+      {/* Map always visible as background */}
+      <div className="relative">
+        <div ref={containerRef} className="vm-dash-rev h-[155px] w-full" />
+        {/* Success overlay when no revisitas */}
+        {!hasRevisitas && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/80 backdrop-blur-[3px]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 shadow-sm">
+              <Sparkles className="h-5 w-5 text-emerald-500" strokeWidth={1.5} />
+            </div>
+            <p className="text-[12px] font-semibold text-[#374151]">Operação em dia</p>
+            <p className="text-[10.5px] text-[#9CA3AF]">Sem revisitas pendentes.</p>
+          </div>
+        )}
+      </div>
+
+      {hasRevisitas && (
+        <ul className="divide-y divide-orange-50">
+          {revisitas.slice(0, 3).map(r => (
+            <li key={r.id} className="flex items-start gap-2.5 px-4 py-2.5">
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-orange-100">
+                <ShieldAlert className="h-3 w-3 text-orange-500" strokeWidth={2.4} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11.5px] font-semibold text-[#374151]">{r.equipamento}</p>
+                <p className="line-clamp-1 text-[10px] text-[#9CA3AF]">{r.municipio} · {relativo(r.reprovadoEm)}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }
@@ -541,7 +874,7 @@ export default function PainelOverviewPage() {
   );
   const taxaAprov    = historico?.taxas.aprovacaoPct ?? 0;
   const taxaRevisita = historico?.taxas.revisitaPct  ?? 0;
-  const topMunis     = (historico?.topMunicipios  ?? []).slice(0, 5);
+  const topMunis     = (historico?.topMunicipios  ?? []).slice(0, 8);
   const topTecs      = (historico?.rankingTecnicos ?? []).slice(0, 5);
   const mapaTeam     = mapaRealtime?.tecnicos ?? [];
 
@@ -582,7 +915,7 @@ export default function PainelOverviewPage() {
     { label: "Equipe",      value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
   ];
 
-  /* ═══════════════════════════════ RENDER ════════════════════════════════ */
+  /* ══════════════════════════════ RENDER ══════════════════════════════ */
   return (
     <div className="space-y-4 pb-4">
 
@@ -606,7 +939,6 @@ export default function PainelOverviewPage() {
             backgroundSize: "40px 40px",
           }}
         />
-        {/* header bar */}
         <div
           className="absolute inset-x-0 top-0 z-10 flex h-11 items-center gap-4 px-6"
           style={{ borderBottom: "1px solid rgba(0,208,132,0.13)" }}
@@ -618,8 +950,7 @@ export default function PainelOverviewPage() {
           <div className="ml-auto flex items-center gap-2.5">
             {alertaRevisitas.length > 0 && (
               <Link href="/painel/revisitas" className="flex items-center gap-1.5 rounded-lg border border-amber-800/40 bg-amber-900/30 px-2.5 py-1 text-[10.5px] font-semibold text-amber-400 transition hover:bg-amber-900/50">
-                <ShieldAlert className="h-3 w-3" />
-                {alertaRevisitas.length} alerta{alertaRevisitas.length !== 1 ? "s" : ""}
+                <ShieldAlert className="h-3 w-3" />{alertaRevisitas.length} alerta{alertaRevisitas.length !== 1 ? "s" : ""}
               </Link>
             )}
             <div className="rounded-lg px-3 py-[5px]" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }}>
@@ -636,7 +967,6 @@ export default function PainelOverviewPage() {
             </Link>
           </div>
         </div>
-        {/* content */}
         <div className="absolute inset-x-0 bottom-0 top-11 flex items-stretch">
           <div className="flex w-[360px] shrink-0 flex-col justify-between p-8">
             <div>
@@ -727,10 +1057,10 @@ export default function PainelOverviewPage() {
         </div>
       </div>
 
-      {/* ════════════ LINHA 1: Velocity | Heatmap | Equipe ════════════ */}
+      {/* ════════════ LINHA 1: Velocity | Heatmap SP | Equipe ════════════ */}
       <div className="grid grid-cols-3 gap-4">
 
-        {/* Vistorias Finalizadas · 14 dias */}
+        {/* Widget 01 — Vistorias Finalizadas · 14 dias */}
         <Card>
           <div className="flex items-start justify-between px-5 pt-5">
             <div>
@@ -764,11 +1094,18 @@ export default function PainelOverviewPage() {
             </Link>
           </div>
           <div className="relative mt-4 px-4 pb-4">
+            {/* Subtle geographic grid texture behind chart */}
             <div
-              className="pointer-events-none absolute inset-0 rounded-xl opacity-40"
+              className="pointer-events-none absolute inset-0 rounded-xl"
               style={{
-                backgroundImage: ["linear-gradient(rgba(5,150,105,0.05) 1px,transparent 1px)", "linear-gradient(90deg,rgba(5,150,105,0.05) 1px,transparent 1px)"].join(","),
-                backgroundSize: "24px 24px",
+                backgroundImage: [
+                  "linear-gradient(rgba(5,150,105,0.04) 1px,transparent 1px)",
+                  "linear-gradient(90deg,rgba(5,150,105,0.04) 1px,transparent 1px)",
+                  "linear-gradient(rgba(5,150,105,0.02) 1px,transparent 1px)",
+                  "linear-gradient(90deg,rgba(5,150,105,0.02) 1px,transparent 1px)",
+                ].join(","),
+                backgroundSize: "40px 40px, 40px 40px, 8px 8px, 8px 8px",
+                opacity: 0.9,
               }}
             />
             <div className="relative h-[160px]">
@@ -793,7 +1130,7 @@ export default function PainelOverviewPage() {
           </div>
         </Card>
 
-        {/* Padrão Diário — Heatmap Mapbox */}
+        {/* Widget 02 — Padrão Diário: SP fill heatmap */}
         {historico ? (
           <HeatmapMapWidget
             topMunicipios={historico.topMunicipios}
@@ -804,7 +1141,7 @@ export default function PainelOverviewPage() {
           <Card><div className="flex-1 p-5"><Skeleton h={280} /></div></Card>
         )}
 
-        {/* Equipe ao Vivo */}
+        {/* Widget 04 — Equipe ao Vivo */}
         <TeamMapWidget
           mapaTeam={mapaTeam}
           tecnicosAtivos={tecnicos.filter(t => t.status === "em-campo" || t.status === "base")}
@@ -816,14 +1153,10 @@ export default function PainelOverviewPage() {
       {/* ════════════ LINHA 2: Municípios | Técnicos | Atividade | Revisitas ════════════ */}
       <div className="grid grid-cols-4 gap-4">
 
-        {/* Top Municípios — Mapbox circles */}
-        {historico ? (
-          <MunicipiosMapWidget topMunicipios={topMunis} />
-        ) : (
-          <Card><div className="flex-1 p-4"><Skeleton h={320} /></div></Card>
-        )}
+        {/* Widget 03 — Top Municípios: map IS the chart */}
+        <MunicipiosMapWidget topMunicipios={topMunis} tecnicos={tecnicos} />
 
-        {/* Top Técnicos · 30d */}
+        {/* Widget 05 — Top Técnicos: performance cockpit */}
         <Card>
           <div className="flex items-center justify-between px-5 pt-4 pb-3">
             <div className="flex items-center gap-2">
@@ -832,42 +1165,59 @@ export default function PainelOverviewPage() {
             </div>
             <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
           </div>
-          <div className="flex flex-col gap-3 px-4 pb-4">
+          <div className="flex flex-col gap-0 px-3 pb-3">
             {topTecs.length > 0 ? (
               topTecs.map((t, i) => {
                 const maxTotal = topTecs[0]?.total ?? 1;
                 const pct = (t.total / maxTotal) * 100;
+                const aprovPct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
                 const badgeColors = ["#F59E0B", "#9CA3AF", "#B45309", "#6B7280", "#6B7280"];
+                const badgeBg    = ["#FEF3C7", "#F3F4F6", "#FEF3C7", "#F9FAFB", "#F9FAFB"];
                 return (
                   <motion.div
                     key={t.id}
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.06 * i, duration: 0.35, ease: "easeOut" }}
-                    className="flex items-center gap-3"
+                    className="rounded-xl px-2 py-2.5 transition hover:bg-[#F9FAFB]"
                   >
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums text-white"
-                      style={{ background: badgeColors[i] ?? "#6B7280" }}
-                    >
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-[12px] font-semibold text-[#111827]">{t.nome.split(" ")[0]}</span>
-                        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-[#374151]">
-                          {t.total} <span className="font-normal text-[#9CA3AF]">vis.</span>
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums"
+                        style={{ background: badgeBg[i], color: badgeColors[i] }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-1">
+                          <span className="truncate text-[12px] font-semibold text-[#111827]">{t.nome.split(" ")[0]}</span>
+                          <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[#111827]">{t.total}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-2 pl-[34px]">
+                      <span className="rounded-full bg-emerald-50 px-1.5 py-[2px] text-[9px] font-semibold text-emerald-700">
+                        {aprovPct}% aprov.
+                      </span>
+                      {t.cidades > 0 && (
+                        <span className="rounded-full bg-[#EDE9FE] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
+                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
                         </span>
-                      </div>
-                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
-                          transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                        />
-                      </div>
+                      )}
+                      {t.revisitas > 0 && (
+                        <span className="rounded-full bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold text-amber-700">
+                          {t.revisitas} rev.
+                        </span>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -878,7 +1228,7 @@ export default function PainelOverviewPage() {
           </div>
         </Card>
 
-        {/* Atividade ao Vivo — timeline */}
+        {/* Widget 06 — Atividade ao Vivo: operational timeline */}
         <Card>
           <div className="flex items-center justify-between border-b border-[#F3F4F6] px-4 py-3">
             <div className="flex items-center gap-2">
@@ -889,15 +1239,16 @@ export default function PainelOverviewPage() {
               Auditoria <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
-          <div className="relative px-4 py-3">
+          <div className="px-4 py-3">
             {audit.length === 0 ? (
               <p className="py-6 text-center text-[11px] text-[#D1D5DB]">Sem eventos recentes.</p>
             ) : (
               <div className="relative flex flex-col">
-                <div className="absolute left-[10px] top-3 bottom-3 w-px bg-[#E8EAED]" />
+                {/* vertical connector line */}
+                <div className="absolute left-[10px] top-3 bottom-3 w-px bg-gradient-to-b from-[#E8EAED] via-[#E8EAED] to-transparent" />
                 {audit.slice(0, 6).map((e, i) => {
-                  const color  = auditColor(e.acao);
-                  const Icon   = auditIcon(e.acao);
+                  const color = auditColor(e.acao);
+                  const Icon  = auditIcon(e.acao);
                   return (
                     <motion.div
                       key={e.id}
@@ -928,54 +1279,11 @@ export default function PainelOverviewPage() {
           </div>
         </Card>
 
-        {/* Revisitas */}
-        <Card style={{ border: revisitas.length > 0 ? "1px solid rgba(249,115,22,0.22)" : "1px solid #E8EAED" }}>
-          <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderBottom: `1px solid ${revisitas.length > 0 ? "#FFEDD5" : "#F3F4F6"}` }}
-          >
-            <div className="flex items-center gap-2">
-              <RotateCw className="h-3.5 w-3.5 text-orange-500" strokeWidth={2} />
-              <span className="text-[12.5px] font-semibold text-[#111827]">
-                Revisitas
-                {revisitas.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-bold text-orange-600">
-                    {revisitas.length}
-                  </span>
-                )}
-              </span>
-            </div>
-            <Link href="/painel/revisitas" className="flex items-center gap-1 text-[10.5px] font-semibold text-orange-500 hover:underline">
-              Central <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-          {revisitas.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50">
-                <Sparkles className="h-6 w-6 text-emerald-500" strokeWidth={1.5} />
-              </div>
-              <p className="text-[12px] font-semibold text-[#374151]">Operação em dia</p>
-              <p className="text-[10.5px] text-[#9CA3AF]">Sem revisitas pendentes.</p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-orange-50">
-              {revisitas.slice(0, 4).map(r => (
-                <li key={r.id} className="flex items-start gap-2.5 px-4 py-2.5">
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-orange-100">
-                    <ShieldAlert className="h-3 w-3 text-orange-500" strokeWidth={2.4} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11.5px] font-semibold text-[#374151]">{r.equipamento}</p>
-                    <p className="line-clamp-1 text-[10px] text-[#9CA3AF]">{r.municipio} · {relativo(r.reprovadoEm)}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+        {/* Widget 07 — Revisitas: SP map + problem areas */}
+        <RevisitasMapWidget revisitas={revisitas} />
       </div>
 
-      {/* ════════════ RODAPÉ — Status bar ════════════ */}
+      {/* ════════════ RODAPÉ ════════════ */}
       <div
         className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-5 py-3 text-[11px] text-[#6B7280]"
         style={{ background: "#F8FAFC", border: "1px solid #E8EAED" }}
