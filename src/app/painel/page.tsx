@@ -889,6 +889,7 @@ export default function PainelOverviewPage() {
   const [historico,    setHistorico]    = useState<HistoricoAnalytics | null>(null);
   const [mapaRealtime, setMapaRealtime] = useState<PainelMapaResponse | null>(null);
   const [now,          setNow]          = useState(() => new Date());
+  const token = getMapboxToken();
 
   useEffect(() => {
     let alive = true;
