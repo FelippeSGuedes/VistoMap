@@ -218,12 +218,11 @@ if (typeof document !== "undefined" && !document.getElementById("vm-op-style")) 
   s.textContent = `
     @keyframes vmStatusPulse{0%{box-shadow:0 0 0 0 currentColor,0 2px 5px rgba(0,0,0,.28)}70%{box-shadow:0 0 0 8px transparent,0 2px 5px rgba(0,0,0,.28)}100%{box-shadow:0 0 0 0 transparent,0 2px 5px rgba(0,0,0,.28)}}
     .vm-map-cursor-cross{cursor:crosshair!important}
-    .mapboxgl-ctrl-group{background:rgba(6,11,11,0.90)!important;border:1px solid rgba(0,200,150,0.12)!important;border-radius:12px!important;overflow:hidden}
-    .mapboxgl-ctrl-group button{background:transparent!important;color:#4E7272!important}
-    .mapboxgl-ctrl-group button:hover{background:rgba(0,200,150,0.08)!important}
-    .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1) brightness(0.5)}
-    .mapboxgl-ctrl-attrib{background:rgba(6,11,11,0.70)!important;color:#2A5050!important;border-radius:6px!important}
-    .mapboxgl-ctrl-attrib a{color:#00B388!important}
+    .mapboxgl-ctrl-group{background:rgba(255,255,255,0.96)!important;border:1px solid rgba(0,179,136,0.18)!important;border-radius:12px!important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.09)!important}
+    .mapboxgl-ctrl-group button{background:transparent!important;color:#6B7280!important}
+    .mapboxgl-ctrl-group button:hover{background:rgba(0,179,136,0.08)!important}
+    .mapboxgl-ctrl-logo{display:none!important}
+    .mapboxgl-ctrl-attrib{display:none!important}
   `;
   document.head.appendChild(s);
 }
@@ -231,11 +230,11 @@ if (typeof document !== "undefined" && !document.getElementById("vm-op-style")) 
 /* ─── glassmorphism dark helper ───────────────────────────────────────────── */
 
 const GLASS = {
-  background: "rgba(6,12,12,0.88)",
+  background: "rgba(255,255,255,0.96)",
   backdropFilter: "blur(20px) saturate(160%)",
   WebkitBackdropFilter: "blur(20px) saturate(160%)",
-  border: "1px solid rgba(0,200,150,0.10)",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.50), 0 1px 0 rgba(0,200,150,0.06) inset",
+  border: "1px solid rgba(0,179,136,0.16)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.10), 0 1px 0 rgba(255,255,255,0.90) inset",
   borderRadius: 16,
 } as const;
 
@@ -375,7 +374,6 @@ export default function PainelMapaPage() {
       pitchWithRotate: true,
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "top-right");
-    map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     mapRef.current = map;
 
     // Bulletproof resize: in some webviews 100dvh settles late (>1.5s) and a single
@@ -668,7 +666,7 @@ export default function PainelMapaPage() {
 
   if (!token) {
     return (
-      <div className="grid h-full place-items-center" style={{ color: "#4E7272" }}>
+      <div className="grid h-full place-items-center" style={{ color: "#6B7280" }}>
         <p className="text-sm">Configure <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> para ativar o mapa.</p>
       </div>
     );
@@ -686,7 +684,7 @@ export default function PainelMapaPage() {
         style={GLASS}
       >
         {/* Tabs */}
-        <div className="flex shrink-0 gap-1 p-1.5" style={{ borderBottom: "1px solid rgba(0,200,150,0.07)" }}>
+        <div className="flex shrink-0 gap-1 p-1.5" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
           <TabBtn
             active={aba === "tecnicos"}
             onClick={() => setAba("tecnicos")}
@@ -715,9 +713,9 @@ export default function PainelMapaPage() {
                     onClick={() => setFiltroTec(k)}
                     className="flex-1 rounded-lg px-1.5 py-1 text-[9.5px] font-semibold capitalize transition"
                     style={{
-                      background: filtroTec === k ? "rgba(0,179,136,0.18)" : "rgba(255,255,255,0.03)",
-                      color: filtroTec === k ? "#00D4A0" : "#3E6060",
-                      border: `1px solid ${filtroTec === k ? "rgba(0,179,136,0.35)" : "rgba(255,255,255,0.04)"}`,
+                      background: filtroTec === k ? "rgba(0,179,136,0.18)" : "rgba(0,0,0,0.03)",
+                      color: filtroTec === k ? "#00D4A0" : "#6B7280",
+                      border: `1px solid ${filtroTec === k ? "rgba(0,179,136,0.35)" : "rgba(0,0,0,0.05)"}`,
                     }}
                   >
                     {k === "todos" ? "Todos" : k === "online" ? "Online" : k === "parado" ? "Parado" : "Offline"}
@@ -744,8 +742,8 @@ export default function PainelMapaPage() {
                       }}
                       className="w-full rounded-xl p-2.5 text-left transition"
                       style={{
-                        background: selectedTec?.users_id === t.users_id ? "rgba(0,179,136,0.12)" : "rgba(255,255,255,0.02)",
-                        border: `1px solid ${selectedTec?.users_id === t.users_id ? "rgba(0,179,136,0.25)" : "rgba(255,255,255,0.04)"}`,
+                        background: selectedTec?.users_id === t.users_id ? "rgba(0,179,136,0.12)" : "rgba(0,0,0,0.02)",
+                        border: `1px solid ${selectedTec?.users_id === t.users_id ? "rgba(0,179,136,0.25)" : "rgba(0,0,0,0.05)"}`,
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -756,14 +754,14 @@ export default function PainelMapaPage() {
                           {initials(t.nome)}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-semibold" style={{ color: "#C0D8D8" }}>
+                          <p className="truncate text-[12px] font-semibold" style={{ color: "#111827" }}>
                             {t.nome}
                           </p>
                           <div className="flex items-center gap-1.5 text-[9.5px]" style={{ color: c }}>
                             <span className="h-1.5 w-1.5 rounded-full" style={{ background: c, boxShadow: isOnl ? `0 0 6px ${c}` : "none" }} />
                             <span>{statusLabel(t.status_operacional)}</span>
-                            <span style={{ color: "#2A4040" }}>·</span>
-                            <span style={{ color: "#2A4040" }}>{relTime(t.created_at)}</span>
+                            <span style={{ color: "#9CA3AF" }}>·</span>
+                            <span style={{ color: "#9CA3AF" }}>{relTime(t.created_at)}</span>
                           </div>
                         </div>
                         {t.accuracy_meters != null && (
@@ -782,7 +780,7 @@ export default function PainelMapaPage() {
                   );
                 })}
                 {(data?.tecnicos ?? []).length === 0 && (
-                  <p className="py-10 text-center text-[11px]" style={{ color: "#2A4040" }}>
+                  <p className="py-10 text-center text-[11px]" style={{ color: "#9CA3AF" }}>
                     Nenhum técnico ativo.
                   </p>
                 )}
@@ -797,23 +795,23 @@ export default function PainelMapaPage() {
             <div className="shrink-0 p-2">
               <div
                 className="flex items-center gap-2 rounded-xl px-2.5 py-1.5"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
               >
-                <Search className="h-3 w-3 shrink-0" style={{ color: "#2A4040" }} />
+                <Search className="h-3 w-3 shrink-0" style={{ color: "#9CA3AF" }} />
                 <input
                   type="search"
                   value={buscaVis}
                   onChange={(e) => setBuscaVis(e.target.value)}
                   placeholder="Equipamento, técnico, município…"
                   className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
-                  style={{ color: "#C0D8D8" }}
+                  style={{ color: "#111827" }}
                 />
               </div>
             </div>
             {/* Filtros situação */}
             <div className="shrink-0 px-2 pb-1.5">
               <div className="flex flex-wrap gap-1">
-                <FiltroPill active={filtroSit === "todas"} label="Todas" n={data?.vistorias.length ?? 0} color="#C0D8D8" onClick={() => setFiltroSit("todas")} />
+                <FiltroPill active={filtroSit === "todas"} label="Todas" n={data?.vistorias.length ?? 0} color="#111827" onClick={() => setFiltroSit("todas")} />
                 {(
                   [
                     ["A_VISTORIAR", "A vistoriar", "#F59E0B"],
@@ -855,13 +853,13 @@ export default function PainelMapaPage() {
                       }}
                       className="w-full rounded-xl p-2 text-left transition"
                       style={{
-                        background: selectedVistoria?.id === v.id ? "rgba(0,179,136,0.10)" : "rgba(255,255,255,0.02)",
-                        border: `1px solid ${selectedVistoria?.id === v.id ? "rgba(0,179,136,0.22)" : "rgba(255,255,255,0.03)"}`,
+                        background: selectedVistoria?.id === v.id ? "rgba(0,179,136,0.10)" : "rgba(0,0,0,0.02)",
+                        border: `1px solid ${selectedVistoria?.id === v.id ? "rgba(0,179,136,0.22)" : "rgba(0,0,0,0.03)"}`,
                         borderLeft: `3px solid ${cor}`,
                       }}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <p className="truncate text-[11px] font-semibold" style={{ color: "#C0D8D8" }}>
+                        <p className="truncate text-[11px] font-semibold" style={{ color: "#111827" }}>
                           {v.equipamento}
                         </p>
                         <span
@@ -871,19 +869,19 @@ export default function PainelMapaPage() {
                           {SITUACAO_LABEL[v.situacao]}
                         </span>
                       </div>
-                      <div className="mt-0.5 flex items-center gap-1 text-[9.5px]" style={{ color: "#2A4040" }}>
+                      <div className="mt-0.5 flex items-center gap-1 text-[9.5px]" style={{ color: "#9CA3AF" }}>
                         <MapPin className="h-2.5 w-2.5" />
                         <span className="truncate">{v.municipio ?? "—"}</span>
                         {v.tecnico_nome && <>
                           <span>·</span>
-                          <span className="truncate" style={{ color: "#1E4040" }}>{v.tecnico_nome}</span>
+                          <span className="truncate" style={{ color: "#9CA3AF" }}>{v.tecnico_nome}</span>
                         </>}
                       </div>
                     </button>
                   );
                 })}
                 {vistoriasFiltradas.length === 0 && (
-                  <p className="py-8 text-center text-[11px]" style={{ color: "#2A4040" }}>
+                  <p className="py-8 text-center text-[11px]" style={{ color: "#9CA3AF" }}>
                     Nenhuma vistoria nesse filtro.
                   </p>
                 )}
@@ -946,7 +944,7 @@ export default function PainelMapaPage() {
               className="flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[10.5px] font-semibold transition"
               style={{
                 background: active ? "rgba(0,179,136,0.20)" : "transparent",
-                color: active ? "#00D4A0" : "#3E6060",
+                color: active ? "#00D4A0" : "#6B7280",
                 border: `1px solid ${active ? "rgba(0,179,136,0.40)" : "transparent"}`,
               }}
             >
@@ -1025,7 +1023,7 @@ export default function PainelMapaPage() {
               {initials(hoveredTec.nome)}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[12px] font-semibold" style={{ color: "#C0D8D8" }}>
+              <p className="truncate text-[12px] font-semibold" style={{ color: "#111827" }}>
                 {hoveredTec.nome}
               </p>
               <p className="text-[10px]" style={{ color: statusColor(hoveredTec.status_operacional) }}>
@@ -1034,7 +1032,7 @@ export default function PainelMapaPage() {
             </div>
           </div>
           {hoveredMetricsLoading ? (
-            <p className="text-center text-[10px]" style={{ color: "#2A4040" }}>carregando…</p>
+            <p className="text-center text-[10px]" style={{ color: "#9CA3AF" }}>carregando…</p>
           ) : hoveredMetrics ? (
             <div className="grid grid-cols-3 gap-1.5 text-center">
               {[
@@ -1042,9 +1040,9 @@ export default function PainelMapaPage() {
                 { v: `${hoveredMetrics.km_hoje.toFixed(1)}`, l: "km hoje" },
                 { v: hoveredMetrics.tempo_medio_min != null ? `${hoveredMetrics.tempo_medio_min}m` : "—", l: "média" },
               ].map((m) => (
-                <div key={m.l} className="rounded-lg px-1 py-1.5" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <p className="text-[15px] font-bold" style={{ color: "#C0D8D8" }}>{m.v}</p>
-                  <p className="text-[9px]" style={{ color: "#2A4040" }}>{m.l}</p>
+                <div key={m.l} className="rounded-lg px-1 py-1.5" style={{ background: "rgba(0,0,0,0.05)" }}>
+                  <p className="text-[15px] font-bold" style={{ color: "#111827" }}>{m.v}</p>
+                  <p className="text-[9px]" style={{ color: "#9CA3AF" }}>{m.l}</p>
                 </div>
               ))}
             </div>
@@ -1061,7 +1059,7 @@ export default function PainelMapaPage() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
-            className="absolute bottom-4 left-[308px] z-10 w-[280px]"
+            className="absolute bottom-[88px] right-4 z-10 w-[280px]"
             style={GLASS}
           >
             <div className="p-3">
@@ -1074,7 +1072,7 @@ export default function PainelMapaPage() {
                     {initials(selectedTec.nome)}
                   </span>
                   <div>
-                    <p className="text-[13px] font-semibold" style={{ color: "#C0D8D8" }}>
+                    <p className="text-[13px] font-semibold" style={{ color: "#111827" }}>
                       {selectedTec.nome}
                     </p>
                     <p className="text-[10px]" style={{ color: statusColor(selectedTec.status_operacional) }}>
@@ -1086,7 +1084,7 @@ export default function PainelMapaPage() {
                   type="button"
                   onClick={() => { setSelectedTec(null); setTrailUsersId(null); }}
                   className="flex h-6 w-6 items-center justify-center rounded-lg"
-                  style={{ color: "#2A4040" }}
+                  style={{ color: "#9CA3AF" }}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1095,15 +1093,15 @@ export default function PainelMapaPage() {
               {selectedTec.accuracy_meters != null && (
                 <div
                   className="mb-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5"
-                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+                  style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
                 >
                   <Target className="h-3 w-3 shrink-0" style={{ color: selectedTec.accuracy_meters < 20 ? "#00B388" : "#F59E0B" }} />
-                  <span className="text-[10px]" style={{ color: "#4E7272" }}>
+                  <span className="text-[10px]" style={{ color: "#6B7280" }}>
                     Precisão GPS: <strong style={{ color: selectedTec.accuracy_meters < 20 ? "#00B388" : "#F59E0B" }}>
                       ±{Math.round(selectedTec.accuracy_meters)} m
                     </strong>
                     {selectedTec.speed_kmh != null && (
-                      <> · <strong style={{ color: "#C0D8D8" }}>{selectedTec.speed_kmh.toFixed(1)} km/h</strong></>
+                      <> · <strong style={{ color: "#111827" }}>{selectedTec.speed_kmh.toFixed(1)} km/h</strong></>
                     )}
                   </span>
                 </div>
@@ -1119,12 +1117,12 @@ export default function PainelMapaPage() {
                   <div
                     key={m.label}
                     className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
-                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}
+                    style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.05)" }}
                   >
-                    <span style={{ color: "#2A4040" }}>{m.icon}</span>
+                    <span style={{ color: "#9CA3AF" }}>{m.icon}</span>
                     <div>
-                      <p className="text-[9px]" style={{ color: "#2A4040" }}>{m.label}</p>
-                      <p className="text-[12px] font-semibold" style={{ color: "#C0D8D8" }}>{m.value}</p>
+                      <p className="text-[9px]" style={{ color: "#9CA3AF" }}>{m.label}</p>
+                      <p className="text-[12px] font-semibold" style={{ color: "#111827" }}>{m.value}</p>
                     </div>
                   </div>
                 ))}
@@ -1156,12 +1154,12 @@ export default function PainelMapaPage() {
               {/* Header */}
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[14px] font-semibold leading-tight" style={{ color: "#C0D8D8" }}>
+                  <p className="text-[14px] font-semibold leading-tight" style={{ color: "#111827" }}>
                     {selectedVistoria.equipamento}
                   </p>
                   <div className="mt-1 flex items-center gap-1.5">
-                    <MapPin className="h-3 w-3 shrink-0" style={{ color: "#2A4040" }} />
-                    <span className="text-[11px]" style={{ color: "#3E6060" }}>
+                    <MapPin className="h-3 w-3 shrink-0" style={{ color: "#9CA3AF" }} />
+                    <span className="text-[11px]" style={{ color: "#6B7280" }}>
                       {selectedVistoria.municipio ?? "—"}
                     </span>
                   </div>
@@ -1180,7 +1178,7 @@ export default function PainelMapaPage() {
                     type="button"
                     onClick={() => setSelectedVistoria(null)}
                     className="flex h-6 w-6 items-center justify-center rounded-lg"
-                    style={{ color: "#2A4040" }}
+                    style={{ color: "#9CA3AF" }}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -1190,7 +1188,7 @@ export default function PainelMapaPage() {
               {/* Técnico */}
               <div
                 className="mb-2 flex items-center gap-2 rounded-xl p-2"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
               >
                 <span
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
@@ -1199,8 +1197,8 @@ export default function PainelMapaPage() {
                   {selectedVistoria.tecnico_nome ? initials(selectedVistoria.tecnico_nome) : "—"}
                 </span>
                 <div>
-                  <p className="text-[9px]" style={{ color: "#2A4040" }}>Técnico atribuído</p>
-                  <p className="text-[11px] font-semibold" style={{ color: selectedVistoria.tecnico_nome ? "#C0D8D8" : "#2A4040" }}>
+                  <p className="text-[9px]" style={{ color: "#9CA3AF" }}>Técnico atribuído</p>
+                  <p className="text-[11px] font-semibold" style={{ color: selectedVistoria.tecnico_nome ? "#111827" : "#9CA3AF" }}>
                     {selectedVistoria.tecnico_nome ?? "Sem atribuição"}
                   </p>
                 </div>
@@ -1209,12 +1207,12 @@ export default function PainelMapaPage() {
               {/* Coordenadas GPS */}
               <div
                 className="mb-3 rounded-xl p-2"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
               >
                 <div className="mb-1.5 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Target className="h-3 w-3" style={{ color: "#00B388" }} />
-                    <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#3E6060" }}>
+                    <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#6B7280" }}>
                       Coordenadas GPS
                     </p>
                   </div>
@@ -1222,13 +1220,13 @@ export default function PainelMapaPage() {
                     type="button"
                     onClick={() => navigator.clipboard.writeText(`${selectedVistoria.latitude},${selectedVistoria.longitude}`)}
                     className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-[9px] font-semibold transition"
-                    style={{ color: "#2A4040", background: "rgba(255,255,255,0.04)" }}
+                    style={{ color: "#9CA3AF", background: "rgba(0,0,0,0.05)" }}
                   >
                     <Copy className="h-2.5 w-2.5" />
                     Copiar
                   </button>
                 </div>
-                <p className="font-mono text-[11px]" style={{ color: "#8ABABA" }}>
+                <p className="font-mono text-[11px]" style={{ color: "#374151" }}>
                   {selectedVistoria.latitude.toFixed(6)}, {selectedVistoria.longitude.toFixed(6)}
                 </p>
               </div>
@@ -1281,14 +1279,15 @@ function KpiChip({
     <div
       className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5"
       style={{
-        background: "rgba(6,12,12,0.88)",
+        background: "rgba(255,255,255,0.96)",
         backdropFilter: "blur(12px)",
-        border: "1px solid rgba(0,200,150,0.10)",
+        border: "1px solid rgba(0,179,136,0.18)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
       }}
     >
-      <span style={{ color: accent ?? "#2A4040" }}>{icon}</span>
-      <span className="text-[10px]" style={{ color: "#2A4040" }}>{label}</span>
-      <span className="text-[12px] font-semibold tabular-nums" style={{ color: accent ?? "#C0D8D8" }}>{value}</span>
+      <span style={{ color: accent ?? "#9CA3AF" }}>{icon}</span>
+      <span className="text-[10px]" style={{ color: "#9CA3AF" }}>{label}</span>
+      <span className="text-[12px] font-semibold tabular-nums" style={{ color: accent ?? "#111827" }}>{value}</span>
     </div>
   );
 }
@@ -1309,7 +1308,7 @@ function TabBtn({
       className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition"
       style={{
         background: active ? "rgba(0,179,136,0.15)" : "transparent",
-        color: active ? "#00D4A0" : "#2A4040",
+        color: active ? "#00D4A0" : "#9CA3AF",
         border: active ? "1px solid rgba(0,179,136,0.28)" : "1px solid transparent",
       }}
     >
@@ -1319,8 +1318,8 @@ function TabBtn({
         <span
           className="rounded-full px-1.5 py-[1px] text-[9px] font-bold tabular-nums"
           style={{
-            background: active ? "rgba(0,179,136,0.20)" : "rgba(255,255,255,0.05)",
-            color: active ? "#00D4A0" : "#2A4040",
+            background: active ? "rgba(0,179,136,0.20)" : "rgba(0,0,0,0.06)",
+            color: active ? "#00D4A0" : "#9CA3AF",
           }}
         >
           {badge >= 1000 ? `${(badge / 1000).toFixed(1)}k` : badge}
@@ -1345,15 +1344,15 @@ function FiltroPill({
       onClick={onClick}
       className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-semibold transition"
       style={{
-        background: active ? `${color}18` : "rgba(255,255,255,0.03)",
-        color: active ? color : "#2A4040",
-        border: `1px solid ${active ? `${color}40` : "rgba(255,255,255,0.04)"}`,
+        background: active ? `${color}18` : "rgba(0,0,0,0.03)",
+        color: active ? color : "#9CA3AF",
+        border: `1px solid ${active ? `${color}40` : "rgba(0,0,0,0.05)"}`,
       }}
     >
       {label}
       <span
         className="rounded-full px-1 text-[9px] font-bold tabular-nums"
-        style={{ background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)" }}
+        style={{ background: active ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)" }}
       >
         {n}
       </span>

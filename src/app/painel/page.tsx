@@ -233,46 +233,79 @@ export default function PainelOverviewPage() {
         </div>
       </div>
 
-      {/* ── KPI STRIP ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-6 gap-3">
-        {kpis.map((k) => {
-          const Icon = k.icon;
-          const inner = (
-            <div
-              key={k.label}
-              className="flex flex-col gap-2 rounded-xl p-4 transition"
-              style={{ background: "#fff", border: "1px solid #E8EAED", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className="rounded-lg p-1.5"
-                  style={{ background: k.bg }}
-                >
-                  <Icon className="h-3.5 w-3.5" style={{ color: k.color }} strokeWidth={2.2} />
-                </span>
-                {k.href && (
-                  <ArrowUpRight className="h-3 w-3 text-[#D1D5DB] transition group-hover:text-[#9CA3AF]" strokeWidth={2} />
-                )}
-              </div>
-              <div>
-                <div className="text-[26px] font-semibold leading-none tabular-nums tracking-tight text-[#111827]">
-                  {k.value}
+      {/* ── KPI STRIP (hero verde) ──────────────────────────────── */}
+      <div
+        className="rounded-2xl p-[18px]"
+        style={{
+          background: "linear-gradient(135deg, #00C896 0%, #009E78 50%, #007A5C 100%)",
+          boxShadow: "0 6px 32px rgba(0,179,136,0.32), 0 1px 0 rgba(255,255,255,0.18) inset",
+        }}
+      >
+        <div className="grid grid-cols-6 gap-3">
+          {kpis.map((k) => {
+            const Icon = k.icon;
+
+            /* Card especial Equipe: imagem vis.png com overlay */
+            if (k.label === "Equipe") {
+              const imgCard = (
+                <div className="relative overflow-hidden rounded-xl" style={{ minHeight: 116 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/vis.png"
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover object-center"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                  <div
+                    className="absolute inset-0"
+                    style={{ background: "linear-gradient(to top, rgba(0,40,30,0.80) 0%, rgba(0,60,40,0.30) 55%, transparent 100%)" }}
+                  />
+                  <div className="absolute inset-0 flex flex-col justify-end gap-0.5 p-4">
+                    <div className="text-[26px] font-bold leading-none tabular-nums tracking-tight text-white drop-shadow">
+                      {k.value}
+                    </div>
+                    <div className="mt-0.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-white/70">{k.label}</div>
+                    <div className="text-[10px] text-white/50">{k.sub}</div>
+                  </div>
                 </div>
-                <div className="mt-1 text-[10.5px] font-medium leading-tight text-[#9CA3AF]">
-                  {k.label}
+              );
+              return k.href ? (
+                <Link key={k.label} href={k.href} className="group">{imgCard}</Link>
+              ) : (
+                <div key={k.label}>{imgCard}</div>
+              );
+            }
+
+            const inner = (
+              <div
+                key={k.label}
+                className="flex flex-col gap-2 rounded-xl p-4 transition"
+                style={{ background: "rgba(255,255,255,0.96)", border: "1px solid rgba(255,255,255,0.60)", boxShadow: "0 2px 10px rgba(0,0,0,0.08)" }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="rounded-lg p-1.5" style={{ background: k.bg }}>
+                    <Icon className="h-3.5 w-3.5" style={{ color: k.color }} strokeWidth={2.2} />
+                  </span>
+                  {k.href && (
+                    <ArrowUpRight className="h-3 w-3 text-[#D1D5DB] transition group-hover:text-[#9CA3AF]" strokeWidth={2} />
+                  )}
                 </div>
+                <div>
+                  <div className="text-[26px] font-semibold leading-none tabular-nums tracking-tight text-[#111827]">
+                    {k.value}
+                  </div>
+                  <div className="mt-1 text-[10.5px] font-medium leading-tight text-[#9CA3AF]">{k.label}</div>
+                </div>
+                <div className="text-[10px] text-[#6B7280]">{k.sub}</div>
               </div>
-              <div className="text-[10px] text-[#6B7280]">{k.sub}</div>
-            </div>
-          );
-          return k.href ? (
-            <Link key={k.label} href={k.href} className="group">
-              {inner}
-            </Link>
-          ) : (
-            <div key={k.label}>{inner}</div>
-          );
-        })}
+            );
+            return k.href ? (
+              <Link key={k.label} href={k.href} className="group">{inner}</Link>
+            ) : (
+              <div key={k.label}>{inner}</div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── LINHA 1: VELOCITY + EQUIPE ──────────────────────────── */}
