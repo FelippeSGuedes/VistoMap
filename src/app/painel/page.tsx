@@ -930,7 +930,7 @@ export default function PainelOverviewPage() {
         />
         <div
           className="absolute inset-0"
-          style={{ background: "linear-gradient(105deg, rgba(2,10,7,0.88) 0%, rgba(0,14,9,0.60) 35%, rgba(0,8,5,0.30) 60%, rgba(0,10,7,0.70) 100%)" }}
+          style={{ background: "linear-gradient(105deg, rgba(2,8,5,0.93) 0%, rgba(2,8,5,0.88) 20%, rgba(0,6,4,0.32) 42%, rgba(0,4,3,0.06) 58%, rgba(0,6,4,0.16) 76%, rgba(0,10,7,0.46) 100%)" }}
         />
         <div
           className="pointer-events-none absolute inset-0"
@@ -1016,41 +1016,45 @@ export default function PainelOverviewPage() {
               </Link>
             </div>
           </div>
-          <div className="flex flex-1 items-center justify-end p-6">
-            <div className="grid w-full max-w-[540px] grid-cols-2 gap-3">
+          <div className="flex flex-1 items-stretch p-5 pl-3">
+            <div className="grid w-full grid-cols-3 grid-rows-2 gap-3">
               {kpis.map((k, i) => {
                 const Icon = k.icon;
                 const card = (
                   <motion.div
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 + i * 0.065, ease: "easeOut", duration: 0.35 }}
-                    whileHover={{ scale: 1.05, y: -3, transition: { type: "spring", stiffness: 320, damping: 22 } }}
-                    className="flex flex-col gap-2.5 rounded-[18px] p-4"
+                    transition={{ delay: 0.12 + i * 0.07, ease: "easeOut", duration: 0.40 }}
+                    whileHover={{ scale: 1.04, y: -4, transition: { type: "spring", stiffness: 280, damping: 20 } }}
+                    className="relative flex h-full flex-col justify-between overflow-hidden rounded-[22px] p-5"
                     style={{
-                      background: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(0,208,132,0.14)",
-                      backdropFilter: "blur(14px)",
-                      boxShadow: "0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)",
+                      background: "rgba(4,14,10,0.66)",
+                      border: "1px solid rgba(255,255,255,0.085)",
+                      backdropFilter: "blur(26px)",
+                      boxShadow: "0 8px 36px rgba(0,0,0,0.52), inset 0 1px 0 rgba(255,255,255,0.06)",
                       cursor: k.href ? "pointer" : "default",
                     }}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: `${k.color}1A`, boxShadow: `0 0 14px ${k.color}22` }}>
-                        <Icon className="h-4 w-4" style={{ color: k.color }} strokeWidth={2} />
+                    {/* top accent bar */}
+                    <div className="absolute inset-x-0 top-0 h-[3px] rounded-t-[22px]" style={{ background: `linear-gradient(90deg, ${k.color}, ${k.color}00)` }} />
+                    {/* ambient glow */}
+                    <div className="pointer-events-none absolute -bottom-10 -right-10 h-32 w-32 rounded-full" style={{ background: k.color, filter: "blur(36px)", opacity: 0.11 }} />
+                    <div className="flex items-start justify-between">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: `${k.color}1F`, boxShadow: `0 0 20px ${k.color}28` }}>
+                        <Icon className="h-5 w-5" style={{ color: k.color }} strokeWidth={1.75} />
                       </span>
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: k.color, boxShadow: `0 0 6px ${k.color}` }} />
+                      {k.href && <span className="text-[13px] font-light" style={{ color: "rgba(255,255,255,0.16)" }}>›</span>}
                     </div>
                     <div>
-                      <div className="text-[26px] font-bold leading-none tabular-nums" style={{ color: "#DDF2EC" }}>{k.value}</div>
-                      <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: "rgba(255,255,255,0.38)" }}>{k.label}</div>
-                      <div className="mt-px text-[9px] leading-tight" style={{ color: "rgba(255,255,255,0.24)" }}>{k.sub}</div>
+                      <div className="text-[44px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4", textShadow: `0 0 40px ${k.color}2A` }}>{k.value}</div>
+                      <div className="mt-2.5 text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: `${k.color}CC` }}>{k.label}</div>
+                      <div className="mt-1 text-[9.5px] leading-tight" style={{ color: "rgba(255,255,255,0.32)" }}>{k.sub}</div>
                     </div>
                   </motion.div>
                 );
                 return k.href
-                  ? <Link key={k.label} href={k.href} className="block">{card}</Link>
-                  : <div key={k.label}>{card}</div>;
+                  ? <Link key={k.label} href={k.href} className="block h-full">{card}</Link>
+                  : <div key={k.label} className="h-full">{card}</div>;
               })}
             </div>
           </div>
