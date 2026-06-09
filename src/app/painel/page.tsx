@@ -205,7 +205,7 @@ export default function PainelOverviewPage() {
       {/* ══════════════════════════════════════════════════════
           HERO — vis.png + stats + KPIs
           ══════════════════════════════════════════════════════ */}
-      <div className="relative overflow-hidden rounded-2xl" style={{ height: 480 }}>
+      <div className="relative overflow-hidden rounded-2xl" style={{ height: 500, background: "#050505" }}>
 
         {/* background: vis.png */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -216,12 +216,12 @@ export default function PainelOverviewPage() {
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
         />
 
-        {/* dark overlay with green tint */}
+        {/* overlay: escuro nas bordas, transparente no centro pra a foto aparecer */}
         <div
           className="absolute inset-0"
           style={{
             background:
-              "linear-gradient(110deg, rgba(2,10,7,0.90) 0%, rgba(0,20,13,0.82) 38%, rgba(0,12,8,0.62) 65%, rgba(0,8,5,0.78) 100%)",
+              "linear-gradient(105deg, rgba(2,10,7,0.88) 0%, rgba(0,14,9,0.60) 35%, rgba(0,8,5,0.30) 60%, rgba(0,10,7,0.70) 100%)",
           }}
         />
 
@@ -295,7 +295,7 @@ export default function PainelOverviewPage() {
         <div className="absolute inset-x-0 bottom-0 top-11 flex items-stretch">
 
           {/* LEFT: title + stats + buttons */}
-          <div className="flex w-[340px] shrink-0 flex-col justify-between p-8">
+          <div className="flex w-[360px] shrink-0 flex-col justify-between p-8">
             <div>
               {/* eyebrow */}
               <div className="mb-5 flex items-center gap-2">
@@ -382,12 +382,9 @@ export default function PainelOverviewPage() {
             </div>
           </div>
 
-          {/* spacer so KPIs hug the right */}
-          <div className="flex-1" />
-
-          {/* RIGHT: KPI cards 2×3 */}
-          <div className="flex w-[400px] shrink-0 items-center p-6">
-            <div className="grid w-full grid-cols-2 gap-3">
+          {/* RIGHT: KPI cards 2×3 — flex-1 preenche o espaço restante */}
+          <div className="flex flex-1 items-center justify-end p-6">
+            <div className="grid w-full max-w-[540px] grid-cols-2 gap-3">
               {kpis.map((k, i) => {
                 const Icon = k.icon;
                 const card = (
