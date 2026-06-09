@@ -832,6 +832,51 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   );
 }
 
+/* ─── HeroMapWidget ─────────────────────────────────────────────────────── */
+
+function HeroMapWidget({ token }: { token: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !token) return;
+    let alive = true;
+    injectStyle("vm-hero-map-css", ".vm-hero-map .mapboxgl-ctrl-logo,.vm-hero-map .mapboxgl-ctrl-attrib{display:none!important}");
+
+    mapboxgl.accessToken = token;
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/dark-v11",
+      center: [-48.5, -22.4] as [number, number],
+      zoom: 5.6,
+      interactive: false,
+      attributionControl: false,
+    });
+
+    map.on("load", async () => {
+      const res = await fetch(SP_GEOJSON_URL);
+      const geoJSON = await res.json();
+      if (!alive) return;
+      map.addSource("vm-hero-sp", { type: "geojson", data: geoJSON });
+      map.addLayer({ id: "vm-hero-fill", type: "fill", source: "vm-hero-sp", paint: { "fill-color": "#00D084", "fill-opacity": 0.06 } });
+      map.addLayer({ id: "vm-hero-outline", type: "line", source: "vm-hero-sp", paint: { "line-color": "#00D084", "line-opacity": 0.65, "line-width": 1 } });
+
+      injectStyle("vm-hero-pulse", `
+        @keyframes vm-hero-ring{0%,100%{transform:scale(1);opacity:.9}70%{transform:scale(2.5);opacity:0}}
+        .vm-hero-dot{width:12px;height:12px;background:#00D084;border-radius:50%;box-shadow:0 0 16px #00D084,0 0 6px #00D084}
+        .vm-hero-ring{position:absolute;inset:-8px;border:2px solid #00D084;border-radius:50%;animation:vm-hero-ring 2s ease-out infinite}
+      `);
+      const el = document.createElement("div");
+      el.style.cssText = "position:relative;width:12px;height:12px";
+      el.innerHTML = '<div class="vm-hero-dot"></div><div class="vm-hero-ring"></div>';
+      new mapboxgl.Marker({ element: el }).setLngLat([-46.6333, -23.5505]).addTo(map);
+    });
+
+    return () => { alive = false; map.remove(); };
+  }, [token]);
+
+  return <div ref={containerRef} className="vm-hero-map h-full w-full" />;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    PAGE
    ══════════════════════════════════════════════════════════════════════════ */
@@ -926,12 +971,12 @@ export default function PainelOverviewPage() {
         <img
           src={asset("/vis.png")}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="absolute inset-0 h-full w-full object-cover object-right"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
         />
         <div
           className="absolute inset-0"
-          style={{ background: "linear-gradient(105deg, rgba(2,8,5,0.93) 0%, rgba(2,8,5,0.88) 20%, rgba(0,6,4,0.32) 42%, rgba(0,4,3,0.06) 58%, rgba(0,6,4,0.16) 76%, rgba(0,10,7,0.46) 100%)" }}
+          style={{ background: "linear-gradient(to right, rgba(2,8,5,0.92) 0%, rgba(2,8,5,0.88) 14%, rgba(0,6,4,0.10) 28%, transparent 45%, transparent 62%, rgba(0,0,0,0.28) 100%)" }}
         />
         <div
           className="pointer-events-none absolute inset-0"
@@ -969,36 +1014,32 @@ export default function PainelOverviewPage() {
           </div>
         </div>
         <div className="absolute inset-x-0 bottom-0 top-11 flex items-stretch">
-          <div className="flex w-[360px] shrink-0 flex-col justify-between p-8">
+
+          {/* LEFT — título + stats inline + botões */}
+          <div className="relative z-10 flex w-[280px] shrink-0 flex-col justify-between p-7">
             <div>
-              <div className="mb-5 flex items-center gap-2">
+              <div className="mb-4 flex items-center gap-2">
                 <span className="h-px w-6" style={{ background: "rgba(0,208,132,0.35)" }} />
                 <span className="text-[8.5px] font-bold uppercase tracking-[0.30em]" style={{ color: "rgba(0,208,132,0.55)" }}>CENTRAL GIOC</span>
               </div>
-              <h1 className="text-[38px] font-bold leading-[1.12] tracking-tight" style={{ color: "#DDF2EC" }}>
+              <h1 className="text-[36px] font-bold leading-[1.12] tracking-tight" style={{ color: "#DDF2EC" }}>
                 Operação em<br />
                 <span style={{ color: ACCENT, textShadow: `0 0 32px ${ACCENT}55` }}>movimento.</span>
               </h1>
-              <div className="mt-6 space-y-2.5">
-                {heroStats ? (
-                  heroStats.map((s, i) => (
-                    <motion.div
-                      key={s.label}
-                      initial={{ opacity: 0, x: -14 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.08 + i * 0.07, ease: "easeOut", duration: 0.35 }}
-                      className="flex items-baseline gap-2"
-                    >
-                      <span className="text-[26px] font-bold tabular-nums leading-none" style={{ color: ACCENT }}>{s.val}</span>
-                      <span className="text-[11.5px] font-medium" style={{ color: "rgba(255,255,255,0.50)" }}>{s.label}</span>
-                    </motion.div>
-                  ))
-                ) : (
-                  [80, 72, 64, 56].map((w, i) => (
-                    <div key={i} className="h-7 animate-pulse rounded-lg" style={{ background: "rgba(255,255,255,0.07)", width: `${w}%` }} />
-                  ))
-                )}
-              </div>
+              {stats ? (
+                <p className="mt-4 text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.58)" }}>
+                  {fmtNum(stats.pendentes + stats.emVistoria)} vistorias na fila{" • "}
+                  {expediente}/{stats.tecnicosAtivos} em expediente{" • "}
+                  {emCampo} técnico{emCampo !== 1 ? "s" : ""} em campo{" • "}
+                  {fmtNum(stats.municipiosAtivos)} município{stats.municipiosAtivos !== 1 ? "s" : ""} ativos.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {[78, 70, 54].map((w, i) => (
+                    <div key={i} className="h-3 animate-pulse rounded" style={{ background: "rgba(255,255,255,0.07)", width: `${w}%` }} />
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-2.5">
               <Link
@@ -1017,39 +1058,43 @@ export default function PainelOverviewPage() {
               </Link>
             </div>
           </div>
-          <div className="flex flex-1 items-center p-4 pl-2">
-            <div className="grid w-full grid-cols-3 gap-3">
-              {kpis.map((k, i) => {
+
+          {/* CENTER — mapa Mapbox SP */}
+          <div className="relative flex-1 overflow-hidden">
+            {token && <HeroMapWidget token={token} />}
+          </div>
+
+          {/* RIGHT — 4 KPI cards 2×2 */}
+          <div className="relative z-10 flex w-[370px] shrink-0 items-center p-4">
+            <div className="grid w-full grid-cols-2 gap-2">
+              {kpis.slice(0, 4).map((k, i) => {
                 const Icon = k.icon;
                 const card = (
                   <motion.div
-                    initial={{ opacity: 0, y: 14 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.12 + i * 0.07, ease: "easeOut", duration: 0.38 }}
-                    whileHover={{ scale: 1.04, y: -3, transition: { type: "spring", stiffness: 300, damping: 22 } }}
-                    className="relative flex flex-col justify-between overflow-hidden rounded-[18px] p-4"
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.15 + i * 0.07, ease: "easeOut", duration: 0.38 }}
+                    whileHover={{ scale: 1.03, transition: { type: "spring", stiffness: 300, damping: 22 } }}
+                    className="relative flex flex-col justify-between overflow-hidden rounded-[16px] p-4"
                     style={{
-                      background: "rgba(4,14,10,0.66)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      backdropFilter: "blur(24px)",
-                      boxShadow: "0 6px 28px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.06)",
+                      background: "rgba(4,14,10,0.80)",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                      backdropFilter: "blur(22px)",
+                      boxShadow: "0 6px 24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
                       cursor: k.href ? "pointer" : "default",
+                      minHeight: "108px",
                     }}
                   >
-                    {/* top accent bar */}
-                    <div className="absolute inset-x-0 top-0 h-[3px] rounded-t-[18px]" style={{ background: `linear-gradient(90deg, ${k.color}, ${k.color}00)` }} />
-                    {/* ambient glow */}
-                    <div className="pointer-events-none absolute -bottom-8 -right-8 h-24 w-24 rounded-full" style={{ background: k.color, filter: "blur(30px)", opacity: 0.10 }} />
+                    <div className="absolute inset-x-0 top-0 h-[3px] rounded-t-[16px]" style={{ background: `linear-gradient(90deg, ${k.color}, ${k.color}00)` }} />
                     <div className="flex items-start justify-between">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: `${k.color}1F`, boxShadow: `0 0 16px ${k.color}26` }}>
-                        <Icon className="h-4 w-4" style={{ color: k.color }} strokeWidth={1.75} />
+                      <span className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: "rgba(255,255,255,0.40)" }}>{k.label}</span>
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ background: `${k.color}18` }}>
+                        <Icon className="h-3.5 w-3.5" style={{ color: k.color }} strokeWidth={2} />
                       </span>
-                      {k.href && <span className="text-[12px] font-light" style={{ color: "rgba(255,255,255,0.18)" }}>›</span>}
                     </div>
-                    <div className="mt-3">
-                      <div className="text-[32px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4", textShadow: `0 0 32px ${k.color}28` }}>{k.value}</div>
-                      <div className="mt-2 text-[9.5px] font-bold uppercase tracking-[0.22em]" style={{ color: `${k.color}CC` }}>{k.label}</div>
-                      <div className="mt-0.5 text-[9px] leading-tight" style={{ color: "rgba(255,255,255,0.30)" }}>{k.sub}</div>
+                    <div>
+                      <div className="text-[38px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4" }}>{k.value}</div>
+                      <div className="mt-1 text-[9px] leading-tight" style={{ color: "rgba(255,255,255,0.34)" }}>{k.sub}</div>
                     </div>
                   </motion.div>
                 );
@@ -1059,6 +1104,7 @@ export default function PainelOverviewPage() {
               })}
             </div>
           </div>
+
         </div>
       </div>
 
