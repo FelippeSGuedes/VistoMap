@@ -30,6 +30,7 @@ import { AreaChart, GaugeRate } from "@/components/painel/Charts";
 import { getMapboxToken, DEFAULT_CENTER } from "@/services/maps";
 import { api } from "@/services/api";
 import type { PainelMapaResponse, PainelMapaTecnico } from "@/types/painel-mapa";
+import { asset } from "@/utils/asset";
 
 /* ─── helpers ───────────────────────────────────────────────────────────── */
 
@@ -923,7 +924,7 @@ export default function PainelOverviewPage() {
       <div className="relative overflow-hidden rounded-2xl" style={{ height: 500, background: "#050505" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/vis.png"
+          src={asset("/vis.png")}
           alt=""
           className="absolute inset-0 h-full w-full object-cover object-center"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
@@ -1016,45 +1017,45 @@ export default function PainelOverviewPage() {
               </Link>
             </div>
           </div>
-          <div className="flex flex-1 items-stretch p-5 pl-3">
-            <div className="grid w-full grid-cols-3 grid-rows-2 gap-3">
+          <div className="flex flex-1 items-center p-4 pl-2">
+            <div className="grid w-full grid-cols-3 gap-3">
               {kpis.map((k, i) => {
                 const Icon = k.icon;
                 const card = (
                   <motion.div
-                    initial={{ opacity: 0, y: 16 }}
+                    initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.12 + i * 0.07, ease: "easeOut", duration: 0.40 }}
-                    whileHover={{ scale: 1.04, y: -4, transition: { type: "spring", stiffness: 280, damping: 20 } }}
-                    className="relative flex h-full flex-col justify-between overflow-hidden rounded-[22px] p-5"
+                    transition={{ delay: 0.12 + i * 0.07, ease: "easeOut", duration: 0.38 }}
+                    whileHover={{ scale: 1.04, y: -3, transition: { type: "spring", stiffness: 300, damping: 22 } }}
+                    className="relative flex flex-col justify-between overflow-hidden rounded-[18px] p-4"
                     style={{
                       background: "rgba(4,14,10,0.66)",
-                      border: "1px solid rgba(255,255,255,0.085)",
-                      backdropFilter: "blur(26px)",
-                      boxShadow: "0 8px 36px rgba(0,0,0,0.52), inset 0 1px 0 rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      backdropFilter: "blur(24px)",
+                      boxShadow: "0 6px 28px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.06)",
                       cursor: k.href ? "pointer" : "default",
                     }}
                   >
                     {/* top accent bar */}
-                    <div className="absolute inset-x-0 top-0 h-[3px] rounded-t-[22px]" style={{ background: `linear-gradient(90deg, ${k.color}, ${k.color}00)` }} />
+                    <div className="absolute inset-x-0 top-0 h-[3px] rounded-t-[18px]" style={{ background: `linear-gradient(90deg, ${k.color}, ${k.color}00)` }} />
                     {/* ambient glow */}
-                    <div className="pointer-events-none absolute -bottom-10 -right-10 h-32 w-32 rounded-full" style={{ background: k.color, filter: "blur(36px)", opacity: 0.11 }} />
+                    <div className="pointer-events-none absolute -bottom-8 -right-8 h-24 w-24 rounded-full" style={{ background: k.color, filter: "blur(30px)", opacity: 0.10 }} />
                     <div className="flex items-start justify-between">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: `${k.color}1F`, boxShadow: `0 0 20px ${k.color}28` }}>
-                        <Icon className="h-5 w-5" style={{ color: k.color }} strokeWidth={1.75} />
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: `${k.color}1F`, boxShadow: `0 0 16px ${k.color}26` }}>
+                        <Icon className="h-4 w-4" style={{ color: k.color }} strokeWidth={1.75} />
                       </span>
-                      {k.href && <span className="text-[13px] font-light" style={{ color: "rgba(255,255,255,0.16)" }}>›</span>}
+                      {k.href && <span className="text-[12px] font-light" style={{ color: "rgba(255,255,255,0.18)" }}>›</span>}
                     </div>
-                    <div>
-                      <div className="text-[44px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4", textShadow: `0 0 40px ${k.color}2A` }}>{k.value}</div>
-                      <div className="mt-2.5 text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: `${k.color}CC` }}>{k.label}</div>
-                      <div className="mt-1 text-[9.5px] leading-tight" style={{ color: "rgba(255,255,255,0.32)" }}>{k.sub}</div>
+                    <div className="mt-3">
+                      <div className="text-[32px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4", textShadow: `0 0 32px ${k.color}28` }}>{k.value}</div>
+                      <div className="mt-2 text-[9.5px] font-bold uppercase tracking-[0.22em]" style={{ color: `${k.color}CC` }}>{k.label}</div>
+                      <div className="mt-0.5 text-[9px] leading-tight" style={{ color: "rgba(255,255,255,0.30)" }}>{k.sub}</div>
                     </div>
                   </motion.div>
                 );
                 return k.href
-                  ? <Link key={k.label} href={k.href} className="block h-full">{card}</Link>
-                  : <div key={k.label} className="h-full">{card}</div>;
+                  ? <Link key={k.label} href={k.href} className="block">{card}</Link>
+                  : <div key={k.label}>{card}</div>;
               })}
             </div>
           </div>
