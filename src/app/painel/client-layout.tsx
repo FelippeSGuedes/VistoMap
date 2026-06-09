@@ -93,7 +93,6 @@ export default function PainelClientLayout({ children }: { children: React.React
 
   const T = isDark ? DARK : LIGHT;
   const isMapaPage = pathname === "/painel/mapa";
-  const isCommandPage = pathname === "/painel";
   const nome = session.tecnico.nome;
 
   return (
@@ -280,7 +279,7 @@ export default function PainelClientLayout({ children }: { children: React.React
          * • Outros → flex-1 + overflow-y-auto com padding
          */}
         <main
-          className={(isMapaPage || isCommandPage) ? "relative flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-y-auto px-6 py-6"}
+          className={isMapaPage ? "relative flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-y-auto px-6 py-6"}
           style={{ background: T.shell }}
         >
           {children}
