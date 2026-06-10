@@ -832,50 +832,127 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   );
 }
 
-/* ─── HeroMapWidget ─────────────────────────────────────────────────────── */
+/* ─── HeroMapWidget (Top Municípios) ────────────────────────────────────── */
 
-function HeroMapWidget() {
+function normalizeStr(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: string; total: number }> }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const token = getMapboxToken();
+  const token        = getMapboxToken();
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
     let alive = true;
-    injectStyle("vm-hero-map-css", ".vm-hero-map .mapboxgl-ctrl-logo,.vm-hero-map .mapboxgl-ctrl-attrib{display:none!important}");
+
+    injectStyle(
+      "vm-tm-css",
+      ".vm-tm .mapboxgl-ctrl-logo,.vm-tm .mapboxgl-ctrl-attrib{display:none!important}" +
+      ".vm-tm-pop .mapboxgl-popup-content{padding:0;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.12)}",
+    );
 
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/dark-v11",
+      style:  "mapbox://styles/mapbox/light-v11",
       center: [-48.5, -22.4] as [number, number],
-      zoom: 5.6,
-      interactive: false,
+      zoom:   5.2,
+      interactive:      true,
+      scrollZoom:       false,
+      dragPan:          false,
+      dragRotate:       false,
+      doubleClickZoom:  false,
+      boxZoom:          false,
       attributionControl: false,
     });
 
-    map.on("load", async () => {
-      const res = await fetch(SP_GEOJSON_URL);
-      const geoJSON = await res.json();
-      if (!alive) return;
-      map.addSource("vm-hero-sp", { type: "geojson", data: geoJSON });
-      map.addLayer({ id: "vm-hero-fill", type: "fill", source: "vm-hero-sp", paint: { "fill-color": "#00D084", "fill-opacity": 0.06 } });
-      map.addLayer({ id: "vm-hero-outline", type: "line", source: "vm-hero-sp", paint: { "line-color": "#00D084", "line-opacity": 0.65, "line-width": 1 } });
+    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: "vm-tm-pop" });
 
-      injectStyle("vm-hero-pulse", `
-        @keyframes vm-hero-ring{0%,100%{transform:scale(1);opacity:.9}70%{transform:scale(2.5);opacity:0}}
-        .vm-hero-dot{width:12px;height:12px;background:#00D084;border-radius:50%;box-shadow:0 0 16px #00D084,0 0 6px #00D084}
-        .vm-hero-ring{position:absolute;inset:-8px;border:2px solid #00D084;border-radius:50%;animation:vm-hero-ring 2s ease-out infinite}
-      `);
-      const el = document.createElement("div");
-      el.style.cssText = "position:relative;width:12px;height:12px";
-      el.innerHTML = '<div class="vm-hero-dot"></div><div class="vm-hero-ring"></div>';
-      new mapboxgl.Marker({ element: el }).setLngLat([-46.6333, -23.5505]).addTo(map);
+    map.on("load", async () => {
+      try {
+        const res     = await fetch(SP_GEOJSON_URL);
+        const geoJSON = await res.json() as {
+          type: string;
+          features: Array<{ type: string; geometry: unknown; properties: Record<string, unknown> }>;
+        };
+        if (!alive) return;
+
+        const maxTotal = Math.max(...topMunicipios.map(m => m.total), 1);
+        const lookup   = new Map(topMunicipios.map(m => [normalizeStr(m.municipio), m.total]));
+
+        const enriched = {
+          ...geoJSON,
+          features: geoJSON.features.map(f => ({
+            ...f,
+            properties: {
+              ...f.properties,
+              total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
+            },
+          })),
+        };
+
+        map.addSource("vm-tm-src", { type: "geojson", data: enriched as unknown as mapboxgl.GeoJSONSourceSpecification["data"] });
+
+        map.addLayer({
+          id: "vm-tm-fill", type: "fill", source: "vm-tm-src",
+          paint: {
+            "fill-color": [
+              "interpolate", ["linear"], ["get", "total"],
+              0,        "#e8ede8",
+              1,        "#a8d5b5",
+              maxTotal, "#1a6b3c",
+            ] as mapboxgl.Expression,
+            "fill-opacity": 0.88,
+          },
+        });
+
+        map.addLayer({
+          id: "vm-tm-line", type: "line", source: "vm-tm-src",
+          paint: { "line-color": "#ffffff", "line-opacity": 0.5, "line-width": 0.5 },
+        });
+
+        map.on("mousemove", "vm-tm-fill", e => {
+          if (!e.features?.length) return;
+          map.getCanvas().style.cursor = "pointer";
+          const p = e.features[0].properties as { name: string; total: number };
+          popup.setLngLat(e.lngLat)
+            .setHTML(
+              `<div style="padding:8px 12px;font-family:sans-serif">
+                <div style="font-weight:600;font-size:12px;color:#111827">${p.name}</div>
+                <div style="font-size:11px;color:#6B7280;margin-top:2px">${p.total} vistoria${p.total !== 1 ? "s" : ""}</div>
+              </div>`,
+            )
+            .addTo(map);
+        });
+
+        map.on("mouseleave", "vm-tm-fill", () => {
+          map.getCanvas().style.cursor = "";
+          popup.remove();
+        });
+
+        // fit bounds to SP state
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const f of geoJSON.features) {
+          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
+          const rings = g.type === "Polygon"
+            ? [g.coordinates[0] as number[][]]
+            : (g.coordinates as number[][][][]).map(p => p[0]);
+          for (const ring of rings)
+            for (const c of ring)
+              bounds.extend([c[0], c[1]]);
+        }
+        if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 8, duration: 0 });
+
+      } catch {
+        // mapa carrega sem colorização em caso de falha no fetch
+      }
     });
 
-    return () => { alive = false; map.remove(); };
-  }, [token]);
+    return () => { alive = false; popup.remove(); map.remove(); };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={containerRef} className="vm-hero-map h-full w-full" />;
+  return <div ref={containerRef} className="vm-tm h-full w-full" />;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1199,19 +1276,39 @@ export default function PainelOverviewPage() {
       {/* ════════════ LINHA 2: Municípios | Técnicos | Atividade | Revisitas ════════════ */}
       <div className="grid grid-cols-4 gap-4">
 
-        {/* Widget 03 — Cobertura SP: mapa de municípios */}
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #E8EAED" }}>
-            <div className="flex items-center gap-2">
-              <MapIcon className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-              <span className="text-[13px] font-semibold text-[#111827]">Cobertura SP</span>
+        {/* Widget 03 — Top Municípios */}
+        {historico ? (
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #E8EAED" }}>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-[#059669]" strokeWidth={2} />
+                <span className="text-[13px] font-semibold text-[#111827]">Top municípios · 30 dias</span>
+              </div>
             </div>
-            <Link href="/painel/historico" className="text-[10.5px] font-semibold text-[#059669] hover:underline">municípios</Link>
-          </div>
-          <div className="relative h-[288px]">
-            <HeroMapWidget />
-          </div>
-        </Card>
+            <div className="flex h-[290px]">
+              {/* ranking list */}
+              <div className="flex w-[168px] shrink-0 flex-col gap-0 p-2">
+                {historico.topMunicipios.slice(0, 6).map((m, i) => {
+                  const badgeColor = ["#F59E0B","#9CA3AF","#B45309","#6B7280","#6B7280","#6B7280"][i];
+                  const badgeBg    = ["#FEF3C7","#F3F4F6","#FEF3C7","#F9FAFB","#F9FAFB","#F9FAFB"][i];
+                  return (
+                    <div key={m.municipio} className="flex items-center gap-2 rounded-lg px-1.5 py-2 transition hover:bg-[#F9FAFB]">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: badgeBg, color: badgeColor }}>{i + 1}</span>
+                      <span className="flex-1 truncate text-[10.5px] font-semibold uppercase tracking-wide text-[#374151]">{m.municipio}</span>
+                      <span className="text-[12px] font-bold tabular-nums text-[#111827]">{m.total}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* mapa */}
+              <div className="relative flex-1 overflow-hidden">
+                <HeroMapWidget topMunicipios={historico.topMunicipios} />
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <Card><div className="p-5"><Skeleton h={290} /></div></Card>
+        )}
 
         {/* Widget 05 — Top Técnicos: performance cockpit */}
         <Card>
