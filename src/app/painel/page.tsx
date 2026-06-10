@@ -855,23 +855,34 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style:  "mapbox://styles/mapbox/light-v11",
+      style: "mapbox://styles/mapbox/light-v11",
       center: [-48.5, -22.4] as [number, number],
-      zoom:   5.2,
-      interactive:      true,
-      scrollZoom:       false,
-      dragPan:          false,
-      dragRotate:       false,
-      doubleClickZoom:  false,
-      boxZoom:          false,
+      zoom: 5.2,
+      dragPan: false,
+      scrollZoom: false,
+      doubleClickZoom: false,
+      touchZoomRotate: false,
+      keyboard: false,
+      dragRotate: false,
+      boxZoom: false,
       attributionControl: false,
     });
 
     const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: "vm-tm-pop" });
 
     map.on("load", async () => {
+      if (!alive) return;
+
+      // fundo branco puro
+      try { map.setPaintProperty("background", "background-color", "#ffffff"); } catch { /* layer pode não existir */ }
+
+      // ocultar todos os labels (cidades, estados, estradas)
+      for (const layer of map.getStyle().layers ?? []) {
+        if (layer.type === "symbol") map.setLayoutProperty(layer.id, "visibility", "none");
+      }
+
       try {
-        const res     = await fetch(SP_GEOJSON_URL);
+        const res = await fetch(SP_GEOJSON_URL);
         const geoJSON = await res.json() as {
           type: string;
           features: Array<{ type: string; geometry: unknown; properties: Record<string, unknown> }>;
@@ -899,18 +910,44 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
           paint: {
             "fill-color": [
               "interpolate", ["linear"], ["get", "total"],
-              0,        "#e8ede8",
-              1,        "#a8d5b5",
+              0,        "#e8f5ee",
+              1,        "#6dbf8b",
               maxTotal, "#1a6b3c",
             ] as mapboxgl.Expression,
-            "fill-opacity": 0.88,
+            "fill-opacity": 0.85,
           },
         });
 
+        // contorno externo do estado — desenhado antes da borda branca para que esta
+        // cubra as divisas internas deixando o verde visível apenas no limite do estado
+        map.addLayer({
+          id: "vm-tm-border", type: "line", source: "vm-tm-src",
+          paint: { "line-color": "#2d9b5a", "line-width": 2 },
+        });
+
+        // divisas internas entre municípios
         map.addLayer({
           id: "vm-tm-line", type: "line", source: "vm-tm-src",
-          paint: { "line-color": "#ffffff", "line-opacity": 0.5, "line-width": 0.5 },
+          paint: { "line-color": "#ffffff", "line-width": 1 },
         });
+
+        // bbox exato das features → fitBounds + travar zoom
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const f of geoJSON.features) {
+          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
+          const rings = g.type === "Polygon"
+            ? [g.coordinates[0] as number[][]]
+            : (g.coordinates as number[][][][]).map(p => p[0]);
+          for (const ring of rings)
+            for (const c of ring)
+              bounds.extend([c[0], c[1]]);
+        }
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: 20, animate: false });
+          const lockedZoom = map.getZoom();
+          map.setMinZoom(lockedZoom);
+          map.setMaxZoom(lockedZoom);
+        }
 
         map.on("mousemove", "vm-tm-fill", e => {
           if (!e.features?.length) return;
@@ -930,19 +967,6 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
           map.getCanvas().style.cursor = "";
           popup.remove();
         });
-
-        // fit bounds to SP state
-        const bounds = new mapboxgl.LngLatBounds();
-        for (const f of geoJSON.features) {
-          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
-          const rings = g.type === "Polygon"
-            ? [g.coordinates[0] as number[][]]
-            : (g.coordinates as number[][][][]).map(p => p[0]);
-          for (const ring of rings)
-            for (const c of ring)
-              bounds.extend([c[0], c[1]]);
-        }
-        if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 8, duration: 0 });
 
       } catch {
         // mapa carrega sem colorização em caso de falha no fetch
