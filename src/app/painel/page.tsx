@@ -838,16 +838,17 @@ function normalizeStr(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 }
 
-function createMarkerEl(total: number, rank: number): HTMLElement {
-  void total; // passado para compatibilidade futura (ex: tamanho por volume)
-  const el = document.createElement("div");
+function createMarkerEl(total: number, small: boolean): HTMLElement {
+  const size  = small ? 20 : 28;
+  const fsize = small ? 10 : 11;
+  const el    = document.createElement("div");
   el.style.cssText =
-    "width:28px;height:28px;border-radius:50%;background:#4A6CF7;" +
-    "border:2px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.22);" +
-    "display:flex;align-items:center;justify-content:center;" +
-    "color:#ffffff;font-weight:700;font-size:11px;font-family:sans-serif;" +
-    "pointer-events:none;";
-  el.textContent = String(rank);
+    `width:${size}px;height:${size}px;border-radius:50%;background:#4A6CF7;` +
+    `border:2px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.22);` +
+    `display:flex;align-items:center;justify-content:center;` +
+    `color:#ffffff;font-weight:700;font-size:${fsize}px;font-family:sans-serif;` +
+    `pointer-events:none;`;
+  el.textContent = String(total);
   return el;
 }
 
@@ -857,7 +858,6 @@ function computeCentroid(geometry: { type: string; coordinates: unknown }): [num
     ring = (geometry.coordinates as number[][][])[0] ?? [];
   } else if (geometry.type === "MultiPolygon") {
     const polys = geometry.coordinates as number[][][][];
-    // usar o polígono com mais vértices (proxy para o maior)
     ring = polys.reduce((a, b) => (a[0].length >= b[0].length ? a : b))[0] ?? [];
   }
   if (!ring.length) return null;
@@ -898,12 +898,15 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
       attributionControl: false,
     });
 
+    // chama map.resize() sempre que o container mudar de tamanho
+    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
+    ro.observe(containerRef.current);
+
     const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: "vm-tm-pop" });
 
     map.on("load", async () => {
       if (!alive) return;
 
-      // empty-v9 não tem background layer — adicionar manualmente
       map.addLayer({ id: "vm-tm-bg", type: "background", paint: { "background-color": "#f8f8f8" } });
 
       try {
@@ -914,30 +917,34 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
         };
         if (!alive) return;
 
-        const maxTotal = Math.max(...topMunicipios.map(m => m.total), 1);
-        const lookup   = new Map(topMunicipios.map(m => [normalizeStr(m.municipio), m.total]));
+        const lookup = new Map(topMunicipios.map(m => [normalizeStr(m.municipio), m.total]));
 
-        const enriched = {
-          ...geoJSON,
-          features: geoJSON.features.map(f => ({
-            ...f,
-            properties: {
-              ...f.properties,
-              total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
-            },
-          })),
-        };
+        const enrichedFeatures = geoJSON.features.map(f => ({
+          ...f,
+          properties: {
+            ...f.properties,
+            total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
+          },
+        }));
 
-        map.addSource("vm-tm-src", { type: "geojson", data: enriched as unknown as mapboxgl.GeoJSONSourceSpecification["data"] });
+        console.log("vm-tm matches:", enrichedFeatures.filter(f => f.properties.total > 0).length);
+
+        map.addSource("vm-tm-src", {
+          type: "geojson",
+          data: { ...geoJSON, features: enrichedFeatures } as unknown as mapboxgl.GeoJSONSourceSpecification["data"],
+        });
 
         map.addLayer({
           id: "vm-tm-fill", type: "fill", source: "vm-tm-src",
           paint: {
             "fill-color": [
-              "interpolate", ["linear"], ["get", "total"],
-              0,        "#c8e6d4",
-              1,        "#6dbf8b",
-              maxTotal, "#1a6b3c",
+              "case", [">", ["get", "total"], 0],
+              ["interpolate", ["linear"], ["get", "total"],
+                1,  "#6dbf8b",
+                10, "#2d8a55",
+                50, "#1a6b3c",
+              ],
+              "#dff0e8",
             ] as mapboxgl.Expression,
             "fill-opacity": 0.85,
           },
@@ -948,7 +955,8 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
           paint: { "line-color": "#ffffff", "line-width": 0.5 },
         });
 
-        // bbox exato das features → fitBounds + travar zoom
+        const isSmall = (containerRef.current?.clientWidth ?? 400) < 400;
+
         const bounds = new mapboxgl.LngLatBounds();
         for (const f of geoJSON.features) {
           const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
@@ -960,13 +968,13 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
               bounds.extend([c[0], c[1]]);
         }
         if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: 20, animate: false });
+          map.fitBounds(bounds, { padding: isSmall ? 10 : 20, animate: false });
           const lockedZoom = map.getZoom();
           map.setMinZoom(lockedZoom);
           map.setMaxZoom(lockedZoom);
         }
 
-        // marcadores de ranking nos top municípios
+        // marcadores com quantidade real de vistorias (não ranking)
         const rankMap = new Map(
           topMunicipios.map((m, i) => [normalizeStr(m.municipio), { rank: i + 1, total: m.total }]),
         );
@@ -976,7 +984,7 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
           if (!entry) continue;
           const centroid = computeCentroid(f.geometry as { type: string; coordinates: unknown });
           if (!centroid) continue;
-          const marker = new mapboxgl.Marker({ element: createMarkerEl(entry.total, entry.rank) })
+          const marker = new mapboxgl.Marker({ element: createMarkerEl(entry.total, isSmall) })
             .setLngLat(centroid)
             .addTo(map);
           markersRef.current.push(marker);
@@ -1008,6 +1016,7 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
 
     return () => {
       alive = false;
+      ro.disconnect();
       popup.remove();
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
@@ -1015,7 +1024,11 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
     };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={containerRef} className="vm-tm h-full w-full" />;
+  return (
+    <div style={{ width: "100%", height: "100%", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
+      <div ref={containerRef} className="vm-tm h-full w-full" />
+    </div>
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1348,9 +1361,9 @@ export default function PainelOverviewPage() {
                 <span className="text-[13px] font-semibold text-[#111827]">Top municípios · 30 dias</span>
               </div>
             </div>
-            <div className="flex h-[290px]">
+            <div className="flex gap-3 p-3">
               {/* ranking list */}
-              <div className="flex w-[168px] shrink-0 flex-col gap-0 p-2">
+              <div className="flex w-[156px] shrink-0 flex-col gap-0">
                 {historico.topMunicipios.slice(0, 6).map((m, i) => {
                   const badgeColor = ["#F59E0B","#9CA3AF","#B45309","#6B7280","#6B7280","#6B7280"][i];
                   const badgeBg    = ["#FEF3C7","#F3F4F6","#FEF3C7","#F9FAFB","#F9FAFB","#F9FAFB"][i];
@@ -1364,7 +1377,7 @@ export default function PainelOverviewPage() {
                 })}
               </div>
               {/* mapa */}
-              <div className="relative flex-1 overflow-hidden">
+              <div className="relative flex-1 min-h-[200px] overflow-hidden">
                 <HeroMapWidget topMunicipios={historico.topMunicipios} />
               </div>
             </div>
