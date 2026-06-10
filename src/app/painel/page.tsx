@@ -838,8 +838,38 @@ function normalizeStr(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 }
 
+function createMarkerEl(total: number, rank: number): HTMLElement {
+  void total; // passado para compatibilidade futura (ex: tamanho por volume)
+  const el = document.createElement("div");
+  el.style.cssText =
+    "width:28px;height:28px;border-radius:50%;background:#4A6CF7;" +
+    "border:2px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.22);" +
+    "display:flex;align-items:center;justify-content:center;" +
+    "color:#ffffff;font-weight:700;font-size:11px;font-family:sans-serif;" +
+    "pointer-events:none;";
+  el.textContent = String(rank);
+  return el;
+}
+
+function computeCentroid(geometry: { type: string; coordinates: unknown }): [number, number] | null {
+  let ring: number[][] = [];
+  if (geometry.type === "Polygon") {
+    ring = (geometry.coordinates as number[][][])[0] ?? [];
+  } else if (geometry.type === "MultiPolygon") {
+    const polys = geometry.coordinates as number[][][][];
+    // usar o polígono com mais vértices (proxy para o maior)
+    ring = polys.reduce((a, b) => (a[0].length >= b[0].length ? a : b))[0] ?? [];
+  }
+  if (!ring.length) return null;
+  return [
+    ring.reduce((s, c) => s + c[0], 0) / ring.length,
+    ring.reduce((s, c) => s + c[1], 0) / ring.length,
+  ];
+}
+
 function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: string; total: number }> }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const markersRef   = useRef<mapboxgl.Marker[]>([]);
   const token        = getMapboxToken();
 
   useEffect(() => {
@@ -855,7 +885,7 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
+      style: "mapbox://styles/mapbox/empty-v9",
       center: [-48.5, -22.4] as [number, number],
       zoom: 5.2,
       dragPan: false,
@@ -873,13 +903,8 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
     map.on("load", async () => {
       if (!alive) return;
 
-      // fundo branco puro
-      try { map.setPaintProperty("background", "background-color", "#ffffff"); } catch { /* layer pode não existir */ }
-
-      // ocultar todos os labels (cidades, estados, estradas)
-      for (const layer of map.getStyle().layers ?? []) {
-        if (layer.type === "symbol") map.setLayoutProperty(layer.id, "visibility", "none");
-      }
+      // empty-v9 não tem background layer — adicionar manualmente
+      map.addLayer({ id: "vm-tm-bg", type: "background", paint: { "background-color": "#f8f8f8" } });
 
       try {
         const res = await fetch(SP_GEOJSON_URL);
@@ -910,7 +935,7 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
           paint: {
             "fill-color": [
               "interpolate", ["linear"], ["get", "total"],
-              0,        "#e8f5ee",
+              0,        "#c8e6d4",
               1,        "#6dbf8b",
               maxTotal, "#1a6b3c",
             ] as mapboxgl.Expression,
@@ -918,17 +943,9 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
           },
         });
 
-        // contorno externo do estado — desenhado antes da borda branca para que esta
-        // cubra as divisas internas deixando o verde visível apenas no limite do estado
-        map.addLayer({
-          id: "vm-tm-border", type: "line", source: "vm-tm-src",
-          paint: { "line-color": "#2d9b5a", "line-width": 2 },
-        });
-
-        // divisas internas entre municípios
         map.addLayer({
           id: "vm-tm-line", type: "line", source: "vm-tm-src",
-          paint: { "line-color": "#ffffff", "line-width": 1 },
+          paint: { "line-color": "#ffffff", "line-width": 0.5 },
         });
 
         // bbox exato das features → fitBounds + travar zoom
@@ -947,6 +964,22 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
           const lockedZoom = map.getZoom();
           map.setMinZoom(lockedZoom);
           map.setMaxZoom(lockedZoom);
+        }
+
+        // marcadores de ranking nos top municípios
+        const rankMap = new Map(
+          topMunicipios.map((m, i) => [normalizeStr(m.municipio), { rank: i + 1, total: m.total }]),
+        );
+        for (const f of geoJSON.features) {
+          const name  = normalizeStr(String(f.properties.name ?? ""));
+          const entry = rankMap.get(name);
+          if (!entry) continue;
+          const centroid = computeCentroid(f.geometry as { type: string; coordinates: unknown });
+          if (!centroid) continue;
+          const marker = new mapboxgl.Marker({ element: createMarkerEl(entry.total, entry.rank) })
+            .setLngLat(centroid)
+            .addTo(map);
+          markersRef.current.push(marker);
         }
 
         map.on("mousemove", "vm-tm-fill", e => {
@@ -973,7 +1006,13 @@ function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: st
       }
     });
 
-    return () => { alive = false; popup.remove(); map.remove(); };
+    return () => {
+      alive = false;
+      popup.remove();
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+      map.remove();
+    };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={containerRef} className="vm-tm h-full w-full" />;
