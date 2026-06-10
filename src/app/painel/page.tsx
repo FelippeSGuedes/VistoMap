@@ -834,8 +834,9 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
 
 /* ─── HeroMapWidget ─────────────────────────────────────────────────────── */
 
-function HeroMapWidget({ token }: { token: string }) {
+function HeroMapWidget() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const token = getMapboxToken();
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
@@ -889,7 +890,6 @@ export default function PainelOverviewPage() {
   const [historico,    setHistorico]    = useState<HistoricoAnalytics | null>(null);
   const [mapaRealtime, setMapaRealtime] = useState<PainelMapaResponse | null>(null);
   const [now,          setNow]          = useState(() => new Date());
-  const token = getMapboxToken();
 
   useEffect(() => {
     let alive = true;
@@ -921,7 +921,6 @@ export default function PainelOverviewPage() {
   );
   const taxaAprov    = historico?.taxas.aprovacaoPct ?? 0;
   const taxaRevisita = historico?.taxas.revisitaPct  ?? 0;
-  const topMunis     = (historico?.topMunicipios  ?? []).slice(0, 8);
   const topTecs      = (historico?.rankingTecnicos ?? []).slice(0, 5);
   const mapaTeam     = mapaRealtime?.tecnicos ?? [];
 
@@ -1060,14 +1059,9 @@ export default function PainelOverviewPage() {
             </div>
           </div>
 
-          {/* CENTER — mapa Mapbox SP */}
-          <div className="relative flex-1 overflow-hidden">
-            {token && <HeroMapWidget token={token} />}
-          </div>
-
           {/* RIGHT — 4 KPI cards 2×2 */}
-          <div className="relative z-10 flex w-[370px] shrink-0 items-center p-4">
-            <div className="grid w-full grid-cols-2 gap-2">
+          <div className="flex flex-1 items-center justify-end p-5">
+            <div className="grid w-full max-w-[480px] grid-cols-2 gap-3">
               {kpis.slice(0, 4).map((k, i) => {
                 const Icon = k.icon;
                 const card = (
@@ -1205,8 +1199,19 @@ export default function PainelOverviewPage() {
       {/* ════════════ LINHA 2: Municípios | Técnicos | Atividade | Revisitas ════════════ */}
       <div className="grid grid-cols-4 gap-4">
 
-        {/* Widget 03 — Top Municípios: map IS the chart */}
-        <MunicipiosMapWidget topMunicipios={topMunis} tecnicos={tecnicos} />
+        {/* Widget 03 — Cobertura SP: mapa de municípios */}
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #E8EAED" }}>
+            <div className="flex items-center gap-2">
+              <MapIcon className="h-4 w-4 text-[#059669]" strokeWidth={2} />
+              <span className="text-[13px] font-semibold text-[#111827]">Cobertura SP</span>
+            </div>
+            <Link href="/painel/historico" className="text-[10.5px] font-semibold text-[#059669] hover:underline">municípios</Link>
+          </div>
+          <div className="relative h-[288px]">
+            <HeroMapWidget />
+          </div>
+        </Card>
 
         {/* Widget 05 — Top Técnicos: performance cockpit */}
         <Card>
