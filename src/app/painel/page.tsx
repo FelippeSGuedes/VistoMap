@@ -131,26 +131,6 @@ const CITY_COORDS: Record<string, [number, number]> = {
 const SP_GEOJSON_URL =
   "https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-35-mun.json";
 
-function muniColor(value: number, maxVal: number): string {
-  const t = maxVal > 0 ? value / maxVal : 0;
-  if (t <= 0) return "#F8FAFC";
-  if (t < 0.15) return "#D1FAE5";
-  if (t < 0.40) return "#6EE7B7";
-  if (t < 0.70) return "#10B981";
-  return "#047857";
-}
-
-function buildFillExpression(
-  topMunis: Array<{ municipio: string; total: number }>,
-): unknown[] {
-  const maxVal = Math.max(...topMunis.map(m => m.total), 1);
-  const pairs: unknown[] = [];
-  for (const m of topMunis) {
-    pairs.push(m.municipio, muniColor(m.total, maxVal));
-  }
-  return ["match", ["get", "name"], ...pairs, "#F8FAFC"];
-}
-
 function injectStyle(id: string, css: string) {
   if (typeof document === "undefined" || document.getElementById(id)) return;
   const s = document.createElement("style");
@@ -158,6 +138,36 @@ function injectStyle(id: string, css: string) {
   s.textContent = css;
   document.head.appendChild(s);
 }
+
+function normalizeStr(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+function featureCentroid(geometry: { type: string; coordinates: unknown }): [number, number] | null {
+  let ring: number[][] = [];
+  if (geometry.type === "Polygon") {
+    ring = (geometry.coordinates as number[][][])[0] ?? [];
+  } else if (geometry.type === "MultiPolygon") {
+    const polys = geometry.coordinates as number[][][][];
+    ring = polys.reduce((a, b) => (a[0].length >= b[0].length ? a : b))[0] ?? [];
+  }
+  if (!ring.length) return null;
+  return [
+    ring.reduce((s, c) => s + c[0], 0) / ring.length,
+    ring.reduce((s, c) => s + c[1], 0) / ring.length,
+  ];
+}
+
+const NOC_CSS = `
+@keyframes vmFadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes vmRing{0%{transform:scale(.85);opacity:.75}100%{transform:scale(2.6);opacity:0}}
+@keyframes vmScan{0%{top:-14%}100%{top:114%}}
+@keyframes vmTick{from{width:0}to{width:100%}}
+@keyframes vmBlink{0%,100%{opacity:1}50%{opacity:.3}}
+.vm-rise{opacity:0;animation:vmFadeUp .55s cubic-bezier(.22,.7,.2,1) forwards}
+.vm-card{transition:transform .25s cubic-bezier(.22,.7,.2,1),box-shadow .25s ease}
+.vm-card:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(6,24,16,.10)}
+`;
 
 /* ─── primitives ────────────────────────────────────────────────────────── */
 
@@ -174,14 +184,37 @@ function Card({
   className?: string;
   style?: CSSProperties;
 }) {
+  useEffect(() => { injectStyle("vm-noc-css", NOC_CSS); }, []);
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-2xl bg-white ${className}`}
+      className={`vm-card flex flex-col overflow-hidden rounded-2xl bg-white ${className}`}
       style={{ border: "1px solid #E8EAED", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", ...style }}
     >
       {children}
     </div>
   );
+}
+
+function CountUp({ value, duration = 850 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+  const prevRef = useRef(0);
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = value;
+    if (from === to) { setDisplay(to); return; }
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const p = Math.min((t - t0) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(step);
+      else prevRef.current = to;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <>{fmtNum(display)}</>;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -198,8 +231,36 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const popupRef     = useRef<mapboxgl.Popup | null>(null);
+  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: unknown; properties: Record<string, unknown> }> } | null>(null);
+  const munisRef     = useRef(topMunicipios);
+  munisRef.current   = topMunicipios;
   const token        = getMapboxToken();
   const [geoLoaded,  setGeoLoaded] = useState(false);
+
+  const enrich = (munis: Array<{ municipio: string; total: number }>) => {
+    const geo = geoRef.current;
+    if (!geo) return null;
+    const lookup = new Map(munis.map(m => [normalizeStr(m.municipio), m.total]));
+    return {
+      ...geo,
+      features: geo.features.map(f => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
+        },
+      })),
+    };
+  };
+
+  const fillExpr = (munis: Array<{ municipio: string; total: number }>) => {
+    const maxVal = Math.max(...munis.map(m => m.total), 1);
+    return [
+      "case", [">", ["get", "total"], 0],
+      ["interpolate", ["linear"], ["get", "total"], 1, "#a8d5b5", maxVal, "#1a6b3c"],
+      "#e8f5ee",
+    ] as unknown as mapboxgl.Expression;
+  };
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
@@ -212,7 +273,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
+      style: "mapbox://styles/mapbox/empty-v9",
       center: [-48.5, -22.0] as [number, number],
       zoom: 5.7,
       interactive: true,
@@ -221,64 +282,64 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
       dragPan: false,
       dragRotate: false,
       boxZoom: false,
+      touchZoomRotate: false,
+      keyboard: false,
       attributionControl: false,
     });
     mapRef.current = map;
 
+    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
+    ro.observe(containerRef.current);
+
     const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
     popupRef.current = popup;
 
-    let hoveredId: string | number | null = null;
-
     map.on("load", async () => {
+      map.resize();
+      map.addLayer({ id: "vm-sp-bg", type: "background", paint: { "background-color": "#ffffff" } });
       try {
         const res = await fetch(SP_GEOJSON_URL);
         const geoJSON = await res.json();
         if (!alive) return;
+        geoRef.current = geoJSON;
 
-        const fillExpr = buildFillExpression(topMunicipios);
+        const enriched = enrich(munisRef.current);
 
         map.addSource("vm-sp-src", {
           type: "geojson",
-          data: geoJSON,
+          data: enriched as never,
           promoteId: "id",
         });
 
-        // Municipality fill
         map.addLayer({
           id: "vm-sp-fill",
           type: "fill",
           source: "vm-sp-src",
           paint: {
-            "fill-color": fillExpr as mapboxgl.Expression,
+            "fill-color": fillExpr(munisRef.current),
             "fill-opacity": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
               1.0,
-              0.82,
+              0.92,
             ] as mapboxgl.Expression,
           },
         });
 
-        // Outline
         map.addLayer({
           id: "vm-sp-outline",
           type: "line",
           source: "vm-sp-src",
-          paint: {
-            "line-color": "#CBD5E1",
-            "line-width": 0.4,
-          },
+          paint: { "line-color": "#ffffff", "line-width": 0.5 },
         });
 
-        // Hover outline
         map.addLayer({
           id: "vm-sp-hover-outline",
           type: "line",
           source: "vm-sp-src",
           paint: {
-            "line-color": "#059669",
-            "line-width": 2,
+            "line-color": "#1a6b3c",
+            "line-width": 1.6,
             "line-opacity": [
               "case",
               ["boolean", ["feature-state", "hover"], false],
@@ -288,7 +349,23 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           },
         });
 
-        // Hover interactions
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const f of geoJSON.features as Array<{ geometry: { type: string; coordinates: number[][][] | number[][][][] } }>) {
+          const g = f.geometry;
+          const rings = g.type === "Polygon"
+            ? [g.coordinates[0] as number[][]]
+            : (g.coordinates as number[][][][]).map(p => p[0]);
+          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
+        }
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: 12, animate: false });
+          const z = map.getZoom();
+          map.setMinZoom(z);
+          map.setMaxZoom(z);
+        }
+
+        let hoveredId: string | number | null = null;
+
         map.on("mousemove", "vm-sp-fill", (e) => {
           if (!e.features?.length) return;
           const f  = e.features[0];
@@ -301,12 +378,10 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           if (hoveredId !== null) {
             map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: true });
           }
-          const name  = f.properties?.name ?? "";
-          const found = topMunicipios.find(m => m.municipio === name);
-          const total = found?.total ?? 0;
-          const maxV  = Math.max(...topMunicipios.map(m => m.total), 1);
-          const pct   = topMunicipios.reduce((s, m) => s + m.total, 0);
-          const pctStr = pct > 0 ? ((total / pct) * 100).toFixed(1) : "0";
+          const name  = String(f.properties?.name ?? "");
+          const total = Number(f.properties?.total ?? 0);
+          const sum   = munisRef.current.reduce((s, m) => s + m.total, 0);
+          const pctStr = sum > 0 ? ((total / sum) * 100).toFixed(1) : "0";
           popup
             .setLngLat(e.lngLat)
             .setHTML(
@@ -335,18 +410,22 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
 
     return () => {
       alive = false;
+      ro.disconnect();
       popup.remove();
       map.remove();
       mapRef.current = null;
     };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update fill colors when data changes without recreating the map
+  // Update data + fill scale on poll refresh without recreating the map
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded() || !map.getLayer("vm-sp-fill")) return;
-    map.setPaintProperty("vm-sp-fill", "fill-color", buildFillExpression(topMunicipios) as mapboxgl.Expression);
-  }, [topMunicipios]);
+    const enriched = enrich(topMunicipios);
+    if (!enriched) return;
+    (map.getSource("vm-sp-src") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
+    map.setPaintProperty("vm-sp-fill", "fill-color", fillExpr(topMunicipios));
+  }, [topMunicipios]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Card className="h-full">
@@ -356,7 +435,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           <span className="text-[13px] font-semibold text-[#111827]">Padrão Diário · 30 dias</span>
         </div>
         <div className="flex items-center gap-1 text-[9.5px] text-[#9CA3AF]">
-          {["#D1FAE5", "#6EE7B7", "#10B981", "#047857"].map(c => (
+          {["#e8f5ee", "#a8d5b5", "#5a9e74", "#1a6b3c"].map(c => (
             <span key={c} className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
           ))}
           <span className="ml-0.5">+ ativo</span>
@@ -435,6 +514,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
     const place = () => {
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
+      const pts: Array<[number, number]> = [];
       mapaTeam
         .filter(t => t.latitude != null && t.longitude != null)
         .forEach(t => {
@@ -448,7 +528,12 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
             .setLngLat([t.longitude!, t.latitude!])
             .addTo(map);
           markersRef.current.push(mk);
+          pts.push([t.longitude!, t.latitude!]);
         });
+      if (pts.length > 0) {
+        const b = pts.reduce((bb, c) => bb.extend(c), new mapboxgl.LngLatBounds(pts[0], pts[0]));
+        map.fitBounds(b, { padding: 56, maxZoom: 11.5, duration: 700 });
+      }
     };
     if (map.isStyleLoaded()) place(); else map.once("load", place);
   }, [mapaTeam]);
@@ -522,159 +607,132 @@ interface MunicipiosMapWidgetProps {
   tecnicos: TecnicoAtivo[];
 }
 
+function muniPinEl(total: number): HTMLElement {
+  const el = document.createElement("div");
+  el.style.cssText = "position:relative;width:30px;height:30px;cursor:pointer";
+  el.innerHTML =
+    '<div style="position:absolute;inset:-4px;border-radius:50%;border:2px solid #4A6CF7;animation:vmRing 2.4s ease-out infinite"></div>' +
+    `<div style="position:absolute;inset:0;border-radius:50%;background:#4A6CF7;border:2px solid #fff;box-shadow:0 2px 10px rgba(74,108,247,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;font-family:ui-sans-serif">${total}</div>`;
+  return el;
+}
+
 function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const markersRef   = useRef<mapboxgl.Marker[]>([]);
   const token        = getMapboxToken();
 
   const totalGlobal = topMunicipios.reduce((s, m) => s + m.total, 0);
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
+    let alive = true;
     injectStyle(
       "vm-dash-muni-css",
       ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}" +
       ".vm-muni-popup .mapboxgl-popup-content{padding:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.14)}",
     );
+    injectStyle("vm-noc-css", NOC_CSS);
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
+      style: "mapbox://styles/mapbox/empty-v9",
       center: [-48.5, -22.0] as [number, number],
       zoom: 5.6,
-      interactive: true,
-      scrollZoom: false,
-      doubleClickZoom: false,
-      dragPan: false,
-      dragRotate: false,
-      boxZoom: false,
+      interactive: false,
       attributionControl: false,
     });
     mapRef.current = map;
+
+    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
+    ro.observe(containerRef.current);
+
     const popup = new mapboxgl.Popup({
       closeButton: false,
       closeOnClick: false,
-      offset: 12,
+      offset: 18,
       className: "vm-muni-popup",
     });
 
     const totalVal = topMunicipios.reduce((s, m) => s + m.total, 0);
 
-    map.on("load", () => {
-      const maxVal = Math.max(...topMunicipios.map(m => m.total), 1);
-      const features = topMunicipios
-        .filter(m => CITY_COORDS[m.municipio])
-        .map((m, idx) => ({
-          type: "Feature" as const,
-          id: idx,
-          geometry: { type: "Point" as const, coordinates: CITY_COORDS[m.municipio]! },
-          properties: {
-            name: m.municipio,
-            total: m.total,
-            pct: totalVal > 0 ? ((m.total / totalVal) * 100).toFixed(1) : "0",
-            tecCount: tecnicos.filter(t => t.municipio === m.municipio).length,
-          },
-        }));
-
-      map.addSource("vm-muni-src", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features },
-      });
-
-      // Glow ring
-      map.addLayer({
-        id: "vm-muni-glow",
-        type: "circle",
-        source: "vm-muni-src",
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["get", "total"], 0, 16, maxVal, 48],
-          "circle-color": "#8B5CF6",
-          "circle-opacity": 0.10,
-          "circle-blur": 1.0,
-        },
-      });
-
-      // Main circle — radius + hover state color
-      map.addLayer({
-        id: "vm-muni-circles",
-        type: "circle",
-        source: "vm-muni-src",
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["get", "total"], 0, 6, maxVal, 26],
-          "circle-color": [
-            "case",
-            ["boolean", ["feature-state", "hover"], false],
-            "#7C3AED",
-            "#8B5CF6",
-          ] as mapboxgl.Expression,
-          "circle-opacity": 0.72,
-          "circle-stroke-width": [
-            "case",
-            ["boolean", ["feature-state", "hover"], false],
-            2.5,
-            1.5,
-          ] as mapboxgl.Expression,
-          "circle-stroke-color": "#7C3AED",
-          "circle-stroke-opacity": 0.88,
-        },
-      });
-
-      // Count label inside circles (only for top-3)
-      map.addLayer({
-        id: "vm-muni-labels",
-        type: "symbol",
-        source: "vm-muni-src",
-        filter: [">=", ["get", "total"], Math.max(Math.floor(maxVal * 0.25), 1)],
-        layout: {
-          "text-field": ["to-string", ["get", "total"]],
-          "text-size": 9,
-          "text-font": ["DIN Offc Pro Bold", "Arial Unicode MS Bold"],
-          "text-anchor": "center",
-        },
-        paint: { "text-color": "#fff" },
-      });
-
-      let hoveredId: string | number | null = null;
-
-      map.on("mousemove", "vm-muni-circles", (e) => {
-        if (!e.features?.length) return;
-        const f = e.features[0];
-        map.getCanvas().style.cursor = "pointer";
-        if (hoveredId !== null && hoveredId !== f.id) {
-          map.setFeatureState({ source: "vm-muni-src", id: hoveredId }, { hover: false });
-        }
-        hoveredId = f.id ?? null;
-        if (hoveredId !== null) {
-          map.setFeatureState({ source: "vm-muni-src", id: hoveredId }, { hover: true });
-        }
-        const { name, total: t, pct, tecCount } = f.properties as {
-          name: string; total: number; pct: string; tecCount: number;
+    map.on("load", async () => {
+      map.resize();
+      map.addLayer({ id: "vm-muni-bg", type: "background", paint: { "background-color": "#ffffff" } });
+      try {
+        const res = await fetch(SP_GEOJSON_URL);
+        const geoJSON = await res.json() as {
+          type: string;
+          features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
         };
-        const rank = topMunicipios.findIndex(m => m.municipio === name) + 1;
-        popup.setLngLat(e.lngLat).setHTML(`
-          <div style="font-family:ui-sans-serif;padding:10px 13px;min-width:150px">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-              ${rank > 0 ? `<span style="display:flex;width:18px;height:18px;border-radius:50%;background:rgba(139,92,246,0.15);color:#8B5CF6;font-size:9px;font-weight:800;align-items:center;justify-content:center">${rank}</span>` : ""}
-              <span style="font-size:12px;font-weight:700;color:#111827">${name}</span>
-            </div>
-            <div style="font-size:11px;color:#374151;margin-bottom:2px"><strong>${t}</strong> vistorias</div>
-            <div style="font-size:10.5px;color:#6B7280">${pct}% do total</div>
-            ${tecCount > 0 ? `<div style="font-size:10px;color:#8B5CF6;margin-top:4px;padding-top:4px;border-top:1px solid #F3F4F6">${tecCount} técnico${tecCount !== 1 ? "s" : ""} ativo${tecCount !== 1 ? "s" : ""}</div>` : ""}
-          </div>`).addTo(map);
-      });
+        if (!alive) return;
 
-      map.on("mouseleave", "vm-muni-circles", () => {
-        map.getCanvas().style.cursor = "";
-        if (hoveredId !== null) {
-          map.setFeatureState({ source: "vm-muni-src", id: hoveredId }, { hover: false });
-          hoveredId = null;
+        map.addSource("vm-muni-sp", { type: "geojson", data: geoJSON as never });
+        map.addLayer({
+          id: "vm-muni-fill", type: "fill", source: "vm-muni-sp",
+          paint: { "fill-color": "#EDF3F7", "fill-opacity": 1 },
+        });
+        map.addLayer({
+          id: "vm-muni-line", type: "line", source: "vm-muni-sp",
+          paint: { "line-color": "#ffffff", "line-width": 0.5 },
+        });
+
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const f of geoJSON.features) {
+          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
+          const rings = g.type === "Polygon"
+            ? [g.coordinates[0] as number[][]]
+            : (g.coordinates as number[][][][]).map(p => p[0]);
+          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
         }
-        popup.remove();
-      });
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: 14, animate: false });
+          const z = map.getZoom();
+          map.setMinZoom(z);
+          map.setMaxZoom(z);
+        }
+
+        const centroidByName = new Map<string, [number, number]>();
+        for (const f of geoJSON.features) {
+          const c = featureCentroid(f.geometry);
+          if (c) centroidByName.set(normalizeStr(String(f.properties.name ?? "")), c);
+        }
+
+        topMunicipios.slice(0, 8).forEach((m, idx) => {
+          const coords = CITY_COORDS[m.municipio] ?? centroidByName.get(normalizeStr(m.municipio));
+          if (!coords) return;
+          const el = muniPinEl(m.total);
+          const pct = totalVal > 0 ? ((m.total / totalVal) * 100).toFixed(1) : "0";
+          const tecCount = tecnicos.filter(t => t.municipio === m.municipio).length;
+          el.addEventListener("mouseenter", () => {
+            popup.setLngLat(coords).setHTML(`
+              <div style="font-family:ui-sans-serif;padding:10px 13px;min-width:150px">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+                  <span style="display:flex;width:18px;height:18px;border-radius:50%;background:rgba(74,108,247,0.14);color:#4A6CF7;font-size:9px;font-weight:800;align-items:center;justify-content:center">${idx + 1}</span>
+                  <span style="font-size:12px;font-weight:700;color:#111827">${m.municipio}</span>
+                </div>
+                <div style="font-size:11px;color:#374151;margin-bottom:2px"><strong>${m.total}</strong> vistorias</div>
+                <div style="font-size:10.5px;color:#6B7280">${pct}% do total</div>
+                ${tecCount > 0 ? `<div style="font-size:10px;color:#4A6CF7;margin-top:4px;padding-top:4px;border-top:1px solid #F3F4F6">${tecCount} técnico${tecCount !== 1 ? "s" : ""} ativo${tecCount !== 1 ? "s" : ""}</div>` : ""}
+              </div>`).addTo(map);
+          });
+          el.addEventListener("mouseleave", () => popup.remove());
+          const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
+            .setLngLat(coords)
+            .addTo(map);
+          markersRef.current.push(mk);
+        });
+      } catch {
+        /* GeoJSON load failure is silent — widget degrades gracefully */
+      }
     });
 
     return () => {
+      alive = false;
+      ro.disconnect();
       popup.remove();
+      markersRef.current.forEach(mk => mk.remove());
+      markersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -684,7 +742,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
     <Card className="h-full">
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-[#8B5CF6]" strokeWidth={2} />
+          <Building2 className="h-4 w-4 text-[#4A6CF7]" strokeWidth={2} />
           <span className="text-[13px] font-semibold text-[#111827]">Top Municípios · 30d</span>
         </div>
         <span className="text-[10px] text-[#9CA3AF]">passe o mouse</span>
@@ -694,18 +752,26 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
         {topMunicipios.slice(0, 5).map((m, i) => {
           const pct = totalGlobal > 0 ? (m.total / totalGlobal) * 100 : 0;
           return (
-            <li key={m.municipio} className="flex items-center gap-2">
+            <li key={m.municipio} className="group flex items-center gap-2 rounded-lg px-1 py-[3px] transition hover:bg-[#F6F8FE]">
               <span
                 className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[8px] font-bold tabular-nums"
                 style={{
-                  background: i < 3 ? "rgba(139,92,246,0.12)" : "rgba(6,59,59,0.05)",
-                  color:      i < 3 ? "#8B5CF6"               : "#7A8896",
+                  background: i < 3 ? "rgba(74,108,247,0.12)" : "rgba(6,59,59,0.05)",
+                  color:      i < 3 ? "#4A6CF7"               : "#7A8896",
                 }}
               >
                 {i + 1}
               </span>
-              <span className="flex-1 truncate text-[10.5px] font-medium text-[#374151]">{m.municipio}</span>
-              <span className="text-[10px] text-[#9CA3AF]">{pct.toFixed(0)}%</span>
+              <span className="w-[88px] truncate text-[10.5px] font-medium text-[#374151]">{m.municipio}</span>
+              <span className="relative h-1 flex-1 overflow-hidden rounded-full bg-[#F3F4F6]">
+                <motion.span
+                  className="absolute inset-y-0 left-0 rounded-full"
+                  style={{ background: "linear-gradient(90deg,#4A6CF7,#7C9BFF)" }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.7, delay: 0.08 * i, ease: [0.22, 0.7, 0.2, 1] }}
+                />
+              </span>
               <span className="w-7 text-right tabular-nums text-[10.5px] font-semibold text-[#111827]">{m.total}</span>
             </li>
           );
@@ -832,203 +898,58 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   );
 }
 
-/* ─── HeroMapWidget (Top Municípios) ────────────────────────────────────── */
+/* ─── HeroMapWidget ─────────────────────────────────────────────────────── */
 
-function normalizeStr(s: string): string {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-}
-
-function createMarkerEl(total: number, small: boolean): HTMLElement {
-  const size  = small ? 20 : 28;
-  const fsize = small ? 10 : 11;
-  const el    = document.createElement("div");
-  el.style.cssText =
-    `width:${size}px;height:${size}px;border-radius:50%;background:#4A6CF7;` +
-    `border:2px solid #ffffff;box-shadow:0 2px 6px rgba(0,0,0,0.22);` +
-    `display:flex;align-items:center;justify-content:center;` +
-    `color:#ffffff;font-weight:700;font-size:${fsize}px;font-family:sans-serif;` +
-    `pointer-events:none;`;
-  el.textContent = String(total);
-  return el;
-}
-
-function computeCentroid(geometry: { type: string; coordinates: unknown }): [number, number] | null {
-  let ring: number[][] = [];
-  if (geometry.type === "Polygon") {
-    ring = (geometry.coordinates as number[][][])[0] ?? [];
-  } else if (geometry.type === "MultiPolygon") {
-    const polys = geometry.coordinates as number[][][][];
-    ring = polys.reduce((a, b) => (a[0].length >= b[0].length ? a : b))[0] ?? [];
-  }
-  if (!ring.length) return null;
-  return [
-    ring.reduce((s, c) => s + c[0], 0) / ring.length,
-    ring.reduce((s, c) => s + c[1], 0) / ring.length,
-  ];
-}
-
-function HeroMapWidget({ topMunicipios }: { topMunicipios: Array<{ municipio: string; total: number }> }) {
+function HeroMapWidget({ token }: { token: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const token        = getMapboxToken();
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
     let alive = true;
-
-    injectStyle(
-      "vm-tm-css",
-      ".vm-tm .mapboxgl-ctrl-logo,.vm-tm .mapboxgl-ctrl-attrib{display:none!important}" +
-      ".vm-tm-pop .mapboxgl-popup-content{padding:0;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.12)}",
-    );
+    injectStyle("vm-hero-map-css", ".vm-hero-map .mapboxgl-ctrl-logo,.vm-hero-map .mapboxgl-ctrl-attrib{display:none!important}");
 
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/empty-v9",
+      style: "mapbox://styles/mapbox/dark-v11",
       center: [-48.5, -22.4] as [number, number],
-      zoom: 5.2,
-      dragPan: false,
-      scrollZoom: false,
-      doubleClickZoom: false,
-      touchZoomRotate: false,
-      keyboard: false,
-      dragRotate: false,
-      boxZoom: false,
+      zoom: 5.6,
+      interactive: false,
       attributionControl: false,
     });
 
-    // chama map.resize() sempre que o container mudar de tamanho
+    // recalcula canvas sempre que o container mudar de tamanho
     const ro = new ResizeObserver(() => { if (alive) map.resize(); });
     ro.observe(containerRef.current);
 
-    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: "vm-tm-pop" });
-
     map.on("load", async () => {
+      // força o canvas a medir o container já com dimensões reais
+      map.resize();
+
+      const res = await fetch(SP_GEOJSON_URL);
+      const geoJSON = await res.json();
       if (!alive) return;
+      map.addSource("vm-hero-sp", { type: "geojson", data: geoJSON });
+      map.addLayer({ id: "vm-hero-fill", type: "fill", source: "vm-hero-sp", paint: { "fill-color": "#00D084", "fill-opacity": 0.06 } });
+      map.addLayer({ id: "vm-hero-outline", type: "line", source: "vm-hero-sp", paint: { "line-color": "#00D084", "line-opacity": 0.65, "line-width": 1 } });
 
-      map.addLayer({ id: "vm-tm-bg", type: "background", paint: { "background-color": "#f8f8f8" } });
-
-      try {
-        const res = await fetch(SP_GEOJSON_URL);
-        const geoJSON = await res.json() as {
-          type: string;
-          features: Array<{ type: string; geometry: unknown; properties: Record<string, unknown> }>;
-        };
-        if (!alive) return;
-
-        const lookup = new Map(topMunicipios.map(m => [normalizeStr(m.municipio), m.total]));
-
-        const enrichedFeatures = geoJSON.features.map(f => ({
-          ...f,
-          properties: {
-            ...f.properties,
-            total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
-          },
-        }));
-
-        console.log("vm-tm matches:", enrichedFeatures.filter(f => f.properties.total > 0).length);
-
-        map.addSource("vm-tm-src", {
-          type: "geojson",
-          data: { ...geoJSON, features: enrichedFeatures } as unknown as mapboxgl.GeoJSONSourceSpecification["data"],
-        });
-
-        map.addLayer({
-          id: "vm-tm-fill", type: "fill", source: "vm-tm-src",
-          paint: {
-            "fill-color": [
-              "case", [">", ["get", "total"], 0],
-              ["interpolate", ["linear"], ["get", "total"],
-                1,  "#6dbf8b",
-                10, "#2d8a55",
-                50, "#1a6b3c",
-              ],
-              "#dff0e8",
-            ] as mapboxgl.Expression,
-            "fill-opacity": 0.85,
-          },
-        });
-
-        map.addLayer({
-          id: "vm-tm-line", type: "line", source: "vm-tm-src",
-          paint: { "line-color": "#ffffff", "line-width": 0.5 },
-        });
-
-        const isSmall = (containerRef.current?.clientWidth ?? 400) < 400;
-
-        const bounds = new mapboxgl.LngLatBounds();
-        for (const f of geoJSON.features) {
-          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
-          const rings = g.type === "Polygon"
-            ? [g.coordinates[0] as number[][]]
-            : (g.coordinates as number[][][][]).map(p => p[0]);
-          for (const ring of rings)
-            for (const c of ring)
-              bounds.extend([c[0], c[1]]);
-        }
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: isSmall ? 10 : 20, animate: false });
-          const lockedZoom = map.getZoom();
-          map.setMinZoom(lockedZoom);
-          map.setMaxZoom(lockedZoom);
-        }
-
-        // marcadores com quantidade real de vistorias (não ranking)
-        const rankMap = new Map(
-          topMunicipios.map((m, i) => [normalizeStr(m.municipio), { rank: i + 1, total: m.total }]),
-        );
-        for (const f of geoJSON.features) {
-          const name  = normalizeStr(String(f.properties.name ?? ""));
-          const entry = rankMap.get(name);
-          if (!entry) continue;
-          const centroid = computeCentroid(f.geometry as { type: string; coordinates: unknown });
-          if (!centroid) continue;
-          const marker = new mapboxgl.Marker({ element: createMarkerEl(entry.total, isSmall) })
-            .setLngLat(centroid)
-            .addTo(map);
-          markersRef.current.push(marker);
-        }
-
-        map.on("mousemove", "vm-tm-fill", e => {
-          if (!e.features?.length) return;
-          map.getCanvas().style.cursor = "pointer";
-          const p = e.features[0].properties as { name: string; total: number };
-          popup.setLngLat(e.lngLat)
-            .setHTML(
-              `<div style="padding:8px 12px;font-family:sans-serif">
-                <div style="font-weight:600;font-size:12px;color:#111827">${p.name}</div>
-                <div style="font-size:11px;color:#6B7280;margin-top:2px">${p.total} vistoria${p.total !== 1 ? "s" : ""}</div>
-              </div>`,
-            )
-            .addTo(map);
-        });
-
-        map.on("mouseleave", "vm-tm-fill", () => {
-          map.getCanvas().style.cursor = "";
-          popup.remove();
-        });
-
-      } catch {
-        // mapa carrega sem colorização em caso de falha no fetch
-      }
+      injectStyle("vm-hero-pulse", `
+        @keyframes vm-hero-ring{0%,100%{transform:scale(1);opacity:.9}70%{transform:scale(2.5);opacity:0}}
+        .vm-hero-dot{width:12px;height:12px;background:#00D084;border-radius:50%;box-shadow:0 0 16px #00D084,0 0 6px #00D084}
+        .vm-hero-ring{position:absolute;inset:-8px;border:2px solid #00D084;border-radius:50%;animation:vm-hero-ring 2s ease-out infinite}
+      `);
+      const el = document.createElement("div");
+      el.style.cssText = "position:relative;width:12px;height:12px";
+      el.innerHTML = '<div class="vm-hero-dot"></div><div class="vm-hero-ring"></div>';
+      new mapboxgl.Marker({ element: el }).setLngLat([-46.6333, -23.5505]).addTo(map);
     });
 
-    return () => {
-      alive = false;
-      ro.disconnect();
-      popup.remove();
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
-      map.remove();
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { alive = false; ro.disconnect(); map.remove(); };
+  }, [token]);
 
-  return (
-    <div style={{ width: "100%", height: "100%", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
-      <div ref={containerRef} className="vm-tm h-full w-full" />
-    </div>
-  );
+  // absolute inset-0 preenche o pai relative (flex-1 overflow-hidden) sem depender de h-full
+  // sem background, border ou shadow — o canvas dark-v11 cobre tudo
+  return <div ref={containerRef} className="vm-hero-map absolute inset-0" />;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1043,6 +964,7 @@ export default function PainelOverviewPage() {
   const [historico,    setHistorico]    = useState<HistoricoAnalytics | null>(null);
   const [mapaRealtime, setMapaRealtime] = useState<PainelMapaResponse | null>(null);
   const [now,          setNow]          = useState(() => new Date());
+  const token = getMapboxToken();
 
   useEffect(() => {
     let alive = true;
@@ -1074,6 +996,7 @@ export default function PainelOverviewPage() {
   );
   const taxaAprov    = historico?.taxas.aprovacaoPct ?? 0;
   const taxaRevisita = historico?.taxas.revisitaPct  ?? 0;
+  const topMunis     = (historico?.topMunicipios  ?? []).slice(0, 8);
   const topTecs      = (historico?.rankingTecnicos ?? []).slice(0, 5);
   const mapaTeam     = mapaRealtime?.tecnicos ?? [];
 
@@ -1106,12 +1029,12 @@ export default function PainelOverviewPage() {
     : null;
 
   const kpis = [
-    { label: "Backlog",     value: stats ? fmtNum(stats.pendentes)  : "—",  sub: "aguardando atribuição",  color: "#F59E0B", icon: ClipboardList, href: "/painel/vistorias" },
-    { label: "Em vistoria", value: stats ? fmtNum(stats.emVistoria) : "—",  sub: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, color: "#3B82F6", icon: Activity,    href: "/painel/mapa" },
-    { label: "Concluídas",  value: stats ? fmtNum(stats.vistoriadas): "—",  sub: "aguardando aprovação",   color: "#10B981", icon: CheckCircle2, href: "/painel/historico" },
-    { label: "Revisitas",   value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
-    { label: "Municípios",  value: stats ? fmtNum(stats.municipiosAtivos)   : "—", sub: "com equipamentos ativos", color: "#8B5CF6", icon: Building2, href: undefined as string | undefined },
-    { label: "Equipe",      value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
+    { label: "Backlog",     raw: stats ? stats.pendentes  : undefined, value: stats ? fmtNum(stats.pendentes)  : "—",  sub: "aguardando atribuição",  color: "#F59E0B", icon: ClipboardList, href: "/painel/vistorias" },
+    { label: "Em vistoria", raw: stats ? stats.emVistoria : undefined, value: stats ? fmtNum(stats.emVistoria) : "—",  sub: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, color: "#3B82F6", icon: Activity,    href: "/painel/mapa" },
+    { label: "Concluídas",  raw: stats ? stats.vistoriadas : undefined, value: stats ? fmtNum(stats.vistoriadas): "—",  sub: "aguardando aprovação",   color: "#10B981", icon: CheckCircle2, href: "/painel/historico" },
+    { label: "Revisitas",   raw: stats ? (stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0) : undefined, value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
+    { label: "Municípios",  raw: stats ? stats.municipiosAtivos : undefined, value: stats ? fmtNum(stats.municipiosAtivos)   : "—", sub: "com equipamentos ativos", color: "#8B5CF6", icon: Building2, href: undefined as string | undefined },
+    { label: "Equipe",      raw: stats ? stats.tecnicosAtivos : undefined, value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
   ];
 
   /* ══════════════════════════════ RENDER ══════════════════════════════ */
@@ -1169,7 +1092,7 @@ export default function PainelOverviewPage() {
         <div className="absolute inset-x-0 bottom-0 top-11 flex items-stretch">
 
           {/* LEFT — título + stats inline + botões */}
-          <div className="relative z-10 flex w-[280px] shrink-0 flex-col justify-between p-7">
+          <div className="relative z-10 flex w-full shrink-0 flex-col justify-between p-7 md:w-[280px]">
             <div>
               <div className="mb-4 flex items-center gap-2">
                 <span className="h-px w-6" style={{ background: "rgba(0,208,132,0.35)" }} />
@@ -1212,9 +1135,21 @@ export default function PainelOverviewPage() {
             </div>
           </div>
 
+          {/* CENTER — mapa Mapbox SP */}
+          <div className="relative hidden flex-1 overflow-hidden lg:block">
+            {token && <HeroMapWidget token={token} />}
+            <div
+              className="pointer-events-none absolute inset-x-0 h-20"
+              style={{
+                background: "linear-gradient(180deg,transparent,rgba(0,208,132,0.07),transparent)",
+                animation: "vmScan 7s linear infinite",
+              }}
+            />
+          </div>
+
           {/* RIGHT — 4 KPI cards 2×2 */}
-          <div className="flex flex-1 items-center justify-end p-5">
-            <div className="grid w-full max-w-[480px] grid-cols-2 gap-3">
+          <div className="relative z-10 hidden w-[370px] shrink-0 items-center p-4 md:flex">
+            <div className="grid w-full grid-cols-2 gap-2">
               {kpis.slice(0, 4).map((k, i) => {
                 const Icon = k.icon;
                 const card = (
@@ -1241,7 +1176,9 @@ export default function PainelOverviewPage() {
                       </span>
                     </div>
                     <div>
-                      <div className="text-[38px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4" }}>{k.value}</div>
+                      <div className="text-[38px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4" }}>
+                        {k.raw != null ? <CountUp value={k.raw} /> : k.value}
+                      </div>
                       <div className="mt-1 text-[9px] leading-tight" style={{ color: "rgba(255,255,255,0.34)" }}>{k.sub}</div>
                     </div>
                   </motion.div>
@@ -1257,7 +1194,7 @@ export default function PainelOverviewPage() {
       </div>
 
       {/* ════════════ LINHA 1: Velocity | Heatmap SP | Equipe ════════════ */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" style={{ animationDelay: "0.08s" }}>
 
         {/* Widget 01 — Vistorias Finalizadas · 14 dias */}
         <Card>
@@ -1269,7 +1206,7 @@ export default function PainelOverviewPage() {
               </div>
               <div className="mt-3 flex items-baseline gap-3">
                 <span className="text-[42px] font-bold tabular-nums leading-none tracking-tight text-[#111827]">
-                  {velocity.total > 0 ? velocity.total : "—"}
+                  {velocity.total > 0 ? <CountUp value={velocity.total} /> : "—"}
                 </span>
                 {velocity.delta !== 0 && (
                   <span
@@ -1350,41 +1287,10 @@ export default function PainelOverviewPage() {
       </div>
 
       {/* ════════════ LINHA 2: Municípios | Técnicos | Atividade | Revisitas ════════════ */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" style={{ animationDelay: "0.16s" }}>
 
-        {/* Widget 03 — Top Municípios */}
-        {historico ? (
-          <Card className="overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #E8EAED" }}>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-                <span className="text-[13px] font-semibold text-[#111827]">Top municípios · 30 dias</span>
-              </div>
-            </div>
-            <div className="flex gap-3 p-3">
-              {/* ranking list */}
-              <div className="flex w-[156px] shrink-0 flex-col gap-0">
-                {historico.topMunicipios.slice(0, 6).map((m, i) => {
-                  const badgeColor = ["#F59E0B","#9CA3AF","#B45309","#6B7280","#6B7280","#6B7280"][i];
-                  const badgeBg    = ["#FEF3C7","#F3F4F6","#FEF3C7","#F9FAFB","#F9FAFB","#F9FAFB"][i];
-                  return (
-                    <div key={m.municipio} className="flex items-center gap-2 rounded-lg px-1.5 py-2 transition hover:bg-[#F9FAFB]">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: badgeBg, color: badgeColor }}>{i + 1}</span>
-                      <span className="flex-1 truncate text-[10.5px] font-semibold uppercase tracking-wide text-[#374151]">{m.municipio}</span>
-                      <span className="text-[12px] font-bold tabular-nums text-[#111827]">{m.total}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {/* mapa */}
-              <div className="relative flex-1 min-h-[200px] overflow-hidden">
-                <HeroMapWidget topMunicipios={historico.topMunicipios} />
-              </div>
-            </div>
-          </Card>
-        ) : (
-          <Card><div className="p-5"><Skeleton h={290} /></div></Card>
-        )}
+        {/* Widget 03 — Top Municípios: map IS the chart */}
+        <MunicipiosMapWidget topMunicipios={topMunis} tecnicos={tecnicos} />
 
         {/* Widget 05 — Top Técnicos: performance cockpit */}
         <Card>
@@ -1464,6 +1370,12 @@ export default function PainelOverviewPage() {
             <div className="flex items-center gap-2">
               <Activity className="h-3.5 w-3.5 text-[#3B82F6]" strokeWidth={2} />
               <span className="text-[12.5px] font-semibold text-[#111827]">Atividade ao vivo</span>
+              <span
+                className="flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-blue-600"
+              >
+                <span className="h-1 w-1 rounded-full bg-blue-500" style={{ animation: "vmBlink 1.4s ease-in-out infinite" }} />
+                live
+              </span>
             </div>
             <Link href="/painel/auditoria" className="flex items-center gap-1 text-[10.5px] font-semibold text-[#3B82F6] hover:underline">
               Auditoria <ArrowRight className="h-3 w-3" />
@@ -1491,6 +1403,12 @@ export default function PainelOverviewPage() {
                         className="relative z-10 mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full"
                         style={{ background: `${color}18`, border: `1.5px solid ${color}44` }}
                       >
+                        {i === 0 && (
+                          <span
+                            className="absolute inset-0 rounded-full"
+                            style={{ border: `1.5px solid ${color}`, animation: "vmRing 2.2s ease-out infinite" }}
+                          />
+                        )}
                         <Icon className="h-2.5 w-2.5" style={{ color }} strokeWidth={2.5} />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -1513,16 +1431,27 @@ export default function PainelOverviewPage() {
         <RevisitasMapWidget revisitas={revisitas} />
       </div>
 
-      {/* ════════════ RODAPÉ ════════════ */}
+      {/* ════════════ RODAPÉ — barra de status NOC ════════════ */}
       <div
-        className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-5 py-3 text-[11px] text-[#6B7280]"
-        style={{ background: "#F8FAFC", border: "1px solid #E8EAED" }}
+        className="vm-rise flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-5 py-3 text-[11px] text-[#6B7280]"
+        style={{ background: "#F8FAFC", border: "1px solid #E8EAED", animationDelay: "0.24s" }}
       >
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inset-0 rounded-full bg-emerald-500" style={{ animation: "vmRing 2s ease-out infinite" }} />
+            <span className="relative h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
           <span className="font-medium text-[#374151]">Sistema em operação</span>
           <span className="text-[#D1D5DB]">·</span>
-          <span>Atualizado {relativo(now.toISOString())}</span>
+          <span className="flex items-center gap-1.5">
+            próx. sync
+            <span className="relative h-[3px] w-14 overflow-hidden rounded-full bg-emerald-100">
+              <span
+                className="absolute inset-y-0 left-0 rounded-full bg-emerald-500"
+                style={{ animation: "vmTick 20s linear infinite" }}
+              />
+            </span>
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <Users className="h-3.5 w-3.5" />
@@ -1534,14 +1463,14 @@ export default function PainelOverviewPage() {
         </div>
         {alertaRevisitas.length > 0 && (
           <div className="flex items-center gap-1.5 text-orange-500">
-            <ShieldAlert className="h-3.5 w-3.5" />
+            <ShieldAlert className="h-3.5 w-3.5" style={{ animation: "vmBlink 1.6s ease-in-out infinite" }} />
             <span>Alertas: <span className="font-semibold">{alertaRevisitas.length}</span></span>
           </div>
         )}
         <div className="ml-auto flex items-center gap-2 font-mono tabular-nums text-[#9CA3AF]">
           <Clock className="h-3.5 w-3.5" />
           <span>
-            {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             {" · "}
             {now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
           </span>
