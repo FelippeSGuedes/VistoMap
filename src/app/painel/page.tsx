@@ -9,17 +9,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
-  BarChart2,
   Building2,
   CheckCircle2,
   ClipboardList,
   Clock,
   FileText,
-  Headphones,
   Map as MapIcon,
   RotateCw,
   Search,
-  Shield,
   ShieldAlert,
   Sparkles,
   TrendingUp,
@@ -613,36 +610,28 @@ interface MunicipiosMapWidgetProps {
   tecnicos: TecnicoAtivo[];
 }
 
-function muniPinEl(total: number, index = 0): HTMLElement {
-  const el = document.createElement("div");
-  el.style.cssText = "position:relative;width:44px;height:44px;cursor:pointer;transition:transform 0.2s ease";
-  el.innerHTML =
-    `<div style="position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(74,108,247,0.3);animation:muniRadarPulse 2s ease-out infinite;animation-delay:${(index * 0.5).toFixed(1)}s;pointer-events:none"></div>` +
-    `<div style="position:absolute;inset:4px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.6);animation:muniPinFloat 2.5s ease-in-out infinite alternate;pointer-events:none"></div>` +
-    `<div style="position:absolute;inset:9px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;font-family:ui-sans-serif;pointer-events:none">${total}</div>`;
-  return el;
-}
-
-function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetProps) {
+function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
+  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
+  const [geoLoaded,  setGeoLoaded] = useState(false);
   const token        = getMapboxToken();
+  void _t;
 
   const totalGlobal = topMunicipios.reduce((s, m) => s + m.total, 0);
 
+  /* Effect 1 — mapa base + carrega GeoJSON */
   useEffect(() => {
     if (!containerRef.current || !token) return;
     let alive = true;
     injectStyle(
       "vm-dash-muni-css",
-      ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}" +
-      ".vm-muni-popup .mapboxgl-popup-content{padding:0;background:transparent;box-shadow:none;border:none}" +
-      ".vm-muni-popup .mapboxgl-popup-tip{border-top-color:rgba(15,15,30,0.95)!important}",
+      ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}",
     );
-    injectStyle("vm-muni-pin-kf",
-      "@keyframes muniRadarPulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(1.8);opacity:0}}" +
-      "@keyframes muniPinFloat{0%{transform:translateY(0)}100%{transform:translateY(-4px)}}",
+    injectStyle("vm-w03-pin-kf",
+      "@keyframes radarPulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(1.8);opacity:0}}" +
+      "@keyframes pinFloat{0%{transform:translateY(0px)}100%{transform:translateY(-4px)}}",
     );
     injectStyle("vm-noc-css", NOC_CSS);
     mapboxgl.accessToken = token;
@@ -659,16 +648,6 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
     const ro = new ResizeObserver(() => { if (alive) map.resize(); });
     ro.observe(containerRef.current);
 
-    const popup = new mapboxgl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 26,
-      anchor: "bottom",
-      className: "vm-muni-popup",
-    });
-
-    const totalVal = topMunicipios.reduce((s, m) => s + m.total, 0);
-
     map.on("load", async () => {
       map.resize();
       map.addLayer({ id: "vm-muni-bg", type: "background", paint: { "background-color": "#ffffff" } });
@@ -680,10 +659,12 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
         };
         if (!alive) return;
 
+        geoRef.current = geoJSON;
+
         map.addSource("vm-muni-sp", { type: "geojson", data: geoJSON as never });
         map.addLayer({
           id: "vm-muni-fill", type: "fill", source: "vm-muni-sp",
-          paint: { "fill-color": "#EDF3F7", "fill-opacity": 1 },
+          paint: { "fill-color": "#e8f5ee", "fill-opacity": 1 },
         });
         map.addLayer({
           id: "vm-muni-line", type: "line", source: "vm-muni-sp",
@@ -705,41 +686,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
           map.setMaxZoom(z);
         }
 
-        const centroidByName = new Map<string, [number, number]>();
-        for (const f of geoJSON.features) {
-          const c = featureCentroid(f.geometry);
-          if (c) centroidByName.set(normalizeStr(String(f.properties.name ?? "")), c);
-        }
-
-        topMunicipios.slice(0, 8).forEach((m, idx) => {
-          const coords = CITY_COORDS[m.municipio] ?? centroidByName.get(normalizeStr(m.municipio));
-          if (!coords) return;
-          const el = muniPinEl(m.total, idx);
-          const pct = totalVal > 0 ? ((m.total / totalVal) * 100).toFixed(1) : "0";
-          const tecCount = tecnicos.filter(t => t.municipio === m.municipio).length;
-          el.addEventListener("mouseenter", () => {
-            popup.setLngLat(coords).setHTML(`
-              <div style="font-family:ui-sans-serif;padding:9px 13px;min-width:150px;background:rgba(15,15,30,0.95);border-radius:8px;border:1px solid rgba(74,108,247,0.4)">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-                  <span style="display:flex;width:18px;height:18px;border-radius:50%;background:rgba(74,108,247,0.2);color:#4A6CF7;font-size:9px;font-weight:800;align-items:center;justify-content:center">${idx + 1}</span>
-                  <span style="font-size:12px;font-weight:700;color:#fff">${m.municipio}</span>
-                </div>
-                <div style="font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:2px"><strong>${m.total}</strong> vistorias · ${pct}%</div>
-                ${tecCount > 0 ? `<div style="font-size:10px;color:#6A8DFF;margin-top:4px;padding-top:4px;border-top:1px solid rgba(74,108,247,0.2)">${tecCount} técnico${tecCount !== 1 ? "s" : ""} ativo${tecCount !== 1 ? "s" : ""}</div>` : ""}
-              </div>`).addTo(map);
-            el.style.transform = "scale(1.18)";
-            el.style.zIndex = "30";
-          });
-          el.addEventListener("mouseleave", () => {
-            popup.remove();
-            el.style.transform = "scale(1)";
-            el.style.zIndex = "";
-          });
-          const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-            .setLngLat(coords)
-            .addTo(map);
-          markersRef.current.push(mk);
-        });
+        setGeoLoaded(true);
       } catch {
         /* GeoJSON load failure is silent — widget degrades gracefully */
       }
@@ -748,13 +695,94 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
     return () => {
       alive = false;
       ro.disconnect();
-      popup.remove();
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Effect 2 — coloriza fill + cria pins quando dados chegam */
+  useEffect(() => {
+    const map = mapRef.current;
+    const geo = geoRef.current;
+    if (!map || !map.isStyleLoaded() || !geo || !topMunicipios.length) return;
+
+    const lookup = new Map(topMunicipios.map(m => [normalizeStr(m.municipio), m.total]));
+    const enriched = {
+      ...geo,
+      features: geo.features.map(f => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
+        },
+      })),
+    };
+
+    (map.getSource("vm-muni-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
+    map.setPaintProperty("vm-muni-fill", "fill-color", [
+      "case", [">", ["get", "total"], 0],
+      ["interpolate", ["linear"], ["get", "total"], 1, "#6dbf8b", 10, "#2d8a55", 50, "#1a6b3c"],
+      "#e8f5ee",
+    ] as mapboxgl.Expression);
+
+    markersRef.current.forEach(mk => mk.remove());
+    markersRef.current = [];
+
+    let pinIndex = 0;
+    for (const feature of enriched.features) {
+      const total = Number(feature.properties.total ?? 0);
+      if (total === 0) continue;
+
+      const name = String((feature.properties as Record<string, unknown>).name ?? "");
+      const item = topMunicipios.find(m => normalizeStr(m.municipio) === normalizeStr(name));
+      if (!item) continue;
+
+      const coords = featureCentroid(feature.geometry);
+      if (!coords) continue;
+
+      const index = pinIndex++;
+
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = "position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s ease";
+
+      const radar = document.createElement("div");
+      radar.style.cssText = `position:absolute;width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(74,108,247,0.4);animation:radarPulse 2s ${(index * 0.5).toFixed(1)}s ease-out infinite;pointer-events:none`;
+
+      const ring = document.createElement("div");
+      ring.style.cssText = "position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.7);animation:pinFloat 2.5s ease-in-out infinite alternate;pointer-events:none";
+
+      const core = document.createElement("div");
+      core.style.cssText = "position:absolute;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;font-family:ui-sans-serif;pointer-events:none";
+      core.textContent = String(item.total);
+
+      const tooltip = document.createElement("div");
+      tooltip.style.cssText = "position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:rgba(15,15,30,0.95);border:1px solid rgba(74,108,247,0.4);border-radius:8px;padding:6px 12px;color:white;font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.2s;font-family:ui-sans-serif";
+      tooltip.textContent = `${item.municipio} · ${item.total} vistorias`;
+
+      wrapper.appendChild(radar);
+      wrapper.appendChild(ring);
+      wrapper.appendChild(core);
+      wrapper.appendChild(tooltip);
+
+      wrapper.addEventListener("mouseenter", () => {
+        tooltip.style.opacity = "1";
+        wrapper.style.transform = "scale(1.18)";
+        wrapper.style.zIndex = "30";
+      });
+      wrapper.addEventListener("mouseleave", () => {
+        tooltip.style.opacity = "0";
+        wrapper.style.transform = "scale(1)";
+        wrapper.style.zIndex = "";
+      });
+
+      const mk = new mapboxgl.Marker({ element: wrapper, anchor: "center" })
+        .setLngLat(coords)
+        .addTo(map);
+      markersRef.current.push(mk);
+    }
+  }, [topMunicipios, geoLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Card className="h-full">
@@ -1143,11 +1171,11 @@ export default function PainelOverviewPage() {
           {/* Grid pattern */}
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none", backgroundImage: "linear-gradient(rgba(0,255,136,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,0.025) 1px,transparent 1px)", backgroundSize: "40px 40px" }} />
 
-          {/* Content row — bottom:56 leaves room for footer */}
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 56, display: "flex", alignItems: "stretch" }}>
+          {/* Content row */}
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "stretch" }}>
 
             {/* LEFT — título + contexto + botões */}
-            <div style={{ width: 320, padding: "38px 28px 38px 40px", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", zIndex: 10 }}>
+            <div style={{ width: 360, padding: "38px 28px 38px 40px", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", zIndex: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                 <span style={{ display: "inline-block", width: 40, height: 2, background: "#00ff88", flexShrink: 0 }} />
                 <span style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.2em", color: "#00ff88" }}>CENTRAL GIOC</span>
@@ -1158,13 +1186,13 @@ export default function PainelOverviewPage() {
               </h1>
               <div style={{ width: 48, height: 2, background: "#00ff88", marginBottom: 18 }} />
               <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 28 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "rgba(255,255,255,0.7)" }}>
-                  <Users style={{ width: 14, height: 14, color: "#00ff88", flexShrink: 0 }} />
-                  {stats ? `${fmtNum(stats.pendentes + stats.emVistoria)} vistorias na fila • ${expediente}/${stats.tecnicosAtivos} em expediente` : "—"}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.78rem", color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap" }}>
+                  <Users style={{ width: 13, height: 13, color: "#00ff88", flexShrink: 0 }} />
+                  {stats ? `${fmtNum(stats.pendentes + stats.emVistoria)} na fila · ${expediente}/${stats.tecnicosAtivos} em expediente` : "—"}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "rgba(255,255,255,0.7)" }}>
-                  <MapIcon style={{ width: 14, height: 14, color: "#00ff88", flexShrink: 0 }} />
-                  {stats ? `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo • ${fmtNum(stats.municipiosAtivos)} município${stats.municipiosAtivos !== 1 ? "s" : ""} ativo${stats.municipiosAtivos !== 1 ? "s" : ""}` : "—"}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.78rem", color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap" }}>
+                  <MapIcon style={{ width: 13, height: 13, color: "#00ff88", flexShrink: 0 }} />
+                  {stats ? `${emCampo} em campo · ${fmtNum(stats.municipiosAtivos)} municípios ativos` : "—"}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1244,7 +1272,7 @@ export default function PainelOverviewPage() {
                         <span style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.15em", color }}>{k.label.toUpperCase()}</span>
                         <Icon style={{ width: 13, height: 13, color, opacity: 0.75 }} />
                       </div>
-                      <div style={{ fontSize: "2.8rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: 4 }}>
+                      <div style={{ fontSize: "3.2rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: 4 }}>
                         {k.raw != null ? <CountUp value={k.raw} /> : "—"}
                       </div>
                       <div style={{ fontSize: "0.78rem", marginBottom: 10, color: delta ? (delta.up ? "#00ff88" : "#f59e0b") : "rgba(255,255,255,0.35)" }}>
@@ -1261,23 +1289,6 @@ export default function PainelOverviewPage() {
 
           </div>
 
-          {/* FOOTER */}
-          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 56, background: "rgba(0,0,0,0.45)", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-around", padding: "0 32px", zIndex: 15 }}>
-            {([
-              { icon: Shield,     title: "Dados seguros",             sub: "Criptografia de ponta a ponta"    },
-              { icon: Clock,      title: "Atualização em tempo real", sub: "Sincronizado a cada 28 segundos" },
-              { icon: BarChart2,  title: "Alta disponibilidade",      sub: "99,9% de uptime garantido"       },
-              { icon: Headphones, title: "Suporte 24/7",              sub: "Equipe sempre pronta"            },
-            ] as const).map(({ icon: Icon, title, sub }) => (
-              <div key={title} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Icon style={{ width: 15, height: 15, color: "rgba(255,255,255,0.35)", flexShrink: 0 }} />
-                <div>
-                  <p style={{ fontSize: "0.8rem", fontWeight: 600, color: "#fff", margin: 0, lineHeight: 1.4 }}>{title}</p>
-                  <p style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.4)", margin: 0, lineHeight: 1.4 }}>{sub}</p>
-                </div>
-              </div>
-            ))}
-          </div>
 
         </div>
 
