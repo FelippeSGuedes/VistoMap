@@ -615,7 +615,7 @@ interface MunicipiosMapWidgetProps {
 
 function muniPinEl(total: number, index = 0): HTMLElement {
   const el = document.createElement("div");
-  el.style.cssText = "position:relative;width:44px;height:44px;cursor:pointer";
+  el.style.cssText = "position:relative;width:44px;height:44px;cursor:pointer;transition:transform 0.2s ease";
   el.innerHTML =
     `<div style="position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(74,108,247,0.3);animation:muniRadarPulse 2s ease-out infinite;animation-delay:${(index * 0.5).toFixed(1)}s;pointer-events:none"></div>` +
     `<div style="position:absolute;inset:4px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.6);animation:muniPinFloat 2.5s ease-in-out infinite alternate;pointer-events:none"></div>` +
@@ -727,8 +727,14 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
                 <div style="font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:2px"><strong>${m.total}</strong> vistorias · ${pct}%</div>
                 ${tecCount > 0 ? `<div style="font-size:10px;color:#6A8DFF;margin-top:4px;padding-top:4px;border-top:1px solid rgba(74,108,247,0.2)">${tecCount} técnico${tecCount !== 1 ? "s" : ""} ativo${tecCount !== 1 ? "s" : ""}</div>` : ""}
               </div>`).addTo(map);
+            el.style.transform = "scale(1.18)";
+            el.style.zIndex = "30";
           });
-          el.addEventListener("mouseleave", () => popup.remove());
+          el.addEventListener("mouseleave", () => {
+            popup.remove();
+            el.style.transform = "scale(1)";
+            el.style.zIndex = "";
+          });
           const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
             .setLngLat(coords)
             .addTo(map);
@@ -1184,7 +1190,7 @@ export default function PainelOverviewPage() {
             </div>
 
             {/* CENTER — vis.png + efeitos de camada */}
-            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: "url('/vis.png')", backgroundSize: "cover", backgroundPosition: "center" }}>
+            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: `url('${asset("/vis.png")}')`, backgroundSize: "cover", backgroundPosition: "center" }}>
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 35%, transparent 65%, #0d1117 100%)", pointerEvents: "none" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 60%, #0d1117 100%)", pointerEvents: "none" }} />
               <ParticlesCanvas />
