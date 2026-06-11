@@ -613,12 +613,13 @@ interface MunicipiosMapWidgetProps {
   tecnicos: TecnicoAtivo[];
 }
 
-function muniPinEl(total: number): HTMLElement {
+function muniPinEl(total: number, index = 0): HTMLElement {
   const el = document.createElement("div");
-  el.style.cssText = "position:relative;width:30px;height:30px;cursor:pointer";
+  el.style.cssText = "position:relative;width:44px;height:44px;cursor:pointer";
   el.innerHTML =
-    '<div style="position:absolute;inset:-4px;border-radius:50%;border:2px solid #4A6CF7;animation:vmRing 2.4s ease-out infinite"></div>' +
-    `<div style="position:absolute;inset:0;border-radius:50%;background:#4A6CF7;border:2px solid #fff;box-shadow:0 2px 10px rgba(74,108,247,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;font-family:ui-sans-serif">${total}</div>`;
+    `<div style="position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(74,108,247,0.3);animation:muniRadarPulse 2s ease-out infinite;animation-delay:${(index * 0.5).toFixed(1)}s;pointer-events:none"></div>` +
+    `<div style="position:absolute;inset:4px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.6);animation:muniPinFloat 2.5s ease-in-out infinite alternate;pointer-events:none"></div>` +
+    `<div style="position:absolute;inset:9px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;font-family:ui-sans-serif;pointer-events:none">${total}</div>`;
   return el;
 }
 
@@ -636,7 +637,12 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
     injectStyle(
       "vm-dash-muni-css",
       ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}" +
-      ".vm-muni-popup .mapboxgl-popup-content{padding:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.14)}",
+      ".vm-muni-popup .mapboxgl-popup-content{padding:0;background:transparent;box-shadow:none;border:none}" +
+      ".vm-muni-popup .mapboxgl-popup-tip{border-top-color:rgba(15,15,30,0.95)!important}",
+    );
+    injectStyle("vm-muni-pin-kf",
+      "@keyframes muniRadarPulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(1.8);opacity:0}}" +
+      "@keyframes muniPinFloat{0%{transform:translateY(0)}100%{transform:translateY(-4px)}}",
     );
     injectStyle("vm-noc-css", NOC_CSS);
     mapboxgl.accessToken = token;
@@ -656,7 +662,8 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
     const popup = new mapboxgl.Popup({
       closeButton: false,
       closeOnClick: false,
-      offset: 18,
+      offset: 26,
+      anchor: "bottom",
       className: "vm-muni-popup",
     });
 
@@ -707,19 +714,18 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
         topMunicipios.slice(0, 8).forEach((m, idx) => {
           const coords = CITY_COORDS[m.municipio] ?? centroidByName.get(normalizeStr(m.municipio));
           if (!coords) return;
-          const el = muniPinEl(m.total);
+          const el = muniPinEl(m.total, idx);
           const pct = totalVal > 0 ? ((m.total / totalVal) * 100).toFixed(1) : "0";
           const tecCount = tecnicos.filter(t => t.municipio === m.municipio).length;
           el.addEventListener("mouseenter", () => {
             popup.setLngLat(coords).setHTML(`
-              <div style="font-family:ui-sans-serif;padding:10px 13px;min-width:150px">
+              <div style="font-family:ui-sans-serif;padding:9px 13px;min-width:150px;background:rgba(15,15,30,0.95);border-radius:8px;border:1px solid rgba(74,108,247,0.4)">
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-                  <span style="display:flex;width:18px;height:18px;border-radius:50%;background:rgba(74,108,247,0.14);color:#4A6CF7;font-size:9px;font-weight:800;align-items:center;justify-content:center">${idx + 1}</span>
-                  <span style="font-size:12px;font-weight:700;color:#111827">${m.municipio}</span>
+                  <span style="display:flex;width:18px;height:18px;border-radius:50%;background:rgba(74,108,247,0.2);color:#4A6CF7;font-size:9px;font-weight:800;align-items:center;justify-content:center">${idx + 1}</span>
+                  <span style="font-size:12px;font-weight:700;color:#fff">${m.municipio}</span>
                 </div>
-                <div style="font-size:11px;color:#374151;margin-bottom:2px"><strong>${m.total}</strong> vistorias</div>
-                <div style="font-size:10.5px;color:#6B7280">${pct}% do total</div>
-                ${tecCount > 0 ? `<div style="font-size:10px;color:#4A6CF7;margin-top:4px;padding-top:4px;border-top:1px solid #F3F4F6">${tecCount} técnico${tecCount !== 1 ? "s" : ""} ativo${tecCount !== 1 ? "s" : ""}</div>` : ""}
+                <div style="font-size:11px;color:rgba(255,255,255,0.8);margin-bottom:2px"><strong>${m.total}</strong> vistorias · ${pct}%</div>
+                ${tecCount > 0 ? `<div style="font-size:10px;color:#6A8DFF;margin-top:4px;padding-top:4px;border-top:1px solid rgba(74,108,247,0.2)">${tecCount} técnico${tecCount !== 1 ? "s" : ""} ativo${tecCount !== 1 ? "s" : ""}</div>` : ""}
               </div>`).addTo(map);
           });
           el.addEventListener("mouseleave", () => popup.remove());
@@ -746,40 +752,75 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos }: MunicipiosMapWidgetPro
 
   return (
     <Card className="h-full">
-      <div className="flex items-center justify-between px-5 pt-4 pb-3">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-[#4A6CF7]" strokeWidth={2} />
-          <span className="text-[13px] font-semibold text-[#111827]">Top Municípios · 30d</span>
+      {/* Accent strip */}
+      <div style={{ height: 3, background: "linear-gradient(90deg,#4A6CF7,#7C3AED,#4A9EFF)", flexShrink: 0 }} />
+      <div className="flex items-center justify-between px-5 pt-3.5 pb-2.5">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: "linear-gradient(135deg,rgba(74,108,247,0.15),rgba(124,58,237,0.12))", border: "1px solid rgba(74,108,247,0.18)" }}
+          >
+            <Building2 className="h-3.5 w-3.5 text-[#4A6CF7]" strokeWidth={2} />
+          </div>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[13px] font-semibold text-[#111827]">Top Municípios</span>
+            <span className="text-[9.5px] text-[#9CA3AF]">30 dias{totalGlobal > 0 ? ` · ${totalGlobal} vistorias` : ""}</span>
+          </div>
         </div>
-        <span className="text-[10px] text-[#9CA3AF]">passe o mouse</span>
+        <span
+          className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold text-[#4A6CF7]"
+          style={{ background: "rgba(74,108,247,0.08)", border: "1px solid rgba(74,108,247,0.14)" }}
+        >
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4A6CF7]" />
+          hover
+        </span>
       </div>
       <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" />
-      <ol className="flex flex-col gap-1 px-4 py-3">
+      <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
         {topMunicipios.slice(0, 5).map((m, i) => {
           const pct = totalGlobal > 0 ? (m.total / totalGlobal) * 100 : 0;
+          const rankBg =
+            i === 0 ? "linear-gradient(135deg,#F59E0B,#D97706)"
+            : i === 1 ? "linear-gradient(135deg,#94A3B8,#64748B)"
+            : i === 2 ? "linear-gradient(135deg,#CD7F32,#A0522D)"
+            : "rgba(74,108,247,0.10)";
+          const rankColor = i < 3 ? "#fff" : "#4A6CF7";
           return (
-            <li key={m.municipio} className="group flex items-center gap-2 rounded-lg px-1 py-[3px] transition hover:bg-[#F6F8FE]">
+            <motion.li
+              key={m.municipio}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.06 * i, duration: 0.35 }}
+              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[#F6F8FE]"
+              style={{ borderLeft: "2px solid transparent" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderLeftColor = "#4A6CF7"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderLeftColor = "transparent"; }}
+            >
               <span
-                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[8px] font-bold tabular-nums"
-                style={{
-                  background: i < 3 ? "rgba(74,108,247,0.12)" : "rgba(6,59,59,0.05)",
-                  color:      i < 3 ? "#4A6CF7"               : "#7A8896",
-                }}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
+                style={{ background: rankBg, color: rankColor, boxShadow: i < 3 ? "0 2px 6px rgba(0,0,0,0.14)" : "none" }}
               >
                 {i + 1}
               </span>
-              <span className="w-[88px] truncate text-[10.5px] font-medium text-[#374151]">{m.municipio}</span>
-              <span className="relative h-1 flex-1 overflow-hidden rounded-full bg-[#F3F4F6]">
-                <motion.span
-                  className="absolute inset-y-0 left-0 rounded-full"
-                  style={{ background: "linear-gradient(90deg,#4A6CF7,#7C9BFF)" }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pct}%` }}
-                  transition={{ duration: 0.7, delay: 0.08 * i, ease: [0.22, 0.7, 0.2, 1] }}
-                />
-              </span>
-              <span className="w-7 text-right tabular-nums text-[10.5px] font-semibold text-[#111827]">{m.total}</span>
-            </li>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between gap-1">
+                  <span className="truncate text-[10.5px] font-semibold text-[#374151]">{m.municipio}</span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="text-[9.5px] text-[#9CA3AF]">{pct.toFixed(0)}%</span>
+                    <span className="tabular-nums text-[11px] font-bold text-[#111827]">{m.total}</span>
+                  </div>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-[#EEF0F4]">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: i === 0 ? "linear-gradient(90deg,#4A6CF7,#7C3AED)" : "linear-gradient(90deg,#5E84F7,#93B3FF)" }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
+                  />
+                </div>
+              </div>
+            </motion.li>
           );
         })}
       </ol>
@@ -904,102 +945,6 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   );
 }
 
-/* ─── HeroMapWidget ─────────────────────────────────────────────────────── */
-
-function createPinEl(total: number, index: number): HTMLElement {
-  const el = document.createElement("div");
-  el.style.cssText = "position:relative;width:36px;height:36px;pointer-events:none";
-  el.innerHTML =
-    `<div style="position:absolute;inset:0;border-radius:50%;border:2px solid #4A6CF7;background:rgba(74,108,247,0.12);animation:vm-hero-pin-pulse 2s ease-out infinite;animation-delay:${(index * 0.4).toFixed(1)}s"></div>` +
-    `<div style="position:absolute;inset:6px;border-radius:50%;background:#4A6CF7;box-shadow:0 2px 8px rgba(74,108,247,0.5);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;font-family:ui-sans-serif">${total}</div>`;
-  return el;
-}
-
-interface HeroMapWidgetProps {
-  token: string;
-  topMunicipios: Array<{ municipio: string; total: number }>;
-}
-
-function HeroMapWidget({ token, topMunicipios }: HeroMapWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const munisRef     = useRef(topMunicipios);
-  munisRef.current   = topMunicipios;
-
-  useEffect(() => {
-    if (!containerRef.current || !token) return;
-    let alive = true;
-    injectStyle("vm-hero-map-css", ".vm-hero-map .mapboxgl-ctrl-logo,.vm-hero-map .mapboxgl-ctrl-attrib{display:none!important}");
-    injectStyle("vm-hero-pin-kf", "@keyframes vm-hero-pin-pulse{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.6);opacity:0}}");
-
-    mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/dark-v11",
-      center: [-48.5, -22.4] as [number, number],
-      zoom: 5.6,
-      interactive: false,
-      attributionControl: false,
-    });
-
-    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
-    ro.observe(containerRef.current);
-
-    map.on("load", async () => {
-      map.resize();
-
-      const res = await fetch(SP_GEOJSON_URL);
-      const geoJSON = await res.json() as {
-        type: string;
-        features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
-      };
-      if (!alive) return;
-
-      map.addSource("vm-hero-sp", { type: "geojson", data: geoJSON as never });
-      map.addLayer({ id: "vm-hero-fill",    type: "fill", source: "vm-hero-sp", paint: { "fill-color": "#00D084", "fill-opacity": 0.06 } });
-      map.addLayer({ id: "vm-hero-outline", type: "line", source: "vm-hero-sp", paint: { "line-color": "#00D084", "line-opacity": 0.65, "line-width": 1 } });
-
-      injectStyle("vm-hero-pulse", `
-        @keyframes vm-hero-ring{0%,100%{transform:scale(1);opacity:.9}70%{transform:scale(2.5);opacity:0}}
-        .vm-hero-dot{width:12px;height:12px;background:#00D084;border-radius:50%;box-shadow:0 0 16px #00D084,0 0 6px #00D084}
-        .vm-hero-ring{position:absolute;inset:-8px;border:2px solid #00D084;border-radius:50%;animation:vm-hero-ring 2s ease-out infinite}
-      `);
-      const dotEl = document.createElement("div");
-      dotEl.style.cssText = "position:relative;width:12px;height:12px";
-      dotEl.innerHTML = '<div class="vm-hero-dot"></div><div class="vm-hero-ring"></div>';
-      new mapboxgl.Marker({ element: dotEl }).setLngLat([-46.6333, -23.5505]).addTo(map);
-
-      // Centróides calculados direto do GeoJSON para os top municípios
-      const centroidByName = new Map<string, [number, number]>();
-      for (const f of geoJSON.features) {
-        const c = featureCentroid(f.geometry);
-        if (c) centroidByName.set(normalizeStr(String(f.properties.name ?? "")), c);
-      }
-
-      munisRef.current.slice(0, 8).forEach((m, idx) => {
-        const coords = centroidByName.get(normalizeStr(m.municipio));
-        if (!coords) return;
-        const el = createPinEl(m.total, idx);
-        const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-          .setLngLat(coords)
-          .addTo(map);
-        markersRef.current.push(mk);
-      });
-    });
-
-    return () => {
-      alive = false;
-      ro.disconnect();
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
-      map.remove();
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // h-full w-full evita o bug de canvas 12px: absolute inset-0 num flex-item sem h explícito
-  // faz o Mapbox ler offsetHeight correto no init (altura vem do pai via flex-stretch)
-  return <div ref={containerRef} className="vm-hero-map h-full w-full" />;
-}
 
 /* ─── ParticlesCanvas ───────────────────────────────────────────────────── */
 
@@ -1078,7 +1023,6 @@ export default function PainelOverviewPage() {
   const [historico,    setHistorico]    = useState<HistoricoAnalytics | null>(null);
   const [mapaRealtime, setMapaRealtime] = useState<PainelMapaResponse | null>(null);
   const [now,          setNow]          = useState(() => new Date());
-  const token = getMapboxToken();
 
   useEffect(() => {
     injectStyle("vm-noc-css", NOC_CSS);
@@ -1239,11 +1183,10 @@ export default function PainelOverviewPage() {
               </div>
             </div>
 
-            {/* CENTER — mapa Mapbox SP + efeitos de camada */}
-            <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-              {token && <HeroMapWidget token={token} topMunicipios={topMunis} />}
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 22%, transparent 78%, #0d1117 100%)", pointerEvents: "none" }} />
-              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 90, background: "linear-gradient(to bottom, transparent, #0d1117)", pointerEvents: "none" }} />
+            {/* CENTER — vis.png + efeitos de camada */}
+            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: "url('/vis.png')", backgroundSize: "cover", backgroundPosition: "center" }}>
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 35%, transparent 65%, #0d1117 100%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 60%, #0d1117 100%)", pointerEvents: "none" }} />
               <ParticlesCanvas />
               <div style={{ position: "absolute", left: "18%", top: "20%", width: 42, height: 42, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.55)", background: "rgba(0,255,136,0.07)", display: "flex", alignItems: "center", justifyContent: "center", animation: "vmFloat 3s ease-in-out infinite", pointerEvents: "none" }}>
                 <Activity style={{ width: 18, height: 18, color: "rgba(0,255,136,0.75)" }} />
