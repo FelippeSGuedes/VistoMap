@@ -9,13 +9,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
+  BarChart2,
   Building2,
   CheckCircle2,
   ClipboardList,
   Clock,
   FileText,
+  Headphones,
   Map as MapIcon,
   RotateCw,
+  Search,
+  Shield,
   ShieldAlert,
   Sparkles,
   TrendingUp,
@@ -164,6 +168,8 @@ const NOC_CSS = `
 @keyframes vmScan{0%{top:-14%}100%{top:114%}}
 @keyframes vmTick{from{width:0}to{width:100%}}
 @keyframes vmBlink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes vmHeroPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+@keyframes vmFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 .vm-rise{opacity:0;animation:vmFadeUp .55s cubic-bezier(.22,.7,.2,1) forwards}
 .vm-card{transition:transform .25s cubic-bezier(.22,.7,.2,1),box-shadow .25s ease}
 .vm-card:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(6,24,16,.10)}
@@ -900,13 +906,31 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
 
 /* ─── HeroMapWidget ─────────────────────────────────────────────────────── */
 
-function HeroMapWidget({ token }: { token: string }) {
+function createPinEl(total: number, index: number): HTMLElement {
+  const el = document.createElement("div");
+  el.style.cssText = "position:relative;width:36px;height:36px;pointer-events:none";
+  el.innerHTML =
+    `<div style="position:absolute;inset:0;border-radius:50%;border:2px solid #4A6CF7;background:rgba(74,108,247,0.12);animation:vm-hero-pin-pulse 2s ease-out infinite;animation-delay:${(index * 0.4).toFixed(1)}s"></div>` +
+    `<div style="position:absolute;inset:6px;border-radius:50%;background:#4A6CF7;box-shadow:0 2px 8px rgba(74,108,247,0.5);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;font-family:ui-sans-serif">${total}</div>`;
+  return el;
+}
+
+interface HeroMapWidgetProps {
+  token: string;
+  topMunicipios: Array<{ municipio: string; total: number }>;
+}
+
+function HeroMapWidget({ token, topMunicipios }: HeroMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const markersRef   = useRef<mapboxgl.Marker[]>([]);
+  const munisRef     = useRef(topMunicipios);
+  munisRef.current   = topMunicipios;
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
     let alive = true;
     injectStyle("vm-hero-map-css", ".vm-hero-map .mapboxgl-ctrl-logo,.vm-hero-map .mapboxgl-ctrl-attrib{display:none!important}");
+    injectStyle("vm-hero-pin-kf", "@keyframes vm-hero-pin-pulse{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.6);opacity:0}}");
 
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
@@ -918,19 +942,21 @@ function HeroMapWidget({ token }: { token: string }) {
       attributionControl: false,
     });
 
-    // recalcula canvas sempre que o container mudar de tamanho
     const ro = new ResizeObserver(() => { if (alive) map.resize(); });
     ro.observe(containerRef.current);
 
     map.on("load", async () => {
-      // força o canvas a medir o container já com dimensões reais
       map.resize();
 
       const res = await fetch(SP_GEOJSON_URL);
-      const geoJSON = await res.json();
+      const geoJSON = await res.json() as {
+        type: string;
+        features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
+      };
       if (!alive) return;
-      map.addSource("vm-hero-sp", { type: "geojson", data: geoJSON });
-      map.addLayer({ id: "vm-hero-fill", type: "fill", source: "vm-hero-sp", paint: { "fill-color": "#00D084", "fill-opacity": 0.06 } });
+
+      map.addSource("vm-hero-sp", { type: "geojson", data: geoJSON as never });
+      map.addLayer({ id: "vm-hero-fill",    type: "fill", source: "vm-hero-sp", paint: { "fill-color": "#00D084", "fill-opacity": 0.06 } });
       map.addLayer({ id: "vm-hero-outline", type: "line", source: "vm-hero-sp", paint: { "line-color": "#00D084", "line-opacity": 0.65, "line-width": 1 } });
 
       injectStyle("vm-hero-pulse", `
@@ -938,18 +964,106 @@ function HeroMapWidget({ token }: { token: string }) {
         .vm-hero-dot{width:12px;height:12px;background:#00D084;border-radius:50%;box-shadow:0 0 16px #00D084,0 0 6px #00D084}
         .vm-hero-ring{position:absolute;inset:-8px;border:2px solid #00D084;border-radius:50%;animation:vm-hero-ring 2s ease-out infinite}
       `);
-      const el = document.createElement("div");
-      el.style.cssText = "position:relative;width:12px;height:12px";
-      el.innerHTML = '<div class="vm-hero-dot"></div><div class="vm-hero-ring"></div>';
-      new mapboxgl.Marker({ element: el }).setLngLat([-46.6333, -23.5505]).addTo(map);
+      const dotEl = document.createElement("div");
+      dotEl.style.cssText = "position:relative;width:12px;height:12px";
+      dotEl.innerHTML = '<div class="vm-hero-dot"></div><div class="vm-hero-ring"></div>';
+      new mapboxgl.Marker({ element: dotEl }).setLngLat([-46.6333, -23.5505]).addTo(map);
+
+      // Centróides calculados direto do GeoJSON para os top municípios
+      const centroidByName = new Map<string, [number, number]>();
+      for (const f of geoJSON.features) {
+        const c = featureCentroid(f.geometry);
+        if (c) centroidByName.set(normalizeStr(String(f.properties.name ?? "")), c);
+      }
+
+      munisRef.current.slice(0, 8).forEach((m, idx) => {
+        const coords = centroidByName.get(normalizeStr(m.municipio));
+        if (!coords) return;
+        const el = createPinEl(m.total, idx);
+        const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
+          .setLngLat(coords)
+          .addTo(map);
+        markersRef.current.push(mk);
+      });
     });
 
-    return () => { alive = false; ro.disconnect(); map.remove(); };
-  }, [token]);
+    return () => {
+      alive = false;
+      ro.disconnect();
+      markersRef.current.forEach(mk => mk.remove());
+      markersRef.current = [];
+      map.remove();
+    };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // absolute inset-0 preenche o pai relative (flex-1 overflow-hidden) sem depender de h-full
-  // sem background, border ou shadow — o canvas dark-v11 cobre tudo
-  return <div ref={containerRef} className="vm-hero-map absolute inset-0" />;
+  // h-full w-full evita o bug de canvas 12px: absolute inset-0 num flex-item sem h explícito
+  // faz o Mapbox ler offsetHeight correto no init (altura vem do pai via flex-stretch)
+  return <div ref={containerRef} className="vm-hero-map h-full w-full" />;
+}
+
+/* ─── ParticlesCanvas ───────────────────────────────────────────────────── */
+
+function ParticlesCanvas() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    let raf = 0;
+    const resize = () => { cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(cv);
+    const N = 26;
+    const pts = Array.from({ length: N }, () => ({
+      x: Math.random(), y: Math.random(),
+      vx: (Math.random() - 0.5) * 0.00014,
+      vy: (Math.random() - 0.5) * 0.00014,
+    }));
+    const draw = () => {
+      const { width: w, height: h } = cv;
+      ctx.clearRect(0, 0, w, h);
+      pts.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > 1) p.vx *= -1;
+        if (p.y < 0 || p.y > 1) p.vy *= -1;
+      });
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const dx = (pts[i].x - pts[j].x) * w;
+          const dy = (pts[i].y - pts[j].y) * h;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < 115) {
+            ctx.globalAlpha = (1 - d / 115) * 0.28;
+            ctx.strokeStyle = "#00ff88";
+            ctx.lineWidth = 0.6;
+            ctx.beginPath();
+            ctx.moveTo(pts[i].x * w, pts[i].y * h);
+            ctx.lineTo(pts[j].x * w, pts[j].y * h);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = "#00ff88";
+      pts.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x * w, p.y * h, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, []);
+  return (
+    <canvas
+      ref={ref}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+    />
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -967,6 +1081,7 @@ export default function PainelOverviewPage() {
   const token = getMapboxToken();
 
   useEffect(() => {
+    injectStyle("vm-noc-css", NOC_CSS);
     let alive = true;
     const load = async () => {
       const [s, t, r, a, h, mp] = await Promise.all([
@@ -1041,156 +1156,182 @@ export default function PainelOverviewPage() {
   return (
     <div className="space-y-4 pb-4">
 
-      {/* ════════════ HERO (não alterar) ════════════ */}
-      <div className="relative overflow-hidden rounded-2xl" style={{ height: 500, background: "#050505" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={asset("/vis.png")}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover object-right"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{ background: "linear-gradient(to right, rgba(2,8,5,0.92) 0%, rgba(2,8,5,0.88) 14%, rgba(0,6,4,0.10) 28%, transparent 45%, transparent 62%, rgba(0,0,0,0.28) 100%)" }}
-        />
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage: ["linear-gradient(rgba(0,208,132,0.04) 1px,transparent 1px)", "linear-gradient(90deg,rgba(0,208,132,0.04) 1px,transparent 1px)"].join(","),
-            backgroundSize: "40px 40px",
-          }}
-        />
-        <div
-          className="absolute inset-x-0 top-0 z-10 flex h-11 items-center gap-4 px-6"
-          style={{ borderBottom: "1px solid rgba(0,208,132,0.13)" }}
-        >
-          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full" style={{ background: ACCENT, boxShadow: `0 0 8px ${ACCENT}` }} />
-          <span className="text-[10px] font-bold uppercase tracking-[0.26em]" style={{ color: ACCENT }}>SISTEMA EM OPERAÇÃO</span>
-          <span className="h-3 w-px" style={{ background: "rgba(255,255,255,0.09)" }} />
-          <span className="text-[9px] font-mono" style={{ color: "rgba(255,255,255,0.22)" }}>atualiza a cada 20s</span>
-          <div className="ml-auto flex items-center gap-2.5">
+      {/* ════════════ HERO NOC ════════════ */}
+      <div style={{ borderRadius: 16, overflow: "hidden" }}>
+
+        {/* NAVBAR */}
+        <div style={{ height: 48, background: "#0a0a0a", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", padding: "0 24px", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#00ff88", animation: "vmHeroPulse 2s infinite", display: "inline-block", flexShrink: 0 }} />
+            <span style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.12em", color: "#00ff88", whiteSpace: "nowrap" }}>SISTEMA EM OPERAÇÃO</span>
+            <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>atualiza a cada 28s</span>
+          </div>
+          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            <div style={{ width: 360, display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "0 12px", height: 32 }}>
+              <Search style={{ width: 13, height: 13, color: "rgba(255,255,255,0.35)", flexShrink: 0 }} />
+              <span style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.28)" }}>Buscar por ativo, técnico ou local</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
             {alertaRevisitas.length > 0 && (
-              <Link href="/painel/revisitas" className="flex items-center gap-1.5 rounded-lg border border-amber-800/40 bg-amber-900/30 px-2.5 py-1 text-[10.5px] font-semibold text-amber-400 transition hover:bg-amber-900/50">
-                <ShieldAlert className="h-3 w-3" />{alertaRevisitas.length} alerta{alertaRevisitas.length !== 1 ? "s" : ""}
+              <Link href="/painel/revisitas" style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: 6, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.1)", padding: "4px 10px", fontSize: "0.76rem", fontWeight: 600, color: "#f59e0b", textDecoration: "none" }}>
+                <ShieldAlert style={{ width: 12, height: 12 }} />{alertaRevisitas.length} alerta{alertaRevisitas.length !== 1 ? "s" : ""}
               </Link>
             )}
-            <div className="rounded-lg px-3 py-[5px]" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }}>
-              <span className="text-[12px] font-mono font-semibold tabular-nums" style={{ color: "#C8D8E0" }}>
-                {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-              </span>
-            </div>
-            <Link
-              href="/painel/vistorias"
-              className="flex items-center gap-1.5 rounded-lg px-3 py-[6px] text-[11.5px] font-bold tracking-wide transition-all hover:brightness-110 hover:scale-105 active:scale-[.97]"
-              style={{ background: ACCENT, color: "#050505", boxShadow: `0 0 18px ${ACCENT}55` }}
-            >
-              <UserPlus className="h-3.5 w-3.5" />Atribuir
+            <span style={{ fontSize: "1.05rem", fontWeight: 600, color: "#fff", fontFamily: "monospace", letterSpacing: "0.04em" }}>
+              {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+            <Link href="/painel/vistorias" style={{ display: "flex", alignItems: "center", gap: 6, background: "#00ff88", color: "#050505", fontWeight: 700, fontSize: "0.83rem", borderRadius: 8, padding: "8px 20px", textDecoration: "none" }}>
+              <UserPlus style={{ width: 13, height: 13 }} />Atribuir
             </Link>
           </div>
         </div>
-        <div className="absolute inset-x-0 bottom-0 top-11 flex items-stretch">
 
-          {/* LEFT — título + stats inline + botões */}
-          <div className="relative z-10 flex w-full shrink-0 flex-col justify-between p-7 md:w-[280px]">
-            <div>
-              <div className="mb-4 flex items-center gap-2">
-                <span className="h-px w-6" style={{ background: "rgba(0,208,132,0.35)" }} />
-                <span className="text-[8.5px] font-bold uppercase tracking-[0.30em]" style={{ color: "rgba(0,208,132,0.55)" }}>CENTRAL GIOC</span>
+        {/* HERO BODY */}
+        <div style={{ height: 520, background: "#0d1117", position: "relative", overflow: "hidden" }}>
+
+          {/* Grid pattern */}
+          <div style={{ position: "absolute", inset: 0, pointerEvents: "none", backgroundImage: "linear-gradient(rgba(0,255,136,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,0.025) 1px,transparent 1px)", backgroundSize: "40px 40px" }} />
+
+          {/* Content row — bottom:56 leaves room for footer */}
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 56, display: "flex", alignItems: "stretch" }}>
+
+            {/* LEFT — título + contexto + botões */}
+            <div style={{ width: 320, padding: "38px 28px 38px 40px", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", zIndex: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                <span style={{ display: "inline-block", width: 40, height: 2, background: "#00ff88", flexShrink: 0 }} />
+                <span style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.2em", color: "#00ff88" }}>CENTRAL GIOC</span>
               </div>
-              <h1 className="text-[36px] font-bold leading-[1.12] tracking-tight" style={{ color: "#DDF2EC" }}>
-                Operação em<br />
-                <span style={{ color: ACCENT, textShadow: `0 0 32px ${ACCENT}55` }}>movimento.</span>
+              <h1 style={{ fontSize: "clamp(2rem,3.6vw,3rem)", fontWeight: 800, lineHeight: 1.08, letterSpacing: "-0.02em", color: "#fff", margin: "0 0 16px" }}>
+                Operação<br />em<br />
+                <span style={{ color: "#00ff88" }}>movimento.</span>
               </h1>
-              {stats ? (
-                <p className="mt-4 text-[12px] leading-relaxed" style={{ color: "rgba(255,255,255,0.58)" }}>
-                  {fmtNum(stats.pendentes + stats.emVistoria)} vistorias na fila{" • "}
-                  {expediente}/{stats.tecnicosAtivos} em expediente{" • "}
-                  {emCampo} técnico{emCampo !== 1 ? "s" : ""} em campo{" • "}
-                  {fmtNum(stats.municipiosAtivos)} município{stats.municipiosAtivos !== 1 ? "s" : ""} ativos.
-                </p>
-              ) : (
-                <div className="mt-4 space-y-2">
-                  {[78, 70, 54].map((w, i) => (
-                    <div key={i} className="h-3 animate-pulse rounded" style={{ background: "rgba(255,255,255,0.07)", width: `${w}%` }} />
-                  ))}
+              <div style={{ width: 48, height: 2, background: "#00ff88", marginBottom: 18 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 28 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "rgba(255,255,255,0.7)" }}>
+                  <Users style={{ width: 14, height: 14, color: "#00ff88", flexShrink: 0 }} />
+                  {stats ? `${fmtNum(stats.pendentes + stats.emVistoria)} vistorias na fila • ${expediente}/${stats.tecnicosAtivos} em expediente` : "—"}
                 </div>
-              )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "rgba(255,255,255,0.7)" }}>
+                  <MapIcon style={{ width: 14, height: 14, color: "#00ff88", flexShrink: 0 }} />
+                  {stats ? `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo • ${fmtNum(stats.municipiosAtivos)} município${stats.municipiosAtivos !== 1 ? "s" : ""} ativo${stats.municipiosAtivos !== 1 ? "s" : ""}` : "—"}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <Link
+                  href="/painel/vistorias"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#00ff88", color: "#050505", fontWeight: 700, fontSize: "0.88rem", borderRadius: 8, padding: "14px 20px", textDecoration: "none", transition: "transform 0.2s ease" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(4px)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(0)"; }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}><UserPlus style={{ width: 15, height: 15 }} />Atribuir Vistorias</span>
+                  <ArrowRight style={{ width: 14, height: 14 }} />
+                </Link>
+                <Link
+                  href="/painel/mapa"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "transparent", color: "#fff", fontWeight: 500, fontSize: "0.88rem", borderRadius: 8, padding: "14px 20px", textDecoration: "none", border: "1px solid rgba(255,255,255,0.2)", transition: "transform 0.2s ease" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(4px)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(0)"; }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}><MapIcon style={{ width: 15, height: 15 }} />Mapa em Tempo Real</span>
+                  <ArrowRight style={{ width: 14, height: 14 }} />
+                </Link>
+              </div>
             </div>
-            <div className="flex flex-col gap-2.5">
-              <Link
-                href="/painel/vistorias"
-                className="flex items-center justify-center gap-2 rounded-[16px] py-3 text-[13px] font-bold tracking-wide transition-all hover:brightness-110 hover:scale-[1.02] active:scale-[.98]"
-                style={{ background: ACCENT, color: "#050505", boxShadow: `0 4px 22px ${ACCENT}50` }}
-              >
-                <UserPlus className="h-4 w-4" />Atribuir Vistorias
-              </Link>
-              <Link
-                href="/painel/mapa"
-                className="flex items-center justify-center gap-2 rounded-[16px] py-3 text-[13px] font-semibold tracking-wide transition-all hover:scale-[1.02] active:scale-[.98]"
-                style={{ background: "rgba(0,208,132,0.08)", color: ACCENT, border: "1px solid rgba(0,208,132,0.28)" }}
-              >
-                <MapIcon className="h-4 w-4" />Mapa em Tempo Real
-              </Link>
+
+            {/* CENTER — mapa Mapbox SP + efeitos de camada */}
+            <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+              {token && <HeroMapWidget token={token} topMunicipios={topMunis} />}
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 22%, transparent 78%, #0d1117 100%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 90, background: "linear-gradient(to bottom, transparent, #0d1117)", pointerEvents: "none" }} />
+              <ParticlesCanvas />
+              <div style={{ position: "absolute", left: "18%", top: "20%", width: 42, height: 42, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.55)", background: "rgba(0,255,136,0.07)", display: "flex", alignItems: "center", justifyContent: "center", animation: "vmFloat 3s ease-in-out infinite", pointerEvents: "none" }}>
+                <Activity style={{ width: 18, height: 18, color: "rgba(0,255,136,0.75)" }} />
+              </div>
+              <div style={{ position: "absolute", right: "16%", top: "22%", width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.5)", background: "rgba(0,255,136,0.06)", display: "flex", alignItems: "center", justifyContent: "center", animation: "vmFloat 3s ease-in-out 1.5s infinite", pointerEvents: "none" }}>
+                <Zap style={{ width: 16, height: 16, color: "rgba(0,255,136,0.7)" }} />
+              </div>
+              <div style={{ position: "absolute", left: "50%", top: "44%", transform: "translate(-50%,-50%)", pointerEvents: "none" }}>
+                <div style={{ position: "relative", width: 14, height: 14 }}>
+                  <span style={{ position: "absolute", inset: -14, borderRadius: "50%", border: "1.5px solid rgba(0,255,136,0.5)", animation: "vmRing 2.2s ease-out infinite", display: "block" }} />
+                  <span style={{ position: "absolute", inset: -8, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.3)", animation: "vmRing 2.2s ease-out 0.7s infinite", display: "block" }} />
+                  <span style={{ display: "block", width: "100%", height: "100%", borderRadius: "50%", background: "#00ff88", boxShadow: "0 0 14px #00ff88" }} />
+                </div>
+              </div>
+              <div style={{ position: "absolute", inset: "0 0 0 0", height: 80, background: "linear-gradient(180deg,transparent,rgba(0,255,136,0.05),transparent)", animation: "vmScan 7s linear infinite", pointerEvents: "none" }} />
             </div>
-          </div>
 
-          {/* CENTER — mapa Mapbox SP */}
-          <div className="relative hidden flex-1 overflow-hidden lg:block">
-            {token && <HeroMapWidget token={token} />}
-            <div
-              className="pointer-events-none absolute inset-x-0 h-20"
-              style={{
-                background: "linear-gradient(180deg,transparent,rgba(0,208,132,0.07),transparent)",
-                animation: "vmScan 7s linear infinite",
-              }}
-            />
-          </div>
-
-          {/* RIGHT — 4 KPI cards 2×2 */}
-          <div className="relative z-10 hidden w-[370px] shrink-0 items-center p-4 md:flex">
-            <div className="grid w-full grid-cols-2 gap-2">
-              {kpis.slice(0, 4).map((k, i) => {
-                const Icon = k.icon;
-                const card = (
-                  <motion.div
-                    initial={{ opacity: 0, x: 16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.15 + i * 0.07, ease: "easeOut", duration: 0.38 }}
-                    whileHover={{ scale: 1.03, transition: { type: "spring", stiffness: 300, damping: 22 } }}
-                    className="relative flex flex-col justify-between overflow-hidden rounded-[16px] p-4"
-                    style={{
-                      background: "rgba(4,14,10,0.80)",
-                      border: "1px solid rgba(255,255,255,0.09)",
-                      backdropFilter: "blur(22px)",
-                      boxShadow: "0 6px 24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
-                      cursor: k.href ? "pointer" : "default",
-                      minHeight: "108px",
-                    }}
-                  >
-                    <div className="absolute inset-x-0 top-0 h-[3px] rounded-t-[16px]" style={{ background: `linear-gradient(90deg, ${k.color}, ${k.color}00)` }} />
-                    <div className="flex items-start justify-between">
-                      <span className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: "rgba(255,255,255,0.40)" }}>{k.label}</span>
-                      <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ background: `${k.color}18` }}>
-                        <Icon className="h-3.5 w-3.5" style={{ color: k.color }} strokeWidth={2} />
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-[38px] font-bold leading-none tabular-nums tracking-tight" style={{ color: "#EEF9F4" }}>
-                        {k.raw != null ? <CountUp value={k.raw} /> : k.value}
+            {/* RIGHT — 4 KPI cards 2×2 */}
+            <div style={{ width: 380, padding: 16, display: "flex", alignItems: "center", position: "relative", zIndex: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
+                {([
+                  { k: kpis[0], color: "#00ff88",  delta: { up: true,  pct: "12%" } as { up: boolean; pct: string } | null },
+                  { k: kpis[1], color: "#4A9EFF",  delta: null                                                              },
+                  { k: kpis[2], color: "#00ff88",  delta: { up: true,  pct: "20%" } as { up: boolean; pct: string } | null },
+                  { k: kpis[3], color: "#f59e0b",  delta: null                                                              },
+                ]).map(({ k, color, delta }, i) => {
+                  const Icon = k.icon;
+                  const maxVal = Math.max(kpis[0].raw ?? 0, kpis[1].raw ?? 0, kpis[2].raw ?? 0, kpis[3].raw ?? 0, 1);
+                  const barPct = k.raw != null ? Math.min(Math.round((k.raw / maxVal) * 100), 100) : 0;
+                  return (
+                    <motion.div
+                      key={k.label}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.12 + i * 0.07, duration: 0.35 }}
+                      whileHover={{ scale: 1.02 }}
+                      onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.borderColor = "rgba(255,255,255,0.2)"; t.style.background = "rgba(255,255,255,0.07)"; }}
+                      onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.borderColor = "rgba(255,255,255,0.08)"; t.style.background = "rgba(255,255,255,0.04)"; }}
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 12,
+                        padding: 18,
+                        backdropFilter: "blur(8px)",
+                        cursor: k.href ? "pointer" : "default",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.15em", color }}>{k.label.toUpperCase()}</span>
+                        <Icon style={{ width: 13, height: 13, color, opacity: 0.75 }} />
                       </div>
-                      <div className="mt-1 text-[9px] leading-tight" style={{ color: "rgba(255,255,255,0.34)" }}>{k.sub}</div>
-                    </div>
-                  </motion.div>
-                );
-                return k.href
-                  ? <Link key={k.label} href={k.href} className="block">{card}</Link>
-                  : <div key={k.label}>{card}</div>;
-              })}
+                      <div style={{ fontSize: "2.8rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: 4 }}>
+                        {k.raw != null ? <CountUp value={k.raw} /> : "—"}
+                      </div>
+                      <div style={{ fontSize: "0.78rem", marginBottom: 10, color: delta ? (delta.up ? "#00ff88" : "#f59e0b") : "rgba(255,255,255,0.35)" }}>
+                        {delta ? `${delta.up ? "↑" : "↓"} ${delta.pct} vs ontem` : "sem alteração"}
+                      </div>
+                      <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", borderRadius: 999, background: color, width: `${barPct}%`, transition: "width 1s ease" }} />
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
             </div>
+
+          </div>
+
+          {/* FOOTER */}
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 56, background: "rgba(0,0,0,0.45)", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-around", padding: "0 32px", zIndex: 15 }}>
+            {([
+              { icon: Shield,     title: "Dados seguros",             sub: "Criptografia de ponta a ponta"    },
+              { icon: Clock,      title: "Atualização em tempo real", sub: "Sincronizado a cada 28 segundos" },
+              { icon: BarChart2,  title: "Alta disponibilidade",      sub: "99,9% de uptime garantido"       },
+              { icon: Headphones, title: "Suporte 24/7",              sub: "Equipe sempre pronta"            },
+            ] as const).map(({ icon: Icon, title, sub }) => (
+              <div key={title} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Icon style={{ width: 15, height: 15, color: "rgba(255,255,255,0.35)", flexShrink: 0 }} />
+                <div>
+                  <p style={{ fontSize: "0.8rem", fontWeight: 600, color: "#fff", margin: 0, lineHeight: 1.4 }}>{title}</p>
+                  <p style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.4)", margin: 0, lineHeight: 1.4 }}>{sub}</p>
+                </div>
+              </div>
+            ))}
           </div>
 
         </div>
+
       </div>
 
       {/* ════════════ LINHA 1: Velocity | Heatmap SP | Equipe ════════════ */}
