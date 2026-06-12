@@ -492,7 +492,7 @@ export async function fetchFilaVistorias(
     params.push(q, q, q);
   }
 
-  const limit = Math.min(Math.max(filtros.limit ?? 200, 1), 500);
+  const limit = Math.min(Math.max(filtros.limit ?? 200, 1), 2000);
   const offset = Math.max(filtros.offset ?? 0, 0);
 
   const rows = await query<FilaRow>(
