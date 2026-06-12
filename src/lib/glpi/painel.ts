@@ -3,7 +3,6 @@ import { execute, query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
-  SITUACAO_A_VISTORIAR,
   SITUACAO_AGUARDANDO_REVISITA,
   SITUACAO_COLUMN,
   SITUACAO_EM_REVISITA,
@@ -31,32 +30,23 @@ import type {
 } from "@/types/painel-mapa";
 
 /**
- * Mapeia para AdminStatus do front.
+ * Mapeia o nome do status_vistoria_dropdown (GLPI) para AdminStatus do front.
  *
- * Prioridade 1: situacaoId (campo nativo glpi plugin, atualizado por atribuir/aprovar/reprovar).
- * Prioridade 2: statusName (dropdown status_vistoria), derivação por is_repeat e hasTecnico.
+ * Como ainda não temos os 6 valores no banco (migration pendente), derivamos
+ * do dropdown atual + flag is_repeat:
  *
- *   situacaoId 1 → A_VISTORIAR  (+ heurística técnico)
- *   situacaoId 2 → EM_VISTORIA
- *   situacaoId 3 → VISTORIADO
- *   situacaoId 4 → AGUARDANDO_REVISITA
- *   situacaoId 5 → EM_REVISITA
- *   situacaoId 6 → REVISITADO
+ *   sem status OU "Pendente"     → A_VISTORIAR
+ *   sem status + tem técnico     → EM_VISTORIA (heurística)
+ *   "Em análise" / "Finalizada"  → VISTORIADO
+ *   "Reprovada" + !is_repeat     → AGUARDANDO_REVISITA
+ *   "Reprovada" + is_repeat      → EM_REVISITA   (após reatribuição)
+ *   "Aprovada"                   → REVISITADO se foi revisita, senão VISTORIADO
  */
 function resolveAdminStatus(
   statusName: string | null,
   isRepeat: boolean,
-  hasTecnico: boolean,
-  situacaoId?: number | null,
+  hasTecnico: boolean
 ): AdminStatus {
-  // Situação operacional (campo explícito) tem prioridade sobre o dropdown
-  const sid = Number(situacaoId ?? 0);
-  if (sid === 2) return "EM_VISTORIA";
-  if (sid === 3) return isRepeat ? "REVISITADO" : "VISTORIADO";
-  if (sid === 4) return "AGUARDANDO_REVISITA";
-  if (sid === 5) return "EM_REVISITA";
-  if (sid === 6) return "REVISITADO";
-  // sid===1 ou 0: usa dropdown de status como fallback
   const s = (statusName ?? "").trim().toLowerCase();
   if (s === "" || s === "pendente") {
     return hasTecnico ? "EM_VISTORIA" : "A_VISTORIAR";
@@ -67,12 +57,12 @@ function resolveAdminStatus(
   }
   if (s === "reprovada" || s === "reprovado") return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
   if (s === "aprovada" || s === "aprovado") return isRepeat ? "REVISITADO" : "VISTORIADO";
+  // fallback: a vistoriar
   return "A_VISTORIAR";
 }
 
 interface StatsRow {
   status_name: string | null;
-  situacao_id: number | null;
   is_repeat: number | null;
   tecnico_id: number | null;
   total: number;
@@ -81,16 +71,15 @@ interface StatsRow {
 /**
  * Agrega KPIs do painel.
  *
- * Inclui situacao_id (campo nativo) como discriminador primário — mais
- * confiável que o dropdown de status, pois é atualizado pelo fluxo de
- * atribuir/aprovar/reprovar mesmo quando o status_dropdown volta a 0.
+ * Estratégia: faz JOIN entre NE × Fields × Status × Aux e GROUP BY pelas
+ * dimensões que afetam o AdminStatus (status_name, is_repeat, has_tecnico).
+ * Depois resolve cada bucket em JS e soma nos slots do PainelStats.
  */
 export async function fetchPainelStats(): Promise<PainelStats> {
   const rows = await query<StatsRow>(
     `
       SELECT
         sv.name AS status_name,
-        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
         f.users_id_vistoriadorafield AS tecnico_id,
         COUNT(*) AS total
@@ -101,7 +90,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
       LEFT JOIN \`${TABLE_AUX}\` aux
               ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       WHERE ne.is_deleted = 0
-      GROUP BY sv.name, f.\`${SITUACAO_COLUMN}\`, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield
+      GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield
     `
   );
 
@@ -115,7 +104,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
   for (const r of rows) {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
-    const st = resolveAdminStatus(r.status_name, isRepeat, hasTecnico, r.situacao_id);
+    const st = resolveAdminStatus(r.status_name, isRepeat, hasTecnico);
     const n = Number(r.total) || 0;
     switch (st) {
       case "A_VISTORIAR":
@@ -456,7 +445,6 @@ interface FilaRow {
   endereco: string | null;
   motivo: string | null;
   status_name: string | null;
-  situacao_id: number | null;
   is_repeat: number | null;
   tecnico_id: number | null;
   tecnico_name: string | null;
@@ -511,7 +499,6 @@ export async function fetchFilaVistorias(
         f.endereofield AS endereco,
         f.motivofield AS motivo,
         sv.name AS status_name,
-        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
         f.users_id_vistoriadorafield AS tecnico_id,
         u.name AS tecnico_name,
@@ -543,7 +530,7 @@ export async function fetchFilaVistorias(
   const items: FilaItem[] = rows.map((r) => {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
-    const status = resolveAdminStatus(r.status_name, isRepeat, hasTecnico, r.situacao_id);
+    const status = resolveAdminStatus(r.status_name, isRepeat, hasTecnico);
     const tecnicoNome = hasTecnico
       ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
         r.tecnico_name ||
@@ -778,16 +765,10 @@ export async function atribuirVistoria(
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
   const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_EM_VISTORIA;
 
-  // Reseta status (Aprovado/Reprovado/Em análise) pra 0 quando atribui —
-  // listVistorias do tecnico filtra `sv.name IS NULL OR IN (Pendente, Em campo)`,
-  // e LEFT JOIN com id=0 (inexistente na dropdown) tambem retorna sv.name=NULL.
-  // Coluna eh NOT NULL DEFAULT 0, entao nao da pra usar NULL direto.
-  // Situacao (em-vistoria / em-revisita) ja indica o tipo de trabalho.
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET users_id_vistoriadorafield = ?,
-            \`${SITUACAO_COLUMN}\` = ?,
-            plugin_fields_statusvistoriafielddropdowns_id = 0
+            \`${SITUACAO_COLUMN}\` = ?
       WHERE items_id = ?`,
     [tecnicoId, situacao, vistoriaId]
   );
@@ -799,37 +780,6 @@ export async function atribuirVistoria(
       [vistoriaId]
     );
   }
-  return { affected: r.affectedRows, situacao };
-}
-
-/**
- * Desvincula a vistoria do técnico atual (volta pra fila, sem dono).
- * users_id_vistoriadorafield = 0, situação volta pra "A vistoriar" (ou
- * "Aguardando revisita" se era revisita) e status_id zera — mesmo racional do
- * atribuir, pra ela reaparecer como pendente na fila e no app de quem pegar.
- */
-export async function desvincularVistoria(
-  vistoriaId: number
-): Promise<{ affected: number; situacao: number }> {
-  const [auxRow] = await query<{ is_repeat: number }>(
-    `SELECT COALESCE(is_repeat,0) AS is_repeat
-       FROM \`${TABLE_AUX}\`
-      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}' LIMIT 1`,
-    [vistoriaId]
-  );
-  const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
-  const situacao = eraRevisita
-    ? SITUACAO_AGUARDANDO_REVISITA
-    : SITUACAO_A_VISTORIAR;
-
-  const r = await execute(
-    `UPDATE \`${TABLE_FIELDS}\`
-        SET users_id_vistoriadorafield = 0,
-            \`${SITUACAO_COLUMN}\` = ?,
-            plugin_fields_statusvistoriafielddropdowns_id = 0
-      WHERE items_id = ?`,
-    [situacao, vistoriaId]
-  );
   return { affected: r.affectedRows, situacao };
 }
 
@@ -1001,18 +951,13 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       INNER JOIN glpi_groups_users gu ON gu.users_id = u.id
       INNER JOIN glpi_groups g ON g.id = gu.groups_id AND g.name IN (?, ?)
       LEFT JOIN (
-        -- Exatamente 1 ping por user (o mais recente). Desempate por id pra
-        -- nao multiplicar quando ha varios pings no MESMO created_at (segundo),
-        -- o que fazia o tecnico aparecer repetido no mapa.
         SELECT l.users_id, l.latitude, l.longitude, l.accuracy_meters, l.speed_kmh, l.battery_level, l.created_at
         FROM glpi_plugin_vistomap_locations l
-        WHERE l.id = (
-          SELECT l2.id
-          FROM glpi_plugin_vistomap_locations l2
-          WHERE l2.users_id = l.users_id
-          ORDER BY l2.created_at DESC, l2.id DESC
-          LIMIT 1
-        )
+        INNER JOIN (
+          SELECT users_id, MAX(created_at) AS max_created
+          FROM glpi_plugin_vistomap_locations
+          GROUP BY users_id
+        ) lm ON lm.users_id = l.users_id AND lm.max_created = l.created_at
       ) loc ON loc.users_id = u.id
       WHERE u.is_deleted = 0 AND u.is_active = 1
       ORDER BY u.name ASC
@@ -1054,15 +999,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
   );
 
   const now = Date.now();
-  // Dedup defensivo por users_id (caso o user esteja nos dois nomes de grupo).
-  const seenTec = new Set<number>();
-  const tecnicos: PainelMapaTecnico[] = tecnicosRows
-    .filter((r) => {
-      if (seenTec.has(r.users_id)) return false;
-      seenTec.add(r.users_id);
-      return true;
-    })
-    .map((r) => {
+  const tecnicos: PainelMapaTecnico[] = tecnicosRows.map((r) => {
     const nome = `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.username;
     const minutos = r.created_at
       ? Math.round((now - new Date(r.created_at).getTime()) / 60000)
