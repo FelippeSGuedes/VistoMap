@@ -783,6 +783,180 @@ export async function atribuirVistoria(
   return { affected: r.affectedRows, situacao };
 }
 
+/* ── Vistorias Realizadas (auditoria) ───────────────────────────── */
+
+export interface VistoriaRealizada {
+  id: number;
+  glpiId: string;
+  equipamento: string;
+  municipio: string;
+  endereco: string | null;
+  status: "VISTORIADO" | "REVISITADO";
+  isRepeat: boolean;
+  dataVistoria: string | null;
+  dataEnvio: string | null;
+  approvedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  tecnico: { id: number; nome: string } | null;
+  motivo: string | null;
+  alturaAntena: string | null;
+  aterramento: string | null;
+  intensidadeSinal: string | null;
+  velocidade: string | null;
+  observacao: string | null;
+  pdfPath: string | null;
+  projectStatus: "PENDENTE" | "GERADO" | "ERRO";
+  approvalStatus: "APROVADO" | "REPROVADO" | null;
+}
+
+export interface RealizadasFilters {
+  municipio?: string;
+  tecnico_id?: number;
+  query?: string;
+  status?: "VISTORIADO" | "REVISITADO";
+  limit?: number;
+  offset?: number;
+}
+
+interface RealizadaRow {
+  id: number;
+  name: string;
+  municipio: string | null;
+  endereco: string | null;
+  motivo: string | null;
+  altura_antena: string | null;
+  aterramento: string | null;
+  intensidade_sinal: string | null;
+  velocidade: string | null;
+  observacao: string | null;
+  data_vistoria: string | null;
+  data_envio: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  status_name: string | null;
+  is_repeat: number | null;
+  project_status: string | null;
+  pdf_path: string | null;
+  approval_status: string | null;
+  approved_at: string | null;
+  tecnico_id: number | null;
+  tecnico_name: string | null;
+  tecnico_firstname: string | null;
+  tecnico_realname: string | null;
+}
+
+export async function fetchVistoriasRealizadas(
+  filtros: RealizadasFilters = {}
+): Promise<VistoriaRealizada[]> {
+  const where: string[] = [
+    "ne.is_deleted = 0",
+    "(sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado') OR COALESCE(aux.approval_status,'') = 'APROVADO')",
+  ];
+  const params: unknown[] = [];
+
+  if (filtros.municipio) {
+    where.push("TRIM(f.municipiofield) = ?");
+    params.push(filtros.municipio.trim());
+  }
+  if (filtros.tecnico_id != null) {
+    where.push("f.users_id_vistoriadorafield = ?");
+    params.push(filtros.tecnico_id);
+  }
+  if (filtros.query) {
+    where.push("(ne.name LIKE ? OR f.municipiofield LIKE ? OR f.endereofield LIKE ?)");
+    const q = `%${filtros.query}%`;
+    params.push(q, q, q);
+  }
+
+  const limit = Math.min(Math.max(filtros.limit ?? 100, 1), 300);
+  const offset = Math.max(filtros.offset ?? 0, 0);
+
+  const rows = await query<RealizadaRow>(
+    `
+      SELECT
+        ne.id,
+        ne.name,
+        f.municipiofield       AS municipio,
+        f.endereofield         AS endereco,
+        f.motivofield          AS motivo,
+        f.alturadaantenafield  AS altura_antena,
+        f.aterramentofield     AS aterramento,
+        f.intensidadedesinalfield AS intensidade_sinal,
+        f.velocidadefield      AS velocidade,
+        f.observaofield        AS observacao,
+        f.datadavistoriafield         AS data_vistoria,
+        f.dataenvioconcessionriafield AS data_envio,
+        f.latitudefield        AS latitude,
+        f.longitudefield       AS longitude,
+        sv.name                AS status_name,
+        COALESCE(aux.is_repeat, 0)           AS is_repeat,
+        COALESCE(aux.project_status,'PENDENTE') AS project_status,
+        aux.pdf_path,
+        aux.approval_status,
+        aux.approved_at,
+        f.users_id_vistoriadorafield AS tecnico_id,
+        u.name       AS tecnico_name,
+        u.firstname  AS tecnico_firstname,
+        u.realname   AS tecnico_realname
+      FROM \`${TABLE_NE}\` ne
+      INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      LEFT  JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+             ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+      LEFT  JOIN \`${TABLE_AUX}\` aux
+             ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+      LEFT  JOIN \`${TABLE_USERS}\` u
+             ON u.id = f.users_id_vistoriadorafield
+      WHERE ${where.join(" AND ")}
+      ORDER BY f.datadavistoriafield DESC, ne.id DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `,
+    params
+  );
+
+  const parseCoord = (s: string | null): number | null => {
+    if (s == null || String(s).trim() === "") return null;
+    const n = Number(String(s).replace(",", "."));
+    return Number.isFinite(n) && n !== 0 ? n : null;
+  };
+
+  const items = rows.map((r): VistoriaRealizada => {
+    const isRepeat = Number(r.is_repeat) === 1;
+    const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
+    const status: VistoriaRealizada["status"] = isRepeat ? "REVISITADO" : "VISTORIADO";
+    const tecnicoNome = hasTecnico
+      ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() || r.tecnico_name || "—"
+      : null;
+    const ps = (r.project_status ?? "PENDENTE").toUpperCase();
+    return {
+      id: r.id,
+      glpiId: `NE-${r.id}`,
+      equipamento: r.name,
+      municipio: r.municipio?.trim() ?? "—",
+      endereco: r.endereco?.trim() ?? null,
+      status,
+      isRepeat,
+      dataVistoria: r.data_vistoria ?? null,
+      dataEnvio: r.data_envio ?? null,
+      approvedAt: r.approved_at ?? null,
+      latitude: parseCoord(r.latitude),
+      longitude: parseCoord(r.longitude),
+      tecnico: hasTecnico ? { id: Number(r.tecnico_id), nome: tecnicoNome! } : null,
+      motivo: r.motivo?.trim() ?? null,
+      alturaAntena: r.altura_antena?.trim() ?? null,
+      aterramento: r.aterramento?.trim() ?? null,
+      intensidadeSinal: r.intensidade_sinal?.trim() ?? null,
+      velocidade: r.velocidade?.trim() ?? null,
+      observacao: r.observacao?.trim() ?? null,
+      pdfPath: r.pdf_path ?? null,
+      projectStatus: (["PENDENTE", "GERADO", "ERRO"].includes(ps) ? ps : "PENDENTE") as VistoriaRealizada["projectStatus"],
+      approvalStatus: r.approval_status as VistoriaRealizada["approvalStatus"] ?? null,
+    };
+  });
+
+  return filtros.status ? items.filter(i => i.status === filtros.status) : items;
+}
+
 /* ── Mapa operacional (tempo real) ─────────────────────────────── */
 
 interface MapaTecnicoRow {

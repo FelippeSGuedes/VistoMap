@@ -244,6 +244,56 @@ export async function fetchVistoriaFiles(
   );
 }
 
+/* ── Vistorias Realizadas ────────────────────────────────────────── */
+
+export interface VistoriaRealizada {
+  id: number;
+  glpiId: string;
+  equipamento: string;
+  municipio: string;
+  endereco: string | null;
+  status: "VISTORIADO" | "REVISITADO";
+  isRepeat: boolean;
+  dataVistoria: string | null;
+  dataEnvio: string | null;
+  approvedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  tecnico: { id: number; nome: string } | null;
+  motivo: string | null;
+  alturaAntena: string | null;
+  aterramento: string | null;
+  intensidadeSinal: string | null;
+  velocidade: string | null;
+  observacao: string | null;
+  pdfPath: string | null;
+  projectStatus: "PENDENTE" | "GERADO" | "ERRO";
+  approvalStatus: "APROVADO" | "REPROVADO" | null;
+}
+
+export interface RealizadasFilters {
+  municipio?: string;
+  tecnico_id?: number;
+  q?: string;
+  status?: "VISTORIADO" | "REVISITADO";
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchRealizadas(
+  filters: RealizadasFilters = {}
+): Promise<VistoriaRealizada[]> {
+  const p = new URLSearchParams();
+  if (filters.municipio)     p.set("municipio",  filters.municipio);
+  if (filters.tecnico_id != null) p.set("tecnico_id", String(filters.tecnico_id));
+  if (filters.q)             p.set("q",          filters.q);
+  if (filters.status)        p.set("status",     filters.status);
+  if (filters.limit != null) p.set("limit",      String(filters.limit));
+  if (filters.offset != null) p.set("offset",    String(filters.offset));
+  const url = `/painel/realizadas${p.toString() ? `?${p}` : ""}`;
+  return tryReal(api.get<VistoriaRealizada[]>(url).then(r => r.data), []);
+}
+
 export const painelService = {
   fetchStats,
   fetchTecnicos,
@@ -256,4 +306,5 @@ export const painelService = {
   editarVistoria,
   aprovarVistoria,
   reprovarVistoria,
+  fetchRealizadas,
 };

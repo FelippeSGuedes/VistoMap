@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Bell,
+  CheckCircle2,
   ClipboardList,
   History,
   LayoutDashboard,
@@ -24,7 +25,8 @@ import { asset } from "@/utils/asset";
 const NAV = [
   { href: "/painel",             label: "Operação",           icon: LayoutDashboard, exact: true },
   { href: "/painel/mapa",        label: "Mapa Tempo Real",    icon: MapIcon },
-  { href: "/painel/vistorias",   label: "Fila de Vistorias",  icon: ClipboardList },
+  { href: "/painel/vistorias",   label: "Fila de Vistorias",    icon: ClipboardList },
+  { href: "/painel/realizadas",  label: "Realizadas",           icon: CheckCircle2 },
   { href: "/painel/revisitas",   label: "Central de Revisitas", icon: RotateCw },
   { href: "/painel/tecnicos",    label: "Técnicos",           icon: Users },
   { href: "/painel/auditoria",   label: "Auditoria",          icon: ShieldAlert },
