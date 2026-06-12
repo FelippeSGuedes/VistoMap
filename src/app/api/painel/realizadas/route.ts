@@ -10,8 +10,14 @@ export async function GET(req: Request) {
   const limit      = p.get("limit")  ? Number(p.get("limit"))  : undefined;
   const offset     = p.get("offset") ? Number(p.get("offset")) : undefined;
 
-  const items = await fetchVistoriasRealizadas({
-    municipio, tecnico_id, query: qParam, status, limit, offset,
-  });
-  return NextResponse.json(items);
+  try {
+    const items = await fetchVistoriasRealizadas({
+      municipio, tecnico_id, query: qParam, status, limit, offset,
+    });
+    return NextResponse.json(items);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[/api/painel/realizadas]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

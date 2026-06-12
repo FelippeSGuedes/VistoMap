@@ -821,6 +821,7 @@ function StatPill({
 export default function RealizadasPage() {
   const [items,        setItems]        = useState<VistoriaRealizada[]>([]);
   const [loading,      setLoading]      = useState(true);
+  const [apiError,     setApiError]     = useState<string | null>(null);
   const [selected,     setSelected]     = useState<VistoriaRealizada | null>(null);
   const [q,            setQ]            = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | "VISTORIADO" | "REVISITADO">("");
@@ -831,9 +832,11 @@ export default function RealizadasPage() {
     const load = async () => {
       try {
         const data = await painelService.fetchRealizadas();
-        if (alive) { setItems(data); setLoading(false); }
-      } catch {
-        if (alive) setLoading(false);
+        if (alive) { setItems(data); setApiError(null); setLoading(false); }
+      } catch (err: unknown) {
+        const axiosBody = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        const msg = axiosBody ?? (err instanceof Error ? err.message : String(err));
+        if (alive) { setApiError(msg); setLoading(false); }
       }
     };
     load();
@@ -910,6 +913,20 @@ export default function RealizadasPage() {
           </div>
         </div>
       </div>
+
+      {/* ── ERROR BANNER ── */}
+      {apiError && (
+        <div
+          className="flex items-start gap-3 rounded-2xl px-5 py-4"
+          style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold text-red-700">Falha ao carregar vistorias realizadas</p>
+            <p className="mt-0.5 break-all font-mono text-[11px] text-red-500">{apiError}</p>
+          </div>
+        </div>
+      )}
 
       {/* ── FILTER BAR ── */}
       <div className="flex flex-wrap items-center gap-2">
