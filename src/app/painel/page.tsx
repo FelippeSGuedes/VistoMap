@@ -519,14 +519,14 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       markersRef.current = [];
       const pts: Array<[number, number]> = [];
       mapaTeam
-        .filter(t => t.latitude != null && t.longitude != null)
+        .filter(t => t.latitude != null && t.longitude != null && t.status_operacional !== "offline")
         .forEach(t => {
           const color = TECH_STATUS_COLOR[t.status_operacional];
           const el = document.createElement("div");
-          el.style.cssText = "position:relative;width:28px;height:28px;cursor:default;will-change:transform;pointer-events:none";
+          el.style.cssText = "position:relative;width:28px;height:28px;cursor:default";
           el.innerHTML = `
-            <div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.22;animation:vm-pulse 2.2s ease-in-out infinite;pointer-events:none"></div>
-            <div style="position:absolute;inset:5px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;letter-spacing:-.3px;pointer-events:auto">${initials(t.nome)}</div>`;
+            <div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.22;animation:vm-pulse 2.2s ease-in-out infinite"></div>
+            <div style="position:absolute;inset:5px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;letter-spacing:-.3px">${initials(t.nome)}</div>`;
           const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
             .setLngLat([t.longitude!, t.latitude!])
             .addTo(map);
@@ -563,7 +563,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
           </Link>
         </div>
       </div>
-      <div ref={containerRef} className="vm-dash-team h-[190px] w-full shrink-0" style={{ transform: "translateZ(0)", overflow: "hidden" }} />
+      <div ref={containerRef} className="vm-dash-team h-[190px] w-full shrink-0" />
       {destaque && (
         <div className="flex items-center gap-3 border-t border-[#F3F4F6] px-4 py-3">
           <span
@@ -611,13 +611,13 @@ interface MunicipiosMapWidgetProps {
 }
 
 function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
-  const [geoLoaded,  setGeoLoaded] = useState(false);
-  const tooltipsRef  = useRef<HTMLElement[]>([]);
-  const token        = getMapboxToken();
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const mapRef        = useRef<mapboxgl.Map | null>(null);
+  const markersRef    = useRef<mapboxgl.Marker[]>([]);
+  const fillExprRef   = useRef<mapboxgl.Expression | null>(null);
+  const geoRef        = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
+  const [geoLoaded,   setGeoLoaded] = useState(false);
+  const token         = getMapboxToken();
   void _t;
 
   const totalGlobal = topMunicipios.reduce((s, m) => s + m.total, 0);
@@ -629,10 +629,6 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
     injectStyle(
       "vm-dash-muni-css",
       ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}",
-    );
-    injectStyle("vm-w03-pin-kf",
-      "@keyframes radarPulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(1.8);opacity:0}}" +
-      "@keyframes pinFloat{0%{transform:translateY(0px)}100%{transform:translateY(-4px)}}",
     );
     injectStyle("vm-noc-css", NOC_CSS);
     mapboxgl.accessToken = token;
@@ -665,7 +661,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
         map.addSource("vm-muni-sp", { type: "geojson", data: geoJSON as never });
         map.addLayer({
           id: "vm-muni-fill", type: "fill", source: "vm-muni-sp",
-          paint: { "fill-color": "#e8f5ee", "fill-opacity": 1 },
+          paint: { "fill-color": "#dff0e8", "fill-opacity": 1 },
         });
         map.addLayer({
           id: "vm-muni-line", type: "line", source: "vm-muni-sp",
@@ -698,8 +694,6 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
       ro.disconnect();
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
-      tooltipsRef.current.forEach(t => t.remove());
-      tooltipsRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -719,23 +713,23 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
         properties: {
           ...f.properties,
           total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
+          name_norm: normalizeStr(String(f.properties.name ?? "")),
         },
       })),
     };
 
     (map.getSource("vm-muni-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
-    map.setPaintProperty("vm-muni-fill", "fill-color", [
+    const fillExpr: mapboxgl.Expression = [
       "case", [">", ["get", "total"], 0],
       ["interpolate", ["linear"], ["get", "total"], 1, "#6dbf8b", 10, "#2d8a55", 50, "#1a6b3c"],
-      "#e8f5ee",
-    ] as mapboxgl.Expression);
+      "#dff0e8",
+    ];
+    fillExprRef.current = fillExpr;
+    map.setPaintProperty("vm-muni-fill", "fill-color", fillExpr);
 
     markersRef.current.forEach(mk => mk.remove());
     markersRef.current = [];
-    tooltipsRef.current.forEach(t => t.remove());
-    tooltipsRef.current = [];
 
-    let pinIndex = 0;
     for (const feature of enriched.features) {
       const total = Number(feature.properties.total ?? 0);
       if (total === 0) continue;
@@ -747,51 +741,11 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
       const coords = featureCentroid(feature.geometry);
       if (!coords) continue;
 
-      const index = pinIndex++;
+      const el = document.createElement("div");
+      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 2px 10px rgba(74,108,247,0.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:ui-sans-serif;border:2px solid rgba(255,255,255,0.75);cursor:default";
+      el.textContent = String(item.total);
 
-      const wrapper = document.createElement("div");
-      wrapper.style.cssText = "width:44px;height:44px;position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:none";
-
-      const radar = document.createElement("div");
-      radar.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(74,108,247,0.4);animation:radarPulse 2s ${(index * 0.5).toFixed(1)}s ease-out infinite;pointer-events:none`;
-
-      const ring = document.createElement("div");
-      ring.style.cssText = "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.7);animation:pinFloat 2.5s ease-in-out infinite alternate;pointer-events:none";
-
-      const core = document.createElement("div");
-      core.style.cssText = "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;font-family:ui-sans-serif;pointer-events:auto;cursor:pointer";
-      core.textContent = String(item.total);
-
-      const tooltip = document.createElement("div");
-      tooltip.style.cssText = "position:fixed;background:rgba(15,15,30,0.95);border:1px solid rgba(74,108,247,0.4);border-radius:8px;padding:6px 12px;color:white;font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.2s;font-family:ui-sans-serif;z-index:9999";
-      tooltip.textContent = `${item.municipio} · ${item.total} vistorias`;
-      document.body.appendChild(tooltip);
-      tooltipsRef.current.push(tooltip);
-
-      wrapper.appendChild(radar);
-      wrapper.appendChild(ring);
-      wrapper.appendChild(core);
-
-      core.addEventListener("mouseenter", () => {
-        const rect = core.getBoundingClientRect();
-        tooltip.style.left = `${rect.left + rect.width / 2}px`;
-        tooltip.style.top = `${rect.top - 8}px`;
-        tooltip.style.transform = "translate(-50%, -100%)";
-        tooltip.style.opacity = "1";
-        wrapper.style.transform = "scale(1.18)";
-        wrapper.style.zIndex = "30";
-        ring.style.animationPlayState = "paused";
-        radar.style.animationPlayState = "paused";
-      });
-      core.addEventListener("mouseleave", () => {
-        tooltip.style.opacity = "0";
-        wrapper.style.transform = "scale(1)";
-        wrapper.style.zIndex = "";
-        ring.style.animationPlayState = "running";
-        radar.style.animationPlayState = "running";
-      });
-
-      const mk = new mapboxgl.Marker({ element: wrapper, anchor: "center" })
+      const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
         .setLngLat(coords)
         .addTo(map);
       markersRef.current.push(mk);
@@ -823,7 +777,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
           hover
         </span>
       </div>
-      <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" style={{ transform: "translateZ(0)", overflow: "hidden" }} />
+      <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" />
       <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
         {topMunicipios.slice(0, 5).map((m, i) => {
           const pct = totalGlobal > 0 ? (m.total / totalGlobal) * 100 : 0;
@@ -841,8 +795,24 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
               transition={{ delay: 0.06 * i, duration: 0.35 }}
               className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[#F6F8FE]"
               style={{ borderLeft: "2px solid transparent" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderLeftColor = "#4A6CF7"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderLeftColor = "transparent"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.borderLeftColor = "#4A6CF7";
+                const mp = mapRef.current;
+                if (mp?.isStyleLoaded() && fillExprRef.current) {
+                  const orig = fillExprRef.current as unknown[];
+                  mp.setPaintProperty("vm-muni-fill", "fill-color", [
+                    "case", ["==", ["get", "name_norm"], normalizeStr(m.municipio)], "#2563eb",
+                    ...orig.slice(1),
+                  ] as mapboxgl.Expression);
+                }
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.borderLeftColor = "transparent";
+                const mp = mapRef.current;
+                if (mp?.isStyleLoaded() && fillExprRef.current) {
+                  mp.setPaintProperty("vm-muni-fill", "fill-color", fillExprRef.current);
+                }
+              }}
             >
               <span
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
@@ -924,10 +894,10 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
         const coords = CITY_COORDS[muni];
         if (!coords) return;
         const el = document.createElement("div");
-        el.style.cssText = "position:relative;width:32px;height:32px;will-change:transform;pointer-events:none";
+        el.style.cssText = "position:relative;width:32px;height:32px";
         el.innerHTML = `
-          <div style="position:absolute;inset:0;border-radius:50%;background:#F97316;opacity:0.2;animation:vm-pulse 2s ease-in-out infinite;pointer-events:none"></div>
-          <div style="position:absolute;inset:6px;border-radius:50%;background:#F97316;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;pointer-events:none">${count}</div>`;
+          <div style="position:absolute;inset:0;border-radius:50%;background:#F97316;opacity:0.2;animation:vm-pulse 2s ease-in-out infinite"></div>
+          <div style="position:absolute;inset:6px;border-radius:50%;background:#F97316;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff">${count}</div>`;
         const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
           .setLngLat(coords)
           .addTo(map);
@@ -961,7 +931,7 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
 
       {/* Map always visible as background */}
       <div className="relative">
-        <div ref={containerRef} className="vm-dash-rev h-[155px] w-full" style={{ transform: "translateZ(0)", overflow: "hidden" }} />
+        <div ref={containerRef} className="vm-dash-rev h-[155px] w-full" />
         {/* Success overlay when no revisitas */}
         {!hasRevisitas && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/80 backdrop-blur-[3px]">
@@ -1253,7 +1223,7 @@ export default function PainelOverviewPage() {
             </div>
 
             {/* RIGHT — 4 KPI cards 2×2 */}
-            <div style={{ width: 380, padding: 16, display: "flex", alignItems: "center", position: "relative", zIndex: 10 }}>
+            <div style={{ width: 460, padding: 16, display: "flex", alignItems: "center", position: "relative", zIndex: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
                 {([
                   { k: kpis[0], color: "#00ff88",  delta: { up: true,  pct: "12%" } as { up: boolean; pct: string } | null },

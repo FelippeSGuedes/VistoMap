@@ -1161,6 +1161,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         ) lm ON lm.users_id = l.users_id AND lm.max_created = l.created_at
       ) loc ON loc.users_id = u.id
       WHERE u.is_deleted = 0 AND u.is_active = 1
+      GROUP BY u.id
       ORDER BY u.name ASC
     `,
     [group, groupAlt]
