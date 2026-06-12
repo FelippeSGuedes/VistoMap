@@ -3,6 +3,7 @@ import { execute, query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
+  SITUACAO_A_VISTORIAR,
   SITUACAO_AGUARDANDO_REVISITA,
   SITUACAO_COLUMN,
   SITUACAO_EM_REVISITA,
@@ -781,6 +782,22 @@ export async function atribuirVistoria(
     );
   }
   return { affected: r.affectedRows, situacao };
+}
+
+/**
+ * Desvincula técnico de uma vistoria → volta à fila (situação 1 = A Vistoriar).
+ */
+export async function desvincularVistoria(
+  vistoriaId: number
+): Promise<{ affected: number; situacao: number }> {
+  const r = await execute(
+    `UPDATE \`${TABLE_FIELDS}\`
+        SET users_id_vistoriadorafield = 0,
+            \`${SITUACAO_COLUMN}\` = ?
+      WHERE items_id = ?`,
+    [SITUACAO_A_VISTORIAR, vistoriaId]
+  );
+  return { affected: r.affectedRows, situacao: SITUACAO_A_VISTORIAR };
 }
 
 /* ── Vistorias Realizadas (auditoria) ───────────────────────────── */
