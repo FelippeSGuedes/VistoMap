@@ -750,16 +750,16 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
       const index = pinIndex++;
 
       const wrapper = document.createElement("div");
-      wrapper.style.cssText = "position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s ease;will-change:transform;pointer-events:none";
+      wrapper.style.cssText = "width:44px;height:44px;position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:none";
 
       const radar = document.createElement("div");
-      radar.style.cssText = `position:absolute;width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(74,108,247,0.4);animation:radarPulse 2s ${(index * 0.5).toFixed(1)}s ease-out infinite;pointer-events:none`;
+      radar.style.cssText = `position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(74,108,247,0.4);animation:radarPulse 2s ${(index * 0.5).toFixed(1)}s ease-out infinite;pointer-events:none`;
 
       const ring = document.createElement("div");
-      ring.style.cssText = "position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.7);animation:pinFloat 2.5s ease-in-out infinite alternate;pointer-events:none";
+      ring.style.cssText = "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.7);animation:pinFloat 2.5s ease-in-out infinite alternate;pointer-events:none";
 
       const core = document.createElement("div");
-      core.style.cssText = "position:absolute;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;font-family:ui-sans-serif;pointer-events:auto;cursor:pointer";
+      core.style.cssText = "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;font-family:ui-sans-serif;pointer-events:auto;cursor:pointer";
       core.textContent = String(item.total);
 
       const tooltip = document.createElement("div");
