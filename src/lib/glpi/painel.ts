@@ -31,23 +31,27 @@ import type {
 } from "@/types/painel-mapa";
 
 /**
- * Mapeia o nome do status_vistoria_dropdown (GLPI) para AdminStatus do front.
+ * Mapeia situaodavistoriafield (1-6) + heurística de dropdown para AdminStatus.
  *
- * Como ainda não temos os 6 valores no banco (migration pendente), derivamos
- * do dropdown atual + flag is_repeat:
- *
- *   sem status OU "Pendente"     → A_VISTORIAR
- *   sem status + tem técnico     → EM_VISTORIA (heurística)
- *   "Em análise" / "Finalizada"  → VISTORIADO
- *   "Reprovada" + !is_repeat     → AGUARDANDO_REVISITA
- *   "Reprovada" + is_repeat      → EM_REVISITA   (após reatribuição)
- *   "Aprovada"                   → REVISITADO se foi revisita, senão VISTORIADO
+ * Prioridade 1: campo situaodavistoriafield quando preenchido (1=A_VISTORIAR … 6=REVISITADO).
+ * Prioridade 2: heurística pelo nome do dropdown statusvistoria (legado / fallback).
  */
 function resolveAdminStatus(
   statusName: string | null,
   isRepeat: boolean,
-  hasTecnico: boolean
+  hasTecnico: boolean,
+  situacaoId?: number | null
 ): AdminStatus {
+  // 1ª prioridade: campo nativo (migration aplicada)
+  switch (Number(situacaoId ?? 0)) {
+    case 1: return "A_VISTORIAR";
+    case 2: return "EM_VISTORIA";
+    case 3: return "VISTORIADO";
+    case 4: return "AGUARDANDO_REVISITA";
+    case 5: return "EM_REVISITA";
+    case 6: return "REVISITADO";
+  }
+  // 2ª prioridade: heurística pelo dropdown (fallback para registros sem o campo)
   const s = (statusName ?? "").trim().toLowerCase();
   if (s === "" || s === "pendente") {
     return hasTecnico ? "EM_VISTORIA" : "A_VISTORIAR";
@@ -58,7 +62,6 @@ function resolveAdminStatus(
   }
   if (s === "reprovada" || s === "reprovado") return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
   if (s === "aprovada" || s === "aprovado") return isRepeat ? "REVISITADO" : "VISTORIADO";
-  // fallback: a vistoriar
   return "A_VISTORIAR";
 }
 
@@ -446,6 +449,7 @@ interface FilaRow {
   endereco: string | null;
   motivo: string | null;
   status_name: string | null;
+  situacao_id: number | null;
   is_repeat: number | null;
   tecnico_id: number | null;
   tecnico_name: string | null;
@@ -500,6 +504,7 @@ export async function fetchFilaVistorias(
         f.endereofield AS endereco,
         f.motivofield AS motivo,
         sv.name AS status_name,
+        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
         f.users_id_vistoriadorafield AS tecnico_id,
         u.name AS tecnico_name,
@@ -518,7 +523,7 @@ export async function fetchFilaVistorias(
               ON u.id = f.users_id_vistoriadorafield
       WHERE ${where.join(" AND ")}
       ORDER BY
-        CASE WHEN sv.name IS NULL OR sv.name = 'Pendente' THEN 0
+        CASE WHEN COALESCE(f.\`${SITUACAO_COLUMN}\`, 0) = 1 OR sv.name IS NULL OR sv.name = 'Pendente' THEN 0
              WHEN sv.name IN ('Reprovada','Reprovado') THEN 1
              ELSE 2 END,
         f.datadavistoriafield DESC,
@@ -531,7 +536,7 @@ export async function fetchFilaVistorias(
   const items: FilaItem[] = rows.map((r) => {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
-    const status = resolveAdminStatus(r.status_name, isRepeat, hasTecnico);
+    const status = resolveAdminStatus(r.status_name, isRepeat, hasTecnico, r.situacao_id);
     const tecnicoNome = hasTecnico
       ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
         r.tecnico_name ||
@@ -852,6 +857,7 @@ interface RealizadaRow {
   latitude: string | null;
   longitude: string | null;
   status_name: string | null;
+  situacao_id: number | null;
   is_repeat: number | null;
   project_status: string | null;
   pdf_path: string | null;
@@ -868,7 +874,9 @@ export async function fetchVistoriasRealizadas(
 ): Promise<VistoriaRealizada[]> {
   const where: string[] = [
     "ne.is_deleted = 0",
-    "(sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado') OR COALESCE(aux.approval_status,'') = 'APROVADO')",
+    `(f.\`${SITUACAO_COLUMN}\` IN (3, 6)
+      OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
+      OR COALESCE(aux.approval_status,'') = 'APROVADO')`,
   ];
   const params: unknown[] = [];
 
@@ -907,6 +915,7 @@ export async function fetchVistoriasRealizadas(
         f.latitudefield        AS latitude,
         f.longitudefield       AS longitude,
         sv.name                AS status_name,
+        f.\`${SITUACAO_COLUMN}\`              AS situacao_id,
         COALESCE(aux.is_repeat, 0)           AS is_repeat,
         COALESCE(aux.project_status,'PENDENTE') AS project_status,
         aux.pdf_path,
@@ -940,7 +949,8 @@ export async function fetchVistoriasRealizadas(
   const items = rows.map((r): VistoriaRealizada => {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
-    const status: VistoriaRealizada["status"] = isRepeat ? "REVISITADO" : "VISTORIADO";
+    const isRevisitado = Number(r.situacao_id) === 6 || isRepeat;
+    const status: VistoriaRealizada["status"] = isRevisitado ? "REVISITADO" : "VISTORIADO";
     const tecnicoNome = hasTecnico
       ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() || r.tecnico_name || "—"
       : null;
