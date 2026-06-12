@@ -523,10 +523,10 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
         .forEach(t => {
           const color = TECH_STATUS_COLOR[t.status_operacional];
           const el = document.createElement("div");
-          el.style.cssText = "position:relative;width:28px;height:28px;cursor:default";
+          el.style.cssText = "position:relative;width:28px;height:28px;cursor:default;will-change:transform;pointer-events:none";
           el.innerHTML = `
-            <div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.22;animation:vm-pulse 2.2s ease-in-out infinite"></div>
-            <div style="position:absolute;inset:5px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;letter-spacing:-.3px">${initials(t.nome)}</div>`;
+            <div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.22;animation:vm-pulse 2.2s ease-in-out infinite;pointer-events:none"></div>
+            <div style="position:absolute;inset:5px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;letter-spacing:-.3px;pointer-events:auto">${initials(t.nome)}</div>`;
           const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
             .setLngLat([t.longitude!, t.latitude!])
             .addTo(map);
@@ -563,7 +563,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
           </Link>
         </div>
       </div>
-      <div ref={containerRef} className="vm-dash-team h-[190px] w-full shrink-0" />
+      <div ref={containerRef} className="vm-dash-team h-[190px] w-full shrink-0" style={{ transform: "translateZ(0)", overflow: "hidden" }} />
       {destaque && (
         <div className="flex items-center gap-3 border-t border-[#F3F4F6] px-4 py-3">
           <span
@@ -616,6 +616,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
   const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
   const [geoLoaded,  setGeoLoaded] = useState(false);
+  const tooltipsRef  = useRef<HTMLElement[]>([]);
   const token        = getMapboxToken();
   void _t;
 
@@ -697,6 +698,8 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
       ro.disconnect();
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
+      tooltipsRef.current.forEach(t => t.remove());
+      tooltipsRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -729,6 +732,8 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
 
     markersRef.current.forEach(mk => mk.remove());
     markersRef.current = [];
+    tooltipsRef.current.forEach(t => t.remove());
+    tooltipsRef.current = [];
 
     let pinIndex = 0;
     for (const feature of enriched.features) {
@@ -745,7 +750,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
       const index = pinIndex++;
 
       const wrapper = document.createElement("div");
-      wrapper.style.cssText = "position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s ease";
+      wrapper.style.cssText = "position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.2s ease;will-change:transform;pointer-events:none";
 
       const radar = document.createElement("div");
       radar.style.cssText = `position:absolute;width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(74,108,247,0.4);animation:radarPulse 2s ${(index * 0.5).toFixed(1)}s ease-out infinite;pointer-events:none`;
@@ -754,27 +759,36 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
       ring.style.cssText = "position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(74,108,247,0.15);border:2px solid rgba(74,108,247,0.7);animation:pinFloat 2.5s ease-in-out infinite alternate;pointer-events:none";
 
       const core = document.createElement("div");
-      core.style.cssText = "position:absolute;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;font-family:ui-sans-serif;pointer-events:none";
+      core.style.cssText = "position:absolute;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 4px 16px rgba(74,108,247,0.7);display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;font-family:ui-sans-serif;pointer-events:auto;cursor:pointer";
       core.textContent = String(item.total);
 
       const tooltip = document.createElement("div");
-      tooltip.style.cssText = "position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:rgba(15,15,30,0.95);border:1px solid rgba(74,108,247,0.4);border-radius:8px;padding:6px 12px;color:white;font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.2s;font-family:ui-sans-serif";
+      tooltip.style.cssText = "position:fixed;background:rgba(15,15,30,0.95);border:1px solid rgba(74,108,247,0.4);border-radius:8px;padding:6px 12px;color:white;font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.2s;font-family:ui-sans-serif;z-index:9999";
       tooltip.textContent = `${item.municipio} · ${item.total} vistorias`;
+      document.body.appendChild(tooltip);
+      tooltipsRef.current.push(tooltip);
 
       wrapper.appendChild(radar);
       wrapper.appendChild(ring);
       wrapper.appendChild(core);
-      wrapper.appendChild(tooltip);
 
-      wrapper.addEventListener("mouseenter", () => {
+      core.addEventListener("mouseenter", () => {
+        const rect = core.getBoundingClientRect();
+        tooltip.style.left = `${rect.left + rect.width / 2}px`;
+        tooltip.style.top = `${rect.top - 8}px`;
+        tooltip.style.transform = "translate(-50%, -100%)";
         tooltip.style.opacity = "1";
         wrapper.style.transform = "scale(1.18)";
         wrapper.style.zIndex = "30";
+        ring.style.animationPlayState = "paused";
+        radar.style.animationPlayState = "paused";
       });
-      wrapper.addEventListener("mouseleave", () => {
+      core.addEventListener("mouseleave", () => {
         tooltip.style.opacity = "0";
         wrapper.style.transform = "scale(1)";
         wrapper.style.zIndex = "";
+        ring.style.animationPlayState = "running";
+        radar.style.animationPlayState = "running";
       });
 
       const mk = new mapboxgl.Marker({ element: wrapper, anchor: "center" })
@@ -809,7 +823,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
           hover
         </span>
       </div>
-      <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" />
+      <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" style={{ transform: "translateZ(0)", overflow: "hidden" }} />
       <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
         {topMunicipios.slice(0, 5).map((m, i) => {
           const pct = totalGlobal > 0 ? (m.total / totalGlobal) * 100 : 0;
@@ -910,10 +924,10 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
         const coords = CITY_COORDS[muni];
         if (!coords) return;
         const el = document.createElement("div");
-        el.style.cssText = "position:relative;width:32px;height:32px";
+        el.style.cssText = "position:relative;width:32px;height:32px;will-change:transform;pointer-events:none";
         el.innerHTML = `
-          <div style="position:absolute;inset:0;border-radius:50%;background:#F97316;opacity:0.2;animation:vm-pulse 2s ease-in-out infinite"></div>
-          <div style="position:absolute;inset:6px;border-radius:50%;background:#F97316;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff">${count}</div>`;
+          <div style="position:absolute;inset:0;border-radius:50%;background:#F97316;opacity:0.2;animation:vm-pulse 2s ease-in-out infinite;pointer-events:none"></div>
+          <div style="position:absolute;inset:6px;border-radius:50%;background:#F97316;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;pointer-events:none">${count}</div>`;
         const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
           .setLngLat(coords)
           .addTo(map);
@@ -947,7 +961,7 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
 
       {/* Map always visible as background */}
       <div className="relative">
-        <div ref={containerRef} className="vm-dash-rev h-[155px] w-full" />
+        <div ref={containerRef} className="vm-dash-rev h-[155px] w-full" style={{ transform: "translateZ(0)", overflow: "hidden" }} />
         {/* Success overlay when no revisitas */}
         {!hasRevisitas && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/80 backdrop-blur-[3px]">
