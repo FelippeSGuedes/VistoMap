@@ -98,14 +98,16 @@ export function MudarPosteFlow({
   }, [open]);
 
   // Ao entrar no picker: tenta GPS primeiro (mais confiável que coord do GLPI).
-  // Se GPS já estiver disponível, usa-o; senão, usa lat/lng do vistoria como fallback.
+  // Fallback para coords da vistoria APENAS se forem válidas (não nulas/zero).
   useEffect(() => {
     if (step !== "picker") return;
     if (postes.fetched) return;
     const run = async () => {
       const fresh = geo.position ?? (await geo.refresh());
-      const lat = fresh?.lat ?? latAtual;
-      const lng = fresh?.lng ?? lngAtual;
+      const hasStoredCoords = latAtual && lngAtual && (latAtual !== 0 || lngAtual !== 0);
+      const lat = fresh?.lat ?? (hasStoredCoords ? latAtual : null);
+      const lng = fresh?.lng ?? (hasStoredCoords ? lngAtual : null);
+      if (!lat || !lng) return; // sem GPS e sem coords armazenadas — mostra lista vazia
       await postes.fetch({ lat, lng, raio: 500, limit: 80 });
     };
     void run();
@@ -198,7 +200,11 @@ export function MudarPosteFlow({
                       ? { lat: geo.position.lat, lng: geo.position.lng }
                       : null
                   }
-                  centerOnVistoria={{ lat: latAtual, lng: lngAtual }}
+                  centerOnVistoria={
+                    latAtual && lngAtual
+                      ? { lat: latAtual, lng: lngAtual }
+                      : null
+                  }
                   selectedId={posteNovo?.id ?? null}
                   onSelect={(id) => {
                     const p = postes.items.find((x) => x.id === id) ?? null;
@@ -384,12 +390,12 @@ function PickerStep({
   postes: Poste[];
   loading: boolean;
   userPos: { lat: number; lng: number } | null;
-  centerOnVistoria: { lat: number; lng: number };
+  centerOnVistoria: { lat: number; lng: number } | null;
   selectedId: number | null;
   onSelect: (id: number) => void;
   onAtribuir: () => void;
 }) {
-  const focus = userPos ?? centerOnVistoria;
+  const focus = userPos ?? centerOnVistoria ?? { lat: -23.5505, lng: -46.6333 };
   const [panelOpen, setPanelOpen] = useState(true);
   const dummyVistorias = useMemo(() => [], []);
 
