@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
       token,
       tecnico,
       expiresAt: getJwtExpiresAtMs(),
+      role: "tecnico",
     };
 
     return NextResponse.json(session);
