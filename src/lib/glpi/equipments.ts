@@ -160,12 +160,14 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
     where.push("f.users_id_vistoriadorafield = ?");
     params.push(filters.tecnicoId);
 
-    // Regra operacional: técnico NÃO deve ver vistorias que ele já finalizou
-    // (Em análise / Aprovado / Reprovado) — essas saem do mapa dele.
-    // Mantém apenas: status NULL/Pendente OU situação A_Vistoriar/Em_Vistoria/Em_Revisita.
+    // Regra operacional: técnico NÃO deve ver vistorias concluídas/aprovadas.
+    // Situação: bloqueia Vistoriado(3) e Revisitado(6).
+    // Status: bloqueia Aprovado(3), Reprovado(4), Em análise(5).
+    // Usa blacklist de IDs em vez de whitelist de nomes para não quebrar
+    // quando o GLPI cadastra novos status (ex: 'AGUARDANDO VISTORIA' id=6).
     where.push(`(
-      (sv.name IS NULL OR sv.name IN ('Pendente','pendente','PENDENTE','Em campo'))
-      AND COALESCE(f.plugin_fields_situaodavistoriafielddropdowns_id, 0) NOT IN (3, 6)
+      COALESCE(f.plugin_fields_situaodavistoriafielddropdowns_id, 0) NOT IN (3, 6)
+      AND COALESCE(f.plugin_fields_statusvistoriafielddropdowns_id, 0) NOT IN (3, 4, 5)
     )`);
   }
   const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";
