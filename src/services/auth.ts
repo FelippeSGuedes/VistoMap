@@ -2,10 +2,12 @@ import { api, setAuthToken } from "./api";
 import type { AuthSession } from "@/types";
 
 export interface LoginInput {
-  /** Usuário (username GLPI) ou e-mail. */
-  login?: string;
-  /** Compat: chave alternativa quando só temos email. */
-  email?: string;
+  login: string;
+  senha: string;
+}
+
+export interface PainelLoginInput {
+  login: string;
   senha: string;
 }
 
@@ -39,18 +41,28 @@ export function loadSession(): AuthSession | null {
   return null;
 }
 
+/** Login do app técnico — autentica por e-mail. */
 export async function login(input: LoginInput): Promise<AuthSession> {
-  const payload = {
-    login: input.login ?? input.email,
+  const res = await api.post<AuthSession>("/auth/login", {
+    login: input.login,
     senha: input.senha,
-  };
-  const { data } = await api.post<AuthSession>("/auth/login", payload);
-  persist(data);
-  return data;
+  });
+  persist(res.data);
+  return res.data;
+}
+
+/** Login do painel admin — autentica por usuário GLPI ou e-mail. */
+export async function loginAdmin(input: PainelLoginInput): Promise<AuthSession> {
+  const res = await api.post<AuthSession>("/auth/painel-login", {
+    login: input.login,
+    senha: input.senha,
+  });
+  persist(res.data);
+  return res.data;
 }
 
 export function logout() {
   persist(null);
 }
 
-export const authService = { login, logout, loadSession };
+export const authService = { login, loginAdmin, logout, loadSession };

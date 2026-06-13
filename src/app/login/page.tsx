@@ -10,13 +10,14 @@ import {
   EyeOff,
   Loader2,
   Lock,
-  Mail,
+  User,
 } from "lucide-react";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/auth";
+import { asset } from "@/utils/asset";
 
 interface FormValues {
-  email: string;
+  login: string;
   senha: string;
 }
 
@@ -35,7 +36,7 @@ export default function LoginPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: { email: "", senha: "" },
+    defaultValues: { login: "", senha: "" },
   });
 
   const onSubmit = async (values: FormValues) => {
@@ -46,26 +47,31 @@ export default function LoginPage() {
       router.replace("/dashboard");
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Nao foi possivel autenticar. Verifique suas credenciais."
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ??
+          (err instanceof Error ? err.message : "Não foi possível autenticar. Verifique suas credenciais.")
       );
     }
   };
 
   return (
-    <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden bg-[#073B4C] text-brand-ice">
-      {/* Gradientes decorativos — desktop only */}
-      <div
+    <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden text-brand-ice">
+      {/* Imagem de fundo */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={asset("/imagem_login.png")}
+        alt=""
         aria-hidden
-        className="pointer-events-none absolute inset-0 hidden opacity-[0.07] md:block [background-image:radial-gradient(circle_at_25%_18%,rgba(255,255,255,0.6)_0%,rgba(255,255,255,0)_50%),radial-gradient(circle_at_82%_72%,rgba(6,214,160,0.55)_0%,rgba(6,214,160,0)_45%)]"
+        className="absolute inset-0 z-0 h-full w-full select-none object-cover"
+        draggable={false}
       />
+      {/* Overlay escuro */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 hidden opacity-[0.18] md:block"
+        className="absolute inset-0 z-[1]"
         style={{
-          backgroundImage:
-            "radial-gradient(ellipse at 50% 0%,rgba(6,214,160,0.10) 0%,rgba(6,214,160,0) 60%),repeating-radial-gradient(circle at 50% 35%,rgba(248,249,250,0.05) 0px,rgba(248,249,250,0.05) 1px,transparent 2px,transparent 90px)",
+          background:
+            "linear-gradient(180deg, rgba(7,59,76,0.55) 0%, rgba(7,59,76,0.82) 60%, rgba(7,59,76,0.96) 100%)",
         }}
       />
 
@@ -82,38 +88,34 @@ export default function LoginPage() {
               Acesso operacional
             </h1>
             <p className="mt-0.5 text-[11px] font-medium text-white/65">
-              Entre com suas credenciais para continuar
+              Entre com suas credenciais GLPI para continuar
             </p>
           </header>
 
           <div className="mt-2 space-y-1.5">
+            {/* Usuário */}
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                E-mail
+                Usuário
               </label>
               <div className="group mt-0.5 flex h-[38px] items-center gap-2.5 rounded-[9px] border border-white/12 bg-white/[0.04] px-3 transition focus-within:border-brand-emerald/70 focus-within:bg-white/[0.07] focus-within:shadow-[0_0_0_3px_rgba(6,214,160,0.12)]">
-                <Mail className="h-[13px] w-[13px] shrink-0 text-white/45 transition group-focus-within:text-brand-emerald" />
+                <User className="h-[13px] w-[13px] shrink-0 text-white/45 transition group-focus-within:text-brand-emerald" />
                 <input
-                  type="email"
-                  placeholder="seu@email.com"
-                  autoComplete="email"
+                  type="text"
+                  placeholder="seu.usuario"
+                  autoComplete="username"
                   className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
-                  {...register("email", {
-                    required: "Informe seu e-mail",
-                    pattern: {
-                      value: /^[\w.+-]+@[\w-]+\.[\w.-]+$/,
-                      message: "E-mail invalido",
-                    },
-                  })}
+                  {...register("login", { required: "Informe seu usuário" })}
                 />
               </div>
-              {errors.email?.message && (
+              {errors.login?.message && (
                 <span className="mt-1.5 block text-xs text-red-200">
-                  {errors.email.message}
+                  {errors.login.message}
                 </span>
               )}
             </div>
 
+            {/* Senha */}
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
                 Senha
@@ -151,22 +153,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="mt-1.5 flex items-center justify-between gap-4 text-[10px] font-medium">
-            <label className="inline-flex select-none items-center gap-2 text-white/70">
-              <input
-                type="checkbox"
-                className="h-[15px] w-[15px] rounded border-white/25 bg-white/5 accent-brand-emerald"
-              />
-              Lembrar de mim
-            </label>
-            <button
-              type="button"
-              className="font-semibold text-brand-emerald transition hover:text-white"
-            >
-              Esqueci minha senha
-            </button>
-          </div>
-
           {error && (
             <motion.div
               initial={{ opacity: 0, y: -4 }}
@@ -194,28 +180,5 @@ export default function LoginPage() {
         </motion.form>
       </div>
     </main>
-  );
-}
-
-function GoogleIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <path
-        fill="#FFC107"
-        d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20c11 0 20-9 20-20 0-1.3-.1-2.3-.4-3.5z"
-      />
-      <path
-        fill="#FF3D00"
-        d="M6.3 14.7l6.6 4.8C14.6 16.1 19 13 24 13c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4c-7 0-13.1 4-16.1 9.9z"
-      />
-      <path
-        fill="#4CAF50"
-        d="M24 44c5.2 0 9.9-2 13.5-5.2l-6.2-5.2c-2 1.4-4.5 2.4-7.3 2.4-5.3 0-9.7-3.4-11.3-8l-6.5 5C9 39.9 15.9 44 24 44z"
-      />
-      <path
-        fill="#1976D2"
-        d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.6l6.2 5.2C39.5 36.6 44 31 44 24c0-1.3-.1-2.3-.4-3.5z"
-      />
-    </svg>
   );
 }

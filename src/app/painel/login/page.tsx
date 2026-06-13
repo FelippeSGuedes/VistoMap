@@ -37,7 +37,7 @@ export default function PainelLoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await authService.login({ login, senha });
+      const result = await authService.loginAdmin({ login, senha });
       if (result.role !== "admin") {
         setError("Esta conta não tem acesso ao painel. Use o app do técnico em /login.");
         setLoading(false);

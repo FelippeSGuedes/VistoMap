@@ -8,20 +8,25 @@ import type { AuthSession, Tecnico } from "@/types";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-async function verifyPassword(plain: string, stored: string): Promise<boolean> {
-  if (stored.startsWith("$2y$") || stored.startsWith("$2b$")) {
-    return bcrypt.compare(plain, stored.replace(/^\$2y\$/, "$2b$"));
-  }
-  return crypto.createHash("sha1").update(plain).digest("hex") === stored;
-}
-
 interface GlpiUser {
   id: number;
   name: string;
   firstname: string | null;
   realname: string | null;
-  email: string;
+  email: string | null;
   password: string;
+}
+
+/** Suporta bcrypt (GLPI 10, hash começa com $2y$/$2b$) e SHA1 (GLPI 9 legado). */
+async function verifyPassword(plain: string, stored: string): Promise<boolean> {
+  if (stored.startsWith("$2y$") || stored.startsWith("$2b$")) {
+    // GLPI usa $2y$ (PHP), bcryptjs aceita após trocar o prefixo
+    const normalized = stored.replace(/^\$2y\$/, "$2b$");
+    return bcrypt.compare(plain, normalized);
+  }
+  // SHA1 legado (40 hex chars)
+  const sha1 = crypto.createHash("sha1").update(plain).digest("hex");
+  return sha1 === stored;
 }
 
 export async function POST(req: NextRequest) {
@@ -69,6 +74,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Verifica se pertence ao grupo VistoMap-Administradores
+    const groupRows = await query<{ cnt: number }>(
+      `
+        SELECT COUNT(*) AS cnt
+          FROM glpi_groups_users gu
+          INNER JOIN glpi_groups g ON g.id = gu.groups_id
+         WHERE gu.users_id = ?
+           AND g.name = 'VistoMap-Administradores'
+         LIMIT 1
+      `,
+      [user.id]
+    );
+
+    if (!groupRows[0]?.cnt) {
+      return NextResponse.json(
+        { message: "Acesso negado. Esta conta não pertence ao grupo de administradores." },
+        { status: 403 }
+      );
+    }
+
     const email = user.email ?? `${user.name}@gioc.local`;
     const tecnico: Tecnico = {
       id: String(user.id),
@@ -76,10 +101,9 @@ export async function POST(req: NextRequest) {
       email,
     };
 
-    // JWT real (HS256) com o mesmo JWT_SECRET do Fastify postes-api.
     const token = await signSessionJwt({
       sub: tecnico.id,
-      email: tecnico.email,
+      email,
       tecnicoId: tecnico.id,
     });
 
@@ -87,12 +111,12 @@ export async function POST(req: NextRequest) {
       token,
       tecnico,
       expiresAt: getJwtExpiresAtMs(),
-      role: "tecnico",
+      role: "admin",
     };
 
     return NextResponse.json(session);
   } catch (error) {
-    console.error("[api/auth/login] POST error", error);
+    console.error("[api/auth/painel-login] POST error", error);
     return NextResponse.json(
       { message: "Erro interno ao autenticar" },
       { status: 500 }
