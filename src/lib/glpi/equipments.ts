@@ -152,9 +152,10 @@ export interface ListVistoriasFilters {
 export async function listVistorias(filters: ListVistoriasFilters = {}) {
   const where: string[] = [];
   const params: unknown[] = [];
-  // Regra (nova): vistoria SEM coordenada nao aparece em lugar nenhum — nem no
-  // app do tecnico nem no painel. HAS_COORDS sempre aplicado.
-  const coordsFilter = HAS_COORDS;
+  // Quando filtramos por técnico, NÃO aplicamos HAS_COORDS: o técnico precisa
+  // ver TODAS as vistorias atribuídas a ele, mesmo sem coordenada cadastrada.
+  // O mapa (MapView.tsx) já filtra client-side via hasValidCoords — a lista não.
+  const coordsFilter = filters.tecnicoId != null ? "" : HAS_COORDS;
   if (filters.tecnicoId != null) {
     where.push("f.users_id_vistoriadorafield = ?");
     params.push(filters.tecnicoId);

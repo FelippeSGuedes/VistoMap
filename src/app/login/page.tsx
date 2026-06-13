@@ -55,17 +55,6 @@ export default function LoginPage() {
 
   return (
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden bg-[#073B4C] text-brand-ice">
-      {/* logo_video.mp4 como fundo full-screen — mobile only */}
-      <video
-        src="/logo_video.mp4"
-        aria-hidden
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="pointer-events-none absolute inset-0 z-0 h-full w-full select-none object-cover object-top md:hidden"
-      />
-
       {/* Gradientes decorativos — desktop only */}
       <div
         aria-hidden
@@ -100,17 +89,21 @@ export default function LoginPage() {
           <div className="mt-2 space-y-1.5">
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                Usuário / E-mail
+                E-mail
               </label>
               <div className="group mt-0.5 flex h-[38px] items-center gap-2.5 rounded-[9px] border border-white/12 bg-white/[0.04] px-3 transition focus-within:border-brand-emerald/70 focus-within:bg-white/[0.07] focus-within:shadow-[0_0_0_3px_rgba(6,214,160,0.12)]">
                 <Mail className="h-[13px] w-[13px] shrink-0 text-white/45 transition group-focus-within:text-brand-emerald" />
                 <input
-                  type="text"
-                  placeholder="usuário ou e-mail"
-                  autoComplete="username email"
+                  type="email"
+                  placeholder="seu@email.com"
+                  autoComplete="email"
                   className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
                   {...register("email", {
-                    required: "Informe seu usuário ou e-mail",
+                    required: "Informe seu e-mail",
+                    pattern: {
+                      value: /^[\w.+-]+@[\w-]+\.[\w.-]+$/,
+                      message: "E-mail invalido",
+                    },
                   })}
                 />
               </div>
