@@ -323,7 +323,9 @@ export interface AuditEntry {
     | "login-tecnico"
     | "expediente-finalizado"
     | "expediente-iniciado"
-    | "vistoria-iniciada";
+    | "vistoria-iniciada"
+    | "vistoria-em-deslocamento"
+    | "vistoria-em-vistoria";
   /** Alvo da ação. */
   alvo?: {
     tipo: "vistoria" | "tecnico" | "revisita" | "sistema";

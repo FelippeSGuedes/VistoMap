@@ -50,7 +50,9 @@ const ACAO: Record<
   "login-tecnico":       { label: "Login técnico",        icon: LogIn,        fg: "#475569", bg: "#F8FAFC", dot: "#94A3B8" },
   "expediente-iniciado": { label: "Expediente iniciado",  icon: LogIn,        fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
   "expediente-finalizado":{ label: "Expediente encerrado",icon: LogIn,        fg: "#475569", bg: "#F8FAFC", dot: "#94A3B8" },
-  "vistoria-iniciada":   { label: "Vistoria iniciada",    icon: Activity,     fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
+  "vistoria-iniciada":       { label: "Vistoria iniciada",      icon: Activity, fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
+  "vistoria-em-deslocamento":{ label: "Em Deslocamento",          icon: Activity, fg: "#D97706", bg: "#FFFBEB", dot: "#F59E0B" },
+  "vistoria-em-vistoria":    { label: "Em Vistoria (campo)",      icon: Activity, fg: "#2563EB", bg: "#EFF6FF", dot: "#3B82F6" },
 };
 
 const TIPO_FILTROS: Array<{ id: AuditEntry["acao"] | "todos"; label: string }> = [

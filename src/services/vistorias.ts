@@ -44,6 +44,10 @@ export async function iniciarVistoria(id: string): Promise<{ ok: true }> {
   );
 }
 
+export async function navegarVistoria(id: string): Promise<void> {
+  await api.patch(`/vistorias/${id}/situacao`, { situacao_id: 7 }).catch(() => {});
+}
+
 export async function finalizarVistoria(
   payload: VistoriaPayload,
   captures: CaptureBundle = {}

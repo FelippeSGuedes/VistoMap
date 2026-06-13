@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { useExpedienteStore } from "@/store/expediente";
 import { VistoriaHeaderHero } from "./VistoriaHeaderHero";
 import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
-import { vistoriasService } from "@/services/vistorias";
+import { navegarVistoria, vistoriasService } from "@/services/vistorias";
 
 interface VistoriaPinSheetProps {
   vistoria: Vistoria | null;
@@ -131,7 +131,10 @@ export function VistoriaPinSheet({
                 variant="outline"
                 size="lg"
                 leftIcon={<Navigation className="h-4 w-4" />}
-                onClick={() => setNavOpen(true)}
+                onClick={() => {
+                  void navegarVistoria(vistoria.id);
+                  setNavOpen(true);
+                }}
               >
                 Navegar
               </Button>

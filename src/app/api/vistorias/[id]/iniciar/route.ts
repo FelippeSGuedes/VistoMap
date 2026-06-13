@@ -3,6 +3,8 @@ import { getVistoria } from "@/lib/glpi/equipments";
 import { verifySessionJwt } from "@/lib/jwt";
 import { expedienteAtual } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
+import { execute } from "@/lib/db";
+import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -73,6 +75,11 @@ export async function POST(
     if (!vistoria) {
       return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
     }
+    // Atualiza situação → Em Vistoria (2) para aparecer em "Vistorias em Andamento" no painel
+    await execute(
+      `UPDATE \`${TABLE_FIELDS}\` SET \`${SITUACAO_COLUMN}\` = ? WHERE items_id = ?`,
+      [SITUACAO_EM_VISTORIA, id]
+    );
     // Audit timestamp do "iniciado" — usado pra calcular tempo total da vistoria
     if (actorId) {
       void auditInsert({

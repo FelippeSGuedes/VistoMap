@@ -62,6 +62,7 @@ export const SITUACAO_VISTORIADO = 3;
 export const SITUACAO_AGUARDANDO_REVISITA = 4;
 export const SITUACAO_EM_REVISITA = 5;
 export const SITUACAO_REVISITADO = 6;
+export const SITUACAO_EM_DESLOCAMENTO = 7;
 
 export const SITUACAO_COLUMN =
   "plugin_fields_situaodavistoriafielddropdowns_id";

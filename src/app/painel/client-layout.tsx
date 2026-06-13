@@ -4,8 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  Activity,
   Bell,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   History,
   LayoutDashboard,
@@ -22,24 +25,34 @@ import {
 import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
 
-const NAV = [
-  { href: "/painel",             label: "Operação",           icon: LayoutDashboard, exact: true },
-  { href: "/painel/mapa",        label: "Mapa Tempo Real",    icon: MapIcon },
-  { href: "/painel/vistorias",   label: "Fila de Vistorias",    icon: ClipboardList },
-  { href: "/painel/realizadas",  label: "Realizadas",           icon: CheckCircle2 },
-  { href: "/painel/revisitas",   label: "Central de Revisitas", icon: RotateCw },
-  { href: "/painel/tecnicos",    label: "Técnicos",           icon: Users },
-  { href: "/painel/auditoria",   label: "Auditoria",          icon: ShieldAlert },
-  { href: "/painel/historico",   label: "Histórico",          icon: History },
-  { href: "/painel/configuracoes", label: "Configurações",    icon: Settings },
+// Items simples do nav (sem grupo)
+const TOP_NAV = [
+  { href: "/painel",           label: "Operação",        icon: LayoutDashboard, exact: true },
+  { href: "/painel/mapa",      label: "Mapa Tempo Real", icon: MapIcon },
 ];
+
+const BOTTOM_NAV = [
+  { href: "/painel/tecnicos",       label: "Técnicos",      icon: Users },
+  { href: "/painel/auditoria",      label: "Auditoria",     icon: ShieldAlert },
+  { href: "/painel/historico",      label: "Histórico",     icon: History },
+  { href: "/painel/configuracoes",  label: "Configurações", icon: Settings },
+];
+
+// Sub-itens do grupo "Vistorias"
+const VISTORIAS_GROUP = [
+  { href: "/painel/vistorias",   label: "Pendentes",       icon: ClipboardList },
+  { href: "/painel/andamento",   label: "Em Andamento",    icon: Activity },
+  { href: "/painel/realizadas",  label: "Concluídas",      icon: CheckCircle2 },
+  { href: "/painel/revisitas",   label: "Revisitas",       icon: RotateCw },
+];
+
+const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
 
 function initials(nome: string) {
   const p = nome.trim().split(/[\s._-]+/);
   return ((p[0]?.[0] ?? "") + (p[1]?.[0] ?? p[0]?.[1] ?? "")).toUpperCase();
 }
 
-// Tokens de tema centralizados
 const LIGHT = {
   shell:        "#EFF1F5",
   sidebar:      "#FFFFFF",
@@ -52,7 +65,6 @@ const LIGHT = {
   navInactive:  "#6B7280",
   badge:        "#FFFFFF",
   search:       "#F8F9FB",
-  avatarRing:   "#FFFFFF",
 } as const;
 
 const DARK = {
@@ -67,8 +79,63 @@ const DARK = {
   navInactive:  "#8B9DBF",
   badge:        "#1A1F2E",
   search:       "rgba(255,255,255,0.06)",
-  avatarRing:   "#1A1F2E",
 } as const;
+
+type Theme = {
+  navActive: string;
+  navActiveTxt: string;
+  navInactive: string;
+  [k: string]: string;
+};
+
+function NavItem({
+  href,
+  label,
+  icon: Icon,
+  exact,
+  pathname,
+  T,
+  indent = false,
+}: {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  exact?: boolean;
+  pathname: string;
+  T: Theme;
+  indent?: boolean;
+}) {
+  const active = exact
+    ? pathname === href
+    : pathname === href || pathname.startsWith(href + "/");
+
+  return (
+    <li>
+      <Link
+        href={href}
+        className="relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
+        style={{
+          paddingLeft: indent ? "2rem" : undefined,
+          background: active ? T.navActive : "transparent",
+          color: active ? T.navActiveTxt : T.navInactive,
+        }}
+      >
+        {active && (
+          <span
+            className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+            style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+          />
+        )}
+        <Icon
+          className="h-[14px] w-[14px] shrink-0"
+          strokeWidth={active ? 2.3 : 1.8}
+          style={{ color: active ? "#00B388" : T.navInactive }}
+        />
+        <span className="truncate">{label}</span>
+      </Link>
+    </li>
+  );
+}
 
 export default function PainelClientLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
@@ -76,7 +143,18 @@ export default function PainelClientLayout({ children }: { children: React.React
   const { hydrated, session, logout } = useAuthStore();
 
   const [isDark, setIsDark] = useState(false);
-  useEffect(() => { setIsDark(localStorage.getItem("vm_painel_theme") === "dark"); }, []);
+  const [vistoriasOpen, setVistoriasOpen] = useState(false);
+
+  useEffect(() => {
+    setIsDark(localStorage.getItem("vm_painel_theme") === "dark");
+  }, []);
+
+  // Abre o grupo automaticamente quando está numa rota de vistorias
+  useEffect(() => {
+    if (VISTORIAS_HREFS.has(pathname)) {
+      setVistoriasOpen(true);
+    }
+  }, [pathname]);
 
   const toggle = () => {
     const next = !isDark;
@@ -96,6 +174,7 @@ export default function PainelClientLayout({ children }: { children: React.React
   const T = isDark ? DARK : LIGHT;
   const isMapaPage = pathname === "/painel/mapa";
   const nome = session.tecnico.nome;
+  const vistoriasActive = VISTORIAS_HREFS.has(pathname);
 
   return (
     <div className="flex h-[100dvh] overflow-hidden" style={{ background: T.shell }}>
@@ -139,43 +218,72 @@ export default function PainelClientLayout({ children }: { children: React.React
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-2 py-3">
-          <p
-            className="mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[0.22em]"
-            style={{ color: T.textMuted }}
-          >
+          <p className="mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: T.textMuted }}>
             Menu
           </p>
           <ul className="space-y-[2px]">
-            {NAV.map(({ href, label, icon: Icon, exact }) => {
-              const active = exact
-                ? pathname === href
-                : pathname === href || pathname.startsWith(href + "/");
-              return (
-                <li key={href}>
-                  <Link
-                    href={href}
-                    className="relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
-                    style={{
-                      background: active ? T.navActive : "transparent",
-                      color: active ? T.navActiveTxt : T.navInactive,
-                    }}
-                  >
-                    {active && (
-                      <span
-                        className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
-                        style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
-                      />
-                    )}
-                    <Icon
-                      className="h-[14px] w-[14px] shrink-0"
-                      strokeWidth={active ? 2.3 : 1.8}
-                      style={{ color: active ? "#00B388" : T.navInactive }}
+            {/* Itens do topo */}
+            {TOP_NAV.map(({ href, label, icon, exact }) => (
+              <NavItem key={href} href={href} label={label} icon={icon} exact={exact} pathname={pathname} T={T} />
+            ))}
+
+            {/* ── GRUPO: VISTORIAS ───────────────────────────────── */}
+            <li>
+              <button
+                type="button"
+                onClick={() => setVistoriasOpen((v) => !v)}
+                className="relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
+                style={{
+                  background: vistoriasActive ? T.navActive : "transparent",
+                  color: vistoriasActive ? T.navActiveTxt : T.navInactive,
+                }}
+              >
+                {vistoriasActive && (
+                  <span
+                    className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                    style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                  />
+                )}
+                <ClipboardList
+                  className="h-[14px] w-[14px] shrink-0"
+                  strokeWidth={vistoriasActive ? 2.3 : 1.8}
+                  style={{ color: vistoriasActive ? "#00B388" : T.navInactive }}
+                />
+                <span className="flex-1 truncate text-left">Vistorias</span>
+                {vistoriasOpen ? (
+                  <ChevronDown className="h-3 w-3 shrink-0 transition-transform" />
+                ) : (
+                  <ChevronRight className="h-3 w-3 shrink-0 transition-transform" />
+                )}
+              </button>
+
+              {/* Sub-itens colapsáveis */}
+              {vistoriasOpen && (
+                <ul className="mt-0.5 space-y-[2px]">
+                  {VISTORIAS_GROUP.map(({ href, label, icon }) => (
+                    <NavItem
+                      key={href}
+                      href={href}
+                      label={label}
+                      icon={icon}
+                      pathname={pathname}
+                      T={T}
+                      indent
                     />
-                    <span className="truncate">{label}</span>
-                  </Link>
-                </li>
-              );
-            })}
+                  ))}
+                </ul>
+              )}
+            </li>
+
+            {/* Separador */}
+            <li>
+              <div className="my-2 mx-2 border-t" style={{ borderColor: T.border }} />
+            </li>
+
+            {/* Itens do rodapé */}
+            {BOTTOM_NAV.map(({ href, label, icon }) => (
+              <NavItem key={href} href={href} label={label} icon={icon} pathname={pathname} T={T} />
+            ))}
           </ul>
         </nav>
 
@@ -220,7 +328,6 @@ export default function PainelClientLayout({ children }: { children: React.React
           className="flex h-14 shrink-0 items-center gap-3 px-5"
           style={{ background: T.topbar, borderBottom: `1px solid ${T.border}` }}
         >
-          {/* Search */}
           <label
             className="flex h-8 flex-1 max-w-[380px] cursor-text items-center gap-2 rounded-lg px-3"
             style={{ background: T.search, border: `1px solid ${T.border}` }}
@@ -235,7 +342,6 @@ export default function PainelClientLayout({ children }: { children: React.React
           </label>
 
           <div className="ml-auto flex items-center gap-1">
-            {/* Live pill */}
             <div
               className="flex items-center gap-1.5 rounded-full px-2.5 py-[5px]"
               style={{ background: "rgba(0,179,136,0.10)", border: "1px solid rgba(0,179,136,0.22)" }}
@@ -249,7 +355,6 @@ export default function PainelClientLayout({ children }: { children: React.React
               </span>
             </div>
 
-            {/* Theme toggle */}
             <button
               type="button"
               onClick={toggle}
@@ -260,7 +365,6 @@ export default function PainelClientLayout({ children }: { children: React.React
               {isDark ? <Sun className="h-[15px] w-[15px]" /> : <Moon className="h-[15px] w-[15px]" />}
             </button>
 
-            {/* Bell */}
             <button
               type="button"
               className="relative flex h-8 w-8 items-center justify-center rounded-lg"
@@ -275,11 +379,6 @@ export default function PainelClientLayout({ children }: { children: React.React
           </div>
         </header>
 
-        {/*
-         * CONTEÚDO:
-         * • Mapa → altura explícita + position relative para o absolute inset-0 funcionar
-         * • Outros → flex-1 + overflow-y-auto com padding
-         */}
         <main
           className={isMapaPage ? "relative flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-y-auto px-6 py-6"}
           style={{ background: T.shell }}
