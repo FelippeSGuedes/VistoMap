@@ -18,6 +18,7 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useVistoriasStore } from "@/store/vistorias";
+import { API_BASE } from "@/services/api";
 
 interface PushPlugin {
   requestPermissions: () => Promise<{ receive: "granted" | "denied" | "prompt" }>;
@@ -53,7 +54,6 @@ export function usePushRegistration() {
       return;
     }
 
-    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     const removers: Array<() => Promise<void>> = [];
 
     (async () => {
@@ -89,7 +89,7 @@ export function usePushRegistration() {
           const token = (data as { value: string }).value;
           console.log("[usePushRegistration] FCM token:", token.slice(0, 30) + "...");
           try {
-            await fetch(`${base}/api/push/register`, {
+            await fetch(`${API_BASE}/push/register`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",

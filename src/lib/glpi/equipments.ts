@@ -147,6 +147,12 @@ function mapRow(r: RawRow) {
 export interface ListVistoriasFilters {
   /** Filtra por técnico atribuído (users_id_vistoriadorafield). Admin omite. */
   tecnicoId?: number;
+  /**
+   * Quando true, retorna as vistorias CONCLUÍDAS/finalizadas do técnico
+   * (situação Vistoriado/Revisitado OU status Aprovado/Reprovado/Em análise),
+   * limitadas aos últimos 60 dias. Default (false) = fila pendente.
+   */
+  concluidas?: boolean;
 }
 
 export async function listVistorias(filters: ListVistoriasFilters = {}) {
@@ -160,15 +166,26 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
     where.push("f.users_id_vistoriadorafield = ?");
     params.push(filters.tecnicoId);
 
-    // Regra operacional: técnico NÃO deve ver vistorias concluídas/aprovadas.
-    // Situação: bloqueia Vistoriado(3) e Revisitado(6).
-    // Status: bloqueia Aprovado(3), Reprovado(4), Em análise(5).
-    // Usa blacklist de IDs em vez de whitelist de nomes para não quebrar
-    // quando o GLPI cadastra novos status (ex: 'AGUARDANDO VISTORIA' id=6).
-    where.push(`(
-      COALESCE(f.plugin_fields_situaodavistoriafielddropdowns_id, 0) NOT IN (3, 6)
-      AND COALESCE(f.plugin_fields_statusvistoriafielddropdowns_id, 0) NOT IN (3, 4, 5)
-    )`);
+    if (filters.concluidas) {
+      // Concluídas/finalizadas recentes (últimos 60 dias) — histórico do técnico.
+      where.push(`(
+        COALESCE(f.plugin_fields_situaodavistoriafielddropdowns_id, 0) IN (3, 6)
+        OR COALESCE(f.plugin_fields_statusvistoriafielddropdowns_id, 0) IN (3, 4, 5)
+      )`);
+      where.push(
+        `f.datadavistoriafield IS NOT NULL AND f.datadavistoriafield >= DATE_SUB(NOW(), INTERVAL 60 DAY)`
+      );
+    } else {
+      // Regra operacional: técnico NÃO deve ver vistorias concluídas/aprovadas.
+      // Situação: bloqueia Vistoriado(3) e Revisitado(6).
+      // Status: bloqueia Aprovado(3), Reprovado(4), Em análise(5).
+      // Usa blacklist de IDs em vez de whitelist de nomes para não quebrar
+      // quando o GLPI cadastra novos status (ex: 'AGUARDANDO VISTORIA' id=6).
+      where.push(`(
+        COALESCE(f.plugin_fields_situaodavistoriafielddropdowns_id, 0) NOT IN (3, 6)
+        AND COALESCE(f.plugin_fields_statusvistoriafielddropdowns_id, 0) NOT IN (3, 4, 5)
+      )`);
+    }
   }
   const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";
   const rows = await query<RawRow>(

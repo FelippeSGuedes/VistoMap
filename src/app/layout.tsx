@@ -18,11 +18,10 @@ export const metadata: Metadata = {
   manifest: `${BP}/manifest.json`,
   icons: {
     icon: [
-      { url: `${BP}/favicon_app.png`, type: "image/png" },
+      { url: `${BP}/logo_favicon.PNG`, type: "image/png" },
       { url: `${BP}/favicon.svg`, type: "image/svg+xml" },
     ],
-    apple: [{ url: `${BP}/favicon_app.png` }],
-    shortcut: [{ url: `${BP}/favicon_app.png` }],
+    apple: [{ url: `${BP}/logo_favicon.PNG` }],
   },
   appleWebApp: {
     capable: true,

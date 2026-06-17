@@ -50,7 +50,7 @@ export function useVistoriaWatcher(enabled: boolean) {
         tag: `vistoria-${v.id}`,
         onClick: () => {
           if (typeof window !== "undefined") {
-            window.location.href = `${PREFIX}/vistorias/${v.id}`;
+            window.location.href = `${PREFIX}/vistoria?id=${v.id}`;
           }
         },
       });

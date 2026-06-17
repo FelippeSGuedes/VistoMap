@@ -47,7 +47,7 @@ async function probePermission(): Promise<PermissionState | "unsupported"> {
   }
 }
 
-export function useGeolocation(autoStart = false) {
+export function useGeolocation(autoStart = false, watch = false) {
   const [state, setState] = useState<GeolocationState>({
     position: cachedPosition,
     loading: false,
@@ -141,6 +141,31 @@ export function useGeolocation(autoStart = false) {
       }
     };
   }, [autoStart, refresh]);
+
+  // Watch contínuo: atualiza a posição em tempo real (mapa/rota se movem
+  // sozinhos). Só ligar quando a permissão já está concedida — evita prompt.
+  useEffect(() => {
+    if (!watch) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        const next: GeoPosition = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          capturedAt: Date.now(),
+        };
+        cachedPosition = next;
+        permissionState = "granted";
+        setState({ position: next, loading: false, error: null });
+      },
+      () => {
+        /* mantém a última posição conhecida; não derruba a UI */
+      },
+      { enableHighAccuracy: true, maximumAge: 4_000, timeout: 20_000 }
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [watch]);
 
   return { ...state, refresh };
 }

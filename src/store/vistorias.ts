@@ -34,8 +34,16 @@ export const useVistoriasStore = create<VistoriasStore>((set) => ({
   fetchAll: async () => {
     set({ loading: true, error: null });
     try {
-      const items = await vistoriasService.fetchVistorias();
-      set({ items, loading: false });
+      // Pendentes (fila) + concluídas recentes (histórico do técnico).
+      const [pendentes, concluidas] = await Promise.all([
+        vistoriasService.fetchVistorias(),
+        vistoriasService.fetchVistoriasConcluidas(),
+      ]);
+      // Mescla sem duplicar (pendente tem prioridade se houver colisão de id).
+      const map = new Map<string, (typeof pendentes)[number]>();
+      for (const v of concluidas) map.set(v.id, v);
+      for (const v of pendentes) map.set(v.id, v);
+      set({ items: Array.from(map.values()), loading: false });
     } catch (error) {
       set({
         loading: false,

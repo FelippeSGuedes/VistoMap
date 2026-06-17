@@ -44,7 +44,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const items = await listVistorias({ tecnicoId: actor.id });
+    const concluidas = new URL(req.url).searchParams.get("concluidas") === "1";
+    const items = await listVistorias({ tecnicoId: actor.id, concluidas });
     return NextResponse.json(items);
   } catch (error) {
     console.error("[api/vistorias] GET error", error);

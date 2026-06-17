@@ -545,7 +545,7 @@ export default function RevisitasPage() {
                 <p className="px-2 pb-1 text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "#A0ACBA" }}>
                   Técnicos disponíveis
                 </p>
-                {tecnicos.map((t) => {
+                {tecnicos.filter((t) => t.status !== "offline").map((t) => {
                   const statusColor = t.status === "em-campo" ? "#00B388" : t.status === "base" ? "#6366F1" : "#9CA3AF";
                   return (
                     <button
@@ -567,7 +567,7 @@ export default function RevisitasPage() {
                     </button>
                   );
                 })}
-                {tecnicos.length === 0 && (
+                {tecnicos.filter((t) => t.status !== "offline").length === 0 && (
                   <p className="px-2 py-4 text-center text-[12px]" style={{ color: "#94A3B8" }}>Nenhum técnico disponível no momento.</p>
                 )}
               </div>

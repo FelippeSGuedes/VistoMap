@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -15,6 +15,8 @@ import {
   LogOut,
   Map as MapIcon,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   RotateCw,
   Search,
   Settings,
@@ -47,6 +49,9 @@ const VISTORIAS_GROUP = [
 ];
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
+
+// Largura abaixo da qual a sidebar recolhe automaticamente
+const AUTO_COLLAPSE_BP = 1100;
 
 function initials(nome: string) {
   const p = nome.trim().split(/[\s._-]+/);
@@ -96,6 +101,7 @@ function NavItem({
   pathname,
   T,
   indent = false,
+  collapsed = false,
 }: {
   href: string;
   label: string;
@@ -104,6 +110,7 @@ function NavItem({
   pathname: string;
   T: Theme;
   indent?: boolean;
+  collapsed?: boolean;
 }) {
   const active = exact
     ? pathname === href
@@ -113,9 +120,12 @@ function NavItem({
     <li>
       <Link
         href={href}
-        className="relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
+        title={collapsed ? label : undefined}
+        className={`relative flex items-center rounded-lg text-[12.5px] font-medium transition-colors duration-100 ${
+          collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-2.5 py-[7px]"
+        }`}
         style={{
-          paddingLeft: indent ? "2rem" : undefined,
+          paddingLeft: !collapsed && indent ? "2rem" : undefined,
           background: active ? T.navActive : "transparent",
           color: active ? T.navActiveTxt : T.navInactive,
         }}
@@ -127,11 +137,11 @@ function NavItem({
           />
         )}
         <Icon
-          className="h-[14px] w-[14px] shrink-0"
+          className="h-[15px] w-[15px] shrink-0"
           strokeWidth={active ? 2.3 : 1.8}
           style={{ color: active ? "#00B388" : T.navInactive }}
         />
-        <span className="truncate">{label}</span>
+        {!collapsed && <span className="truncate">{label}</span>}
       </Link>
     </li>
   );
@@ -144,22 +154,40 @@ export default function PainelClientLayout({ children }: { children: React.React
 
   const [isDark, setIsDark] = useState(false);
   const [vistoriasOpen, setVistoriasOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const prefRef = useRef(false); // preferência manual do usuário (expandido/recolhido)
 
   useEffect(() => {
     setIsDark(localStorage.getItem("vm_painel_theme") === "dark");
   }, []);
 
+  // Colapso inteligente: recolhe sob breakpoint estreito; senão respeita a
+  // preferência salva. Reavalia em resize.
+  useEffect(() => {
+    prefRef.current = localStorage.getItem("vm_painel_sidebar") === "collapsed";
+    const apply = () =>
+      setCollapsed(window.innerWidth < AUTO_COLLAPSE_BP ? true : prefRef.current);
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, []);
+
   // Abre o grupo automaticamente quando está numa rota de vistorias
   useEffect(() => {
-    if (VISTORIAS_HREFS.has(pathname)) {
-      setVistoriasOpen(true);
-    }
+    if (VISTORIAS_HREFS.has(pathname)) setVistoriasOpen(true);
   }, [pathname]);
 
-  const toggle = () => {
+  const toggleTheme = () => {
     const next = !isDark;
     setIsDark(next);
     localStorage.setItem("vm_painel_theme", next ? "dark" : "light");
+  };
+
+  const toggleCollapse = () => {
+    const next = !collapsed;
+    prefRef.current = next;
+    localStorage.setItem("vm_painel_sidebar", next ? "collapsed" : "expanded");
+    setCollapsed(next);
   };
 
   useEffect(() => {
@@ -181,142 +209,249 @@ export default function PainelClientLayout({ children }: { children: React.React
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside
-        className="flex h-full w-[220px] shrink-0 flex-col"
+        className="flex h-full shrink-0 flex-col transition-[width] duration-200 ease-out"
         style={{
+          width: collapsed ? 68 : 224,
           background: T.sidebar,
           borderRight: `1px solid ${T.border}`,
           boxShadow: isDark ? "none" : "0 0 0 1px rgba(0,0,0,0.04), 2px 0 12px rgba(0,0,0,0.04)",
         }}
       >
-        {/* Brand */}
+        {/* ── BRAND ── */}
         <div
-          className="flex h-14 shrink-0 items-center gap-2.5 px-4"
+          className={`flex h-16 shrink-0 items-center ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}
           style={{ borderBottom: `1px solid ${T.border}` }}
         >
-          <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-            style={{
-              background: "linear-gradient(145deg,#00C99B 0%,#00875F 100%)",
-              boxShadow: "0 2px 8px rgba(0,179,136,0.35)",
-            }}
-          >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={asset("/logo_favicon.PNG")}
-              alt="VM"
-              className="h-[18px] w-[18px] object-contain"
+              src={asset("/logo-vistomap.png")}
+              alt="VistoMap"
+              className="h-9 w-9 object-contain"
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
             />
           </span>
-          <div className="leading-none">
-            <div className="text-[13.5px] font-semibold" style={{ color: T.text }}>VistoMap</div>
-            <div className="mt-[2px] text-[8.5px] font-bold uppercase tracking-[0.20em]" style={{ color: "#00B388" }}>
-              Central GIOC
+
+          {!collapsed && (
+            <div className="min-w-0 flex-1 leading-none">
+              <div className="flex items-baseline gap-px">
+                <span className="text-[16px] font-bold tracking-[-0.4px]" style={{ color: T.text }}>
+                  Visto
+                </span>
+                <span className="text-[16px] font-bold tracking-[-0.4px]" style={{ color: "#00B388" }}>
+                  Map
+                </span>
+              </div>
+              <div className="mt-[3px] flex items-center gap-1.5">
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ background: "#00C99B", boxShadow: "0 0 6px rgba(0,201,155,0.7)" }}
+                />
+                <span
+                  className="text-[8.5px] font-bold uppercase tracking-[0.18em]"
+                  style={{ color: T.textMuted }}
+                >
+                  Central GIOC
+                </span>
+              </div>
             </div>
-          </div>
+          )}
+
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={toggleCollapse}
+              title="Recolher menu"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition hover:bg-black/5"
+              style={{ color: T.textMuted }}
+            >
+              <PanelLeftClose className="h-[15px] w-[15px]" />
+            </button>
+          )}
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3">
-          <p className="mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: T.textMuted }}>
-            Menu
-          </p>
+        {/* Botão expandir (modo recolhido) */}
+        {collapsed && (
+          <div className="flex justify-center py-2" style={{ borderBottom: `1px solid ${T.border}` }}>
+            <button
+              type="button"
+              onClick={toggleCollapse}
+              title="Expandir menu"
+              className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-black/5"
+              style={{ color: T.textMuted }}
+            >
+              <PanelLeftOpen className="h-[16px] w-[16px]" />
+            </button>
+          </div>
+        )}
+
+        {/* ── NAV ── */}
+        <nav className={`flex-1 overflow-y-auto py-3 ${collapsed ? "px-2" : "px-2"}`}>
+          {!collapsed && (
+            <p className="mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: T.textMuted }}>
+              Menu
+            </p>
+          )}
           <ul className="space-y-[2px]">
             {/* Itens do topo */}
             {TOP_NAV.map(({ href, label, icon, exact }) => (
-              <NavItem key={href} href={href} label={label} icon={icon} exact={exact} pathname={pathname} T={T} />
+              <NavItem
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                exact={exact}
+                pathname={pathname}
+                T={T}
+                collapsed={collapsed}
+              />
             ))}
 
             {/* ── GRUPO: VISTORIAS ───────────────────────────────── */}
-            <li>
-              <button
-                type="button"
-                onClick={() => setVistoriasOpen((v) => !v)}
-                className="relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
-                style={{
-                  background: vistoriasActive ? T.navActive : "transparent",
-                  color: vistoriasActive ? T.navActiveTxt : T.navInactive,
-                }}
-              >
-                {vistoriasActive && (
-                  <span
-                    className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
-                    style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
-                  />
-                )}
-                <ClipboardList
-                  className="h-[14px] w-[14px] shrink-0"
-                  strokeWidth={vistoriasActive ? 2.3 : 1.8}
-                  style={{ color: vistoriasActive ? "#00B388" : T.navInactive }}
-                />
-                <span className="flex-1 truncate text-left">Vistorias</span>
-                {vistoriasOpen ? (
-                  <ChevronDown className="h-3 w-3 shrink-0 transition-transform" />
-                ) : (
-                  <ChevronRight className="h-3 w-3 shrink-0 transition-transform" />
-                )}
-              </button>
-
-              {/* Sub-itens colapsáveis */}
-              {vistoriasOpen && (
-                <ul className="mt-0.5 space-y-[2px]">
-                  {VISTORIAS_GROUP.map(({ href, label, icon }) => (
-                    <NavItem
-                      key={href}
-                      href={href}
-                      label={label}
-                      icon={icon}
-                      pathname={pathname}
-                      T={T}
-                      indent
+            {collapsed ? (
+              <li>
+                <button
+                  type="button"
+                  title="Vistorias"
+                  onClick={() => { toggleCollapse(); setVistoriasOpen(true); }}
+                  className="relative flex w-full items-center justify-center rounded-lg py-[9px] transition-colors duration-100"
+                  style={{
+                    background: vistoriasActive ? T.navActive : "transparent",
+                    color: vistoriasActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {vistoriasActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
                     />
-                  ))}
-                </ul>
-              )}
-            </li>
+                  )}
+                  <ClipboardList
+                    className="h-[15px] w-[15px]"
+                    strokeWidth={vistoriasActive ? 2.3 : 1.8}
+                    style={{ color: vistoriasActive ? "#00B388" : T.navInactive }}
+                  />
+                </button>
+              </li>
+            ) : (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setVistoriasOpen((v) => !v)}
+                  className="relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
+                  style={{
+                    background: vistoriasActive ? T.navActive : "transparent",
+                    color: vistoriasActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {vistoriasActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                    />
+                  )}
+                  <ClipboardList
+                    className="h-[15px] w-[15px] shrink-0"
+                    strokeWidth={vistoriasActive ? 2.3 : 1.8}
+                    style={{ color: vistoriasActive ? "#00B388" : T.navInactive }}
+                  />
+                  <span className="flex-1 truncate text-left">Vistorias</span>
+                  {vistoriasOpen ? (
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                  )}
+                </button>
+
+                {vistoriasOpen && (
+                  <ul className="mt-0.5 space-y-[2px]">
+                    {VISTORIAS_GROUP.map(({ href, label, icon }) => (
+                      <NavItem
+                        key={href}
+                        href={href}
+                        label={label}
+                        icon={icon}
+                        pathname={pathname}
+                        T={T}
+                        indent
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )}
 
             {/* Separador */}
             <li>
-              <div className="my-2 mx-2 border-t" style={{ borderColor: T.border }} />
+              <div className={`my-2 border-t ${collapsed ? "mx-2" : "mx-2"}`} style={{ borderColor: T.border }} />
             </li>
 
             {/* Itens do rodapé */}
             {BOTTOM_NAV.map(({ href, label, icon }) => (
-              <NavItem key={href} href={href} label={label} icon={icon} pathname={pathname} T={T} />
+              <NavItem
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                pathname={pathname}
+                T={T}
+                collapsed={collapsed}
+              />
             ))}
           </ul>
         </nav>
 
-        {/* User pill */}
+        {/* ── USER PILL ── */}
         <div className="p-2.5" style={{ borderTop: `1px solid ${T.border}` }}>
-          <div
-            className="flex items-center gap-2.5 rounded-lg p-2"
-            style={{ background: isDark ? "rgba(255,255,255,0.03)" : "#F8FAFB" }}
-          >
-            <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10.5px] font-bold text-white"
-              style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 2px 8px rgba(0,179,136,0.3)" }}
-            >
-              {initials(nome)}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[11.5px] font-semibold" style={{ color: T.text }}>
-                {nome.split(/[\s._-]+/)[0]}
-              </div>
-              <div className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#00B388" }}>
-                Administrador
-              </div>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              <span
+                title={nome}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white"
+                style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 2px 8px rgba(0,179,136,0.3)" }}
+              >
+                {initials(nome)}
+              </span>
+              <button
+                type="button"
+                onClick={() => { logout(); router.replace("/painel/login"); }}
+                title="Sair"
+                className="flex h-7 w-7 items-center justify-center rounded-md opacity-50 transition hover:opacity-90"
+                style={{ color: T.navInactive }}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => { logout(); router.replace("/painel/login"); }}
-              title="Sair"
-              className="flex h-6 w-6 items-center justify-center rounded-md opacity-40 transition hover:opacity-80"
-              style={{ color: T.navInactive }}
+          ) : (
+            <div
+              className="flex items-center gap-2.5 rounded-lg p-2"
+              style={{ background: isDark ? "rgba(255,255,255,0.03)" : "#F8FAFB" }}
             >
-              <LogOut className="h-3 w-3" />
-            </button>
-          </div>
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10.5px] font-bold text-white"
+                style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 2px 8px rgba(0,179,136,0.3)" }}
+              >
+                {initials(nome)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11.5px] font-semibold" style={{ color: T.text }}>
+                  {nome.split(/[\s._-]+/)[0]}
+                </div>
+                <div className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#00B388" }}>
+                  Administrador
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { logout(); router.replace("/painel/login"); }}
+                title="Sair"
+                className="flex h-6 w-6 items-center justify-center rounded-md opacity-40 transition hover:opacity-80"
+                style={{ color: T.navInactive }}
+              >
+                <LogOut className="h-3 w-3" />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -329,7 +464,7 @@ export default function PainelClientLayout({ children }: { children: React.React
           style={{ background: T.topbar, borderBottom: `1px solid ${T.border}` }}
         >
           <label
-            className="flex h-8 flex-1 max-w-[380px] cursor-text items-center gap-2 rounded-lg px-3"
+            className="flex h-8 max-w-[380px] flex-1 cursor-text items-center gap-2 rounded-lg px-3"
             style={{ background: T.search, border: `1px solid ${T.border}` }}
           >
             <Search className="h-3.5 w-3.5 shrink-0" style={{ color: T.textMuted }} strokeWidth={2.2} />
@@ -357,7 +492,7 @@ export default function PainelClientLayout({ children }: { children: React.React
 
             <button
               type="button"
-              onClick={toggle}
+              onClick={toggleTheme}
               title={isDark ? "Tema claro" : "Tema escuro"}
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150"
               style={{ color: T.textMuted }}
@@ -380,7 +515,7 @@ export default function PainelClientLayout({ children }: { children: React.React
         </header>
 
         <main
-          className={isMapaPage ? "relative flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-y-auto px-6 py-6"}
+          className={isMapaPage ? "relative min-h-0 flex-1 overflow-hidden" : "flex-1 overflow-y-auto px-6 py-6"}
           style={{ background: T.shell }}
         >
           {children}

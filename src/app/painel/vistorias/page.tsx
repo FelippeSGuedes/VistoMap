@@ -3,19 +3,23 @@
 /**
  * /painel/vistorias — Central de Distribuição Operacional.
  *
- * Agrupamento por município, seleção em massa, atribuição em lote.
- * Performance para 5k-20k registros: chunks por município + lazy expand.
+ * Grid de cards por município + drawer lateral de detalhes.
+ * Seleção em massa, atribuição em lote, edição individual.
+ * Performance para 5k-20k registros: chunks por município + lazy expand no drawer.
+ *
+ * Design: paleta neutra/corporativa. Emerald é reservado para seleção e ações
+ * (cor de marca), nunca para sinalizar urgência — todas as vistorias têm a
+ * mesma importância operacional.
  */
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowRight,
   Building2,
   CheckCircle2,
   CheckSquare,
-  ChevronDown,
+  ChevronRight,
   Filter,
   Layers,
   MapPin,
@@ -25,6 +29,7 @@ import {
   Search,
   Sparkles,
   Square,
+  UserCheck,
   UserPlus,
   X,
   Zap,
@@ -33,6 +38,24 @@ import { painelService, type FilaItem } from "@/services/painel";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 import { VistoriaMetricsBadge } from "@/components/painel/VistoriaMetricsBadge";
 import type { TecnicoAtivo } from "@/types";
+
+// ─── Paleta neutra/corporativa ────────────────────────────────────────────
+const C = {
+  ink: "#063B3B",
+  inkSoft: "#475569",
+  muted: "#7A8896",
+  faint: "#94A3B8",
+  line: "rgba(6,59,59,0.08)",
+  lineSoft: "rgba(6,59,59,0.05)",
+  surface: "#FFFFFF",
+  surfaceAlt: "#F7F9FA",
+  brand: "#00B388",
+  brandDeep: "#00875F",
+  brandTint: "#ECFDF5",
+  brandLine: "rgba(0,179,136,0.22)",
+  iconBg: "#F1F5F9",
+  iconFg: "#475569",
+} as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 function relativo(iso: string | null): string {
@@ -66,11 +89,14 @@ interface GrupoMunicipio {
   total: number;
   revisitas: number;
   semAtribuicao: number;
+  atribuidas: number;
   percentAtribuido: number;
 }
 
 type FiltroTipo = "todos" | "nova" | "revisita";
 type FiltroAtrib = "todos" | "sem";
+
+const CHUNK = 25;
 
 // ─── EquipamentoRow ──────────────────────────────────────────────────────
 function EquipamentoRow({
@@ -90,12 +116,10 @@ function EquipamentoRow({
     <div
       className="flex items-center gap-3 rounded-2xl p-3 transition"
       style={{
-        background: checked ? "#ECFDF5" : "#fff",
+        background: checked ? C.brandTint : C.surface,
         border: checked
           ? "1px solid rgba(0,179,136,0.4)"
-          : item.isRepeat
-          ? "1px solid rgba(245,158,11,0.28)"
-          : "1px solid rgba(6,59,59,0.07)",
+          : `1px solid ${C.line}`,
         boxShadow: checked
           ? "0 2px 10px rgba(0,179,136,0.12)"
           : "0 1px 3px rgba(6,59,59,0.04)",
@@ -105,7 +129,7 @@ function EquipamentoRow({
         type="button"
         onClick={onToggle}
         className="shrink-0 transition hover:scale-110"
-        style={{ color: checked ? "#00B388" : "#C0C8D2" }}
+        style={{ color: checked ? C.brand : "#C0C8D2" }}
       >
         {checked ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
       </button>
@@ -121,7 +145,7 @@ function EquipamentoRow({
       ) : (
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: "#F1F5F9", color: "#CBD5E1" }}
+          style={{ background: C.iconBg, color: "#CBD5E1" }}
         >
           <UserPlus className="h-4 w-4" strokeWidth={2} />
         </span>
@@ -129,30 +153,31 @@ function EquipamentoRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <p className="truncate text-[14px] font-semibold" style={{ color: "#063B3B" }}>
+          <p className="truncate text-[14px] font-semibold" style={{ color: C.ink }}>
             {item.equipamento}
           </p>
           {item.isRepeat && (
             <span
-              className="shrink-0 rounded-full px-1.5 py-[2px] text-[8px] font-bold uppercase tracking-[0.1em]"
-              style={{ background: "#FFFBEB", color: "#B45309" }}
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-[2px] text-[8px] font-bold uppercase tracking-[0.1em]"
+              style={{ background: C.iconBg, color: C.inkSoft }}
             >
+              <RotateCw className="h-2 w-2" strokeWidth={2.5} />
               Revisita
             </span>
           )}
         </div>
-        <p className="truncate text-[11.5px]" style={{ color: "#7A8896" }}>
+        <p className="truncate text-[11.5px]" style={{ color: C.muted }}>
           <span className="font-mono">{item.glpiId}</span>
           {item.endereco ? ` · ${item.endereco}` : ""}
           {item.tecnico ? (
             <>
               {" · "}
-              <span style={{ color: "#00875F", fontWeight: 600 }}>
+              <span style={{ color: C.brandDeep, fontWeight: 600 }}>
                 {item.tecnico.nome.split(" ")[0]}
               </span>
             </>
           ) : (
-            <span style={{ color: "#B91C1C", fontWeight: 600 }}> · sem técnico</span>
+            <span style={{ color: C.faint, fontWeight: 600 }}> · sem técnico</span>
           )}
           {item.dataVistoria ? ` · ${relativo(item.dataVistoria)}` : ""}
         </p>
@@ -167,9 +192,9 @@ function EquipamentoRow({
           onClick={onAtribuir}
           className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-semibold transition hover:opacity-85"
           style={{
-            background: "#ECFDF5",
-            color: "#00875F",
-            border: "1px solid rgba(0,179,136,0.22)",
+            background: C.brandTint,
+            color: C.brandDeep,
+            border: `1px solid ${C.brandLine}`,
           }}
         >
           <UserPlus className="h-3.5 w-3.5" strokeWidth={2.3} />
@@ -179,7 +204,7 @@ function EquipamentoRow({
           type="button"
           onClick={onEditar}
           className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-black/5"
-          style={{ color: "#94A3B8", border: "1px solid rgba(6,59,59,0.07)" }}
+          style={{ color: C.faint, border: `1px solid ${C.line}` }}
         >
           <Pencil className="h-3.5 w-3.5" strokeWidth={2.2} />
         </button>
@@ -188,185 +213,326 @@ function EquipamentoRow({
   );
 }
 
-// ─── MunicipioCard ────────────────────────────────────────────────────────
-const CHUNK = 25;
+// ─── StatChip (sub-stat neutro nos cards) ──────────────────────────────────
+function StatChip({
+  icon: Icon,
+  value,
+  label,
+}: {
+  icon: typeof UserCheck;
+  value: number;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: C.faint }} strokeWidth={2} />
+      <span className="text-[12px] font-semibold tabular-nums" style={{ color: C.inkSoft }}>
+        {value}
+      </span>
+      <span className="text-[11px]" style={{ color: C.muted }}>
+        {label}
+      </span>
+    </div>
+  );
+}
 
+// ─── MunicipioCard (grid) ──────────────────────────────────────────────────
 function MunicipioCard({
   grupo,
+  selCount,
+  onOpen,
+  onAtribuirGrupo,
+}: {
+  grupo: GrupoMunicipio;
+  selCount: number;
+  onOpen: () => void;
+  onAtribuirGrupo: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="group flex h-full cursor-pointer flex-col rounded-[18px] text-left outline-none transition duration-150 hover:-translate-y-0.5 focus-visible:ring-2"
+      style={{
+        background: C.surface,
+        border: selCount > 0 ? "1px solid rgba(0,179,136,0.4)" : `1px solid ${C.line}`,
+        boxShadow:
+          selCount > 0
+            ? "0 4px 16px rgba(0,179,136,0.12)"
+            : "0 1px 4px rgba(6,59,59,0.05)",
+      }}
+    >
+      {/* Topo: ícone + nome + seleção */}
+      <div className="flex items-start gap-3 p-4 pb-2">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px]"
+          style={{ background: C.iconBg, color: C.iconFg }}
+        >
+          <Building2 className="h-[18px] w-[18px]" strokeWidth={2} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3
+            className="truncate text-[15px] font-semibold leading-tight tracking-[-0.2px]"
+            style={{ color: C.ink }}
+            title={grupo.municipio}
+          >
+            {grupo.municipio}
+          </h3>
+          <p className="mt-0.5 text-[11.5px]" style={{ color: C.muted }}>
+            {grupo.total} vistoria{grupo.total !== 1 ? "s" : ""} pendente
+            {grupo.total !== 1 ? "s" : ""}
+          </p>
+        </div>
+        {selCount > 0 && (
+          <span
+            className="flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-[9.5px] font-bold"
+            style={{ background: C.brandTint, color: C.brandDeep }}
+          >
+            <CheckSquare className="h-3 w-3" strokeWidth={2.5} />
+            {selCount}
+          </span>
+        )}
+      </div>
+
+      {/* Número grande */}
+      <div className="flex items-end gap-2 px-4">
+        <span
+          className="text-[40px] font-bold leading-none tabular-nums tracking-[-1px]"
+          style={{ color: C.ink }}
+        >
+          {grupo.total}
+        </span>
+        <span className="mb-1 text-[11px] font-medium" style={{ color: C.faint }}>
+          equipamentos
+        </span>
+      </div>
+
+      {/* Barra de progresso de atribuição (cor única neutra) */}
+      <div className="px-4 pt-3">
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full"
+          style={{ background: "rgba(6,59,59,0.06)" }}
+        >
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${grupo.percentAtribuido}%`, background: C.brand }}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <StatChip icon={UserCheck} value={grupo.atribuidas} label="atribuídas" />
+          <StatChip icon={UserPlus} value={grupo.semAtribuicao} label="a atribuir" />
+          {grupo.revisitas > 0 && (
+            <StatChip icon={RotateCw} value={grupo.revisitas} label="revisitas" />
+          )}
+        </div>
+      </div>
+
+      {/* Rodapé: ações */}
+      <div
+        className="mt-auto flex items-center gap-2 p-3 pt-3"
+        style={{ borderTop: `1px solid ${C.lineSoft}`, marginTop: 12 }}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAtribuirGrupo();
+          }}
+          className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-semibold transition hover:opacity-85"
+          style={{
+            background: C.brandTint,
+            color: C.brandDeep,
+            border: `1px solid ${C.brandLine}`,
+          }}
+        >
+          <UserPlus className="h-3.5 w-3.5" strokeWidth={2.3} />
+          Atribuir todos
+        </button>
+        <span
+          className="ml-auto flex items-center gap-1 text-[11.5px] font-semibold transition group-hover:gap-1.5"
+          style={{ color: C.inkSoft }}
+        >
+          Ver vistorias
+          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.4} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── MunicipioDetailDrawer (detalhes de um município) ──────────────────────
+function MunicipioDetailDrawer({
+  grupo,
   selecionados,
+  onClose,
   onToggleAll,
   onToggleItem,
   onAtribuirItem,
   onAtribuirGrupo,
   onEditar,
 }: {
-  grupo: GrupoMunicipio;
+  grupo: GrupoMunicipio | null;
   selecionados: Set<number>;
+  onClose: () => void;
   onToggleAll: (ids: number[]) => void;
   onToggleItem: (id: number) => void;
   onAtribuirItem: (item: FilaItem) => void;
   onAtribuirGrupo: () => void;
   onEditar: (item: FilaItem) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [q, setQ] = useState("");
   const [visivel, setVisivel] = useState(CHUNK);
 
-  const ids = grupo.items.map((i) => i.id);
+  // Reseta busca/paginação ao trocar de município
+  useEffect(() => {
+    setQ("");
+    setVisivel(CHUNK);
+  }, [grupo?.municipio]);
+
+  const filtrados = useMemo(() => {
+    if (!grupo) return [];
+    const t = q.trim().toLowerCase();
+    if (!t) return grupo.items;
+    return grupo.items.filter(
+      (i) =>
+        i.equipamento.toLowerCase().includes(t) ||
+        i.glpiId.toLowerCase().includes(t) ||
+        (i.endereco ?? "").toLowerCase().includes(t) ||
+        (i.tecnico?.nome ?? "").toLowerCase().includes(t)
+    );
+  }, [grupo, q]);
+
+  const ids = grupo?.items.map((i) => i.id) ?? [];
   const checkedCount = ids.filter((id) => selecionados.has(id)).length;
   const allChecked = checkedCount === ids.length && ids.length > 0;
-  const someChecked = checkedCount > 0 && !allChecked;
-
-  const barColor =
-    grupo.percentAtribuido === 100
-      ? "#00B388"
-      : grupo.percentAtribuido > 70
-      ? "#00B388"
-      : grupo.percentAtribuido > 40
-      ? "#F59E0B"
-      : "#EF4444";
 
   return (
-    <div
-      className="overflow-hidden rounded-[16px]"
-      style={{
-        background: "#fff",
-        border:
-          grupo.revisitas > 0
-            ? "1px solid rgba(245,158,11,0.28)"
-            : "1px solid rgba(6,59,59,0.06)",
-        boxShadow: "0 1px 4px rgba(6,59,59,0.04)",
-      }}
-    >
-      {/* Header do município */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        {/* Checkbox de grupo */}
-        <button
-          type="button"
-          onClick={() => onToggleAll(ids)}
-          className="shrink-0 transition hover:opacity-70"
-          style={{ color: allChecked || someChecked ? "#00B388" : "#CBD5E1" }}
-        >
-          {allChecked ? (
-            <CheckSquare className="h-4 w-4" />
-          ) : someChecked ? (
-            <div className="relative">
-              <Square className="h-4 w-4" />
-              <div
-                className="absolute inset-[3px] rounded-[1px]"
-                style={{ background: "#00B388", opacity: 0.45 }}
-              />
-            </div>
-          ) : (
-            <Square className="h-4 w-4" />
-          )}
-        </button>
-
-        {/* Ícone de município */}
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
-          style={{
-            background: grupo.revisitas > 0 ? "#FFFBEB" : "#F1F5F9",
-            color: grupo.revisitas > 0 ? "#B45309" : "#475569",
-          }}
-        >
-          <Building2 className="h-3.5 w-3.5" strokeWidth={2} />
-        </div>
-
-        {/* Nome + stats */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3
-              className="text-[14px] font-semibold tracking-[-0.2px]"
-              style={{ color: "#063B3B" }}
-            >
-              {grupo.municipio}
-            </h3>
-            {grupo.revisitas > 0 && (
-              <span
-                className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-[2px] text-[8px] font-bold uppercase tracking-[0.12em]"
-                style={{
-                  background: "#FFFBEB",
-                  color: "#B45309",
-                  border: "1px solid rgba(245,158,11,0.3)",
-                }}
-              >
-                <RotateCw className="h-2 w-2" strokeWidth={2.5} />
-                {grupo.revisitas} rev
-              </span>
-            )}
-            {grupo.semAtribuicao > 0 && (
-              <span
-                className="rounded-full px-1.5 py-[2px] text-[8px] font-bold uppercase tracking-[0.12em]"
-                style={{ background: "#FEF2F2", color: "#B91C1C" }}
-              >
-                {grupo.semAtribuicao} sem atrib
-              </span>
-            )}
-          </div>
-          {/* Progress bar */}
-          <div className="mt-1 flex items-center gap-2">
-            <div
-              className="h-1 flex-1 overflow-hidden rounded-full"
-              style={{ background: "rgba(6,59,59,0.07)" }}
-            >
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${grupo.percentAtribuido}%`, background: barColor }}
-              />
-            </div>
-            <span
-              className="text-[9px] font-medium tabular-nums"
-              style={{ color: "#94A3B8" }}
-            >
-              {grupo.total - grupo.semAtribuicao}/{grupo.total}
-            </span>
-          </div>
-        </div>
-
-        {/* Ações rápidas */}
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onAtribuirGrupo}
-            className="flex h-7 items-center gap-1 rounded-xl px-2.5 text-[10px] font-semibold transition hover:opacity-85"
+    <AnimatePresence>
+      {grupo && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200]"
+            style={{ background: "rgba(6,59,59,0.10)", backdropFilter: "blur(4px)" }}
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", stiffness: 380, damping: 36 }}
+            className="fixed bottom-0 right-0 top-0 z-[201] flex w-full max-w-[600px] flex-col"
             style={{
-              background: "#ECFDF5",
-              color: "#00875F",
-              border: "1px solid rgba(0,179,136,0.22)",
+              background: C.surfaceAlt,
+              boxShadow: "-4px 0 40px rgba(6,59,59,0.16)",
+              borderLeft: `1px solid ${C.line}`,
             }}
           >
-            <UserPlus className="h-3 w-3" strokeWidth={2.3} />
-            Atribuir todos
-          </button>
-          <button
-            type="button"
-            onClick={() => setExpanded(!expanded)}
-            className="flex h-7 w-7 items-center justify-center rounded-xl transition hover:bg-black/5"
-            style={{ color: "#64748B" }}
-          >
-            <ChevronDown
-              className="h-3.5 w-3.5 transition-transform duration-200"
-              style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* Conteúdo expandido */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: "easeInOut" }}
-            style={{ overflow: "hidden" }}
-          >
+            {/* Header */}
             <div
-              className="space-y-2 border-t p-3"
-              style={{ borderColor: "rgba(6,59,59,0.05)", background: "#F7F9FA" }}
+              className="shrink-0 px-5 pb-4 pt-6"
+              style={{ background: C.surface, borderBottom: `1px solid ${C.line}` }}
             >
-              {grupo.items.slice(0, visivel).map((item) => (
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px]"
+                    style={{ background: C.iconBg, color: C.iconFg }}
+                  >
+                    <Building2 className="h-5 w-5" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p
+                      className="text-[9px] font-bold uppercase tracking-[0.18em]"
+                      style={{ color: C.brand }}
+                    >
+                      Município
+                    </p>
+                    <h2
+                      className="text-[19px] font-semibold tracking-[-0.3px]"
+                      style={{ color: C.ink }}
+                    >
+                      {grupo.municipio}
+                    </h2>
+                    <p className="text-[11.5px]" style={{ color: C.muted }}>
+                      {grupo.total} pendentes · {grupo.atribuidas} atribuídas
+                      {grupo.revisitas > 0 ? ` · ${grupo.revisitas} revisitas` : ""}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-black/5"
+                  style={{ color: C.muted }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Busca local + ações */}
+              <div className="mt-4 flex items-center gap-2">
+                <div
+                  className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2"
+                  style={{ background: C.surfaceAlt, border: `1px solid ${C.line}` }}
+                >
+                  <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.faint }} strokeWidth={2.2} />
+                  <input
+                    type="search"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Filtrar neste município…"
+                    className="flex-1 bg-transparent text-[12.5px] font-medium outline-none placeholder:text-[#C0C8D2]"
+                    style={{ color: C.ink }}
+                  />
+                  {q && (
+                    <button type="button" onClick={() => setQ("")} style={{ color: C.faint }}>
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onToggleAll(ids)}
+                  className="flex h-9 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-semibold transition hover:bg-black/5"
+                  style={{ color: C.inkSoft, border: `1px solid ${C.line}` }}
+                >
+                  {allChecked ? (
+                    <CheckSquare className="h-3.5 w-3.5" style={{ color: C.brand }} />
+                  ) : (
+                    <Square className="h-3.5 w-3.5" />
+                  )}
+                  {allChecked ? "Desmarcar" : "Todos"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onAtribuirGrupo}
+                  className="flex h-9 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-bold text-white transition hover:opacity-90"
+                  style={{ background: C.brand }}
+                >
+                  <UserPlus className="h-3.5 w-3.5" strokeWidth={2.3} />
+                  Atribuir todos
+                </button>
+              </div>
+            </div>
+
+            {/* Lista de vistorias */}
+            <div className="flex-1 space-y-2 overflow-y-auto p-4">
+              {filtrados.length === 0 && (
+                <p className="py-12 text-center text-[12.5px]" style={{ color: C.faint }}>
+                  Nenhuma vistoria para “{q}”.
+                </p>
+              )}
+              {filtrados.slice(0, visivel).map((item) => (
                 <EquipamentoRow
                   key={item.id}
                   item={item}
@@ -376,22 +542,22 @@ function MunicipioCard({
                   onEditar={() => onEditar(item)}
                 />
               ))}
-
-              {visivel < grupo.items.length && (
+              {visivel < filtrados.length && (
                 <button
                   type="button"
-                  onClick={() => setVisivel((c) => c + CHUNK)}
+                  onClick={() => setVisivel((v) => v + CHUNK)}
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11.5px] font-semibold transition hover:bg-white"
-                  style={{ color: "#00875F", border: "1px dashed rgba(0,179,136,0.3)" }}
+                  style={{ color: C.brandDeep, border: `1px dashed ${C.brandLine}` }}
                 >
-                  Mostrar mais {Math.min(CHUNK, grupo.items.length - visivel)} ({grupo.items.length - visivel} restantes)
+                  Mostrar mais {Math.min(CHUNK, filtrados.length - visivel)} (
+                  {filtrados.length - visivel} restantes)
                 </button>
               )}
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -423,7 +589,6 @@ function AtribuirDrawer({
   }, [items, selecionados]);
 
   const sugestoes = useMemo(() => {
-    // Todos os tecnicos (sem filtrar offline) — apenas ordena por relevancia.
     return tecnicos
       .map((t) => {
         const temMunicipio = t.municipio
@@ -461,25 +626,25 @@ function AtribuirDrawer({
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
             className="fixed bottom-0 right-0 top-0 z-[301] flex w-[380px] flex-col overflow-hidden"
             style={{
-              background: "#fff",
+              background: C.surface,
               boxShadow: "-4px 0 40px rgba(6,59,59,0.14)",
-              borderLeft: "1px solid rgba(6,59,59,0.06)",
+              borderLeft: `1px solid ${C.line}`,
             }}
           >
             <div
               className="flex items-start justify-between border-b px-5 pb-4 pt-6"
-              style={{ borderColor: "rgba(6,59,59,0.06)" }}
+              style={{ borderColor: C.line }}
             >
               <div>
                 <p
                   className="text-[9px] font-bold uppercase tracking-[0.18em]"
-                  style={{ color: "#00B388" }}
+                  style={{ color: C.brand }}
                 >
                   Atribuição em lote
                 </p>
                 <h2
                   className="mt-0.5 text-[18px] font-semibold tracking-[-0.3px]"
-                  style={{ color: "#063B3B" }}
+                  style={{ color: C.ink }}
                 >
                   {count} equipamento{count !== 1 ? "s" : ""}
                 </h2>
@@ -489,7 +654,7 @@ function AtribuirDrawer({
                       <span
                         key={m}
                         className="rounded-full px-2 py-[2px] text-[9.5px] font-semibold"
-                        style={{ background: "#F1F5F9", color: "#475569" }}
+                        style={{ background: C.iconBg, color: C.inkSoft }}
                       >
                         {m} ({c})
                       </span>
@@ -501,7 +666,7 @@ function AtribuirDrawer({
                 type="button"
                 onClick={onClose}
                 className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-black/5"
-                style={{ color: "#7A8896" }}
+                style={{ color: C.muted }}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -509,7 +674,7 @@ function AtribuirDrawer({
 
             <div className="flex-1 overflow-y-auto p-3">
               {sugestoes.length === 0 && (
-                <p className="py-8 text-center text-[12px]" style={{ color: "#94A3B8" }}>
+                <p className="py-8 text-center text-[12px]" style={{ color: C.faint }}>
                   Nenhum técnico disponível.
                 </p>
               )}
@@ -538,24 +703,24 @@ function AtribuirDrawer({
                     <div className="flex items-center gap-1.5">
                       <p
                         className="truncate text-[13px] font-semibold"
-                        style={{ color: "#063B3B" }}
+                        style={{ color: C.ink }}
                       >
                         {tec.nome}
                       </p>
                       {temMunicipio && (
                         <span
                           className="shrink-0 rounded-full px-1.5 py-[1px] text-[7.5px] font-bold uppercase tracking-[0.1em]"
-                          style={{ background: "#ECFDF5", color: "#00875F" }}
+                          style={{ background: C.brandTint, color: C.brandDeep }}
                         >
                           ativo na região
                         </span>
                       )}
                     </div>
-                    <p className="text-[10.5px]" style={{ color: "#7A8896" }}>
+                    <p className="text-[10.5px]" style={{ color: C.muted }}>
                       {tec.municipio ?? "—"} · {tec.atribuidas} atribuídas · {tec.concluidasHoje} hoje
                     </p>
                     {temMunicipio && tec.municipio && (
-                      <p className="text-[9.5px]" style={{ color: "#00875F" }}>
+                      <p className="text-[9.5px]" style={{ color: C.brandDeep }}>
                         {tec.nome.split(" ")[0]} já possui operação ativa em {tec.municipio}.
                       </p>
                     )}
@@ -572,8 +737,8 @@ function AtribuirDrawer({
               ))}
             </div>
 
-            <div className="border-t p-4" style={{ borderColor: "rgba(6,59,59,0.06)" }}>
-              <p className="text-[10px]" style={{ color: "#94A3B8" }}>
+            <div className="border-t p-4" style={{ borderColor: C.line }}>
+              <p className="text-[10px]" style={{ color: C.faint }}>
                 Vincula via{" "}
                 <code className="rounded bg-black/[0.04] px-1 text-[9.5px]">
                   users_id_vistoriadorafield
@@ -602,8 +767,6 @@ function AtribuirModal({
   onAtribuir: (tec: TecnicoAtivo) => void;
   onDesvincular: () => void;
 }) {
-  // Mostra TODOS os tecnicos — online, offline, na regiao ou nao. O admin
-  // decide; nao filtramos por disponibilidade.
   const ativos = tecnicos;
   const jaTemTecnico = !!item.tecnico;
   return (
@@ -611,7 +774,7 @@ function AtribuirModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] flex items-center justify-center p-6"
+      className="fixed inset-0 z-[400] flex items-center justify-center p-6"
       style={{ background: "rgba(247,249,251,0.72)", backdropFilter: "blur(12px)" }}
       onClick={onClose}
     >
@@ -622,34 +785,34 @@ function AtribuirModal({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-[420px] overflow-hidden rounded-[24px]"
         style={{
-          background: "#fff",
-          border: "1px solid rgba(6,59,59,0.08)",
+          background: C.surface,
+          border: `1px solid ${C.line}`,
           boxShadow: "0 24px 60px rgba(6,59,59,0.2)",
         }}
       >
         <header
           className="flex items-start justify-between gap-3 border-b px-5 py-4"
-          style={{ borderColor: "rgba(6,59,59,0.05)" }}
+          style={{ borderColor: C.lineSoft }}
         >
           <div>
             <p
               className="text-[9px] font-bold uppercase tracking-[0.18em]"
-              style={{ color: "#00B388" }}
+              style={{ color: C.brand }}
             >
               {jaTemTecnico ? "Reatribuir técnico" : "Atribuir técnico"}
             </p>
             <h3
               className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]"
-              style={{ color: "#063B3B" }}
+              style={{ color: C.ink }}
             >
               {item.equipamento}
             </h3>
-            <p className="text-[11px]" style={{ color: "#7A8896" }}>
+            <p className="text-[11px]" style={{ color: C.muted }}>
               {item.municipio} · {item.glpiId}
               {jaTemTecnico && (
                 <>
                   {" · atual: "}
-                  <strong style={{ color: "#00875F" }}>{item.tecnico!.nome}</strong>
+                  <strong style={{ color: C.brandDeep }}>{item.tecnico!.nome}</strong>
                 </>
               )}
             </p>
@@ -658,7 +821,7 @@ function AtribuirModal({
             type="button"
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-black/5"
-            style={{ color: "#7A8896" }}
+            style={{ color: C.muted }}
           >
             <X className="h-4 w-4" />
           </button>
@@ -668,20 +831,20 @@ function AtribuirModal({
             <button
               type="button"
               onClick={onDesvincular}
-              className="mb-1 flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-red-50"
-              style={{ border: "1px solid rgba(239,68,68,0.18)" }}
+              className="mb-1 flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-black/5"
+              style={{ border: `1px solid ${C.line}` }}
             >
               <span
                 className="flex h-8 w-8 items-center justify-center rounded-xl"
-                style={{ background: "#FEF2F2", color: "#B91C1C" }}
+                style={{ background: C.iconBg, color: C.inkSoft }}
               >
                 <X className="h-4 w-4" strokeWidth={2.4} />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-semibold" style={{ color: "#B91C1C" }}>
+                <p className="text-[12.5px] font-semibold" style={{ color: C.inkSoft }}>
                   Desvincular técnico atual
                 </p>
-                <p className="text-[10px]" style={{ color: "#94A3B8" }}>
+                <p className="text-[10px]" style={{ color: C.faint }}>
                   Remove {item.tecnico!.nome.split(" ")[0]} e devolve à fila
                 </p>
               </div>
@@ -724,20 +887,20 @@ function AtribuirModal({
                   <div className="flex items-center gap-1.5">
                     <p
                       className="truncate text-[12.5px] font-semibold"
-                      style={{ color: "#063B3B" }}
+                      style={{ color: C.ink }}
                     >
                       {t.nome}
                     </p>
                     {noMunicipio && t.municipio && (
                       <span
                         className="rounded-full px-1.5 py-[1px] text-[8px] font-bold"
-                        style={{ background: "#ECFDF5", color: "#00875F" }}
+                        style={{ background: C.brandTint, color: C.brandDeep }}
                       >
                         na região
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px]" style={{ color: "#7A8896" }}>
+                  <p className="text-[10px]" style={{ color: C.muted }}>
                     {t.municipio ?? "—"} · {t.atribuidas} atrib · {t.concluidasHoje} hoje
                   </p>
                 </div>
@@ -746,7 +909,7 @@ function AtribuirModal({
             );
           })}
           {ativos.length === 0 && (
-            <p className="py-4 text-center text-[12px]" style={{ color: "#94A3B8" }}>
+            <p className="py-4 text-center text-[12px]" style={{ color: C.faint }}>
               Nenhum técnico disponível.
             </p>
           )}
@@ -769,6 +932,9 @@ export default function FilaVistoriasPage() {
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [filtroAtrib, setFiltroAtrib] = useState<FiltroAtrib>("todos");
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
+
+  // Detalhe (drawer de município) — guarda o NOME para sobreviver a reloads
+  const [detalheNome, setDetalheNome] = useState<string | null>(null);
 
   // Seleção + atribuição
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
@@ -835,16 +1001,27 @@ export default function FilaVistoriasPage() {
         const revisitas = its.filter((i) => i.isRepeat).length;
         const semAtribuicao = its.filter((i) => !i.tecnico).length;
         const total = its.length;
+        const atribuidas = total - semAtribuicao;
         const percentAtribuido =
-          total > 0 ? Math.round(((total - semAtribuicao) / total) * 100) : 100;
-        return { municipio, items: its, total, revisitas, semAtribuicao, percentAtribuido };
+          total > 0 ? Math.round((atribuidas / total) * 100) : 100;
+        return {
+          municipio,
+          items: its,
+          total,
+          revisitas,
+          semAtribuicao,
+          atribuidas,
+          percentAtribuido,
+        };
       })
-      .sort((a, b) => {
-        const sa = a.revisitas * 3 + a.semAtribuicao;
-        const sb = b.revisitas * 3 + b.semAtribuicao;
-        return sb !== sa ? sb - sa : b.total - a.total;
-      });
+      .sort((a, b) => a.municipio.localeCompare(b.municipio, "pt-BR"));
   }, [filtrados]);
+
+  // Grupo aberto no drawer de detalhe (derivado → sempre fresco)
+  const detalheGrupo = useMemo(
+    () => grupos.find((g) => g.municipio === detalheNome) ?? null,
+    [grupos, detalheNome]
+  );
 
   const municipiosDisponiveis = useMemo(
     () => Array.from(new Set(items.map((i) => i.municipio))).sort(),
@@ -887,6 +1064,15 @@ export default function FilaVistoriasPage() {
       return next;
     });
   };
+
+  // contagem de selecionados por município (para badge no card)
+  const selPorMunicipio = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of grupos) {
+      m.set(g.municipio, g.items.filter((i) => selecionados.has(i.id)).length);
+    }
+    return m;
+  }, [grupos, selecionados]);
 
   // Atribuição em lote
   const handleAtribuirLote = async (tecId: string, tecNome: string) => {
@@ -932,7 +1118,7 @@ export default function FilaVistoriasPage() {
     }
   };
 
-  // Atribuir grupo inteiro (seleciona todos + abre drawer)
+  // Atribuir grupo inteiro (seleciona todos + abre drawer de atribuição)
   const handleAtribuirGrupo = (grupo: GrupoMunicipio) => {
     setSelecionados((prev) => {
       const next = new Set(prev);
@@ -950,12 +1136,10 @@ export default function FilaVistoriasPage() {
         animate={{ opacity: 1, y: 0 }}
         className="overflow-hidden rounded-[24px]"
         style={{
-          background:
-            "linear-gradient(135deg,#063B3B 0%,#0A4F4A 48%,#0E5F54 100%)",
+          background: "linear-gradient(135deg,#063B3B 0%,#0A4F4A 48%,#0E5F54 100%)",
           boxShadow: "0 12px 40px rgba(6,59,59,0.22)",
         }}
       >
-        {/* faixa do título */}
         <div className="flex flex-wrap items-end justify-between gap-4 px-6 pt-6 pb-5">
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -977,7 +1161,7 @@ export default function FilaVistoriasPage() {
               )}
             </div>
             <h1 className="text-[30px] font-semibold tracking-[-0.6px] text-white">
-              Fila de Vistorias
+              Vistorias Pendentes
             </h1>
             <p className="mt-1 text-[13px]" style={{ color: "rgba(255,255,255,0.66)" }}>
               Distribuição regional · {kpis.municipios} municípios ativos · atualiza a cada 30s
@@ -985,13 +1169,13 @@ export default function FilaVistoriasPage() {
           </div>
         </div>
 
-        {/* KPI cards */}
+        {/* KPI cards — paleta neutra (sem cores de urgência) */}
         <div className="grid grid-cols-2 gap-px sm:grid-cols-4" style={{ background: "rgba(255,255,255,0.08)" }}>
           {[
             { label: "Total na fila", value: kpis.total, icon: Layers, accent: "#6EE7C7" },
-            { label: "Revisitas", value: kpis.revisitas, icon: RotateCw, accent: "#FBBF24" },
-            { label: "Sem atribuição", value: kpis.semAtrib, icon: AlertTriangle, accent: "#FCA5A5" },
             { label: "Municípios", value: kpis.municipios, icon: MapPin, accent: "#A5B4FC" },
+            { label: "A atribuir", value: kpis.semAtrib, icon: UserPlus, accent: "#93C5FD" },
+            { label: "Revisitas", value: kpis.revisitas, icon: RotateCw, accent: "#CBD5E1" },
           ].map((k) => (
             <div
               key={k.label}
@@ -1028,8 +1212,8 @@ export default function FilaVistoriasPage() {
         <div
           className="flex flex-1 items-center gap-2 rounded-2xl px-3 py-2.5"
           style={{
-            background: "#fff",
-            border: "1px solid rgba(6,59,59,0.06)",
+            background: C.surface,
+            border: `1px solid ${C.line}`,
             boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
           }}
         >
@@ -1040,7 +1224,7 @@ export default function FilaVistoriasPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar equipamento, município, endereço, GIOC ID…"
             className="flex-1 bg-transparent text-[13px] font-medium outline-none placeholder:text-[#C0C8D2]"
-            style={{ color: "#063B3B" }}
+            style={{ color: C.ink }}
           />
           {query && (
             <button type="button" onClick={() => setQuery("")} style={{ color: "#A0ACBA" }}>
@@ -1053,11 +1237,9 @@ export default function FilaVistoriasPage() {
           onClick={() => setMostrarFiltros(!mostrarFiltros)}
           className="flex h-10 items-center gap-1.5 rounded-2xl px-3 text-[12px] font-semibold transition"
           style={{
-            background: temFiltros ? "rgba(0,179,136,0.08)" : "#fff",
-            border: temFiltros
-              ? "1px solid rgba(0,179,136,0.25)"
-              : "1px solid rgba(6,59,59,0.06)",
-            color: temFiltros ? "#00875F" : "#566773",
+            background: temFiltros ? "rgba(0,179,136,0.08)" : C.surface,
+            border: temFiltros ? `1px solid ${C.brandLine}` : `1px solid ${C.line}`,
+            color: temFiltros ? C.brandDeep : "#566773",
             boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
           }}
         >
@@ -1066,7 +1248,7 @@ export default function FilaVistoriasPage() {
           {temFiltros && (
             <span
               className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white"
-              style={{ background: "#00B388" }}
+              style={{ background: C.brand }}
             >
               {
                 [
@@ -1093,8 +1275,8 @@ export default function FilaVistoriasPage() {
             <div
               className="flex flex-wrap items-center gap-2 rounded-2xl p-3"
               style={{
-                background: "#fff",
-                border: "1px solid rgba(6,59,59,0.06)",
+                background: C.surface,
+                border: `1px solid ${C.line}`,
                 boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
               }}
             >
@@ -1104,10 +1286,8 @@ export default function FilaVistoriasPage() {
                 className="h-8 rounded-xl px-2.5 text-[12px] font-medium outline-none"
                 style={{
                   background: filtroMunicipio ? "rgba(0,179,136,0.08)" : "#F8FAFC",
-                  border: filtroMunicipio
-                    ? "1px solid rgba(0,179,136,0.25)"
-                    : "1px solid rgba(6,59,59,0.08)",
-                  color: filtroMunicipio ? "#00875F" : "#566773",
+                  border: filtroMunicipio ? `1px solid ${C.brandLine}` : "1px solid rgba(6,59,59,0.08)",
+                  color: filtroMunicipio ? C.brandDeep : "#566773",
                 }}
               >
                 <option value="">Todos os municípios</option>
@@ -1124,10 +1304,8 @@ export default function FilaVistoriasPage() {
                 className="h-8 rounded-xl px-2.5 text-[12px] font-medium outline-none"
                 style={{
                   background: filtroTecnico ? "rgba(0,179,136,0.08)" : "#F8FAFC",
-                  border: filtroTecnico
-                    ? "1px solid rgba(0,179,136,0.25)"
-                    : "1px solid rgba(6,59,59,0.08)",
-                  color: filtroTecnico ? "#00875F" : "#566773",
+                  border: filtroTecnico ? `1px solid ${C.brandLine}` : "1px solid rgba(6,59,59,0.08)",
+                  color: filtroTecnico ? C.brandDeep : "#566773",
                 }}
               >
                 <option value="">Todos os técnicos</option>
@@ -1149,18 +1327,8 @@ export default function FilaVistoriasPage() {
                     onClick={() => setFiltroTipo(v)}
                     className="h-8 px-3 text-[11px] font-semibold transition"
                     style={{
-                      background:
-                        filtroTipo === v
-                          ? v === "revisita"
-                            ? "#FFFBEB"
-                            : "rgba(0,179,136,0.1)"
-                          : "transparent",
-                      color:
-                        filtroTipo === v
-                          ? v === "revisita"
-                            ? "#B45309"
-                            : "#00875F"
-                          : "#566773",
+                      background: filtroTipo === v ? "rgba(0,179,136,0.1)" : "transparent",
+                      color: filtroTipo === v ? C.brandDeep : "#566773",
                     }}
                   >
                     {v === "todos" ? "Todos" : v === "nova" ? "Novas" : "Revisitas"}
@@ -1173,15 +1341,15 @@ export default function FilaVistoriasPage() {
                 onClick={() => setFiltroAtrib(filtroAtrib === "sem" ? "todos" : "sem")}
                 className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11px] font-semibold transition"
                 style={{
-                  background: filtroAtrib === "sem" ? "#FEF2F2" : "#F8FAFC",
+                  background: filtroAtrib === "sem" ? "rgba(0,179,136,0.08)" : "#F8FAFC",
                   border:
                     filtroAtrib === "sem"
-                      ? "1px solid rgba(239,68,68,0.25)"
+                      ? `1px solid ${C.brandLine}`
                       : "1px solid rgba(6,59,59,0.08)",
-                  color: filtroAtrib === "sem" ? "#B91C1C" : "#566773",
+                  color: filtroAtrib === "sem" ? C.brandDeep : "#566773",
                 }}
               >
-                Sem atribuição
+                Somente a atribuir
               </button>
 
               {temFiltros && (
@@ -1194,7 +1362,7 @@ export default function FilaVistoriasPage() {
                     setFiltroAtrib("todos");
                   }}
                   className="ml-auto flex h-8 items-center gap-1 rounded-xl px-2.5 text-[11px] font-medium transition hover:bg-black/5"
-                  style={{ color: "#94A3B8" }}
+                  style={{ color: C.faint }}
                 >
                   <X className="h-3 w-3" /> Limpar filtros
                 </button>
@@ -1204,55 +1372,59 @@ export default function FilaVistoriasPage() {
         )}
       </AnimatePresence>
 
-      {/* GRUPOS DE MUNICÍPIOS */}
-      <div className="space-y-3">
-        {loading && grupos.length === 0 && (
-          <div
-            className="flex flex-col items-center py-20 rounded-[20px]"
-            style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.05)" }}
-          >
-            <RefreshCcw
-              className="mb-3 h-6 w-6 animate-spin"
-              style={{ color: "#00B388" }}
+      {/* GRID DE MUNICÍPIOS */}
+      {loading && grupos.length === 0 && (
+        <div
+          className="flex flex-col items-center rounded-[20px] py-20"
+          style={{ background: C.surface, border: `1px solid ${C.lineSoft}` }}
+        >
+          <RefreshCcw className="mb-3 h-6 w-6 animate-spin" style={{ color: C.brand }} />
+          <p className="text-[12px]" style={{ color: C.faint }}>
+            Carregando fila operacional…
+          </p>
+        </div>
+      )}
+      {!loading && grupos.length === 0 && (
+        <div
+          className="flex flex-col items-center rounded-[20px] py-20"
+          style={{ background: C.surface, border: `1px solid ${C.lineSoft}` }}
+        >
+          <Sparkles className="mb-3 h-8 w-8" style={{ color: C.brand }} strokeWidth={1.5} />
+          <p className="text-[13px] font-semibold" style={{ color: C.ink }}>
+            Fila operacional limpa
+          </p>
+          <p className="mt-0.5 text-[11.5px]" style={{ color: C.faint }}>
+            {query || temFiltros
+              ? "Nenhum resultado para os filtros aplicados."
+              : "Nenhuma vistoria pendente na fila."}
+          </p>
+        </div>
+      )}
+      {grupos.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {grupos.map((grupo) => (
+            <MunicipioCard
+              key={grupo.municipio}
+              grupo={grupo}
+              selCount={selPorMunicipio.get(grupo.municipio) ?? 0}
+              onOpen={() => setDetalheNome(grupo.municipio)}
+              onAtribuirGrupo={() => handleAtribuirGrupo(grupo)}
             />
-            <p className="text-[12px]" style={{ color: "#94A3B8" }}>
-              Carregando fila operacional…
-            </p>
-          </div>
-        )}
-        {!loading && grupos.length === 0 && (
-          <div
-            className="flex flex-col items-center py-20 rounded-[20px]"
-            style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.05)" }}
-          >
-            <Sparkles
-              className="mb-3 h-8 w-8"
-              style={{ color: "#00B388" }}
-              strokeWidth={1.5}
-            />
-            <p className="text-[13px] font-semibold" style={{ color: "#063B3B" }}>
-              Fila operacional limpa
-            </p>
-            <p className="mt-0.5 text-[11.5px]" style={{ color: "#94A3B8" }}>
-              {query || temFiltros
-                ? "Nenhum resultado para os filtros aplicados."
-                : "Nenhuma vistoria pendente na fila."}
-            </p>
-          </div>
-        )}
-        {grupos.map((grupo) => (
-          <MunicipioCard
-            key={grupo.municipio}
-            grupo={grupo}
-            selecionados={selecionados}
-            onToggleAll={toggleMunicipio}
-            onToggleItem={toggleItem}
-            onAtribuirItem={(item) => setAtribuirItem(item)}
-            onAtribuirGrupo={() => handleAtribuirGrupo(grupo)}
-            onEditar={(item) => setEditarOpen(item)}
-          />
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* DRAWER DE DETALHE DO MUNICÍPIO */}
+      <MunicipioDetailDrawer
+        grupo={detalheGrupo}
+        selecionados={selecionados}
+        onClose={() => setDetalheNome(null)}
+        onToggleAll={toggleMunicipio}
+        onToggleItem={toggleItem}
+        onAtribuirItem={(item) => setAtribuirItem(item)}
+        onAtribuirGrupo={() => detalheGrupo && handleAtribuirGrupo(detalheGrupo)}
+        onEditar={(item) => setEditarOpen(item)}
+      />
 
       {/* BARRA FLUTUANTE DE SELEÇÃO */}
       <AnimatePresence>
@@ -1265,14 +1437,11 @@ export default function FilaVistoriasPage() {
           >
             <div
               className="flex items-center gap-3 rounded-[18px] px-4 py-2.5"
-              style={{
-                background: "#063B3B",
-                boxShadow: "0 8px 32px rgba(6,59,59,0.32)",
-              }}
+              style={{ background: "#063B3B", boxShadow: "0 8px 32px rgba(6,59,59,0.32)" }}
             >
               <span
                 className="flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-bold"
-                style={{ background: "#00B388", color: "#fff" }}
+                style={{ background: C.brand, color: "#fff" }}
               >
                 {selecionados.size}
               </span>
@@ -1280,10 +1449,7 @@ export default function FilaVistoriasPage() {
                 equipamento{selecionados.size !== 1 ? "s" : ""} selecionado
                 {selecionados.size !== 1 ? "s" : ""}
               </span>
-              <div
-                className="mx-1 h-4 w-px"
-                style={{ background: "rgba(255,255,255,0.15)" }}
-              />
+              <div className="mx-1 h-4 w-px" style={{ background: "rgba(255,255,255,0.15)" }} />
               <button
                 type="button"
                 onClick={() => setSelecionados(new Set())}
@@ -1296,7 +1462,7 @@ export default function FilaVistoriasPage() {
                 onClick={() => setDrawerOpen(true)}
                 disabled={atribuindo}
                 className="flex h-7 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-bold transition disabled:opacity-60"
-                style={{ background: "#00B388", color: "#fff" }}
+                style={{ background: C.brand, color: "#fff" }}
               >
                 {atribuindo ? (
                   <RefreshCcw className="h-3 w-3 animate-spin" />
@@ -1358,15 +1524,15 @@ export default function FilaVistoriasPage() {
             initial={{ opacity: 0, y: 12, x: "-50%" }}
             animate={{ opacity: 1, y: 0, x: "-50%" }}
             exit={{ opacity: 0, y: 8 }}
-            className="fixed bottom-8 left-1/2 z-[210] flex items-center gap-2 rounded-2xl px-4 py-2.5"
+            className="fixed bottom-8 left-1/2 z-[410] flex items-center gap-2 rounded-2xl px-4 py-2.5"
             style={{
-              background: "#fff",
+              background: C.surface,
               border: "1px solid rgba(0,179,136,0.28)",
               boxShadow: "0 12px 32px rgba(0,179,136,0.16)",
             }}
           >
-            <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: "#00B388" }} />
-            <span className="text-[12.5px] font-medium" style={{ color: "#063B3B" }}>
+            <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: C.brand }} />
+            <span className="text-[12.5px] font-medium" style={{ color: C.ink }}>
               {toast}
             </span>
           </motion.div>

@@ -10,10 +10,7 @@
  * Convencao path: vistomap/photos/<vistoriaId>/<uid>.jpg
  */
 
-import { openDB, type IDBPDatabase } from "idb";
-
-const DB_NAME = "vistomap-offline";
-const STORE_PHOTOS = "photos";
+import { getOfflineDB as getDB, STORE_PHOTOS } from "./offlineDb";
 
 export interface SavedPhoto {
   /** Caminho relativo no Filesystem OU key no IndexedDB */
@@ -56,21 +53,6 @@ function getFilesystem(): CapFilesystem | null {
   return cap.Plugins?.Filesystem ?? null;
 }
 
-let dbPromise: Promise<IDBPDatabase> | null = null;
-function getDB(): Promise<IDBPDatabase> {
-  if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, 1, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains(STORE_PHOTOS)) {
-          const store = db.createObjectStore(STORE_PHOTOS, { keyPath: "path" });
-          store.createIndex("byVistoria", "vistoriaId");
-        }
-      },
-    });
-  }
-  return dbPromise;
-}
-
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -88,11 +70,20 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-function base64ToBlob(b64: string, mime: string): Blob {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
+/**
+ * Converte base64 → Blob usando fetch(data:url) pra não bloquear a thread JS.
+ * O loop charCodeAt síncrono travava o Android WebView em fotos/vídeos grandes,
+ * causando o diálogo "App não está respondendo" e o loop de crash.
+ */
+async function base64ToBlob(b64: string, mime: string): Promise<Blob> {
+  try {
+    return await fetch(`data:${mime};base64,${b64}`).then((r) => r.blob());
+  } catch {
+    // Fallback para contextos onde data-URL não é aceita (improvável, mas seguro).
+    const bin = atob(b64);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new Blob([bytes], { type: mime });
+  }
 }
 
 export async function savePhoto(
@@ -157,7 +148,7 @@ export async function loadPhoto(path: string): Promise<Blob | null> {
     const fs = getFilesystem();
     if (!fs) return null;
     const r = await fs.readFile({ path, directory: "DATA" });
-    return base64ToBlob(r.data, meta.mime);
+    return await base64ToBlob(r.data, meta.mime);
   }
   return null;
 }

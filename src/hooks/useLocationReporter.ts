@@ -18,6 +18,7 @@
 import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useExpedienteStore } from "@/store/expediente";
+import { API_BASE } from "@/services/api";
 
 const INTERVAL_MS = 30_000;
 const GEO_OPTIONS: PositionOptions = {
@@ -95,8 +96,7 @@ export function useLocationReporter() {
       return;
     }
 
-    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-    const endpoint = `${base}/api/locations`;
+    const endpoint = `${API_BASE}/locations`;
 
     async function postLocation(payload: {
       latitude: number;

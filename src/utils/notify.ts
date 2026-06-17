@@ -120,7 +120,7 @@ export function notify(opts: NotifyOptions): boolean | Promise<boolean> {
     badge: `${BP}/logo_favicon.PNG`,
     renotify: !!opts.tag,
     silent: false,
-    data: { url: opts.tag?.startsWith("vistoria-") ? `/vistorias/${opts.tag.replace("vistoria-", "")}` : "/vistorias" },
+    data: { url: opts.tag?.startsWith("vistoria-") ? `/vistoria?id=${opts.tag.replace("vistoria-", "")}` : "/vistorias" },
     vibrate: [120, 60, 120],
   } as NotificationOptions;
 

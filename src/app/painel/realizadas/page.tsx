@@ -1,5 +1,14 @@
 "use client";
 
+/** Converte path absoluto do filesystem em URL servida pela API. */
+function pdfUrl(dbPath: string): string {
+  const FILES_BASE = "/var/www/html/glpi/plugins/vistomapprojetos/files/";
+  const relative = dbPath.startsWith(FILES_BASE)
+    ? dbPath.slice(FILES_BASE.length)
+    : dbPath.replace(/^.*\/files\//, "");
+  return `/painel/api/painel/pdf?file=${encodeURIComponent(relative)}`;
+}
+
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -702,7 +711,7 @@ function DetailDrawer({
           {/* ── pdf ── */}
           {item.pdfPath ? (
             <a
-              href={item.pdfPath}
+              href={pdfUrl(item.pdfPath)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-between rounded-2xl p-4 transition"

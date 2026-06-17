@@ -17,13 +17,9 @@
  *  5. Apos 10 attempts → status=failed (admin checa manualmente)
  */
 
-import { openDB, type IDBPDatabase } from "idb";
+import { getOfflineDB as getDB, STORE_QUEUE } from "./offlineDb";
 
-const DB_NAME = "vistomap-offline";
-const DB_VERSION = 1;
-const STORE_QUEUE = "queue";
-
-export type OperationType = "finalize-vistoria" | "upload-photo";
+export type OperationType = "finalize-vistoria" | "upload-photo" | "iniciar-vistoria";
 
 export interface QueuedOperation {
   id: string;
@@ -34,26 +30,6 @@ export interface QueuedOperation {
   attempts: number;
   lastError?: string;
   status: "pending" | "running" | "failed";
-}
-
-let dbPromise: Promise<IDBPDatabase> | null = null;
-
-function getDB(): Promise<IDBPDatabase> {
-  if (typeof indexedDB === "undefined") {
-    throw new Error("IndexedDB nao disponivel (SSR?)");
-  }
-  if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains(STORE_QUEUE)) {
-          const store = db.createObjectStore(STORE_QUEUE, { keyPath: "id" });
-          store.createIndex("byStatus", "status");
-          store.createIndex("byVistoria", "vistoriaId");
-        }
-      },
-    });
-  }
-  return dbPromise;
 }
 
 function uid(): string {
@@ -130,7 +106,9 @@ export async function resetRunning(): Promise<void> {
   }
 }
 
-const MAX_ATTEMPTS = 10;
+// Rede de campo oscila muito → tolera muitas tentativas antes de desistir.
+// Cada tentativa só conta quando há internet; offline nem tenta.
+const MAX_ATTEMPTS = 100;
 
 export interface DrainResult {
   ok: number;

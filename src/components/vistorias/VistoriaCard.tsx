@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronRight, MapPin, Navigation, Wrench } from "lucide-react";
+import { ChevronRight, MapPin, Wrench } from "lucide-react";
 import type { Vistoria } from "@/types";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { formatDistanceKm } from "@/utils/format";
-import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
 
 interface VistoriaCardProps {
   vistoria: Vistoria;
@@ -22,14 +20,6 @@ export function VistoriaCard({
   onSelect,
   highlighted,
 }: VistoriaCardProps) {
-  const [navOpen, setNavOpen] = useState(false);
-
-  const handleNavigate = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setNavOpen(true);
-  };
-
   const handleClick = (e: React.MouseEvent) => {
     if (onSelect) {
       e.preventDefault();
@@ -45,7 +35,7 @@ export function VistoriaCard({
       whileTap={{ scale: 0.99 }}
     >
       <Link
-        href={`/vistorias/${vistoria.id}`}
+        href={`/vistoria?id=${vistoria.id}`}
         onClick={handleClick}
         className="block"
       >
@@ -93,32 +83,16 @@ export function VistoriaCard({
                   </span>
                 )}
               </div>
-              <div className="mt-2 flex items-center justify-between gap-2">
+              <div className="mt-2 flex items-center gap-2">
                 <span className="truncate text-[11px] uppercase tracking-[0.12em] text-ink-muted">
                   GLPI · {vistoria.glpiId}
                 </span>
-                <button
-                  type="button"
-                  onClick={handleNavigate}
-                  className="flex h-8 items-center gap-1 rounded-full bg-brand-emerald/12 px-3 text-[12px] font-semibold text-brand-emerald transition hover:bg-brand-emerald/20"
-                >
-                  <Navigation className="h-3.5 w-3.5" />
-                  Navegar
-                </button>
               </div>
             </div>
             <ChevronRight className="mt-2 h-5 w-5 self-start text-ink-muted" />
           </div>
         </Card>
       </Link>
-
-      <NavigationOptionsSheet
-        open={navOpen}
-        onClose={() => setNavOpen(false)}
-        lat={vistoria.latitude}
-        lng={vistoria.longitude}
-        label={vistoria.equipamento}
-      />
     </motion.div>
   );
 }

@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
       sub: tecnico.id,
       email,
       tecnicoId: tecnico.id,
+      role: "admin",
     });
 
     const session: AuthSession = {

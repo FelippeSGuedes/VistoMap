@@ -9,6 +9,13 @@ const baseURL =
   process.env.NEXT_PUBLIC_API_URL ||
   (BASE_PATH ? `${BASE_PATH}/api` : "/api");
 
+/**
+ * Raiz da API para `fetch` cru (fora do axios). Respeita NEXT_PUBLIC_API_URL
+ * — essencial no app bundlado (mobile), onde a API é remota e a origem é local.
+ * Já inclui o sufixo `/api`; use como `${API_BASE}/vistorias/...`.
+ */
+export const API_BASE = baseURL;
+
 export const api: AxiosInstance = axios.create({
   baseURL,
   timeout: 20_000,

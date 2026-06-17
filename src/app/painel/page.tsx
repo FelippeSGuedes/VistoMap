@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
+  ArrowUp,
   Building2,
   CheckCircle2,
   ClipboardList,
@@ -27,8 +28,7 @@ import {
 import { painelService } from "@/services/painel";
 import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type { HistoricoAnalytics } from "@/services/painel";
-import { AreaChart, GaugeRate } from "@/components/painel/Charts";
-import { getMapboxToken, DEFAULT_CENTER } from "@/services/maps";
+import { getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import type { PainelMapaResponse, PainelMapaTecnico } from "@/types/painel-mapa";
 import { asset } from "@/utils/asset";
@@ -48,6 +48,14 @@ function relativo(iso: string): string {
 function fmtNum(n: number): string {
   if (n >= 1000) return (n / 1000).toFixed(1).replace(".", ",") + "k";
   return String(n);
+}
+
+/** Minutos → "Xmin" ou "Xh Ymin". */
+function fmtMin(min: number): string {
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
 function diaCurto(iso: string): string {
@@ -76,13 +84,6 @@ const STATUS_LABEL: Record<TecnicoAtivo["status"], string> = {
   "base":      "Na base",
   "off-shift": "Off-shift",
   "offline":   "Offline",
-};
-
-const TECH_STATUS_COLOR: Record<PainelMapaTecnico["status_operacional"], string> = {
-  "em-operacao": "#10B981",
-  "em-vistoria": "#3B82F6",
-  "parado":      "#F59E0B",
-  "offline":     "#9CA3AF",
 };
 
 function auditColor(acao: AuditEntry["acao"]): string {
@@ -220,6 +221,218 @@ function CountUp({ value, duration = 850 }: { value: number; duration?: number }
   return <>{fmtNum(display)}</>;
 }
 
+/* ── VelocityChart (self-contained — Widget 01) ────────────────────────────
+   SVG próprio para não tocar no AreaChart compartilhado (usado no histórico).
+   Linha verde 2px, área gradiente, linha de média tracejada laranja, ponto de
+   pico destacado e eixo X com datas. */
+function VelocityChart({
+  values,
+  labels,
+  avg,
+  peak,
+}: {
+  values: number[];
+  labels: string[];
+  avg: number;
+  peak: number;
+}) {
+  if (!values.length) return null;
+  const VB_W = 1000;
+  const H = 160;
+  const padX = 12;
+  const padTop = 22;
+  const padBottom = 24;
+  const plotH = H - padTop - padBottom;
+  const n = values.length;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(max - min, 1);
+
+  const x = (i: number) => padX + (n === 1 ? 0 : (i / (n - 1)) * (VB_W - padX * 2));
+  const y = (v: number) => padTop + (1 - (v - min) / range) * plotH;
+
+  const pts = values.map((v, i) => [x(i), y(v)] as const);
+  const line = pts
+    .map(([px, py], i) => {
+      if (i === 0) return `M${px.toFixed(1)},${py.toFixed(1)}`;
+      const [qx, qy] = pts[i - 1];
+      const mx = (qx + px) / 2;
+      return `Q${qx.toFixed(1)},${qy.toFixed(1)} ${mx.toFixed(1)},${((qy + py) / 2).toFixed(1)} T${px.toFixed(1)},${py.toFixed(1)}`;
+    })
+    .join(" ");
+  const fill = `${line} L${x(n - 1).toFixed(1)},${H - padBottom} L${x(0).toFixed(1)},${H - padBottom} Z`;
+
+  const avgY = y(avg);
+  const peakIdx = values.indexOf(peak);
+  const peakX = peakIdx >= 0 ? x(peakIdx) : 0;
+  const peakY = peakIdx >= 0 ? y(peak) : 0;
+
+  // 5 marcações de eixo X distribuídas
+  const tickIdx = Array.from({ length: Math.min(5, n) }, (_, k) =>
+    Math.round((k / (Math.min(5, n) - 1 || 1)) * (n - 1))
+  );
+
+  const pctLeft = (px: number) => `${(px / VB_W) * 100}%`;
+
+  return (
+    <div className="relative" style={{ height: H }}>
+      <svg viewBox={`0 0 ${VB_W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
+        <defs>
+          <linearGradient id="vm-vel-grad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#16a34a" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#16a34a" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* grid horizontal */}
+        {[0.25, 0.5, 0.75].map((t) => (
+          <line
+            key={t}
+            x1={padX}
+            x2={VB_W - padX}
+            y1={padTop + plotH * t}
+            y2={padTop + plotH * t}
+            stroke="rgba(6,59,59,0.06)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {/* linha de média (tracejada laranja) */}
+        <line
+          x1={padX}
+          x2={VB_W - padX}
+          y1={avgY}
+          y2={avgY}
+          stroke="#f59e0b"
+          strokeWidth="1.6"
+          strokeDasharray="6 5"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path d={fill} fill="url(#vm-vel-grad)" />
+        <path
+          d={line}
+          fill="none"
+          stroke="#16a34a"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+
+      {/* label MÉDIA */}
+      <span
+        className="pointer-events-none absolute right-1 rounded bg-amber-50 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-700"
+        style={{ top: `${avgY - 8}px` }}
+      >
+        Média
+      </span>
+
+      {/* ponto de pico + data */}
+      {peakIdx >= 0 && peak > 0 && (
+        <>
+          <span
+            className="pointer-events-none absolute -translate-x-1/2 rounded-full"
+            style={{
+              left: pctLeft(peakX),
+              top: `${peakY - 4}px`,
+              width: 8,
+              height: 8,
+              background: "#16a34a",
+              boxShadow: "0 0 0 3px rgba(22,163,74,0.18)",
+            }}
+          />
+          <span
+            className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap text-[9px] font-bold text-[#16a34a]"
+            style={{ left: pctLeft(peakX), top: `${peakY - 22}px` }}
+          >
+            {labels[peakIdx]}
+          </span>
+        </>
+      )}
+
+      {/* eixo X */}
+      <div className="absolute inset-x-0 bottom-0 h-[16px]">
+        {tickIdx.map((i) => (
+          <span
+            key={i}
+            className="absolute -translate-x-1/2 text-[0.7rem] text-[#9CA3AF]"
+            style={{ left: pctLeft(x(i)) }}
+          >
+            {labels[i]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── MiniDonut (self-contained — Widget 03) ────────────────────────────────
+   Donut completo com animação de desenho ao entrar na viewport. */
+function MiniDonut({
+  value,
+  color,
+  caption,
+}: {
+  value: number;
+  color: string;
+  caption: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) {
+          setShown(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.3 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const size = 84;
+  const stroke = 9;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.min(100, Math.max(0, value));
+  const dash = shown ? (clamped / 100) * c : 0;
+  const cx = size / 2;
+
+  return (
+    <div ref={ref} className="flex flex-col items-center">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(6,59,59,0.07)" strokeWidth={stroke} />
+          <circle
+            cx={cx}
+            cy={cx}
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c}`}
+            transform={`rotate(-90 ${cx} ${cx})`}
+            style={{ transition: "stroke-dasharray 1.1s cubic-bezier(.22,.7,.2,1)" }}
+          />
+        </svg>
+        <div
+          className="absolute inset-0 flex items-center justify-center text-[1.6rem] font-bold tabular-nums"
+          style={{ color: "#111827" }}
+        >
+          {Math.round(clamped)}%
+        </div>
+      </div>
+      <p className="mt-1.5 text-center text-[10px] text-[#9CA3AF]">{caption}</p>
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    WIDGET 02 — Padrão Diário: SP municipalities fill layer
    ══════════════════════════════════════════════════════════════════════════ */
@@ -256,11 +469,17 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
     };
   };
 
+  // Escala relativa ao máximo dos dados — garante que o município mais ativo
+  // sempre apareça em verde escuro, mesmo com poucos registros no período.
   const fillExpr = (munis: Array<{ municipio: string; total: number }>) => {
-    const maxVal = Math.max(...munis.map(m => m.total), 1);
+    const top = Math.max(...munis.map(m => m.total), 2);
+    const mid = Math.max(Math.round(top / 2), 1);
     return [
       "case", [">", ["get", "total"], 0],
-      ["interpolate", ["linear"], ["get", "total"], 1, "#a8d5b5", maxVal, "#1a6b3c"],
+      ["interpolate", ["linear"], ["get", "total"],
+        1, "#7bc49a",
+        mid, "#3f9468",
+        top, "#1a6b3c"],
       "#e8f5ee",
     ] as unknown as mapboxgl.Expression;
   };
@@ -361,7 +580,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
         }
         if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: 12, animate: false });
+          map.fitBounds(bounds, { padding: { top: 8, bottom: 8, left: 8, right: 40 }, animate: false });
           const z = map.getZoom();
           map.setMinZoom(z);
           map.setMaxZoom(z);
@@ -446,16 +665,45 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
       </div>
       <div className="relative h-[190px] w-full shrink-0">
         <div ref={containerRef} className="vm-dash-heat h-full w-full" />
+        {/* Legenda de cores vertical (48px) */}
+        <div
+          className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 flex-col items-center justify-center gap-1"
+          style={{ width: 48 }}
+        >
+          <span className="text-center text-[0.65rem] leading-tight text-[#9CA3AF]">Mais<br />vistorias</span>
+          <div
+            className="w-2.5 rounded-full"
+            style={{ height: 80, background: "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
+          />
+          <span className="text-center text-[0.65rem] leading-tight text-[#9CA3AF]">Menos<br />vistorias</span>
+        </div>
         {!geoLoaded && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#F9FAFB]">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#E8EAED] border-t-[#059669]" />
           </div>
         )}
       </div>
-      <div className="flex flex-wrap gap-x-5 gap-y-1 px-5 py-3 text-[10.5px] text-[#6B7280]">
-        <span>Total: <span className="font-semibold text-[#111827]">{totais.vistoriasFinalizadas}</span></span>
-        <span>Média semanal: <span className="font-semibold text-[#111827]">{mediaSemanal.toFixed(1).replace(".", ",")}</span></span>
-        <span>PDFs: <span className="font-semibold text-[#111827]">{totais.pdfsGerados}</span></span>
+      <div className="mt-auto grid grid-cols-3 border-t border-[#F3F4F6]">
+        {[
+          { icon: Activity, label: "Total no período", value: String(totais.vistoriasFinalizadas), color: "#059669" },
+          { icon: Clock,    label: "Média semanal",    value: mediaSemanal.toFixed(1).replace(".", ","), color: "#0EA5E9" },
+          { icon: FileText, label: "PDFs gerados",      value: String(totais.pdfsGerados), color: "#7C3AED" },
+        ].map((m, i) => (
+          <div
+            key={m.label}
+            className="flex flex-col gap-1.5 px-4 py-3.5"
+            style={{ borderLeft: i > 0 ? "1px solid #F3F4F6" : undefined }}
+          >
+            <span
+              className="flex h-7 w-7 items-center justify-center rounded-lg"
+              style={{ background: `${m.color}14`, color: m.color }}
+            >
+              <m.icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+            </span>
+            <div className="text-[20px] font-bold leading-none tabular-nums text-[#111827]">{m.value}</div>
+            <div className="text-[9.5px] font-medium uppercase tracking-[0.08em] text-[#9CA3AF]">{m.label}</div>
+          </div>
+        ))}
       </div>
     </Card>
   );
@@ -490,13 +738,21 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       "vm-pulse-kf",
       "@keyframes vm-pulse{0%,100%{transform:scale(1);opacity:0.25}50%{transform:scale(1.7);opacity:0.08}}",
     );
+    injectStyle(
+      "vm-radar-kf",
+      "@keyframes vm-radar{0%{box-shadow:0 0 0 0 rgba(22,163,74,0.4)}70%{box-shadow:0 0 0 12px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}",
+    );
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
-      center: DEFAULT_CENTER,
-      zoom: 8.5,
+      center: [-47.0626, -22.9064],
+      zoom: 9,
       interactive: false,
+      dragPan: false,
+      scrollZoom: false,
+      doubleClickZoom: false,
+      touchZoomRotate: false,
       attributionControl: false,
     });
     mapRef.current = map;
@@ -514,29 +770,26 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    const CAMPINAS: [number, number] = [-47.0626, -22.9064];
+    const makeDot = () => {
+      const el = document.createElement("div");
+      el.style.cssText =
+        "width:14px;height:14px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 4px rgba(22,163,74,0.3);animation:vm-radar 2s infinite;cursor:default";
+      return el;
+    };
     const place = () => {
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
-      const pts: Array<[number, number]> = [];
-      mapaTeam
+      const coords = mapaTeam
         .filter(t => t.latitude != null && t.longitude != null && t.status_operacional !== "offline")
-        .forEach(t => {
-          const color = TECH_STATUS_COLOR[t.status_operacional];
-          const el = document.createElement("div");
-          el.style.cssText = "position:relative;width:28px;height:28px;cursor:default";
-          el.innerHTML = `
-            <div style="position:absolute;inset:0;border-radius:50%;background:${color};opacity:0.22;animation:vm-pulse 2.2s ease-in-out infinite"></div>
-            <div style="position:absolute;inset:5px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff;letter-spacing:-.3px">${initials(t.nome)}</div>`;
-          const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-            .setLngLat([t.longitude!, t.latitude!])
-            .addTo(map);
-          markersRef.current.push(mk);
-          pts.push([t.longitude!, t.latitude!]);
-        });
-      if (pts.length > 0) {
-        const b = pts.reduce((bb, c) => bb.extend(c), new mapboxgl.LngLatBounds(pts[0], pts[0]));
-        map.fitBounds(b, { padding: 56, maxZoom: 11.5, duration: 700 });
-      }
+        .map(t => [t.longitude!, t.latitude!] as [number, number]);
+      const pts = coords.length ? coords : [CAMPINAS];
+      pts.forEach(c => {
+        const mk = new mapboxgl.Marker({ element: makeDot(), anchor: "center" })
+          .setLngLat(c)
+          .addTo(map);
+        markersRef.current.push(mk);
+      });
     };
     if (map.isStyleLoaded()) place(); else map.once("load", place);
   }, [mapaTeam]);
@@ -586,14 +839,12 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       )}
       <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">
         {[
-          { title: "Aprovação", value: taxaAprov,    color: "#059669" },
-          { title: "Revisitas", value: taxaRevisita, color: "#F59E0B" },
+          { title: "Aprovação", value: taxaAprov,    color: "#16a34a", caption: "aprovadas no período" },
+          { title: "Revisitas", value: taxaRevisita, color: "#f59e0b", caption: "pendentes (30d)" },
         ].map(g => (
-          <div key={g.title} className="rounded-xl bg-[#F9FAFB] p-3">
-            <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#6B7280]">{g.title}</p>
-            <div className="h-[60px]">
-              <GaugeRate value={g.value} label="%" color={g.color} />
-            </div>
+          <div key={g.title} className="flex flex-col items-center rounded-xl bg-[#F9FAFB] p-3">
+            <p className="mb-2 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-[#9CA3AF]">{g.title}</p>
+            <MiniDonut value={g.value} color={g.color} caption={g.caption} />
           </div>
         ))}
       </div>
@@ -719,9 +970,11 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
     };
 
     (map.getSource("vm-muni-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
+    const topVal = Math.max(...topMunicipios.map(m => m.total), 2);
+    const midVal = Math.max(Math.round(topVal / 2), 1);
     const fillExpr: mapboxgl.Expression = [
       "case", [">", ["get", "total"], 0],
-      ["interpolate", ["linear"], ["get", "total"], 1, "#6dbf8b", 10, "#2d8a55", 50, "#1a6b3c"],
+      ["interpolate", ["linear"], ["get", "total"], 1, "#6dbf8b", midVal, "#2d8a55", topVal, "#1a6b3c"],
       "#dff0e8",
     ];
     fillExprRef.current = fillExpr;
@@ -1052,7 +1305,7 @@ export default function PainelOverviewPage() {
         painelService.fetchRevisitas(),
         painelService.fetchAudit({ limit: 8 }),
         painelService.fetchHistorico(30),
-        api.get<PainelMapaResponse>("/api/painel/mapa-realtime").then(res => res.data).catch(() => null),
+        api.get<PainelMapaResponse>("/painel/mapa").then(res => res.data).catch(() => null),
       ]);
       if (!alive) return;
       setStats(s); setTecnicos(t); setRevisitas(r); setAudit(a); setHistorico(h);
@@ -1078,7 +1331,7 @@ export default function PainelOverviewPage() {
   const mapaTeam     = mapaRealtime?.tecnicos ?? [];
 
   const velocity = useMemo(() => {
-    if (!historico) return { values: [] as number[], labels: [] as string[], avg: 0, peak: 0, total: 0, delta: 0 };
+    if (!historico) return { values: [] as number[], labels: [] as string[], avg: 0, peak: 0, total: 0, totalPrev: 0, delta: 0 };
     const all    = historico.serieDiaria;
     const last   = all.slice(-14);
     const prev   = all.slice(-28, -14);
@@ -1089,7 +1342,7 @@ export default function PainelOverviewPage() {
     const total  = values.reduce((a, b) => a + b, 0);
     const totalPrev = prev.reduce((a, b) => a + b.finalizadas, 0);
     const delta  = totalPrev > 0 ? ((total - totalPrev) / totalPrev) * 100 : 0;
-    return { values, labels, avg, peak, total, delta };
+    return { values, labels, avg, peak, total, totalPrev, delta };
   }, [historico]);
 
   const alertaRevisitas = revisitas.filter(
@@ -1289,26 +1542,45 @@ export default function PainelOverviewPage() {
                 <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
                 <span className="text-[13px] font-semibold text-[#111827]">Vistorias Finalizadas · 14 dias</span>
               </div>
-              <div className="mt-3 flex items-baseline gap-3">
-                <span className="text-[42px] font-bold tabular-nums leading-none tracking-tight text-[#111827]">
-                  {velocity.total > 0 ? <CountUp value={velocity.total} /> : "—"}
+              <div className="mt-3 flex items-end gap-3">
+                <span
+                  className="tabular-nums leading-none"
+                  style={{ fontSize: "3.5rem", fontWeight: 800, color: "#16a34a", letterSpacing: "-0.02em" }}
+                >
+                  {velocity.total > 0 ? <CountUp value={velocity.total} duration={1200} /> : "—"}
                 </span>
-                {velocity.delta !== 0 && (
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[11px] font-bold"
-                    style={{
-                      background: velocity.delta >= 0 ? "#ECFDF5" : "#FEF2F2",
-                      color:      velocity.delta >= 0 ? "#059669" : "#DC2626",
-                    }}
-                  >
-                    {velocity.delta >= 0 ? "+" : ""}{velocity.delta.toFixed(1)}%
-                  </span>
+                {velocity.total > 0 && (
+                  velocity.totalPrev === 0 ? (
+                    <span
+                      className="mb-2 inline-flex items-center gap-0.5"
+                      style={{ background: "#dcfce7", color: "#16a34a", borderRadius: 999, padding: "2px 10px", fontSize: "0.8rem", fontWeight: 700 }}
+                    >
+                      <ArrowUp className="h-3 w-3" strokeWidth={2.6} />
+                      novo
+                    </span>
+                  ) : (
+                    <span
+                      className="mb-2 inline-flex items-center gap-0.5"
+                      style={{
+                        background: velocity.delta >= 0 ? "#dcfce7" : "#FEE2E2",
+                        color:      velocity.delta >= 0 ? "#16a34a" : "#DC2626",
+                        borderRadius: 999,
+                        padding: "2px 10px",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <ArrowUp className={`h-3 w-3 ${velocity.delta >= 0 ? "" : "rotate-180"}`} strokeWidth={2.6} />
+                      {velocity.delta >= 0 ? "+" : ""}{velocity.delta.toFixed(0)}%
+                    </span>
+                  )
                 )}
               </div>
-              <p className="mt-1 text-[11px] text-[#9CA3AF]">
-                Média/dia: <span className="font-semibold text-[#374151]">{velocity.avg.toFixed(1).replace(".", ",")}</span>
-                {" "}· Pico: <span className="font-semibold text-[#059669]">{velocity.peak}</span>
-              </p>
+              <div className="mt-1.5 flex items-center gap-2" style={{ fontSize: "0.8rem", color: "#9ca3af" }}>
+                <span>vistorias na fila</span>
+                <span className="text-[#D1D5DB]">·</span>
+                <span>vs. período anterior</span>
+              </div>
             </div>
             <Link href="/painel/historico" className="flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline">
               Ver histórico <ArrowRight className="h-3 w-3" />
@@ -1329,21 +1601,14 @@ export default function PainelOverviewPage() {
                 opacity: 0.9,
               }}
             />
-            <div className="relative h-[160px]">
+            <div className="relative">
               {velocity.values.length > 0 ? (
-                <>
-                  <AreaChart data={velocity.values} labels={velocity.labels} color="#059669" height={160} showAxis />
-                  {velocity.avg > 0 && (
-                    <div
-                      className="pointer-events-none absolute left-2 right-2 border-t border-dashed border-amber-400/70"
-                      style={{ top: `${12 + (1 - velocity.avg / Math.max(velocity.peak, 1)) * (160 - 24)}px` }}
-                    >
-                      <span className="absolute -top-[11px] right-0 rounded bg-amber-50 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-700">
-                        Média
-                      </span>
-                    </div>
-                  )}
-                </>
+                <VelocityChart
+                  values={velocity.values}
+                  labels={velocity.labels}
+                  avg={velocity.avg}
+                  peak={velocity.peak}
+                />
               ) : (
                 <Skeleton h={160} />
               )}
@@ -1425,7 +1690,7 @@ export default function PainelOverviewPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="mt-1.5 flex items-center gap-2 pl-[34px]">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[34px]">
                       <span className="rounded-full bg-emerald-50 px-1.5 py-[2px] text-[9px] font-semibold text-emerald-700">
                         {aprovPct}% aprov.
                       </span>
@@ -1437,6 +1702,33 @@ export default function PainelOverviewPage() {
                       {t.revisitas > 0 && (
                         <span className="rounded-full bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold text-amber-700">
                           {t.revisitas} rev.
+                        </span>
+                      )}
+                      {t.slaExecucaoMedioMin != null && (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "rgba(59,130,246,0.10)", color: "#2563EB" }}
+                          title="SLA médio de execução (Iniciada → Finalizada)"
+                        >
+                          SLA {fmtMin(t.slaExecucaoMedioMin)}
+                        </span>
+                      )}
+                      {t.tempoDeslocamentoMedioMin != null && (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "rgba(14,165,233,0.10)", color: "#0891B2" }}
+                          title="Tempo médio de deslocamento (Em Deslocamento → Iniciada)"
+                        >
+                          desloc {fmtMin(t.tempoDeslocamentoMedioMin)}
+                        </span>
+                      )}
+                      {t.kmPercorrido != null && t.kmPercorrido > 0 && (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "rgba(100,116,139,0.12)", color: "#475569" }}
+                          title="Distância percorrida no período"
+                        >
+                          {t.kmPercorrido.toFixed(1).replace(".", ",")} km
                         </span>
                       )}
                     </div>

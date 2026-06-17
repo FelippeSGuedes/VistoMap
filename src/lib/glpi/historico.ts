@@ -56,6 +56,8 @@ export interface HistoricoAnalytics {
     aprovadas: number;
     revisitas: number;
     kmPercorrido?: number;
+    tempoDeslocamentoMedioMin?: number | null;
+    slaExecucaoMedioMin?: number | null;
   }>;
   kmOperacional: number;
   motivosReprovacao: MotivoAgregado[];
@@ -268,6 +270,53 @@ export async function fetchHistoricoAnalytics(
     // tabela ausente — kmTotal fica 0
   }
 
+  /* ── Métricas de tempo por técnico (via auditoria) ──────────────────
+     Cruza, por vistoria, os eventos Em Deslocamento → Iniciada → Finalizada
+     e agrega médias por ator (técnico).
+       • tempo de deslocamento = iniciada − em-deslocamento
+       • SLA de execução       = finalizada − iniciada                      */
+  const tempoMap = new Map<number, { desloc: number[]; sla: number[] }>();
+  try {
+    const evRows = await query<{
+      alvo_id: string;
+      ator_id: number;
+      t_desloc: string | null;
+      t_ini: string | null;
+      t_fim: string | null;
+    }>(
+      `
+        SELECT alvo_id,
+               MAX(CASE WHEN acao IN ('vistoria-iniciada','vistoria-finalizada') THEN ator_id END) AS ator_id,
+               MAX(CASE WHEN acao = 'vistoria-em-deslocamento' THEN ts END) AS t_desloc,
+               MAX(CASE WHEN acao = 'vistoria-iniciada'        THEN ts END) AS t_ini,
+               MAX(CASE WHEN acao = 'vistoria-finalizada'      THEN ts END) AS t_fim
+          FROM glpi_plugin_vistomap_audit
+         WHERE acao IN ('vistoria-em-deslocamento','vistoria-iniciada','vistoria-finalizada')
+           AND ts >= ?
+         GROUP BY alvo_id
+      `,
+      [inicio]
+    );
+    for (const r of evRows) {
+      const ator = Number(r.ator_id) || 0;
+      if (!ator) continue;
+      const bucket = tempoMap.get(ator) ?? { desloc: [], sla: [] };
+      if (r.t_desloc && r.t_ini) {
+        const d = (new Date(r.t_ini).getTime() - new Date(r.t_desloc).getTime()) / 60000;
+        if (d >= 0 && d <= 600) bucket.desloc.push(d); // ignora outliers > 10h
+      }
+      if (r.t_ini && r.t_fim) {
+        const s = (new Date(r.t_fim).getTime() - new Date(r.t_ini).getTime()) / 60000;
+        if (s >= 0 && s <= 600) bucket.sla.push(s);
+      }
+      tempoMap.set(ator, bucket);
+    }
+  } catch {
+    // tabela de auditoria ausente — métricas ficam nulas
+  }
+  const mediaMin = (arr: number[]): number | null =>
+    arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+
   const rankingTecnicos = tecRows.map((r) => ({
     id: r.id,
     nome:
@@ -280,6 +329,8 @@ export async function fetchHistoricoAnalytics(
       kmPorTecnico.get(r.id) != null
         ? Math.round((kmPorTecnico.get(r.id) ?? 0) * 10) / 10
         : undefined,
+    tempoDeslocamentoMedioMin: mediaMin(tempoMap.get(r.id)?.desloc ?? []),
+    slaExecucaoMedioMin: mediaMin(tempoMap.get(r.id)?.sla ?? []),
   }));
 
   /* ── Motivos de reprovação (classificados) ───────────────────── */

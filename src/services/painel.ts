@@ -195,6 +195,10 @@ export interface HistoricoAnalytics {
     revisitas: number;
     cidades: number;
     kmPercorrido?: number;
+    /** Tempo médio de deslocamento (Em Deslocamento → Iniciada), em minutos. */
+    tempoDeslocamentoMedioMin?: number | null;
+    /** SLA médio de execução (Iniciada → Finalizada), em minutos. */
+    slaExecucaoMedioMin?: number | null;
   }>;
   kmOperacional: number;
   motivosReprovacao: Array<{

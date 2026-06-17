@@ -9,51 +9,187 @@ import { MOCK_STATS, MOCK_VISTORIAS } from "@/utils/mock";
 
 const ALLOW_FALLBACK = process.env.NODE_ENV !== "production";
 
-async function tryReal<T>(promise: Promise<T>, fb: T): Promise<T> {
-  try {
-    return await promise;
-  } catch (err) {
-    if (!ALLOW_FALLBACK) throw err;
-    console.warn("[vistoriasService] usando fallback mock:", err);
-    return fb;
-  }
-}
-
 export async function fetchDashboardStats(): Promise<DashboardStats> {
   return MOCK_STATS;
 }
 
+/* ── Cache offline-first (best-effort, via IndexedDB compartilhado) ──── */
+async function cachePutSafe<T>(key: string, data: T): Promise<void> {
+  try {
+    const m = await import("@/lib/offlineDb");
+    await m.cachePut(key, data);
+  } catch {
+    /* sem IndexedDB / SSR — ignora */
+  }
+}
+async function cacheGetSafe<T>(key: string): Promise<T | null> {
+  try {
+    const m = await import("@/lib/offlineDb");
+    return await m.cacheGet<T>(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lista de vistorias — offline-first.
+ * Online: busca, cacheia e retorna. Offline/erro de rede: retorna o último
+ * cache salvo (vazio se nunca sincronizou online).
+ */
 export async function fetchVistorias(): Promise<Vistoria[]> {
-  return tryReal(
-    api.get<Vistoria[]>("/vistorias").then((r) => r.data),
-    MOCK_VISTORIAS
-  );
+  try {
+    const data = (await api.get<Vistoria[]>("/vistorias")).data;
+    void cachePutSafe("vistorias:list", data);
+    return data;
+  } catch (err) {
+    const cached = await cacheGetSafe<Vistoria[]>("vistorias:list");
+    if (cached && cached.length) return cached;
+    if (ALLOW_FALLBACK) return MOCK_VISTORIAS;
+    throw err;
+  }
 }
 
+/**
+ * Vistorias CONCLUÍDAS/finalizadas do técnico (últimos 60 dias) — offline-first.
+ */
+export async function fetchVistoriasConcluidas(): Promise<Vistoria[]> {
+  try {
+    const data = (await api.get<Vistoria[]>("/vistorias?concluidas=1")).data;
+    void cachePutSafe("vistorias:concluidas", data);
+    return data;
+  } catch {
+    const cached = await cacheGetSafe<Vistoria[]>("vistorias:concluidas");
+    return cached ?? [];
+  }
+}
+
+/**
+ * Detalhe de uma vistoria — offline-first (cache por id, com fallback na
+ * lista cacheada).
+ */
 export async function fetchVistoria(id: string): Promise<Vistoria | undefined> {
-  return tryReal(
-    api.get<Vistoria>(`/vistorias/${id}`).then((r) => r.data),
-    MOCK_VISTORIAS.find((v) => v.id === id)
-  );
+  try {
+    const data = (await api.get<Vistoria>(`/vistorias/${id}`)).data;
+    void cachePutSafe(`vistoria:${id}`, data);
+    return data;
+  } catch (err) {
+    const cached = await cacheGetSafe<Vistoria>(`vistoria:${id}`);
+    if (cached) return cached;
+    const list = await cacheGetSafe<Vistoria[]>("vistorias:list");
+    const fromList = list?.find((v) => v.id === id);
+    if (fromList) return fromList;
+    if (ALLOW_FALLBACK) return MOCK_VISTORIAS.find((v) => v.id === id);
+    throw err;
+  }
 }
 
-export async function iniciarVistoria(id: string): Promise<{ ok: true }> {
-  return tryReal(
-    api.post(`/vistorias/${id}/iniciar`).then(() => ({ ok: true }) as const),
-    { ok: true } as const
-  );
+export interface IniciarVistoriaInput {
+  latitude?: number | null;
+  longitude?: number | null;
+  forcar?: boolean;
+  justificativa?: string;
+}
+
+export interface IniciarVistoriaResult {
+  ok: true;
+  distancia_m?: number | null;
+  foraDoRaio?: boolean;
+  /** true quando foi enfileirado offline e será sincronizado depois. */
+  queued?: boolean;
+}
+
+/**
+ * Inicia a vistoria com geofence. O GPS do aparelho é enviado e o servidor
+ * valida a proximidade (≤100m).
+ *
+ * Offline / falha de rede → enfileira (IndexedDB) e libera o técnico a seguir;
+ * o servidor revalida o geofence quando a operação sincroniza (offline:true)
+ * e marca divergências na auditoria, em vez de bloquear.
+ *
+ * Erros de regra (foraDoRaio/semGps/semCoordenada) com resposta do servidor
+ * sobem como ApiError para o componente tratar (override). NÃO usa mock.
+ */
+export async function iniciarVistoria(
+  id: string,
+  input: IniciarVistoriaInput = {}
+): Promise<IniciarVistoriaResult> {
+  const body = {
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    forcar: input.forcar ?? false,
+    justificativa: input.justificativa ?? "",
+  };
+
+  // Offline detectado antes de tentar → enfileira direto.
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return queueIniciar(id, body);
+  }
+
+  try {
+    const r = await api.post<IniciarVistoriaResult>(`/vistorias/${id}/iniciar`, body, {
+      timeout: 12_000, // não fica preso no campo com rede ruim
+    });
+    return r.data;
+  } catch (err) {
+    const e = err as {
+      code?: string;
+      message?: string;
+      response?: { status?: number };
+    };
+    const status = e.response?.status;
+    // Falha de REDE (sem resposta) OU timeout OU 5xx/gateway → enfileira e segue.
+    // Erros de REGRA (4xx: geofence 422, auth 401/403) SOBEM pra UI tratar.
+    const isNetwork =
+      e.code === "ERR_NETWORK" ||
+      e.code === "ECONNABORTED" ||
+      /network|timeout|offline/i.test(e.message ?? "");
+    const is5xx = status != null && status >= 500;
+    if ((!e.response && isNetwork) || is5xx) return queueIniciar(id, body);
+    throw err;
+  }
+}
+
+async function queueIniciar(
+  id: string,
+  body: { latitude: number | null; longitude: number | null; forcar: boolean; justificativa: string }
+): Promise<IniciarVistoriaResult> {
+  const { enqueue } = await import("@/lib/offlineQueue");
+  const { getAuthToken } = await import("./api");
+  const { notifyQueueChanged } = await import("@/hooks/useNetworkStatus");
+  await enqueue({
+    type: "iniciar-vistoria",
+    vistoriaId: id,
+    payload: {
+      vistoriaId: id,
+      latitude: body.latitude,
+      longitude: body.longitude,
+      forcar: body.forcar,
+      justificativa: body.justificativa,
+      offline: true,
+      token: getAuthToken() ?? "",
+    } as Record<string, unknown>,
+  });
+  notifyQueueChanged();
+  void import("@/lib/syncRunner").then((m) => m.runDrain()).catch(() => {});
+  return { ok: true, queued: true };
 }
 
 export async function navegarVistoria(id: string): Promise<void> {
   await api.patch(`/vistorias/${id}/situacao`, { situacao_id: 7 }).catch(() => {});
 }
 
+/**
+ * Finaliza a vistoria — WRITE-AHEAD: salva fotos + payload no aparelho ANTES de
+ * tentar enviar. Assim:
+ *  • NUNCA perde a vistoria (mesmo se o app fechar/crashar no meio);
+ *  • NUNCA fica "enviando por horas" (o envio roda na fila, com timeout);
+ *  • Funciona offline e em rede oscilando — sincroniza sozinho quando der.
+ * Retorna na hora; o upload acontece em background (fila + runDrain).
+ */
 export async function finalizarVistoria(
   payload: VistoriaPayload,
   captures: CaptureBundle = {}
-): Promise<{ ok: true; queued?: boolean }> {
-  const fd = new FormData();
-  fd.append("payload", JSON.stringify(payload));
+): Promise<{ ok: true; queued: true }> {
   const slots: Array<{ key: keyof CaptureBundle; filename: string }> = [
     { key: "imagem1", filename: "imagem1.png" },
     { key: "imagem2", filename: "imagem2.png" },
@@ -61,35 +197,17 @@ export async function finalizarVistoria(
     { key: "imagem4", filename: "imagem4.png" },
     { key: "imagem5", filename: "imagem5.png" },
   ];
-  for (const s of slots) {
-    const blob = captures[s.key];
-    if (blob) fd.append(s.key, blob, s.filename);
-  }
-  if (captures.video360) fd.append("video360", captures.video360, "video360.mp4");
 
-  // Detecta offline ANTES de tentar — evita timeout em conexao instavel.
-  if (typeof navigator !== "undefined" && !navigator.onLine) {
-    return await queueFinalizar(payload, captures, slots);
-  }
+  // 1) Persiste local SEMPRE (write-ahead) → dado a salvo imediatamente.
+  const res = await queueFinalizar(payload, captures, slots);
 
-  try {
-    await api.post(`/vistorias/${payload.vistoria_id}/finalizar`, fd, {
-      timeout: 180_000,
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    return { ok: true } as const;
-  } catch (err) {
-    // Falha de rede em conexao flaky → cai pra queue ao inves de perder dados
-    const e = err as { code?: string; message?: string };
-    const isNetwork =
-      e.code === "ERR_NETWORK" ||
-      e.code === "ECONNABORTED" ||
-      /network|timeout|offline/i.test(e.message ?? "");
-    if (isNetwork) {
-      return await queueFinalizar(payload, captures, slots);
-    }
-    throw err;
-  }
+  // 2) Dispara envio imediato em background (se houver internet, sobe já;
+  //    senão, a fila tenta de novo sozinha). Não bloqueia a UI.
+  void import("@/lib/syncRunner")
+    .then((m) => m.runDrain())
+    .catch(() => {});
+
+  return res;
 }
 
 /**
@@ -147,6 +265,7 @@ async function queueFinalizar(
 export const vistoriasService = {
   fetchDashboardStats,
   fetchVistorias,
+  fetchVistoriasConcluidas,
   fetchVistoria,
   iniciarVistoria,
   finalizarVistoria,

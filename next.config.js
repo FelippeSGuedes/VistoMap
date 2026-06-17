@@ -1,8 +1,12 @@
 /** @type {import('next').NextConfig} */
 // Desabilita PWA no build do PAINEL (admin nao precisa de offline/install).
 // PWA tambem complica assetPrefix quando basePath nao esta ativo.
+// Mobile = export estático embutido no APK (offline real). Sem PWA/SW
+// (offline passa a ser nativo via arquivos locais).
+const IS_MOBILE = process.env.BUILD_VARIANT === "mobile";
 const PWA_DISABLED = process.env.NODE_ENV === "development" ||
-                     process.env.BUILD_VARIANT === "painel";
+                     process.env.BUILD_VARIANT === "painel" ||
+                     IS_MOBILE;
 const withPWA = require("next-pwa")({
   dest: "public",
   register: true,
@@ -82,15 +86,21 @@ const ASSET_PREFIX = BUILD_VARIANT === "painel"
   : (BASE_PATH || undefined);
 
 const nextConfig = {
-  output: "standalone",
-  basePath: USE_BASE_PATH && BASE_PATH ? BASE_PATH : undefined,
-  assetPrefix: ASSET_PREFIX,
+  // Mobile: export estático (out/) pro Capacitor. Web: standalone (Node).
+  output: IS_MOBILE ? "export" : "standalone",
+  // Mobile carrega do APK na raiz → sem basePath/assetPrefix.
+  basePath: IS_MOBILE ? undefined : (USE_BASE_PATH && BASE_PATH ? BASE_PATH : undefined),
+  assetPrefix: IS_MOBILE ? undefined : ASSET_PREFIX,
+  // Export precisa de URLs com barra final (cada rota → pasta/index.html).
+  trailingSlash: IS_MOBILE ? true : false,
   reactStrictMode: true,
   poweredByHeader: false,
   eslint: {
     ignoreDuringBuilds: true,
   },
   images: {
+    // Export não tem otimizador de imagem em runtime.
+    unoptimized: IS_MOBILE,
     remotePatterns: [
       { protocol: "https", hostname: "**" },
     ],

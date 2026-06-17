@@ -104,26 +104,32 @@ export async function GET(req: Request) {
     diasAtivos: 0,
   };
 
-  // Distancia percorrida: soma haversine entre pings GPS consecutivos ultimos 30d
-  // (calculada inteiramente em SQL — evita transferir 30k pings pro Node)
+  // Distancia percorrida (30d): haversine entre pings consecutivos via window
+  // function (LAG) — rápido (single pass) e FILTRANDO saltos >= 5km, que são
+  // drift/teleporte de GPS e inflavam o total (mesmo critério do painel).
   const distRows = await query<{ km: number | string | null }>(
-    `SELECT COALESCE(SUM(
-       6371 * 2 * ASIN(SQRT(
-         POWER(SIN(RADIANS((l1.latitude - l2.latitude) / 2)), 2) +
-         COS(RADIANS(l2.latitude)) * COS(RADIANS(l1.latitude)) *
-         POWER(SIN(RADIANS((l1.longitude - l2.longitude) / 2)), 2)
-       ))
-     ), 0) AS km
-     FROM glpi_plugin_vistomap_locations l1
-     INNER JOIN glpi_plugin_vistomap_locations l2
-       ON l2.users_id = l1.users_id
-      AND l2.id = (
-        SELECT MAX(l3.id) FROM glpi_plugin_vistomap_locations l3
-         WHERE l3.users_id = l1.users_id AND l3.id < l1.id
-           AND l3.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    `
+      WITH p AS (
+        SELECT
+          latitude,
+          longitude,
+          LAG(latitude)  OVER (ORDER BY id) AS plat,
+          LAG(longitude) OVER (ORDER BY id) AS plng
+        FROM glpi_plugin_vistomap_locations
+        WHERE users_id = ?
+          AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      ),
+      seg AS (
+        SELECT 6371 * 2 * ASIN(SQRT(
+                 POWER(SIN(RADIANS((latitude - plat) / 2)), 2) +
+                 COS(RADIANS(plat)) * COS(RADIANS(latitude)) *
+                 POWER(SIN(RADIANS((longitude - plng) / 2)), 2)
+               )) AS d
+        FROM p
+        WHERE plat IS NOT NULL
       )
-     WHERE l1.users_id = ?
-       AND l1.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`,
+      SELECT COALESCE(SUM(d), 0) AS km FROM seg WHERE d < 5
+    `,
     [userId]
   );
   const distanciaKm = Math.round(Number(distRows[0]?.km ?? 0) * 10) / 10;
