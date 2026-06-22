@@ -8,15 +8,21 @@ on:
 jobs:
   deploy:
     name: Deploy on company server
-    runs-on: self-hosted
+    runs-on: [self-hosted, gioc]
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Deploy with Docker Compose
+      - name: Deploy with Docker Compose (GIOC)
         run: |
-          set -a && source /etc/vistomap/.env.local && set +a
-          docker compose down --remove-orphans || true
-          docker compose build --no-cache
-          docker compose up -d
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local down --remove-orphans || true
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local build
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local up -d --force-recreate
+          docker ps --format "{{.Names}}: {{.Status}}"
+
+      - name: Restart worker (Python systemd)
+        run: |
+          sudo systemctl restart vistomap-worker
+          sleep 2
+          sudo systemctl status vistomap-worker --no-pager | head -5
