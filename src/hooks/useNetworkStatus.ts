@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { pendingCount } from "@/lib/offlineQueue";
+import { counts } from "@/lib/offlineQueue";
 
 export interface NetworkState {
   online: boolean;
+  /** pendentes/enviando (não-falhos) */
   pendingSync: number;
+  /** em quarentena (precisam de reenvio manual) */
+  failedSync: number;
 }
 
 /**
@@ -16,13 +19,14 @@ export function useNetworkStatus(): NetworkState {
   const [state, setState] = useState<NetworkState>({
     online: typeof navigator !== "undefined" ? navigator.onLine : true,
     pendingSync: 0,
+    failedSync: 0,
   });
 
   useEffect(() => {
     const refreshCount = async () => {
       try {
-        const n = await pendingCount();
-        setState((s) => ({ ...s, pendingSync: n }));
+        const c = await counts();
+        setState((s) => ({ ...s, pendingSync: c.pending, failedSync: c.failed }));
       } catch {
         /* SSR ou sem IDB */
       }

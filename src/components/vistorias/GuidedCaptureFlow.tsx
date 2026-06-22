@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { compressImage } from "@/utils/image";
 import { cn } from "@/utils/cn";
 import type { CaptureBundle } from "@/types";
+import { VideoRecorderSheet } from "./VideoRecorderSheet";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -584,6 +585,7 @@ export function GuidedCaptureFlow({
   const [previews, setPreviews] = useState<Partial<Record<StepKey, PreviewState>>>({});
   const [busy, setBusy] = useState(false);
   const [orbitProgress, setOrbitProgress] = useState(0);
+  const [recorderOpen, setRecorderOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const step = STEPS[stepIdx];
@@ -762,7 +764,11 @@ export function GuidedCaptureFlow({
             step={step}
             preview={current}
             busy={busy}
-            onPick={() => fileRef.current?.click()}
+            onPick={() =>
+              step.kind === "video"
+                ? setRecorderOpen(true)
+                : fileRef.current?.click()
+            }
           />
 
           {/* Feedback */}
@@ -803,7 +809,11 @@ export function GuidedCaptureFlow({
             {current && current.feedback.tone !== "error" && (
               <button
                 type="button"
-                onClick={() => fileRef.current?.click()}
+                onClick={() =>
+                  step.kind === "video"
+                    ? setRecorderOpen(true)
+                    : fileRef.current?.click()
+                }
                 className="flex h-12 items-center gap-1.5 rounded-2xl border border-brand-steel bg-white px-3.5 text-sm font-semibold text-ink-muted hover:text-ink"
               >
                 <RotateCcw className="h-4 w-4" />
@@ -838,6 +848,17 @@ export function GuidedCaptureFlow({
               const f = e.target.files?.[0];
               if (f) handleFile(f);
             }}
+          />
+
+          {/* Gravador leve do vídeo 360 (baixa resolução + 15s). */}
+          <VideoRecorderSheet
+            open={recorderOpen}
+            onClose={() => setRecorderOpen(false)}
+            onCapture={(file) => {
+              setRecorderOpen(false);
+              void handleFile(file);
+            }}
+            onFallback={() => fileRef.current?.click()}
           />
         </motion.div>
       </AnimatePresence>

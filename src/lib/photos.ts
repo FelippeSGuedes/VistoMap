@@ -57,19 +57,6 @@ function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onloadend = () => {
-      const result = r.result as string;
-      // result = "data:image/jpeg;base64,XXXX..." → corta o prefix
-      resolve(result.split(",")[1] ?? "");
-    };
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
-
 /**
  * Converte base64 → Blob usando fetch(data:url) pra não bloquear a thread JS.
  * O loop charCodeAt síncrono travava o Android WebView em fotos/vídeos grandes,
@@ -86,41 +73,69 @@ async function base64ToBlob(b64: string, mime: string): Promise<Blob> {
   }
 }
 
+/**
+ * Reduz fotos grandes antes de salvar/enviar → evita OOM/crash no upload no
+ * campo. Reescala pro lado maior = MAX_DIM e re-encoda JPEG. Respeita a
+ * orientação EXIF (imageOrientation) pra não girar a foto. Em QUALQUER falha,
+ * devolve o blob original (seguro).
+ */
+async function downscaleImage(blob: Blob): Promise<Blob> {
+  const MAX_DIM = 1600;
+  const QUALITY = 0.7;
+  try {
+    if (typeof document === "undefined") return blob;
+    if (!blob.type.startsWith("image/")) return blob; // vídeo etc.
+    if (blob.size < 700_000) return blob; // já é pequeno
+    if (typeof createImageBitmap !== "function") return blob;
+
+    const bitmap = await createImageBitmap(blob, {
+      imageOrientation: "from-image",
+    } as ImageBitmapOptions);
+    const maxSide = Math.max(bitmap.width, bitmap.height);
+    const scale = maxSide > MAX_DIM ? MAX_DIM / maxSide : 1;
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close?.();
+      return blob;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+
+    const out = await new Promise<Blob | null>((res) =>
+      canvas.toBlob(res, "image/jpeg", QUALITY)
+    );
+    return out && out.size < blob.size ? out : blob;
+  } catch {
+    return blob;
+  }
+}
+
 export async function savePhoto(
-  blob: Blob,
+  original: Blob,
   vistoriaId: string | number
 ): Promise<SavedPhoto> {
-  const path = `vistomap/photos/${vistoriaId}/${uid()}.${
-    blob.type.includes("png") ? "png" : "jpg"
-  }`;
+  const blob = await downscaleImage(original);
+  const ext = blob.type.includes("webm")
+    ? "webm"
+    : blob.type.startsWith("video/")
+    ? "mp4"
+    : blob.type.includes("png")
+    ? "png"
+    : "jpg";
+  const path = `vistomap/photos/${vistoriaId}/${uid()}.${ext}`;
   const mime = blob.type || "image/jpeg";
   const size = blob.size;
   const createdAt = new Date().toISOString();
 
-  const fs = getFilesystem();
-  if (fs) {
-    const b64 = await blobToBase64(blob);
-    await fs.writeFile({
-      path,
-      data: b64,
-      directory: "DATA",
-      recursive: true,
-    });
-    const meta: SavedPhoto = {
-      path,
-      mime,
-      size,
-      storage: "filesystem",
-      vistoriaId,
-      createdAt,
-    };
-    // Metadata em IndexedDB pra listagem rapida
-    const db = await getDB();
-    await db.put(STORE_PHOTOS, meta);
-    return meta;
-  }
-
-  // Fallback web: IndexedDB blob
+  // SEMPRE IndexedDB blob (web E nativo). O IndexedDB guarda Blob nativamente,
+  // sem o round-trip base64↔Filesystem que falhava ao reler no campo
+  // ("Foto local ausente" → retry infinito) e estourava memória em arquivo grande.
   const db = await getDB();
   await db.put(STORE_PHOTOS, {
     path,

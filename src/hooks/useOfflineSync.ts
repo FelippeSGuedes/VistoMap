@@ -2,17 +2,20 @@
 
 import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/auth";
-import { resetRunning } from "@/lib/offlineQueue";
+import { resetRunning, retryFailed } from "@/lib/offlineQueue";
 import { runDrain } from "@/lib/syncRunner";
 import { notifyQueueChanged } from "./useNetworkStatus";
 
 /**
- * Sync engine — drena a fila offline quando online.
+ * Sync engine — drena a fila offline.
  *
- * Triggers: evento 'online', intervalo 30s, mount inicial, e 'vm-queue-changed'
- * (disparado ao enfileirar → tenta enviar na hora se houver internet).
- *
- * A lógica de envio (com timeout por upload) vive em @/lib/syncRunner.
+ * IMPORTANTE (anti-crash-loop): NÃO drena na abertura do app. Se um upload
+ * estourava memória/ANR e a gente drenava no boot, o app entrava em loop de
+ * crash ("abre e fecha"). Agora:
+ *  • no boot só roda o disjuntor (resetRunning → quarentena de ops travadas);
+ *  • drena só em transição 'online', no intervalo (30s, app já aberto) e quando
+ *    algo é enfileirado ('vm-queue-changed').
+ *  • ao voltar a internet, dá uma última chance pras ops em quarentena.
  */
 export function useOfflineSync() {
   const { session } = useAuthStore();
@@ -22,21 +25,25 @@ export function useOfflineSync() {
     if (!session?.token) return;
     if (typeof window === "undefined") return;
 
+    // Boot: só quarentena de ops interrompidas. SEM drain imediato.
     void resetRunning();
 
     const drain = async () => {
       const result = await runDrain();
       if (result && (result.ok > 0 || result.failed > 0)) {
-        console.log("[useOfflineSync] drained", result);
         notifyQueueChanged();
       }
     };
 
-    void drain();
-    const onOnline = () => void drain();
+    const onOnline = async () => {
+      await retryFailed().catch(() => 0); // rede voltou → mais uma chance
+      await drain();
+    };
     const onQueueChanged = () => void drain();
+
     window.addEventListener("online", onOnline);
     window.addEventListener("vm-queue-changed", onQueueChanged);
+    // Primeiro tick só depois de 30s — dá tempo do app abrir/estabilizar.
     tickRef.current = window.setInterval(drain, 30_000);
 
     return () => {

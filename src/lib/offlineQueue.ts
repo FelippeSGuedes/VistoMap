@@ -95,20 +95,61 @@ export async function markRunning(id: string): Promise<void> {
   await db.put(STORE_QUEUE, op);
 }
 
+/**
+ * DISJUNTOR DE CRASH: chamado no boot. Uma op em 'running' significa que o app
+ * morreu NO MEIO do envio (provável ANR/OOM no upload). Pra NÃO entrar em loop
+ * de crash ("abre e fecha"), após 2 interrupções a op vai pra 'failed'
+ * (quarentena) em vez de re-tentar automaticamente. Ninguém perde dado — fica
+ * na fila e pode ser reenviado manualmente (botão "tentar enviar").
+ */
 export async function resetRunning(): Promise<void> {
   const db = await getDB();
   const all = (await db.getAll(STORE_QUEUE)) as QueuedOperation[];
   for (const op of all) {
     if (op.status === "running") {
-      op.status = "pending";
+      const interrupts = (op.attempts ?? 0) + 1;
+      op.attempts = interrupts;
+      op.status = interrupts >= 2 ? "failed" : "pending";
+      op.lastError = "interrompido no envio (app reiniciou)";
       await db.put(STORE_QUEUE, op);
     }
   }
 }
 
+/** Reativa as ops em quarentena (failed → pending). Reenvio manual. */
+export async function retryFailed(): Promise<number> {
+  const db = await getDB();
+  const all = (await db.getAll(STORE_QUEUE)) as QueuedOperation[];
+  let n = 0;
+  for (const op of all) {
+    if (op.status === "failed") {
+      op.status = "pending";
+      op.attempts = 0;
+      delete op.lastError;
+      await db.put(STORE_QUEUE, op);
+      n++;
+    }
+  }
+  return n;
+}
+
+/** Contagem por estado pra UI (pendentes/enviando vs. em quarentena). */
+export async function counts(): Promise<{ pending: number; failed: number }> {
+  const db = await getDB();
+  const all = (await db.getAll(STORE_QUEUE)) as QueuedOperation[];
+  let pending = 0;
+  let failed = 0;
+  for (const op of all) {
+    if (op.status === "failed") failed++;
+    else pending++;
+  }
+  return { pending, failed };
+}
+
 // Rede de campo oscila muito → tolera muitas tentativas antes de desistir.
-// Cada tentativa só conta quando há internet; offline nem tenta.
-const MAX_ATTEMPTS = 100;
+// Cada tentativa só conta quando há internet; offline nem tenta. Erro de rede
+// é tolerado (retoma sozinho); erro permanente vai pra quarentena na hora.
+const MAX_ATTEMPTS = 20;
 
 export interface DrainResult {
   ok: number;
@@ -140,16 +181,18 @@ export async function drainQueue(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[offlineQueue] op ${op.id} falhou (att ${op.attempts}):`, msg);
-      // reset pra pending pra tentar de novo
+      const isNet = /network|fetch|offline|timeout|abort|conn/i.test(msg);
       const db = await getDB();
       const cur = (await db.get(STORE_QUEUE, op.id)) as QueuedOperation | undefined;
       if (cur) {
-        cur.status = "pending";
+        // Rede ruim → volta pra 'pending' e tenta no próximo ciclo.
+        // Erro PERMANENTE (ex.: arquivo ausente, payload inválido) → 'failed'
+        // (quarentena) pra NÃO retentar infinitamente ("demora horrores").
+        cur.status = isNet ? "pending" : "failed";
         cur.lastError = msg;
         await db.put(STORE_QUEUE, cur);
       }
-      // Se for falha de rede, para o drain. Backoff fica pro proximo trigger.
-      if (msg.match(/network|fetch|offline|timeout/i)) break;
+      if (isNet) break; // para o drain; retoma no próximo trigger/online
       failed++;
     }
   }

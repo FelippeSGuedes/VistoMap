@@ -12,7 +12,7 @@ import { MapListToggle } from "@/components/vistorias/MapListToggle";
 import { VistoriaCard } from "@/components/vistorias/VistoriaCard";
 import { VistoriaListSkeleton } from "@/components/vistorias/VistoriaListSkeleton";
 import { MobileMapShell } from "@/components/vistorias/MobileMapShell";
-import { GuidedArrival } from "@/components/vistorias/GuidedArrival";
+import { VistoriaPinSheet } from "@/components/vistorias/VistoriaPinSheet";
 import { VistoriaExecucaoSheet } from "@/components/vistorias/VistoriaExecucaoSheet";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
@@ -52,13 +52,8 @@ function VistoriasPageInner() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [permissionDismissed, setPermissionDismissed] = useState(false);
   const [expedienteReady, setExpedienteReady] = useState(false);
+  const { position, refresh: refreshGeo } = useGeolocation(false);
   const permission = useLocationPermission();
-  // Watch contínuo de GPS quando a permissão já foi concedida → mapa/rota
-  // atualizam em tempo real sem precisar fechar/reabrir o app.
-  const { position, refresh: refreshGeo } = useGeolocation(
-    false,
-    permission.state === "granted"
-  );
   const accessBlockReason = getVistoriasAccessBlockReason(expediente);
 
   // /postes — visualização operacional. Liga/desliga via FAB.
@@ -347,10 +342,9 @@ function VistoriasPageInner() {
         onReset={resetFilters}
       />
 
-      <GuidedArrival
+      <VistoriaPinSheet
         open={!!selectedId && !executingId}
         vistoria={items.find((v) => v.id === selectedId) ?? null}
-        userPosition={position ? { lat: position.lat, lng: position.lng } : null}
         onClose={() => setSelected(null)}
         onStart={(v) => {
           setSelected(null);

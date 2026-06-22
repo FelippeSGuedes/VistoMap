@@ -195,6 +195,8 @@ export function MudarPosteFlow({
                 <PickerStep
                   postes={postes.items}
                   loading={postes.loading}
+                  fromCache={postes.fromCache}
+                  fetched={postes.fetched}
                   userPos={
                     geo.position
                       ? { lat: geo.position.lat, lng: geo.position.lng }
@@ -381,6 +383,8 @@ function MotivoStep({
 function PickerStep({
   postes,
   loading,
+  fromCache,
+  fetched,
   userPos,
   centerOnVistoria,
   selectedId,
@@ -389,6 +393,8 @@ function PickerStep({
 }: {
   postes: Poste[];
   loading: boolean;
+  fromCache: boolean;
+  fetched: boolean;
   userPos: { lat: number; lng: number } | null;
   centerOnVistoria: { lat: number; lng: number } | null;
   selectedId: number | null;
@@ -427,6 +433,22 @@ function PickerStep({
           <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-ink shadow-soft backdrop-blur">
             <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
             Buscando postes…
+          </div>
+        )}
+
+        {/* Banner: dados offline do cache */}
+        {!loading && fromCache && (
+          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-500/90 px-3 py-1.5 text-xs font-semibold text-white shadow-soft backdrop-blur">
+            <AlertTriangle className="mr-1 inline h-3 w-3" />
+            Offline · postes do cache local
+          </div>
+        )}
+
+        {/* Banner: sem rede e sem cache */}
+        {!loading && fetched && !fromCache && postes.length === 0 && (
+          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded-full bg-red-500/90 px-3 py-1.5 text-xs font-semibold text-white shadow-soft backdrop-blur">
+            <AlertTriangle className="mr-1 inline h-3 w-3" />
+            Sem sinal · abra online 1× para cachear
           </div>
         )}
 

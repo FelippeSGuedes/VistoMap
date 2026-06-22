@@ -32,7 +32,8 @@ services:
       - NEXT_PUBLIC_BASE_PATH=/app
       - NEXT_PUBLIC_USE_BASE_PATH=true
     volumes:
-      - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
+      - /data/glpi/plugins/vistomapprojetos/uploads:/uploads
+      - /data/glpi/plugins/vistomapprojetos/files:/files:ro
     networks:
       - vistomap-net
     extra_hosts:
@@ -72,7 +73,8 @@ services:
       - NEXT_PUBLIC_BASE_PATH=/painel
       - NEXT_PUBLIC_USE_BASE_PATH=false
     volumes:
-      - /var/www/html/glpi/plugins/vistomapprojetos/uploads:/uploads
+      - /data/glpi/plugins/vistomapprojetos/uploads:/uploads
+      - /data/glpi/plugins/vistomapprojetos/files:/files:ro
       # FCM service account JSON (lazy lido pelo /api/painel/push/send)
       - /etc/vistomap/firebase-service-account.json:/etc/vistomap/firebase-service-account.json:ro
     networks:
