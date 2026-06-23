@@ -17,8 +17,10 @@ jobs:
 
       - name: Restart MariaDB e auth-mysql com nova porta
         run: |
-          docker compose -f /etc/vistomap/docker-compose.infra.yml up -d --force-recreate mariadb auth-mysql
-          sleep 10
+          docker stop vistomap-mariadb auth-mysql 2>/dev/null || true
+          docker rm vistomap-mariadb auth-mysql 2>/dev/null || true
+          docker compose -f /etc/vistomap/docker-compose.infra.yml --project-name vistomap-db up -d mariadb auth-mysql
+          sleep 15
           docker ps --format "{{.Names}}: {{.Status}}" | grep -E "mariadb|auth-mysql"
 
       - name: Testar conexao do container tecnico ao MariaDB
