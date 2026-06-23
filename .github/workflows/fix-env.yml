@@ -1,0 +1,33 @@
+name: Fix env URLs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-env:
+    name: Update URLs in .env.local
+    runs-on: [self-hosted, gioc]
+
+    steps:
+      - name: Ver URLs atuais
+        run: grep -E 'NEXTAUTH|NEXT_PUBLIC.*URL|GLPI_URL|API_URL|BASE_URL|PUBLIC_URL' /etc/vistomap/.env.local || true
+
+      - name: Corrigir NEXTAUTH_URL e URLs do app
+        run: |
+          cp /etc/vistomap/.env.local /tmp/.env.local.fix
+          # NEXTAUTH_URL
+          sed -i 's|NEXTAUTH_URL=.*|NEXTAUTH_URL=https://vistomap.nansen.com.br/app|' /tmp/.env.local.fix
+          # NEXT_PUBLIC_API_URL (se existir)
+          sed -i 's|NEXT_PUBLIC_API_URL=http://[^/]*/app|NEXT_PUBLIC_API_URL=https://vistomap.nansen.com.br/app|' /tmp/.env.local.fix
+          # GLPI_URL (se existir)
+          sed -i 's|GLPI_URL=http://[0-9.]*|GLPI_URL=http://127.0.0.1:8088|' /tmp/.env.local.fix
+          sudo rsync -a /tmp/.env.local.fix /etc/vistomap/.env.local
+          echo "--- URLs apos fix ---"
+          grep -E 'NEXTAUTH|NEXT_PUBLIC.*URL|GLPI_URL|API_URL|BASE_URL' /etc/vistomap/.env.local || true
+
+      - name: Rebuild e restart containers
+        run: |
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local down --remove-orphans || true
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local build
+          docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local up -d --force-recreate
+          docker ps --format "{{.Names}}: {{.Status}}"
