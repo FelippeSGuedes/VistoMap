@@ -21,6 +21,18 @@ jobs:
           docker compose -f docker-compose.gioc.yml --env-file /etc/vistomap/.env.local up -d --force-recreate
           docker ps --format "{{.Names}}: {{.Status}}"
 
+      - name: Deploy nginx config
+        run: |
+          CERT=/etc/letsencrypt/live/vistomap.nansen.com.br/fullchain.pem
+          if [ -f "$CERT" ]; then
+            sudo rsync -a scripts/nginx-https.conf /etc/nginx/sites-available/vistomap
+            echo "Nginx: HTTPS config deployed"
+          else
+            sudo rsync -a scripts/nginx-http.conf /etc/nginx/sites-available/vistomap
+            echo "Nginx: HTTP-only config deployed (sem TLS ainda)"
+          fi
+          sudo systemctl reload nginx
+
       - name: Restart worker (Python systemd)
         run: |
           sudo systemctl restart vistomap-worker

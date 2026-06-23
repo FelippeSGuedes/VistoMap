@@ -1,0 +1,65 @@
+name: Setup TLS (Let's Encrypt)
+
+on:
+  workflow_dispatch:
+    inputs:
+      domains:
+        description: 'Dominios separados por virgula'
+        required: true
+        default: 'vistomap.nansen.com.br,gioc.nansen.com.br'
+      email:
+        description: 'Email para notificacoes Let'\''s Encrypt'
+        required: true
+        default: 'felippegustavo1@gmail.com'
+
+jobs:
+  setup-tls:
+    name: Install TLS certificate
+    runs-on: [self-hosted, gioc]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Criar diretorio ACME webroot
+        run: sudo mkdir -p /var/www/certbot
+
+      - name: Obter certificado (certbot standalone via Docker)
+        run: |
+          DOMAINS="${{ github.event.inputs.domains }}"
+          EMAIL="${{ github.event.inputs.email }}"
+
+          D_FLAGS=""
+          for d in $(echo "$DOMAINS" | tr ',' ' '); do
+            D_FLAGS="$D_FLAGS -d $d"
+          done
+
+          # Para nginx para liberar porta 80 para o certbot standalone
+          sudo systemctl stop nginx
+
+          sudo docker run --rm \
+            -v /etc/letsencrypt:/etc/letsencrypt \
+            -v /var/lib/letsencrypt:/var/lib/letsencrypt \
+            -p 80:80 \
+            certbot/certbot certonly --standalone \
+            $D_FLAGS \
+            --non-interactive --agree-tos -m "$EMAIL"
+
+          sudo systemctl start nginx
+
+      - name: Deploy nginx config com HTTPS
+        run: |
+          sudo rsync -a scripts/nginx-https.conf /etc/nginx/sites-available/vistomap
+          sudo systemctl reload nginx
+
+      - name: Verificar HTTPS
+        run: |
+          sleep 3
+          PRIMARY=$(echo "${{ github.event.inputs.domains }}" | cut -d',' -f1)
+          curl -I --max-time 10 "https://$PRIMARY/gioc/" 2>/dev/null | head -3 || echo "Aguardando propagacao DNS..."
+
+      - name: Configurar renovacao automatica (cron via Docker)
+        run: |
+          CRON_CMD="0 3 * * * sudo docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v /var/lib/letsencrypt:/var/lib/letsencrypt certbot/certbot renew --quiet && sudo systemctl reload nginx"
+          (crontab -l 2>/dev/null | grep -v certbot; echo "$CRON_CMD") | crontab -
+          echo "Renovacao automatica configurada (03:00 diario)"
