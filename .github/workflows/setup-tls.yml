@@ -3,18 +3,14 @@ name: Setup TLS (Let's Encrypt)
 on:
   workflow_dispatch:
     inputs:
-      domains:
-        description: 'Dominios separados por virgula'
-        required: true
-        default: 'vistomap.nansen.com.br,gioc.nansen.com.br'
       email:
-        description: 'Email para notificacoes Let'\''s Encrypt'
+        description: "Email para notificacoes Let's Encrypt"
         required: true
         default: 'felippegustavo1@gmail.com'
 
 jobs:
   setup-tls:
-    name: Install TLS certificate
+    name: Install TLS certificates
     runs-on: [self-hosted, gioc]
 
     steps:
@@ -24,30 +20,29 @@ jobs:
       - name: Criar diretorio ACME webroot
         run: sudo mkdir -p /var/www/certbot
 
-      - name: Obter certificado (certbot standalone via Docker)
+      - name: Certificado vistomap.nansen.com.br
         run: |
-          DOMAINS="${{ github.event.inputs.domains }}"
-          EMAIL="${{ github.event.inputs.email }}"
-
-          D_FLAGS=""
-          for d in $(echo "$DOMAINS" | tr ',' ' '); do
-            D_FLAGS="$D_FLAGS -d $d"
-          done
-
-          # Para nginx para liberar porta 80 para o certbot standalone
-          sudo systemctl stop nginx
-
           sudo docker run --rm \
             -v /etc/letsencrypt:/etc/letsencrypt \
             -v /var/lib/letsencrypt:/var/lib/letsencrypt \
-            -p 80:80 \
-            certbot/certbot certonly --standalone \
-            $D_FLAGS \
-            --non-interactive --agree-tos -m "$EMAIL"
+            -v /var/www/certbot:/var/www/certbot \
+            certbot/certbot certonly --webroot \
+            -w /var/www/certbot \
+            -d vistomap.nansen.com.br \
+            --non-interactive --agree-tos -m "${{ github.event.inputs.email }}"
 
-          sudo systemctl start nginx
+      - name: Certificado gioc.nansen.com.br
+        run: |
+          sudo docker run --rm \
+            -v /etc/letsencrypt:/etc/letsencrypt \
+            -v /var/lib/letsencrypt:/var/lib/letsencrypt \
+            -v /var/www/certbot:/var/www/certbot \
+            certbot/certbot certonly --webroot \
+            -w /var/www/certbot \
+            -d gioc.nansen.com.br \
+            --non-interactive --agree-tos -m "${{ github.event.inputs.email }}"
 
-      - name: Deploy nginx config com HTTPS
+      - name: Deploy nginx HTTPS e reload
         run: |
           sudo rsync -a scripts/nginx-https.conf /etc/nginx/sites-available/vistomap
           sudo systemctl reload nginx
@@ -55,11 +50,11 @@ jobs:
       - name: Verificar HTTPS
         run: |
           sleep 3
-          PRIMARY=$(echo "${{ github.event.inputs.domains }}" | cut -d',' -f1)
-          curl -I --max-time 10 "https://$PRIMARY/gioc/" 2>/dev/null | head -3 || echo "Aguardando propagacao DNS..."
+          curl -I --max-time 10 https://vistomap.nansen.com.br/app 2>/dev/null | head -3 || true
+          curl -I --max-time 10 https://gioc.nansen.com.br/ 2>/dev/null | head -3 || true
 
-      - name: Configurar renovacao automatica (cron via Docker)
+      - name: Configurar renovacao automatica
         run: |
-          CRON_CMD="0 3 * * * sudo docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v /var/lib/letsencrypt:/var/lib/letsencrypt certbot/certbot renew --quiet && sudo systemctl reload nginx"
-          (crontab -l 2>/dev/null | grep -v certbot; echo "$CRON_CMD") | crontab -
-          echo "Renovacao automatica configurada (03:00 diario)"
+          CRON="0 3 * * * sudo docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v /var/lib/letsencrypt:/var/lib/letsencrypt -v /var/www/certbot:/var/www/certbot certbot/certbot renew --webroot -w /var/www/certbot --quiet && sudo systemctl reload nginx"
+          (crontab -l 2>/dev/null | grep -v certbot; echo "$CRON") | crontab -
+          echo "Renovacao configurada (03:00 diario)"
