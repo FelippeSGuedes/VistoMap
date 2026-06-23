@@ -1,0 +1,53 @@
+services:
+  mariadb:
+    image: mariadb:10.6
+    container_name: vistomap-mariadb
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: RootM@riaDB2026
+      MYSQL_DATABASE: glpi_gioc
+      MYSQL_USER: glpi_gioc
+      MYSQL_PASSWORD: "!!N@n$$3n"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  auth-mysql:
+    image: mysql:8.0
+    container_name: auth-mysql
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: RootMySQL2026
+      MYSQL_DATABASE: authdb
+      MYSQL_USER: authuser
+      MYSQL_PASSWORD: "Auth@2026#Prod"
+    volumes:
+      - auth-mysql-data:/var/lib/mysql
+
+  glpi:
+    image: vistomap-glpi:gioc
+    container_name: vistomap-glpi
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - /data/glpi:/var/www/html
+      - /data/glpi-var:/var/lib/glpi_gioc
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+volumes:
+  mariadb-data:
+    name: vistomap_mariadb-data
+  auth-mysql-data:
+    name: vistomap_auth-mysql-data

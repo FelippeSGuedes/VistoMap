@@ -1,0 +1,27 @@
+name: Fix infra DB ports
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-ports:
+    name: Expose DB ports to Docker bridge
+    runs-on: [self-hosted, gioc]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy infra compose corrigido
+        run: sudo rsync -a scripts/docker-compose.infra.yml /etc/vistomap/docker-compose.infra.yml
+
+      - name: Restart MariaDB e auth-mysql com nova porta
+        run: |
+          docker compose -f /etc/vistomap/docker-compose.infra.yml up -d --force-recreate mariadb auth-mysql
+          sleep 10
+          docker ps --format "{{.Names}}: {{.Status}}" | grep -E "mariadb|auth-mysql"
+
+      - name: Testar conexao do container tecnico ao MariaDB
+        run: |
+          docker exec vistomap-tecnico sh -c "nc -zv 172.17.0.1 3307 2>&1 || echo 'FALHOU'"
+          docker exec vistomap-tecnico sh -c "nc -zv host.docker.internal 3307 2>&1 || echo 'FALHOU'"
