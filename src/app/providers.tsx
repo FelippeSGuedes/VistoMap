@@ -7,6 +7,7 @@ import { useExpedienteStore } from "@/store/expediente";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useLocationReporter } from "@/hooks/useLocationReporter";
 import { usePushRegistration } from "@/hooks/usePushRegistration";
+import { useOtaUpdate } from "@/hooks/useOtaUpdate";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
@@ -18,6 +19,11 @@ function LocationReporterMount() {
 
 function PushRegistrationMount() {
   usePushRegistration();
+  return null;
+}
+
+function OtaUpdateMount() {
+  useOtaUpdate();
   return null;
 }
 
@@ -91,6 +97,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <>
       <LocationReporterMount />
       <PushRegistrationMount />
+      <OtaUpdateMount />
       <TecnicoNotificationsMount />
       <OfflineSyncMount />
       <OfflineIndicator />

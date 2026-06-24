@@ -29,7 +29,7 @@ const EXCLUDE = [
 ];
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://zabbmap.nansen.com.br/app/api";
+  process.env.NEXT_PUBLIC_API_URL || "https://vistomap.nansen.com.br/app/api";
 
 // URL base dos postes (Fastify :3001). No nginx, /postes → :3001 — sem o
 // prefixo /app/api que a API do Next usa. Deriva automaticamente o origin.

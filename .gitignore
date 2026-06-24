@@ -25,3 +25,6 @@ worker/dotenv.txt
 worker/.env
 test_projeto.pdf
 worker/test_projeto.pdf
+
+# OTA bundles gerados (nao versionar)
+dist-ota/
