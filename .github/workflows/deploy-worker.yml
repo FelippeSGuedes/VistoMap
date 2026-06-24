@@ -29,11 +29,10 @@ jobs:
 
       - name: Render PDF de teste (nao toca no banco)
         run: |
-          sudo cp worker/test_render.py /tmp/test_render.py
-          sudo /opt/vistomap-worker/venv/bin/python /tmp/test_render.py
-          ls -la /tmp/test_projeto.pdf
-          sudo cp /tmp/test_projeto.pdf "$GITHUB_WORKSPACE/test_projeto.pdf"
-          sudo chown $(whoami) "$GITHUB_WORKSPACE/test_projeto.pdf"
+          # venv pertence ao zabbmap (mesmo user do runner) -> sem sudo
+          /opt/vistomap-worker/venv/bin/python worker/test_render.py
+          cp /tmp/test_projeto.pdf "$GITHUB_WORKSPACE/test_projeto.pdf"
+          ls -la "$GITHUB_WORKSPACE/test_projeto.pdf"
 
       - name: Upload PDF de teste como artefato
         uses: actions/upload-artifact@v4
