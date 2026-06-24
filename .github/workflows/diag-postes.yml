@@ -23,3 +23,20 @@ jobs:
           echo "=== /health (interno :3001) ==="
           curl -s -m 8 http://127.0.0.1:3001/health || echo "(sem /health)"
           echo
+
+      - name: Teste end-to-end com JWT real (auth + query)
+        run: |
+          set -e
+          SECRET=$(docker exec vistomap-postes-api printenv JWT_SECRET)
+          if [ -z "$SECRET" ]; then echo "JWT_SECRET nao encontrado"; exit 0; fi
+          b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now=$(date +%s); exp=$((now+3600))
+          header=$(printf '{"alg":"HS256","typ":"JWT"}' | b64)
+          payload=$(printf '{"sub":"1","email":"diag@vistomap","iat":%d,"exp":%d}' "$now" "$exp" | b64)
+          sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -hmac "$SECRET" -binary | b64)
+          token="$header.$payload.$sig"
+          echo "=== /postes/proximos (Sao Roque -23.5117,-47.10 raio 500) ==="
+          curl -s -m 10 -H "Authorization: Bearer $token" \
+            "http://127.0.0.1:3001/postes/proximos?lat=-23.5117952&lng=-47.1000873&raio=500&limit=3" \
+            | head -c 800
+          echo
