@@ -1,0 +1,17 @@
+# ─── Dependências do worker VistoMap PDF Generator ───────────────────────────
+# Python 3.11+
+
+# ORM / banco
+PyMySQL>=1.1.0
+
+# Templating
+Jinja2>=3.1.4
+
+# Geração de PDF
+weasyprint>=62.3
+
+# Variáveis de ambiente
+python-dotenv>=1.0.1
+
+# Validação de imagens (fallback avançado)
+Pillow>=10.3.0

@@ -1,0 +1,281 @@
+@page {
+  size: A4;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+}
+
+body {
+  color: #000000;
+  font-family: Calibri, Aptos, Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.15;
+}
+
+.sheet {
+  position: relative;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.classification {
+  position: absolute;
+  top: 5.3mm;
+  left: 7mm;
+  width: 34.1mm;
+  height: 9.9mm;
+  padding-top: 5.2mm;
+  padding-left: 7.1mm;
+  color: #000000;
+  font-family: Aptos, Calibri, Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.document-header {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 210mm;
+  height: 30mm;
+}
+
+.brand-logo {
+  position: absolute;
+  display: block;
+  object-fit: contain;
+}
+
+.brand-logo-cpfl {
+  top: 7mm;
+  left: 25.4mm;
+  width: 28.5mm;
+  height: 20mm;
+}
+
+.brand-logo-nansen {
+  top: 9.9mm;
+  left: 165.4mm;
+  width: 41mm;
+  height: 12mm;
+}
+
+.document-title {
+  position: absolute;
+  top: 28.2mm;
+  left: 0;
+  width: 210mm;
+  margin: 0;
+  color: #000000;
+  font-size: 12pt;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.installation-table {
+  position: absolute;
+  top: 38.2mm;
+  left: 5.15mm;
+  width: 199.44mm;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: #000000;
+  font-size: 10pt;
+  line-height: 1.2;
+}
+
+.col-1 { width: 68.70mm; }
+.col-2 { width: 0.81mm; }
+.col-3 { width: 18.56mm; }
+.col-4 { width: 9.28mm; }
+.col-5 { width: 36.60mm; }
+.col-6 { width: 19.44mm; }
+.col-7 { width: 46.05mm; }
+
+.installation-table td {
+  padding: 0.35mm 1mm;
+  border: 0.6pt solid #cccccc;
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+.section-row td {
+  background: #1b94c7;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.row-min {
+  min-height: 0;
+}
+
+.row-25 { height: 0.44mm; }
+.row-46 { height: 0.81mm; }
+.row-91 { height: 1.61mm; }
+.row-97 { height: 1.71mm; }
+.row-357 { height: 6.30mm; }
+
+.align-middle {
+  vertical-align: middle;
+}
+
+.text-justify {
+  text-align: justify;
+}
+
+.photo-row {
+  height: 62.83mm;
+}
+
+.photo-cell {
+  padding: 0;
+  text-align: center;
+  vertical-align: top;
+}
+
+.photo-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: auto;
+  margin-left: auto;
+  overflow: hidden;
+}
+
+.photo-frame-main {
+  width: 89mm;
+  height: 116.5mm;
+  margin-top: 1.2mm;
+  margin-bottom: 1mm;
+}
+
+.photo-frame-secondary {
+  width: 45mm;
+  height: 51mm;
+  margin-top: 1.2mm;
+  margin-bottom: 1mm;
+}
+
+.photo-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.photo-spec {
+  font-size: 10pt;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.page-marker {
+  position: absolute;
+  top: 282.66mm;
+  left: 198.08mm;
+  width: 3.25mm;
+  height: 6.10mm;
+  object-fit: contain;
+}
+
+/* ============================================================= */
+/* PÁGINA 2 — Registro fotográfico (galeria)                      */
+/* ============================================================= */
+
+.gallery-sheet {
+  position: relative;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #ffffff;
+  overflow: hidden;
+  page-break-before: always;
+}
+
+.gallery-table {
+  position: absolute;
+  top: 42mm;
+  left: 10mm;
+  width: 190mm;
+  border-collapse: separate;
+  border-spacing: 4mm;
+  table-layout: fixed;
+}
+
+.gcol {
+  width: 50%;
+}
+
+.gcell {
+  padding: 0;
+  vertical-align: top;
+}
+
+.card {
+  margin: 0;
+  border: 0.75pt solid #c4d0d9;
+  border-radius: 1.6mm;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/* Caixa fixa da imagem — object-fit:contain preserva a foto inteira,
+   sem cortar nem distorcer, mantendo a qualidade original. */
+.card-img {
+  width: 100%;
+  height: 64mm;
+  overflow: hidden;
+  background: #f5f8fa;
+}
+
+.card-img-main {
+  /* coluna esquerda (foto vertical do poste) ocupa as duas linhas */
+  height: 142mm;
+}
+
+.card-img-print {
+  /* prints são screenshots verticais — um pouco mais altos */
+  height: 70mm;
+}
+
+.card-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.card-cap {
+  padding: 1.7mm 1.5mm;
+  background: #1b94c7;
+  color: #ffffff;
+  font-size: 9.5pt;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  letter-spacing: 0.2pt;
+}
+
+@media screen {
+  body {
+    background: #f1f3f5;
+  }
+
+  .sheet,
+  .gallery-sheet {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  }
+}

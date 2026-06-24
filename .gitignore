@@ -19,3 +19,9 @@ public/fallback-*.js
 # Firebase service account (credencial real — fica em /etc/vistomap/ no destino)
 *firebase-adminsdk*.json
 firebase-service-account*.json
+
+# Worker — nao versionar segredos nem saidas de teste
+worker/dotenv.txt
+worker/.env
+test_projeto.pdf
+worker/test_projeto.pdf

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relatório Instalação {{NAME}}</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ============================================================= -->
+  <!-- PÁGINA 1 — Dados da instalação                                 -->
+  <!-- ============================================================= -->
+  <main class="sheet">
+    <div class="classification">Uso Público CPFL</div>
+
+    <header class="document-header" aria-label="Cabeçalho do relatório">
+      <img class="brand-logo brand-logo-cpfl" src="assets/logo-cpfl.png" alt="CPFL Energia">
+      <img class="brand-logo brand-logo-nansen" src="assets/logo-nansen.png" alt="Nansen">
+    </header>
+
+    <h1 class="document-title">Relatório Instalação {{NAME}}</h1>
+
+    <table class="installation-table" aria-label="Relatório de Instalação">
+      <colgroup>
+        <col class="col-1">
+        <col class="col-2">
+        <col class="col-3">
+        <col class="col-4">
+        <col class="col-5">
+        <col class="col-6">
+        <col class="col-7">
+      </colgroup>
+      <tbody>
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Relatório de Instalação</td>
+        </tr>
+        <tr class="row-min row-46">
+          <td colspan="7">Data da elaboração: {{DATE}}</td>
+        </tr>
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">ID do Dispositivo de Rede</td>
+        </tr>
+        <tr class="row-min row-97">
+          <td colspan="3">ID do dispositivo:{{NAME}}</td>
+          <td colspan="4">PS:{{PSPOSTE}}</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td colspan="7">Endereço:{{ENDEREÇO}}</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td>Município: {{MUNICIPIO}}</td>
+          <td colspan="4">Latitude: {{LATITUDE}}</td>
+          <td colspan="2">Longitude: {{LONGITUDE}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td>Tipo de Antena: {{TIPODEANTENA}}</td>
+          <td colspan="4">Ganho (dBi): {{GANHO}}</td>
+          <td colspan="2">Device Mode: {{DEVICEMODE}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td>Operadora 4G: {{OPERADORA}}</td>
+          <td colspan="4">Intensidade sinal: {{INTENSIDADE}}</td>
+          <td colspan="2">Velocidade:{{VELOCIDADE}}</td>
+        </tr>
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Informação da estrutura vertical</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="2">Material / Tipo da Estrutura:{{MATERIAL}}</td>
+          <td colspan="4" class="align-middle">Altura (m) / Resistência (daN):{{ALTURA}}</td>
+          <td class="align-middle">Aterramento:{{ATERRAMENTO}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="3" class="align-middle">Tensão da Rede:{{TENSAO}}</td>
+          <td colspan="4">Alimentação do equipamento:{{ALIMENTACAO}}</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td colspan="7">Local de instalação do dispositivo: {{LOCALINS}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="7" class="text-justify">Observações:{{OBSERVAÇÃO}}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <img class="page-marker" src="assets/footer-marker.png" alt="" aria-hidden="true">
+  </main>
+
+  <!-- ============================================================= -->
+  <!-- PÁGINA 2 — Registro fotográfico                                -->
+  <!-- ============================================================= -->
+  <section class="gallery-sheet">
+    <div class="classification">Uso Público CPFL</div>
+
+    <header class="document-header" aria-label="Cabeçalho do registro fotográfico">
+      <img class="brand-logo brand-logo-cpfl" src="assets/logo-cpfl.png" alt="CPFL Energia">
+      <img class="brand-logo brand-logo-nansen" src="assets/logo-nansen.png" alt="Nansen">
+    </header>
+
+    <h1 class="document-title">Registro Fotográfico — {{NAME}}</h1>
+
+    <table class="gallery-table" aria-label="Registro fotográfico da vistoria">
+      <colgroup>
+        <col class="gcol">
+        <col class="gcol">
+      </colgroup>
+      <tbody>
+        <tr>
+          <td rowspan="2" class="gcell">
+            <figure class="card">
+              <div class="card-img card-img-main">
+                <img class="card-photo" src="{{IMAGEM1}}" alt="Poste completo">
+              </div>
+              <figcaption class="card-cap">Poste completo</figcaption>
+            </figure>
+          </td>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{IMAGEM2}}" alt="Detalhe do topo">
+              </div>
+              <figcaption class="card-cap">Detalhe do topo</figcaption>
+            </figure>
+          </td>
+        </tr>
+        <tr>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{IMAGEM3}}" alt="Detalhe da base">
+              </div>
+              <figcaption class="card-cap">Detalhe da base</figcaption>
+            </figure>
+          </td>
+        </tr>
+        <tr>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img card-img-print">
+                <img class="card-photo" src="{{IMAGEM4}}" alt="Print Vivo">
+              </div>
+              <figcaption class="card-cap">Print Vivo</figcaption>
+            </figure>
+          </td>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img card-img-print">
+                <img class="card-photo" src="{{IMAGEM5}}" alt="Print Claro">
+              </div>
+              <figcaption class="card-cap">Print Claro</figcaption>
+            </figure>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <img class="page-marker" src="assets/footer-marker.png" alt="" aria-hidden="true">
+  </section>
+</body>
+</html>

@@ -1,0 +1,48 @@
+name: Deploy worker + templates
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-worker:
+    name: Deploy worker PDF generator
+    runs-on: [self-hosted, gioc]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy codigo Python do worker
+        run: |
+          sudo rsync -a --exclude test_render.py worker/*.py /opt/vistomap-worker/
+          sudo chown zabbmap:zabbmap /opt/vistomap-worker/*.py
+          echo "Python worker atualizado:"
+          ls -la /opt/vistomap-worker/*.py
+
+      - name: Deploy templates (HTML + CSS)
+        run: |
+          TDIR=/data/glpi/plugins/vistomapprojetos/templates
+          sudo rsync -a worker/template.html worker/style.css "$TDIR/"
+          sudo chown www-data:www-data "$TDIR/template.html" "$TDIR/style.css"
+          echo "Templates atualizados:"
+          ls -la "$TDIR/template.html" "$TDIR/style.css"
+
+      - name: Render PDF de teste (nao toca no banco)
+        run: |
+          sudo cp worker/test_render.py /tmp/test_render.py
+          sudo /opt/vistomap-worker/venv/bin/python /tmp/test_render.py
+          ls -la /tmp/test_projeto.pdf
+          sudo cp /tmp/test_projeto.pdf "$GITHUB_WORKSPACE/test_projeto.pdf"
+          sudo chown $(whoami) "$GITHUB_WORKSPACE/test_projeto.pdf"
+
+      - name: Upload PDF de teste como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-projeto-pdf
+          path: test_projeto.pdf
+
+      - name: Reiniciar worker
+        run: |
+          sudo systemctl restart vistomap-worker
+          sleep 3
+          sudo systemctl status vistomap-worker --no-pager | head -5
