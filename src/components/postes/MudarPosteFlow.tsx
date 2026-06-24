@@ -197,6 +197,8 @@ export function MudarPosteFlow({
                   loading={postes.loading}
                   fromCache={postes.fromCache}
                   fetched={postes.fetched}
+                  error={postes.error}
+                  raio={postes.raio}
                   userPos={
                     geo.position
                       ? { lat: geo.position.lat, lng: geo.position.lng }
@@ -385,6 +387,8 @@ function PickerStep({
   loading,
   fromCache,
   fetched,
+  error,
+  raio,
   userPos,
   centerOnVistoria,
   selectedId,
@@ -395,6 +399,8 @@ function PickerStep({
   loading: boolean;
   fromCache: boolean;
   fetched: boolean;
+  error: string | null;
+  raio: number;
   userPos: { lat: number; lng: number } | null;
   centerOnVistoria: { lat: number; lng: number } | null;
   selectedId: number | null;
@@ -444,11 +450,19 @@ function PickerStep({
           </div>
         )}
 
-        {/* Banner: sem rede e sem cache */}
-        {!loading && fetched && !fromCache && postes.length === 0 && (
+        {/* Banner: falha de rede sem cache (offline de verdade) */}
+        {!loading && fetched && !fromCache && error && postes.length === 0 && (
           <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded-full bg-red-500/90 px-3 py-1.5 text-xs font-semibold text-white shadow-soft backdrop-blur">
             <AlertTriangle className="mr-1 inline h-3 w-3" />
             Sem sinal · abra online 1× para cachear
+          </div>
+        )}
+
+        {/* Banner: buscou online com sucesso, mas não há postes no raio */}
+        {!loading && fetched && !fromCache && !error && postes.length === 0 && (
+          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-500/90 px-3 py-1.5 text-xs font-semibold text-white shadow-soft backdrop-blur">
+            <AlertTriangle className="mr-1 inline h-3 w-3" />
+            Nenhum poste num raio de {raio} m deste ponto
           </div>
         )}
 
