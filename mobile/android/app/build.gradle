@@ -30,6 +30,16 @@ repositories {
     }
 }
 
+// O @capgo/capacitor-updater puxa androidx.work:work-runtime:2.10.x, que exige
+// compileSdk 35. Mantemos compileSdk 34 (AGP 8.2.1) forçando o work-runtime para
+// a última 2.9.x, compatível com 34. API do WorkManager é estável entre 2.9 e 2.10.
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.work:work-runtime:2.9.1'
+        force 'androidx.work:work-runtime-ktx:2.9.1'
+    }
+}
+
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
