@@ -1,0 +1,25 @@
+name: Diag postes (PostGIS)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    name: Conta postes no PostGIS
+    runs-on: [self-hosted, gioc]
+
+    steps:
+      - name: Contagem + limites geográficos
+        run: |
+          echo "=== total de postes ==="
+          docker exec vistomap-postgis psql -U vistomap -d vistomap -t -c "select count(*) from postes;"
+          echo "=== limites (lat/lng) ==="
+          docker exec vistomap-postgis psql -U vistomap -d vistomap -t -c "select min(latitudefield), max(latitudefield), min(longitudefield), max(longitudefield) from postes;"
+          echo "=== amostra (5) ==="
+          docker exec vistomap-postgis psql -U vistomap -d vistomap -c "select id, pspostefield, municipiofield, latitudefield, longitudefield from postes limit 5;"
+
+      - name: Health da postes-api
+        run: |
+          echo "=== /health (interno :3001) ==="
+          curl -s -m 8 http://127.0.0.1:3001/health || echo "(sem /health)"
+          echo
