@@ -60,13 +60,14 @@ const STEPS: StepDef[] = [
   },
   {
     key: "imagem3",
-    title: "Detalhe da base",
-    objective: "Detalhes da fixação e aterramento na base",
-    instruction: "Capture os detalhes da base do poste.",
+    title: "Vista horizontal",
+    objective: "Foto deitada com o poste, os postes vizinhos e a infraestrutura",
+    instruction:
+      "Vire o celular na HORIZONTAL e enquadre o poste junto com os postes adjacentes e a infraestrutura ao redor.",
     filename: "imagem3.png",
     kind: "photo",
     capture: "environment",
-    resolution: { w: 180, h: 236 },
+    resolution: { w: 453, h: 342 },
   },
   {
     key: "video360",
@@ -349,11 +350,19 @@ function validateAgainstStep(
   const aspectTarget = step.resolution.w / step.resolution.h;
   const aspectActual = image.width / image.height;
 
-  // Target é sempre vertical (w<h → aspect<1). Bloqueia apenas se vier horizontal.
+  // Target vertical (w<h → aspect<1): bloqueia se vier horizontal.
   if (aspectTarget < 1 && aspectActual > 1.15) {
     return {
       tone: "error",
       message: "Foto na horizontal. Gire o celular para a vertical e tente novamente.",
+    };
+  }
+
+  // Target horizontal (w>h → aspect>1): bloqueia se vier vertical.
+  if (aspectTarget > 1 && aspectActual < 0.87) {
+    return {
+      tone: "error",
+      message: "Foto na vertical. Gire o celular para a HORIZONTAL e tente novamente.",
     };
   }
 
@@ -444,6 +453,54 @@ function PoleAnim({ focus = "full" }: { focus?: "full" | "top" | "base" }) {
           style={{ transformOrigin: "100px 258px" }}
         />
       )}
+    </svg>
+  );
+}
+
+function WideAnim() {
+  return (
+    <svg viewBox="0 0 200 280" className="h-full w-full">
+      {/* Chão / infraestrutura */}
+      <line x1="12" y1="208" x2="188" y2="208" stroke="#06D6A0" strokeWidth="2" opacity="0.5" />
+      {/* Poste vizinho esquerdo */}
+      <rect x="46" y="150" width="6" height="58" rx="2" fill="#073B4C" opacity="0.65" />
+      <rect x="38" y="150" width="22" height="3" fill="#06D6A0" opacity="0.65" />
+      {/* Poste principal (centro) */}
+      <rect x="96" y="120" width="9" height="88" rx="3" fill="#0A4F65" />
+      <rect x="84" y="126" width="33" height="14" rx="2" fill="#073B4C" />
+      <rect x="80" y="124" width="41" height="3" fill="#06D6A0" />
+      {/* Poste vizinho direito */}
+      <rect x="148" y="150" width="6" height="58" rx="2" fill="#073B4C" opacity="0.65" />
+      <rect x="140" y="150" width="22" height="3" fill="#06D6A0" opacity="0.65" />
+      {/* Moldura paisagem pulsando (enquadramento desejado) */}
+      <motion.rect
+        x="28"
+        y="98"
+        width="144"
+        height="92"
+        rx="8"
+        fill="none"
+        stroke="#FFD166"
+        strokeWidth="2.5"
+        strokeDasharray="9 6"
+        animate={{ opacity: [0.35, 1, 0.35] }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+      />
+      {/* Celular girando para a horizontal */}
+      <motion.g
+        animate={{ rotate: [0, 0, 90, 90, 0] }}
+        transition={{
+          duration: 4,
+          repeat: Infinity,
+          times: [0, 0.2, 0.45, 0.85, 1],
+          ease: "easeInOut",
+        }}
+        style={{ transformOrigin: "100px 247px" }}
+      >
+        <rect x="86" y="225" width="28" height="44" rx="5" fill="#FFD166" stroke="#073B4C" strokeWidth="2" />
+        <rect x="89" y="230" width="22" height="32" rx="2" fill="#073B4C" />
+        <circle cx="100" cy="266" r="2" fill="#06D6A0" />
+      </motion.g>
     </svg>
   );
 }
@@ -715,17 +772,12 @@ export function GuidedCaptureFlow({
           <div className="relative h-56 w-full overflow-hidden rounded-3xl bg-grad-deep">
             <div className="absolute inset-0 opacity-25 [background:radial-gradient(60%_80%_at_50%_0%,rgba(6,214,160,0.5),rgba(6,214,160,0))]" />
             <div className="relative h-full w-full">
-              {step.kind === "photo" && (
-                <PoleAnim
-                  focus={
-                    step.key === "imagem2"
-                      ? "top"
-                      : step.key === "imagem3"
-                      ? "base"
-                      : "full"
-                  }
-                />
-              )}
+              {step.kind === "photo" &&
+                (step.key === "imagem3" ? (
+                  <WideAnim />
+                ) : (
+                  <PoleAnim focus={step.key === "imagem2" ? "top" : "full"} />
+                ))}
               {step.kind === "video" && (
                 <OrbitAnim progress={orbitProgress} />
               )}
