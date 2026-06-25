@@ -500,8 +500,8 @@ function PickerStep({
                     <p className="truncate text-[11px] text-ink-muted">
                       {selected.municipiofield}
                       {selected.materialfield ? ` · ${selected.materialfield}` : ""}
-                      {selected.alturadaantenafield
-                        ? ` · ${selected.alturadaantenafield}m`
+                      {selected.alturadopostemfield
+                        ? ` · ${selected.alturadopostemfield}m`
                         : ""}
                       {selected.distancia_m != null
                         ? ` · ${Math.round(selected.distancia_m)}m`
@@ -601,8 +601,8 @@ function ConfirmarStep({
           {posteNovo.materialfield && (
             <p className="mt-0.5 text-ink-muted">
               {posteNovo.materialfield}
-              {posteNovo.alturadaantenafield
-                ? ` · ${posteNovo.alturadaantenafield}m`
+              {posteNovo.alturadopostemfield
+                ? ` · ${posteNovo.alturadopostemfield}m`
                 : ""}
             </p>
           )}

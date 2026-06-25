@@ -139,7 +139,7 @@ export function postesToGeoJSON(postes: Poste[]): PostesBboxGeoJSON {
         psposte: p.pspostefield,
         municipio: p.municipiofield,
         material: p.materialfield,
-        altura: p.alturadaantenafield,
+        altura: p.alturadopostemfield,
       },
     })),
   };

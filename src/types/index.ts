@@ -107,7 +107,7 @@ export interface Poste {
   id: number;
   pspostefield: string;
   materialfield: string | null;
-  alturadaantenafield: string | null;
+  alturadopostemfield: string | null;
   municipiofield: string;
   latitudefield: number;
   longitudefield: number;
@@ -155,7 +155,7 @@ export interface MudancaPosteResponse {
     pspostefield: string;
     municipiofield: string;
     materialfield: string | null;
-    alturadaantenafield: string | null;
+    alturadopostemfield: string | null;
     latitudefield: number;
     longitudefield: number;
     observaofield_append: string;

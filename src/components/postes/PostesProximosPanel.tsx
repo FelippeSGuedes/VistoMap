@@ -178,7 +178,7 @@ function PosteCard({
           <Building2 className="h-3 w-3" />
           {poste.municipiofield}
           {poste.materialfield ? ` · ${poste.materialfield}` : ""}
-          {poste.alturadaantenafield ? ` · ${poste.alturadaantenafield}m` : ""}
+          {poste.alturadopostemfield ? ` · ${poste.alturadopostemfield}m` : ""}
         </p>
       </div>
       {poste.distancia_m != null && (
