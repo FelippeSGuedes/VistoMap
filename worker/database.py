@@ -121,14 +121,7 @@ class Database:
                 f.rsrpifield,
                 f.rsrpllfield,
 
-                f.plugin_fields_tipodeantenafielddropdowns_id,
-                f.plugin_fields_ganhodbifielddropdowns_id,
-                f.plugin_fields_mododeoperaofielddropdowns_id,
-                f.plugin_fields_operadorafourgfielddropdowns_id,
                 f.plugin_fields_tipodematerialfielddropdowns_id,
-                f.plugin_fields_tensofielddropdowns_id,
-                f.plugin_fields_alimentaodoequipamentofielddropdowns_id,
-                f.plugin_fields_localdeinstalaofielddropdowns_id,
 
                 f.plugin_fields_tensovfielddropdowns_id,
                 f.plugin_fields_tipoifielddropdowns_id,
@@ -173,14 +166,7 @@ class Database:
             plugin_fields_ganhodbifielddropdowns_id → ganhodbifield
         """
         mapping = {
-            "plugin_fields_tipodeantenafielddropdowns_id":           "tipodeantenafield",
-            "plugin_fields_ganhodbifielddropdowns_id":               "ganhodbifield",
-            "plugin_fields_mododeoperaofielddropdowns_id":           "mododeoperaofield",
-            "plugin_fields_operadorafourgfielddropdowns_id":         "operadorafourgfield",
             "plugin_fields_tipodematerialfielddropdowns_id":         "tipodematerialfield",
-            "plugin_fields_tensofielddropdowns_id":                  "tensofield",
-            "plugin_fields_alimentaodoequipamentofielddropdowns_id": "alimentaodoequipamentofield",
-            "plugin_fields_localdeinstalaofielddropdowns_id":        "localdeinstalaofield",
             "plugin_fields_tensovfielddropdowns_id":                 "tensovfield",
             "plugin_fields_tipoifielddropdowns_id":                  "tipoifield",
             "plugin_fields_tipollfielddropdowns_id":                 "tipollfield",

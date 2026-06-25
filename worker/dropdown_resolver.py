@@ -16,14 +16,7 @@ logger = logging.getLogger("vistomap_worker")
 
 # ─── Mapeamento campo MySQL → tabela dropdown ─────────────────────────────────
 DROPDOWN_MAP: Dict[str, str] = {
-    "tipodeantenafield":           "glpi_plugin_fields_tipodeantenafielddropdowns",
-    "ganhodbifield":               "glpi_plugin_fields_ganhodbifielddropdowns",
-    "mododeoperaofield":           "glpi_plugin_fields_mododeoperaofielddropdowns",
-    "operadorafourgfield":         "glpi_plugin_fields_operadorafourgfielddropdowns",
     "tipodematerialfield":         "glpi_plugin_fields_tipodematerialfielddropdowns",
-    "tensofield":                  "glpi_plugin_fields_tensofielddropdowns",
-    "alimentaodoequipamentofield": "glpi_plugin_fields_alimentaodoequipamentofielddropdowns",
-    "localdeinstalaofield":        "glpi_plugin_fields_localdeinstalaofielddropdowns",
     # Tensão (mostrada só quando instalou TP) + Tipo de rede móvel por operadora
     "tensovfield":                 "glpi_plugin_fields_tensovfielddropdowns",
     "tipoifield":                  "glpi_plugin_fields_tipoifielddropdowns",   # Claro
@@ -48,15 +41,8 @@ FIELD_TO_KEY: Dict[str, str] = {
     "velocidadefield":             "VELOCIDADE",
     "observaofield":               "OBSERVACAO",    # Observação (ASCII-safe)
     "project_date":                "DATE",
-    # Dropdowns
-    "tipodeantenafield":           "TIPODEANTENA",
-    "ganhodbifield":               "GANHO",
-    "mododeoperaofield":           "DEVICEMODE",
-    "operadorafourgfield":         "OPERADORA",
+    # Dropdowns existentes no GLPI
     "tipodematerialfield":         "MATERIAL",
-    "tensofield":                  "TENSAO",
-    "alimentaodoequipamentofield": "ALIMENTACAO",
-    "localdeinstalaofield":        "LOCALINS",
     # Novos campos (jun/2026)
     "alturadopostemfield":         "ALTURAPOSTE",   # altura do poste (substitui antena)
     "danfield":                    "RESISTENCIA",   # resistência (daN)
