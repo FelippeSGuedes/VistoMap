@@ -53,7 +53,18 @@
           <td colspan="2">Longitude: {{LONGITUDE}}</td>
         </tr>
         <tr class="row-min row-25 section-row">
-          <td colspan="7">Informação da estrutura vertical</td>
+          <td colspan="7">Equipamento e Antena</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="3">Tipo de Antena: {{TIPODEANTENA}}</td>
+          <td colspan="2">Ganho (dBi): {{GANHO}}</td>
+          <td colspan="2">Modo de Operação: {{DEVICEMODE}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="7">Alimentação do equipamento: {{ALIMENTACAO}}</td>
+        </tr>
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Estrutura Vertical</td>
         </tr>
         <tr class="row-min row-25">
           <td colspan="2">Material / Tipo da Estrutura:{{MATERIAL}}</td>
@@ -64,8 +75,8 @@
         <tr class="row-min row-25">
           <td colspan="7">Instalação de TP (Transformador de Potencial): {{INSTALARTP}}{% if INSTALARTP == 'Sim' %} &nbsp;&nbsp;|&nbsp;&nbsp; Tensão: {{TENSAOV}}{% endif %}</td>
         </tr>
-        <tr class="row-min row-25">
-          <td colspan="7" class="text-justify">Observações:{{OBSERVACAO}}</td>
+        <tr class="row-min row-357">
+          <td colspan="7">Local de instalação do dispositivo: {{LOCALINS}}</td>
         </tr>
         <tr class="row-min row-25 section-row">
           <td colspan="7">Rede Móvel</td>
@@ -81,6 +92,12 @@
             <div class="netmob-line">Tipo: {{TIPOVIVO}}</div>
             <div class="netmob-line">RSRP: {{RSRPVIVO}}</div>
           </td>
+        </tr>
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Observações</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td colspan="7" class="text-justify">{{OBSERVACAO}}</td>
         </tr>
       </tbody>
     </table>
