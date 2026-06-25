@@ -24,11 +24,16 @@ DROPDOWN_MAP: Dict[str, str] = {
     "tensofield":                  "glpi_plugin_fields_tensofielddropdowns",
     "alimentaodoequipamentofield": "glpi_plugin_fields_alimentaodoequipamentofielddropdowns",
     "localdeinstalaofield":        "glpi_plugin_fields_localdeinstalaofielddropdowns",
+    # Tensão (mostrada só quando instalou TP) + Tipo de rede móvel por operadora
+    "tensovfield":                 "glpi_plugin_fields_tensovfielddropdowns",
+    "tipoifield":                  "glpi_plugin_fields_tipoifielddropdowns",   # Claro
+    "tipollfield":                 "glpi_plugin_fields_tipollfielddropdowns",  # Vivo
 }
 
 # ─── Campos booleanos: (valor_verdadeiro, valor_falso) ────────────────────────
 BOOLEAN_MAP: Dict[str, tuple] = {
     "aterramentofield": ("Sim", "Não"),
+    "instalartpfield":  ("Sim", "Não"),
 }
 
 # ─── Campo MySQL → chave do template Jinja2 ───────────────────────────────────
@@ -53,8 +58,16 @@ FIELD_TO_KEY: Dict[str, str] = {
     "tensofield":                  "TENSAO",
     "alimentaodoequipamentofield": "ALIMENTACAO",
     "localdeinstalaofield":        "LOCALINS",
+    # Novos campos (jun/2026)
+    "alturadopostemfield":         "ALTURAPOSTE",   # altura do poste (substitui antena)
+    "rsrpifield":                  "RSRPCLARO",     # RSRP rede Claro
+    "rsrpllfield":                 "RSRPVIVO",      # RSRP rede Vivo
+    "tensovfield":                 "TENSAOV",       # Tensão (se instalou TP) — dropdown
+    "tipoifield":                  "TIPOCLARO",     # Tipo rede Claro — dropdown
+    "tipollfield":                 "TIPOVIVO",      # Tipo rede Vivo — dropdown
     # Booleano
     "aterramentofield":            "ATERRAMENTO",
+    "instalartpfield":             "INSTALARTP",    # instalou Transformador de Potencial?
 }
 
 _TRUTHY = {1, "1", True, "true", "True", "sim", "Sim", "SIM", "yes", "Yes", "YES"}

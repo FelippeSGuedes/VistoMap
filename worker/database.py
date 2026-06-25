@@ -110,11 +110,16 @@ class Database:
                 f.latitudefield,
                 f.longitudefield,
                 f.alturadaantenafield,
+                f.alturadopostemfield,
                 f.endereofield,
                 f.observaofield,
                 f.aterramentofield,
                 f.intensidadedesinalfield,
                 f.velocidadefield,
+
+                f.instalartpfield,
+                f.rsrpifield,
+                f.rsrpllfield,
 
                 f.plugin_fields_tipodeantenafielddropdowns_id,
                 f.plugin_fields_ganhodbifielddropdowns_id,
@@ -124,6 +129,10 @@ class Database:
                 f.plugin_fields_tensofielddropdowns_id,
                 f.plugin_fields_alimentaodoequipamentofielddropdowns_id,
                 f.plugin_fields_localdeinstalaofielddropdowns_id,
+
+                f.plugin_fields_tensovfielddropdowns_id,
+                f.plugin_fields_tipoifielddropdowns_id,
+                f.plugin_fields_tipollfielddropdowns_id,
 
                 f.plugin_fields_statusvistoriafielddropdowns_id,
                 f.plugin_fields_pendnciafielddropdowns_id
@@ -172,6 +181,9 @@ class Database:
             "plugin_fields_tensofielddropdowns_id":                  "tensofield",
             "plugin_fields_alimentaodoequipamentofielddropdowns_id": "alimentaodoequipamentofield",
             "plugin_fields_localdeinstalaofielddropdowns_id":        "localdeinstalaofield",
+            "plugin_fields_tensovfielddropdowns_id":                 "tensovfield",
+            "plugin_fields_tipoifielddropdowns_id":                  "tipoifield",
+            "plugin_fields_tipollfielddropdowns_id":                 "tipollfield",
             "plugin_fields_statusvistoriafielddropdowns_id":         "plugin_fields_statusvistoriafielddropdowns_id",
             "plugin_fields_pendnciafielddropdowns_id":               "plugin_fields_pendnciafielddropdowns_id",
         }

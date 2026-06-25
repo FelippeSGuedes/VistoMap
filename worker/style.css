@@ -136,6 +136,44 @@ body {
   text-align: justify;
 }
 
+/* ── Rede móvel: selos das operadoras ───────────────────────────── */
+.netmob-row {
+  height: 18mm;
+}
+
+.netmob-cell {
+  padding: 2mm 3mm;
+  vertical-align: top;
+  text-align: center;
+}
+
+.op-badge {
+  display: inline-block;
+  margin-bottom: 1.6mm;
+  padding: 1mm 4mm;
+  border-radius: 2.2mm;
+  color: #ffffff;
+  font-size: 12pt;
+  font-weight: 700;
+  letter-spacing: 0.3pt;
+  line-height: 1.1;
+}
+
+.op-claro {
+  background: #da251c; /* vermelho Claro */
+}
+
+.op-vivo {
+  background: #660099; /* roxo Vivo */
+  text-transform: lowercase;
+}
+
+.netmob-line {
+  font-size: 10.5pt;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .photo-row {
   height: 62.83mm;
 }
