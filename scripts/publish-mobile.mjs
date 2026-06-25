@@ -46,11 +46,30 @@ function zipWww(outZip) {
       `-DestinationPath '${outZip}' -Force`;
     execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: "inherit" });
   } else {
-    // zip -r ../dist-ota/x.zip .  (rodado de dentro de www → raiz correta)
-    execSync(`cd '${WWW}' && zip -r -q '${outZip}' .`, {
-      stdio: "inherit",
-      shell: "/bin/bash",
-    });
+    // Tenta zip nativo; se não estiver instalado, cai no Python (sempre disponível).
+    let hasZip = false;
+    try {
+      execSync("which zip", { stdio: "pipe" });
+      hasZip = true;
+    } catch { /* zip ausente */ }
+
+    if (hasZip) {
+      execSync(`cd '${WWW}' && zip -r -q '${outZip}' .`, {
+        stdio: "inherit",
+        shell: "/bin/bash",
+      });
+    } else {
+      const script = [
+        "import zipfile, os",
+        `os.chdir(${JSON.stringify(WWW)})`,
+        `with zipfile.ZipFile(${JSON.stringify(outZip)}, 'w', zipfile.ZIP_DEFLATED) as zf:`,
+        '    for root, dirs, files in os.walk("."):',
+        '        for f in files:',
+        '            fp = os.path.join(root, f)',
+        '            zf.write(fp, os.path.relpath(fp, "."))',
+      ].join("\n");
+      execSync(`python3 -c ${JSON.stringify(script)}`, { stdio: "inherit" });
+    }
   }
 }
 
