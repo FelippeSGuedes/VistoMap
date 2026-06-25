@@ -12,7 +12,7 @@ import { MapListToggle } from "@/components/vistorias/MapListToggle";
 import { VistoriaCard } from "@/components/vistorias/VistoriaCard";
 import { VistoriaListSkeleton } from "@/components/vistorias/VistoriaListSkeleton";
 import { MobileMapShell } from "@/components/vistorias/MobileMapShell";
-import { VistoriaPinSheet } from "@/components/vistorias/VistoriaPinSheet";
+import { GuidedArrival } from "@/components/vistorias/GuidedArrival";
 import { VistoriaExecucaoSheet } from "@/components/vistorias/VistoriaExecucaoSheet";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
@@ -342,9 +342,10 @@ function VistoriasPageInner() {
         onReset={resetFilters}
       />
 
-      <VistoriaPinSheet
+      <GuidedArrival
         open={!!selectedId && !executingId}
         vistoria={items.find((v) => v.id === selectedId) ?? null}
+        userPosition={position ? { lat: position.lat, lng: position.lng } : null}
         onClose={() => setSelected(null)}
         onStart={(v) => {
           setSelected(null);
