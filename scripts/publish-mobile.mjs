@@ -16,6 +16,7 @@
 import { execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -59,16 +60,26 @@ function zipWww(outZip) {
         shell: "/bin/bash",
       });
     } else {
-      const script = [
-        "import zipfile, os",
-        `os.chdir(${JSON.stringify(WWW)})`,
-        `with zipfile.ZipFile(${JSON.stringify(outZip)}, 'w', zipfile.ZIP_DEFLATED) as zf:`,
-        '    for root, dirs, files in os.walk("."):',
-        '        for f in files:',
-        '            fp = os.path.join(root, f)',
-        '            zf.write(fp, os.path.relpath(fp, "."))',
-      ].join("\n");
-      execSync(`python3 -c ${JSON.stringify(script)}`, { stdio: "inherit" });
+      // Escreve o script em arquivo temporario — evita problema de \n literal
+      // quando passado via python3 -c "..." no shell.
+      const tmpScript = path.join(os.tmpdir(), `ota-zip-${Date.now()}.py`);
+      fs.writeFileSync(
+        tmpScript,
+        [
+          "import zipfile, os",
+          `os.chdir(${JSON.stringify(WWW)})`,
+          `with zipfile.ZipFile(${JSON.stringify(outZip)}, 'w', zipfile.ZIP_DEFLATED) as zf:`,
+          '    for root, dirs, files in os.walk("."):',
+          '        for f in files:',
+          '            fp = os.path.join(root, f)',
+          '            zf.write(fp, os.path.relpath(fp, "."))',
+        ].join("\n")
+      );
+      try {
+        execSync(`python3 ${tmpScript}`, { stdio: "inherit" });
+      } finally {
+        fs.rmSync(tmpScript, { force: true });
+      }
     }
   }
 }
