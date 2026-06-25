@@ -34,6 +34,8 @@ interface UpdaterPlugin {
   current: () => Promise<{ bundle: BundleInfo; native: string }>;
   download: (opts: { url: string; version: string }) => Promise<BundleInfo>;
   set: (opts: { id: string }) => Promise<void>;
+  /** Agenda o bundle para ser ativado no PRÓXIMO cold-start (sem recarregar agora). */
+  next: (opts: { id: string }) => Promise<void>;
 }
 
 interface CapacitorBridge {
@@ -84,13 +86,14 @@ export function useOtaUpdate() {
           `[useOtaUpdate] Atualização: ${cur?.bundle?.version ?? "?"} → ${manifest.version}`
         );
 
-        // 3. Baixa e aplica (recarrega o webview no bundle novo).
-        const next = await Updater.download({
+        // 3. Baixa e agenda para o próximo cold-start (sem recarregar agora).
+        const bundle = await Updater.download({
           url: manifest.url,
           version: manifest.version,
         });
-        if (cancelled || !next?.id) return;
-        await Updater.set({ id: next.id });
+        if (cancelled || !bundle?.id) return;
+        await Updater.next({ id: bundle.id });
+        console.log(`[useOtaUpdate] Bundle ${manifest.version} agendado — ativo no próximo cold-start.`);
       } catch (err) {
         console.warn("[useOtaUpdate] Checagem OTA falhou (offline?):", err);
       }
