@@ -21,26 +21,15 @@ const SELECT_BASE = `
     f.pspostefield AS ps_poste,
     REPLACE(f.latitudefield, ',', '.') + 0.0 AS latitude,
     REPLACE(f.longitudefield, ',', '.') + 0.0 AS longitude,
-    f.alturadaantenafield AS altura_antena,
     f.alturadopostemfield AS altura_poste,
     f.endereofield AS endereco,
     f.observaofield AS observacao,
     f.aterramentofield AS aterramento,
-    f.intensidadedesinalfield AS intensidade_sinal,
-    f.velocidadefield AS velocidade,
-    f.motivofield AS motivo,
     f.plugin_fields_statusvistoriafielddropdowns_id AS status_vistoria_id,
     sv.name AS status_vistoria_name,
     f.plugin_fields_pendnciafielddropdowns_id AS pendencia_id,
     f.datadavistoriafield AS data_vistoria,
-    d_ta.name AS tipodeantena,
-    d_gd.name AS ganhodbi,
-    d_mo.name AS mododeoperacao,
-    d_op.name AS operadorafourg,
     d_tm.name AS tipodematerial,
-    d_tn.name AS tensao,
-    d_al.name AS alimentacaodoequipamento,
-    d_li.name AS localdeinstalacao,
     f.instalartpfield AS instalartpfield,
     f.danfield AS danfield,
     f.rsrpifield AS rsrpifield,
@@ -53,14 +42,7 @@ const SELECT_BASE = `
   FROM \`${TABLE_NE}\` ne
   INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
   LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
-  LEFT JOIN \`${DROPDOWN_TABLES.tipodeantena}\` d_ta ON d_ta.id = f.${DROPDOWN_COLUMNS.tipodeantena}
-  LEFT JOIN \`${DROPDOWN_TABLES.ganhodbi}\` d_gd ON d_gd.id = f.${DROPDOWN_COLUMNS.ganhodbi}
-  LEFT JOIN \`${DROPDOWN_TABLES.mododeoperacao}\` d_mo ON d_mo.id = f.${DROPDOWN_COLUMNS.mododeoperacao}
-  LEFT JOIN \`${DROPDOWN_TABLES.operadorafourg}\` d_op ON d_op.id = f.${DROPDOWN_COLUMNS.operadorafourg}
   LEFT JOIN \`${DROPDOWN_TABLES.tipodematerial}\` d_tm ON d_tm.id = f.${DROPDOWN_COLUMNS.tipodematerial}
-  LEFT JOIN \`${DROPDOWN_TABLES.tensao}\` d_tn ON d_tn.id = f.${DROPDOWN_COLUMNS.tensao}
-  LEFT JOIN \`${DROPDOWN_TABLES.alimentacaodoequipamento}\` d_al ON d_al.id = f.${DROPDOWN_COLUMNS.alimentacaodoequipamento}
-  LEFT JOIN \`${DROPDOWN_TABLES.localdeinstalacao}\` d_li ON d_li.id = f.${DROPDOWN_COLUMNS.localdeinstalacao}
   LEFT JOIN \`${DROPDOWN_TABLES.tipoifield}\` d_ti ON d_ti.id = f.${DROPDOWN_COLUMNS.tipoifield}
   LEFT JOIN \`${DROPDOWN_TABLES.tipollfield}\` d_tl ON d_tl.id = f.${DROPDOWN_COLUMNS.tipollfield}
   LEFT JOIN \`${DROPDOWN_TABLES.tensovfield}\` d_tv ON d_tv.id = f.${DROPDOWN_COLUMNS.tensovfield}
@@ -91,26 +73,15 @@ interface RawRow {
   ps_poste: string | null;
   latitude: number | null;
   longitude: number | null;
-  altura_antena: string | null;
   altura_poste: string | null;
   endereco: string | null;
   observacao: string | null;
   aterramento: string | null;
-  intensidade_sinal: string | null;
-  velocidade: string | null;
-  motivo: string | null;
   status_vistoria_id: number | null;
   status_vistoria_name: string | null;
   pendencia_id: number | null;
   data_vistoria: string | null;
-  tipodeantena: string | null;
-  ganhodbi: string | null;
-  mododeoperacao: string | null;
-  operadorafourg: string | null;
   tipodematerial: string | null;
-  tensao: string | null;
-  alimentacaodoequipamento: string | null;
-  localdeinstalacao: string | null;
   instalartpfield: number | string | null;
   danfield: string | null;
   rsrpifield: string | null;
@@ -145,14 +116,10 @@ function mapRow(r: RawRow) {
     tecnico: { id: "0", nome: "—", email: "" },
     fields: {
       pspostefield: r.ps_poste ?? "",
-      alturadaantenafield: r.altura_antena ?? "",
       alturadopostemfield: r.altura_poste ?? "",
       endereofield: r.endereco ?? "",
       observaofield: r.observacao ?? "",
       aterramentofield: r.aterramento ?? "",
-      intensidadedesinalfield: r.intensidade_sinal ?? "",
-      velocidadefield: r.velocidade ?? "",
-      motivofield: r.motivo ?? "",
       instalartpfield: r.instalartpfield != null ? String(r.instalartpfield) : "",
       danfield: r.danfield ?? "",
       rsrpifield: r.rsrpifield ?? "",
@@ -160,14 +127,7 @@ function mapRow(r: RawRow) {
       tipoifield: r.tipoifield ?? "",
       tipollfield: r.tipollfield ?? "",
       tensovfield: r.tensovfield ?? "",
-      tipodeantena: r.tipodeantena ?? "",
-      ganhodbi: r.ganhodbi ?? "",
-      mododeoperacao: r.mododeoperacao ?? "",
-      operadorafourg: r.operadorafourg ?? "",
       tipodematerial: r.tipodematerial ?? "",
-      tensao: r.tensao ?? "",
-      alimentacaodoequipamento: r.alimentacaodoequipamento ?? "",
-      localdeinstalacao: r.localdeinstalacao ?? "",
     },
     dropdownIds: {
       statusVistoria: r.status_vistoria_id,
