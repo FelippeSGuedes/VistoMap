@@ -22,6 +22,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Checar se mudancas exigem novo APK
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          NATIVE_PATTERNS="mobile/android/ mobile/ios/ mobile/capacitor.config.ts mobile/package.json"
+          NEEDS_APK=""
+          for pattern in $NATIVE_PATTERNS; do
+            if echo "$CHANGED" | grep -q "$pattern"; then
+              NEEDS_APK="$NEEDS_APK\n- \`$pattern\`"
+            fi
+          done
+          if [ -n "$NEEDS_APK" ]; then
+            echo "## ⚠️ ATENÇÃO: novo APK necessário" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Arquivos nativos alterados neste push:" >> $GITHUB_STEP_SUMMARY
+            printf "$NEEDS_APK" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "O bundle OTA **não atualiza código nativo**. É preciso:" >> $GITHUB_STEP_SUMMARY
+            echo "1. \`npm run apk\` para gerar o novo APK" >> $GITHUB_STEP_SUMMARY
+            echo "2. Distribuir o APK manualmente para os técnicos" >> $GITHUB_STEP_SUMMARY
+            echo "::warning::Mudancas nativas detectadas — distribuir novo APK para os tecnicos"
+          else
+            echo "## ✅ Apenas mudancas de bundle — OTA suficiente" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
