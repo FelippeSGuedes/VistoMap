@@ -4,12 +4,10 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
-  Antenna,
   Camera,
   CheckCircle2,
   Construction,
   Crosshair,
-  Gauge,
   History,
   Loader2,
   Locate,
@@ -20,7 +18,6 @@ import {
   ShieldCheck,
   Sparkles,
   Video,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -442,9 +439,9 @@ export function VistoriaExecucaoForm({
                 onChange={(v) => setField("aterramentofield", v)}
               />
               <EditableField
-                label="Altura da antena"
+                label="Altura do poste (m)"
                 value={form.alturadaantenafield}
-                placeholder="12 m"
+                placeholder="Ex.: 11"
                 onChange={(v) => setField("alturadaantenafield", v)}
               />
               <EditableField
@@ -530,87 +527,6 @@ export function VistoriaExecucaoForm({
           </Card>
         </motion.div>
 
-        <SectionCard
-          icon={<Radio className="h-5 w-5" />}
-          title="Rede Móvel"
-          description="Indicadores de cobertura e operadora."
-          tone="amber"
-        >
-          <div className="grid grid-cols-2 gap-2">
-            <EditableField
-              label="Velocidade"
-              value={form.velocidadefield}
-              placeholder="Ex.: 50 Mbps"
-              icon={<Gauge className="h-3 w-3" />}
-              onChange={(v) => setField("velocidadefield", v)}
-            />
-            <EditableField
-              label="Intensidade de sinal"
-              value={form.intensidadedesinalfield}
-              placeholder="Ex.: -65 dBm"
-              icon={<Radio className="h-3 w-3" />}
-              onChange={(v) => setField("intensidadedesinalfield", v)}
-            />
-          </div>
-          <EditableField
-            label="Operadora 4G"
-            value={form.operadorafourg}
-            placeholder="Vivo, Claro, Tim…"
-            onChange={(v) => setField("operadorafourg", v)}
-            colSpan
-          />
-        </SectionCard>
-
-        <SectionCard
-          icon={<Antenna className="h-5 w-5" />}
-          title="Detalhamento da Instalação"
-          description="Configuração técnica do equipamento em campo."
-          tone="deep"
-        >
-          <EditableField
-            label="Motivo"
-            value={form.motivofield}
-            placeholder="Ex.: Instalação nova, manutenção…"
-            onChange={(v) => setField("motivofield", v)}
-            colSpan
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <EditableField
-              label="Tipo de antena"
-              value={form.tipodeantena}
-              placeholder="Painel, omni, setorial…"
-              onChange={(v) => setField("tipodeantena", v)}
-            />
-            <EditableField
-              label="Ganho (dBi)"
-              value={form.ganhodbi}
-              placeholder="Ex.: 26,7dBi"
-              onChange={(v) => setField("ganhodbi", v)}
-            />
-          </div>
-          <EditableField
-            label="Modo de operação"
-            value={form.mododeoperacao}
-            placeholder="TDD, FDD, etc."
-            onChange={(v) => setField("mododeoperacao", v)}
-            colSpan
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <EditableField
-              label="Alimentação"
-              value={form.alimentacaodoequipamento}
-              placeholder="PoE, AC, bateria…"
-              icon={<Zap className="h-3 w-3" />}
-              onChange={(v) => setField("alimentacaodoequipamento", v)}
-            />
-            <EditableField
-              label="Local de instalação"
-              value={form.localdeinstalacao}
-              placeholder="Topo do poste, abrigo…"
-              onChange={(v) => setField("localdeinstalacao", v)}
-            />
-          </div>
-        </SectionCard>
 
         <Card className="space-y-3">
           <header className="flex items-center justify-between gap-3">
@@ -795,7 +711,7 @@ function CaptureProgressBar({
 const THUMB_LABELS = [
   { key: "imagem1" as const, label: "Poste completo" },
   { key: "imagem2" as const, label: "Topo" },
-  { key: "imagem3" as const, label: "Base" },
+  { key: "imagem3" as const, label: "Vista horizontal" },
   { key: "video360" as const, label: "Vídeo 360°", isVideo: true },
   { key: "imagem4" as const, label: "Vivo" },
   { key: "imagem5" as const, label: "Claro" },
