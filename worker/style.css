@@ -147,24 +147,26 @@ body {
   text-align: center;
 }
 
-.op-badge {
+/* Nome da operadora — sóbrio, alinhado ao padrão do relatório:
+   texto escuro com um traço fino na cor da marca (sutil, sem chapado). */
+.op-name {
   display: inline-block;
   margin-bottom: 1.6mm;
-  padding: 1mm 4mm;
-  border-radius: 2.2mm;
-  color: #ffffff;
-  font-size: 12pt;
+  padding-bottom: 0.7mm;
+  color: #073b4c;
+  font-size: 11pt;
   font-weight: 700;
-  letter-spacing: 0.3pt;
+  letter-spacing: 0.2pt;
   line-height: 1.1;
+  border-bottom: 1.4pt solid #1b94c7;
 }
 
 .op-claro {
-  background: #da251c; /* vermelho Claro */
+  border-bottom-color: #da251c; /* acento Claro */
 }
 
 .op-vivo {
-  background: #660099; /* roxo Vivo */
+  border-bottom-color: #660099; /* acento Vivo */
   text-transform: lowercase;
 }
 

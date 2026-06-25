@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+{%- macro unit(v, u, sep='') -%}
+{{- v -}}{%- if v and v != 'N/I' -%}{{- sep -}}{{- u -}}{%- endif -%}
+{%- endmacro -%}
   <!-- ============================================================= -->
   <!-- PÁGINA 1 — Dados da instalação                                 -->
   <!-- ============================================================= -->
@@ -57,7 +60,7 @@
         </tr>
         <tr class="row-min row-25">
           <td colspan="3">Tipo de Antena: {{TIPODEANTENA}}</td>
-          <td colspan="2">Ganho (dBi): {{GANHO}}</td>
+          <td colspan="2">Ganho: {{GANHO}}</td>
           <td colspan="2">Modo de Operação: {{DEVICEMODE}}</td>
         </tr>
         <tr class="row-min row-25">
@@ -68,12 +71,12 @@
         </tr>
         <tr class="row-min row-25">
           <td colspan="2">Material / Tipo da Estrutura:{{MATERIAL}}</td>
-          <td colspan="2" class="align-middle">Altura do poste (m):{{ALTURAPOSTE}}</td>
-          <td colspan="2" class="align-middle">Resistência (daN):{{RESISTENCIA}}</td>
+          <td colspan="2" class="align-middle">Altura do poste: {{ unit(ALTURAPOSTE, 'm') }}</td>
+          <td colspan="2" class="align-middle">Resistência: {{ unit(RESISTENCIA, 'daN', ' ') }}</td>
           <td class="align-middle">Aterramento:{{ATERRAMENTO}}</td>
         </tr>
         <tr class="row-min row-25">
-          <td colspan="7">Instalação de TP (Transformador de Potencial): {{INSTALARTP}}{% if INSTALARTP == 'Sim' %} &nbsp;&nbsp;|&nbsp;&nbsp; Tensão: {{TENSAOV}}{% endif %}</td>
+          <td colspan="7">Instalação de TP: {{INSTALARTP}}{% if INSTALARTP == 'Sim' %} &nbsp;&nbsp;|&nbsp;&nbsp; Tensão: {{TENSAOV}}{% endif %}</td>
         </tr>
         <tr class="row-min row-357">
           <td colspan="7">Local de instalação do dispositivo: {{LOCALINS}}</td>
@@ -83,12 +86,12 @@
         </tr>
         <tr class="netmob-row">
           <td colspan="4" class="netmob-cell">
-            <span class="op-badge op-claro">Claro</span>
+            <span class="op-name op-claro">Claro</span>
             <div class="netmob-line">Tipo: {{TIPOCLARO}}</div>
             <div class="netmob-line">RSRP: {{RSRPCLARO}}</div>
           </td>
           <td colspan="3" class="netmob-cell">
-            <span class="op-badge op-vivo">vivo</span>
+            <span class="op-name op-vivo">vivo</span>
             <div class="netmob-line">Tipo: {{TIPOVIVO}}</div>
             <div class="netmob-line">RSRP: {{RSRPVIVO}}</div>
           </td>
