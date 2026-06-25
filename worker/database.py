@@ -109,7 +109,6 @@ class Database:
                 f.municipiofield,
                 f.latitudefield,
                 f.longitudefield,
-                f.alturadaantenafield,
                 f.alturadopostemfield,
                 f.endereofield,
                 f.observaofield,

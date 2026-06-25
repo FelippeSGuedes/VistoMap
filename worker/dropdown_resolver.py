@@ -46,7 +46,6 @@ FIELD_TO_KEY: Dict[str, str] = {
     "longitudefield":              "LONGITUDE",
     "intensidadedesinalfield":     "INTENSIDADE",
     "velocidadefield":             "VELOCIDADE",
-    "alturadaantenafield":         "ALTURA",
     "observaofield":               "OBSERVACAO",    # Observação (ASCII-safe)
     "project_date":                "DATE",
     # Dropdowns
