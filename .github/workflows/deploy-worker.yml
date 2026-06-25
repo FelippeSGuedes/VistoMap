@@ -2,6 +2,12 @@ name: Deploy worker + templates
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/*.py'
+      - 'worker/template.html'
+      - 'worker/style.css'
 
 jobs:
   deploy-worker:
