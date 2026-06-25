@@ -236,7 +236,7 @@ export function VistoriaExecucaoForm({
       ...f,
       pspostefield: p.pspostefield,
       municipiofield: p.municipiofield,
-      alturadopostemfield: p.alturadopostemfield ?? f.alturadopostemfield,
+      alturadopostemfield: p.alturadaantenafield ?? f.alturadopostemfield,
       tipodematerial: p.materialfield ?? f.tipodematerial,
       observaofield: f.observaofield
         ? `${f.observaofield}\n\n${response.descricao_glpi}`
