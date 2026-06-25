@@ -1,0 +1,48 @@
+name: Publish OTA
+
+# Dispara automaticamente quando codigo do app muda.
+# Tambem pode ser rodado manualmente via Actions → Run workflow.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'mobile/**'
+      - 'scripts/build-mobile.mjs'
+      - 'scripts/publish-mobile.mjs'
+      - 'package.json'
+  workflow_dispatch:
+
+jobs:
+  publish-ota:
+    name: Build e publica bundle OTA
+    runs-on: [self-hosted, gioc]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Build + gerar bundle OTA
+        run: npm run publish:mobile
+        env:
+          OTA_PUBLIC_BASE: https://vistomap.nansen.com.br/ota
+
+      - name: Deploy bundle para o servidor
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('dist-ota/latest.json'))['version'])")
+          echo "Publicando versao $VERSION..."
+          cp dist-ota/${VERSION}.zip /data/vistomap/ota/bundles/
+          cp dist-ota/latest.json /data/vistomap/ota/latest.json
+          echo "Deploy concluido:"
+          ls -lh /data/vistomap/ota/bundles/${VERSION}.zip
+          cat /data/vistomap/ota/latest.json
