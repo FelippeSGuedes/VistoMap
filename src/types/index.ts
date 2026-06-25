@@ -28,7 +28,10 @@ export type DropdownKey =
   | "tipodematerial"
   | "tensao"
   | "alimentacaodoequipamento"
-  | "localdeinstalacao";
+  | "localdeinstalacao"
+  | "tipoifield"
+  | "tipollfield"
+  | "tensovfield";
 
 export interface VistoriaFields {
   pspostefield?: string;
