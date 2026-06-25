@@ -53,7 +53,16 @@ const SELECT_BASE = `
   LEFT JOIN \`${DROPDOWN_TABLES.tensao}\` d_tn ON d_tn.id = f.${DROPDOWN_COLUMNS.tensao}
   LEFT JOIN \`${DROPDOWN_TABLES.alimentacaodoequipamento}\` d_al ON d_al.id = f.${DROPDOWN_COLUMNS.alimentacaodoequipamento}
   LEFT JOIN \`${DROPDOWN_TABLES.localdeinstalacao}\` d_li ON d_li.id = f.${DROPDOWN_COLUMNS.localdeinstalacao}
-  LEFT JOIN \`${TABLE_AUX}\` aux ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+  LEFT JOIN (
+    SELECT p.items_id, p.is_repeat, p.project_status
+    FROM \`${TABLE_AUX}\` p
+    INNER JOIN (
+      SELECT items_id, MAX(id) AS max_id
+      FROM \`${TABLE_AUX}\`
+      WHERE itemtype = '${ITEMTYPE_NE}'
+      GROUP BY items_id
+    ) latest ON p.id = latest.max_id
+  ) aux ON aux.items_id = ne.id
   WHERE ne.is_deleted = 0
 `;
 
