@@ -60,10 +60,11 @@ jobs:
         run: npm ci
 
       - name: Build + gerar bundle OTA
-        run: npm run publish:mobile
+        run: |
+          set -a && source /etc/vistomap/.env.local && set +a
+          npm run publish:mobile
         env:
           OTA_PUBLIC_BASE: https://vistomap.nansen.com.br/ota
-          NEXT_PUBLIC_MAPBOX_TOKEN: ${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
 
       - name: Deploy bundle para o servidor
         run: |
