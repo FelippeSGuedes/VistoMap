@@ -32,7 +32,7 @@ export type DropdownKey =
 
 export interface VistoriaFields {
   pspostefield?: string;
-  alturadaantenafield?: string;
+  alturadopostemfield?: string;
   endereofield?: string;
   observaofield?: string;
   aterramentofield?: string;
@@ -84,12 +84,9 @@ export interface VistoriaPayload {
   observacoes: string;
   pspostefield?: string;
   municipiofield?: string;
-  alturadaantenafield?: string;
+  alturadopostemfield?: string;
   endereofield?: string;
   aterramentofield?: string;
-  intensidadedesinalfield?: string;
-  velocidadefield?: string;
-  motivofield?: string;
   dropdowns?: Partial<Record<DropdownKey, string>>;
   finalizadaEm: string;
 }

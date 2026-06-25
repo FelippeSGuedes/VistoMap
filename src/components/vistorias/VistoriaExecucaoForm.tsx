@@ -41,7 +41,7 @@ import type {
 interface FormState {
   pspostefield: string;
   municipiofield: string;
-  alturadaantenafield: string;
+  alturadopostemfield: string;
   endereofield: string;
   endereco_rua: string;
   endereco_numero: string;
@@ -94,7 +94,7 @@ function parseGlpiEndereco(raw: string): {
 const EMPTY: FormState = {
   pspostefield: "",
   municipiofield: "",
-  alturadaantenafield: "",
+  alturadopostemfield: "",
   endereofield: "",
   endereco_rua: "",
   endereco_numero: "",
@@ -134,7 +134,7 @@ export function VistoriaExecucaoForm({
       ...EMPTY,
       pspostefield: vistoria.fields?.pspostefield ?? "",
       municipiofield: vistoria.cidade ?? "",
-      alturadaantenafield: vistoria.fields?.alturadaantenafield ?? "",
+      alturadopostemfield: vistoria.fields?.alturadopostemfield ?? "",
       endereofield: raw,
       endereco_rua: addr.rua,
       endereco_numero: addr.numero,
@@ -214,7 +214,7 @@ export function VistoriaExecucaoForm({
       ...f,
       pspostefield: p.pspostefield,
       municipiofield: p.municipiofield,
-      alturadaantenafield: p.alturadaantenafield ?? f.alturadaantenafield,
+      alturadopostemfield: p.alturadopostemfield ?? f.alturadopostemfield,
       tipodematerial: p.materialfield ?? f.tipodematerial,
       observaofield: f.observaofield
         ? `${f.observaofield}\n\n${response.descricao_glpi}`
@@ -282,7 +282,7 @@ export function VistoriaExecucaoForm({
           observacoes: form.observaofield,
           pspostefield: form.pspostefield || undefined,
           municipiofield: form.municipiofield || undefined,
-          alturadaantenafield: form.alturadaantenafield || undefined,
+          alturadopostemfield: form.alturadopostemfield || undefined,
           endereofield: buildEndereco() || undefined,
           aterramentofield: form.aterramentofield || undefined,
           intensidadedesinalfield: form.intensidadedesinalfield || undefined,
@@ -440,9 +440,9 @@ export function VistoriaExecucaoForm({
               />
               <EditableField
                 label="Altura do poste (m)"
-                value={form.alturadaantenafield}
+                value={form.alturadopostemfield}
                 placeholder="Ex.: 11"
-                onChange={(v) => setField("alturadaantenafield", v)}
+                onChange={(v) => setField("alturadopostemfield", v)}
               />
               <EditableField
                 label="Tipo de material"

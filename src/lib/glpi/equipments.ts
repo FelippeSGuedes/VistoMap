@@ -22,6 +22,7 @@ const SELECT_BASE = `
     REPLACE(f.latitudefield, ',', '.') + 0.0 AS latitude,
     REPLACE(f.longitudefield, ',', '.') + 0.0 AS longitude,
     f.alturadaantenafield AS altura_antena,
+    f.alturadopostemfield AS altura_poste,
     f.endereofield AS endereco,
     f.observaofield AS observacao,
     f.aterramentofield AS aterramento,
@@ -81,6 +82,7 @@ interface RawRow {
   latitude: number | null;
   longitude: number | null;
   altura_antena: string | null;
+  altura_poste: string | null;
   endereco: string | null;
   observacao: string | null;
   aterramento: string | null;
@@ -127,6 +129,7 @@ function mapRow(r: RawRow) {
     fields: {
       pspostefield: r.ps_poste ?? "",
       alturadaantenafield: r.altura_antena ?? "",
+      alturadopostemfield: r.altura_poste ?? "",
       endereofield: r.endereco ?? "",
       observaofield: r.observacao ?? "",
       aterramentofield: r.aterramento ?? "",
@@ -215,6 +218,7 @@ export interface UpdateFieldsInput {
   latitudefield?: number | string;
   longitudefield?: number | string;
   alturadaantenafield?: string;
+  alturadopostemfield?: string;
   endereofield?: string;
   observaofield?: string;
   aterramentofield?: string;
@@ -236,6 +240,7 @@ const UPDATABLE_COLUMNS = new Set([
   "latitudefield",
   "longitudefield",
   "alturadaantenafield",
+  "alturadopostemfield",
   "endereofield",
   "observaofield",
   "aterramentofield",
