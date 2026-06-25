@@ -60,6 +60,7 @@ FIELD_TO_KEY: Dict[str, str] = {
     "localdeinstalaofield":        "LOCALINS",
     # Novos campos (jun/2026)
     "alturadopostemfield":         "ALTURAPOSTE",   # altura do poste (substitui antena)
+    "danfield":                    "RESISTENCIA",   # resistência (daN)
     "rsrpifield":                  "RSRPCLARO",     # RSRP rede Claro
     "rsrpllfield":                 "RSRPVIVO",      # RSRP rede Vivo
     "tensovfield":                 "TENSAOV",       # Tensão (se instalou TP) — dropdown

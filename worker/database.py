@@ -118,6 +118,7 @@ class Database:
                 f.velocidadefield,
 
                 f.instalartpfield,
+                f.danfield,
                 f.rsrpifield,
                 f.rsrpllfield,
 

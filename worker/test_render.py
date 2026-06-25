@@ -25,6 +25,7 @@ data = {
     "LONGITUDE": "-47.0608",
     "MATERIAL": "Concreto",
     "ALTURAPOSTE": "11",
+    "RESISTENCIA": "600",
     "ATERRAMENTO": "Sim",
     "INSTALARTP": "Sim",
     "TENSAOV": "220 V",
