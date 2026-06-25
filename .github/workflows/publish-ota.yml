@@ -68,8 +68,8 @@ jobs:
         run: |
           VERSION=$(python3 -c "import json; print(json.load(open('dist-ota/latest.json'))['version'])")
           echo "Publicando versao $VERSION..."
-          sudo cp dist-ota/${VERSION}.zip /data/vistomap/ota/bundles/
-          sudo cp dist-ota/latest.json /data/vistomap/ota/latest.json
+          cp dist-ota/${VERSION}.zip /data/vistomap/ota/bundles/
+          cp dist-ota/latest.json /data/vistomap/ota/latest.json
           echo "Deploy concluido:"
           ls -lh /data/vistomap/ota/bundles/${VERSION}.zip
           cat /data/vistomap/ota/latest.json
