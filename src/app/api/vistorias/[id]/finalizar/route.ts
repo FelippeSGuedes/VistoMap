@@ -39,6 +39,10 @@ interface FinalizarPayload {
   alturadopostemfield?: string;
   endereofield?: string;
   aterramentofield?: string;
+  instalartpfield?: string;
+  danfield?: string;
+  rsrpifield?: string;
+  rsrpllfield?: string;
   intensidadedesinalfield?: string;
   velocidadefield?: string;
   motivofield?: string;
@@ -173,6 +177,10 @@ export async function POST(
       endereofield: payload.endereofield,
       observaofield: payload.observacoes,
       aterramentofield: payload.aterramentofield,
+      instalartpfield: payload.instalartpfield,
+      danfield: payload.danfield,
+      rsrpifield: payload.rsrpifield,
+      rsrpllfield: payload.rsrpllfield,
       intensidadedesinalfield: payload.intensidadedesinalfield,
       velocidadefield: payload.velocidadefield,
       motivofield: payload.motivofield,

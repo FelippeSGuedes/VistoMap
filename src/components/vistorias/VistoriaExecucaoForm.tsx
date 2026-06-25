@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Sparkles,
   Video,
+  Wifi,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -42,6 +43,13 @@ interface FormState {
   pspostefield: string;
   municipiofield: string;
   alturadopostemfield: string;
+  danfield: string;
+  instalartpfield: string;
+  tensovfield: string;
+  tipoifield: string;
+  rsrpifield: string;
+  tipollfield: string;
+  rsrpllfield: string;
   endereofield: string;
   endereco_rua: string;
   endereco_numero: string;
@@ -95,6 +103,13 @@ const EMPTY: FormState = {
   pspostefield: "",
   municipiofield: "",
   alturadopostemfield: "",
+  danfield: "",
+  instalartpfield: "",
+  tensovfield: "",
+  tipoifield: "",
+  rsrpifield: "",
+  tipollfield: "",
+  rsrpllfield: "",
   endereofield: "",
   endereco_rua: "",
   endereco_numero: "",
@@ -135,6 +150,13 @@ export function VistoriaExecucaoForm({
       pspostefield: vistoria.fields?.pspostefield ?? "",
       municipiofield: vistoria.cidade ?? "",
       alturadopostemfield: vistoria.fields?.alturadopostemfield ?? "",
+      danfield: vistoria.fields?.danfield ?? "",
+      instalartpfield: vistoria.fields?.instalartpfield ?? "",
+      tensovfield: vistoria.fields?.tensovfield ?? "",
+      tipoifield: vistoria.fields?.tipoifield ?? "",
+      rsrpifield: vistoria.fields?.rsrpifield ?? "",
+      tipollfield: vistoria.fields?.tipollfield ?? "",
+      rsrpllfield: vistoria.fields?.rsrpllfield ?? "",
       endereofield: raw,
       endereco_rua: addr.rua,
       endereco_numero: addr.numero,
@@ -261,14 +283,10 @@ export function VistoriaExecucaoForm({
     try {
       const dropdowns: Partial<Record<DropdownKey, string>> = {};
       const dropdownKeys: DropdownKey[] = [
-        "tipodeantena",
-        "ganhodbi",
-        "mododeoperacao",
-        "operadorafourg",
         "tipodematerial",
-        "tensao",
-        "alimentacaodoequipamento",
-        "localdeinstalacao",
+        "tipoifield",
+        "tipollfield",
+        "tensovfield",
       ];
       for (const k of dropdownKeys) {
         if (form[k].trim()) dropdowns[k] = form[k].trim();
@@ -285,9 +303,10 @@ export function VistoriaExecucaoForm({
           alturadopostemfield: form.alturadopostemfield || undefined,
           endereofield: buildEndereco() || undefined,
           aterramentofield: form.aterramentofield || undefined,
-          intensidadedesinalfield: form.intensidadedesinalfield || undefined,
-          velocidadefield: form.velocidadefield || undefined,
-          motivofield: form.motivofield || undefined,
+          instalartpfield: form.instalartpfield || undefined,
+          danfield: form.danfield || undefined,
+          rsrpifield: form.rsrpifield || undefined,
+          rsrpllfield: form.rsrpllfield || undefined,
           dropdowns,
           finalizadaEm: new Date().toISOString(),
         },
@@ -451,11 +470,24 @@ export function VistoriaExecucaoForm({
                 onChange={(v) => setField("tipodematerial", v)}
               />
               <EditableField
-                label="Tensão"
-                value={form.tensao}
-                placeholder="220 V"
-                onChange={(v) => setField("tensao", v)}
+                label="Resistência (daN)"
+                value={form.danfield}
+                placeholder="Ex.: 600"
+                onChange={(v) => setField("danfield", v)}
               />
+              <BoolToggle
+                label="Instalação de TP"
+                value={form.instalartpfield}
+                onChange={(v) => setField("instalartpfield", v)}
+              />
+              {form.instalartpfield === "1" && (
+                <EditableField
+                  label="Tensão"
+                  value={form.tensovfield}
+                  placeholder="Ex.: 220 V"
+                  onChange={(v) => setField("tensovfield", v)}
+                />
+              )}
             </div>
 
             {/* Endereço — sub-bloco com 4 campos + GPS */}
@@ -527,6 +559,54 @@ export function VistoriaExecucaoForm({
           </Card>
         </motion.div>
 
+
+        <SectionCard
+          icon={<Radio className="h-5 w-5" />}
+          title="Rede Móvel"
+          description="Cobertura por operadora medida em campo."
+          tone="amber"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            {/* Claro */}
+            <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">Claro</p>
+              <EditableField
+                label="Tipo"
+                value={form.tipoifield}
+                placeholder="4G, 4G+…"
+                onChange={(v) => setField("tipoifield", v)}
+                colSpan
+              />
+              <EditableField
+                label="RSRP (dBm)"
+                value={form.rsrpifield}
+                placeholder="Ex.: -95"
+                icon={<Radio className="h-3 w-3" />}
+                onChange={(v) => setField("rsrpifield", v)}
+                colSpan
+              />
+            </div>
+            {/* Vivo */}
+            <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Vivo</p>
+              <EditableField
+                label="Tipo"
+                value={form.tipollfield}
+                placeholder="4G, 4G+…"
+                onChange={(v) => setField("tipollfield", v)}
+                colSpan
+              />
+              <EditableField
+                label="RSRP (dBm)"
+                value={form.rsrpllfield}
+                placeholder="Ex.: -102"
+                icon={<Radio className="h-3 w-3" />}
+                onChange={(v) => setField("rsrpllfield", v)}
+                colSpan
+              />
+            </div>
+          </div>
+        </SectionCard>
 
         <Card className="space-y-3">
           <header className="flex items-center justify-between gap-3">

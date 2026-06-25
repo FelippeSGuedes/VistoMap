@@ -41,6 +41,13 @@ const SELECT_BASE = `
     d_tn.name AS tensao,
     d_al.name AS alimentacaodoequipamento,
     d_li.name AS localdeinstalacao,
+    f.instalartpfield AS instalartpfield,
+    f.danfield AS danfield,
+    f.rsrpifield AS rsrpifield,
+    f.rsrpllfield AS rsrpllfield,
+    d_ti.name AS tipoifield,
+    d_tl.name AS tipollfield,
+    d_tv.name AS tensovfield,
     COALESCE(aux.is_repeat, 0) AS is_repeat,
     aux.project_status AS aux_project_status
   FROM \`${TABLE_NE}\` ne
@@ -54,6 +61,9 @@ const SELECT_BASE = `
   LEFT JOIN \`${DROPDOWN_TABLES.tensao}\` d_tn ON d_tn.id = f.${DROPDOWN_COLUMNS.tensao}
   LEFT JOIN \`${DROPDOWN_TABLES.alimentacaodoequipamento}\` d_al ON d_al.id = f.${DROPDOWN_COLUMNS.alimentacaodoequipamento}
   LEFT JOIN \`${DROPDOWN_TABLES.localdeinstalacao}\` d_li ON d_li.id = f.${DROPDOWN_COLUMNS.localdeinstalacao}
+  LEFT JOIN \`${DROPDOWN_TABLES.tipoifield}\` d_ti ON d_ti.id = f.${DROPDOWN_COLUMNS.tipoifield}
+  LEFT JOIN \`${DROPDOWN_TABLES.tipollfield}\` d_tl ON d_tl.id = f.${DROPDOWN_COLUMNS.tipollfield}
+  LEFT JOIN \`${DROPDOWN_TABLES.tensovfield}\` d_tv ON d_tv.id = f.${DROPDOWN_COLUMNS.tensovfield}
   LEFT JOIN (
     SELECT p.items_id, p.is_repeat, p.project_status
     FROM \`${TABLE_AUX}\` p
@@ -101,6 +111,13 @@ interface RawRow {
   tensao: string | null;
   alimentacaodoequipamento: string | null;
   localdeinstalacao: string | null;
+  instalartpfield: number | string | null;
+  danfield: string | null;
+  rsrpifield: string | null;
+  rsrpllfield: string | null;
+  tipoifield: string | null;
+  tipollfield: string | null;
+  tensovfield: string | null;
   is_repeat: number | string | null;
   aux_project_status: string | null;
 }
@@ -136,6 +153,13 @@ function mapRow(r: RawRow) {
       intensidadedesinalfield: r.intensidade_sinal ?? "",
       velocidadefield: r.velocidade ?? "",
       motivofield: r.motivo ?? "",
+      instalartpfield: r.instalartpfield != null ? String(r.instalartpfield) : "",
+      danfield: r.danfield ?? "",
+      rsrpifield: r.rsrpifield ?? "",
+      rsrpllfield: r.rsrpllfield ?? "",
+      tipoifield: r.tipoifield ?? "",
+      tipollfield: r.tipollfield ?? "",
+      tensovfield: r.tensovfield ?? "",
       tipodeantena: r.tipodeantena ?? "",
       ganhodbi: r.ganhodbi ?? "",
       mododeoperacao: r.mododeoperacao ?? "",
@@ -219,6 +243,10 @@ export interface UpdateFieldsInput {
   longitudefield?: number | string;
   alturadaantenafield?: string;
   alturadopostemfield?: string;
+  instalartpfield?: string;
+  danfield?: string;
+  rsrpifield?: string;
+  rsrpllfield?: string;
   endereofield?: string;
   observaofield?: string;
   aterramentofield?: string;
@@ -241,6 +269,10 @@ const UPDATABLE_COLUMNS = new Set([
   "longitudefield",
   "alturadaantenafield",
   "alturadopostemfield",
+  "instalartpfield",
+  "danfield",
+  "rsrpifield",
+  "rsrpllfield",
   "endereofield",
   "observaofield",
   "aterramentofield",

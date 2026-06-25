@@ -23,6 +23,9 @@ export const DROPDOWN_TABLES = {
   tensao: "glpi_plugin_fields_tensofielddropdowns",
   alimentacaodoequipamento: "glpi_plugin_fields_alimentaodoequipamentofielddropdowns",
   localdeinstalacao: "glpi_plugin_fields_localdeinstalaofielddropdowns",
+  tensovfield: "glpi_plugin_fields_tensovfielddropdowns",
+  tipoifield: "glpi_plugin_fields_tipoifielddropdowns",
+  tipollfield: "glpi_plugin_fields_tipollfielddropdowns",
 } as const;
 
 export type DropdownKey = keyof typeof DROPDOWN_TABLES;
@@ -37,6 +40,9 @@ export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
   tensao: "plugin_fields_tensofielddropdowns_id",
   alimentacaodoequipamento: "plugin_fields_alimentaodoequipamentofielddropdowns_id",
   localdeinstalacao: "plugin_fields_localdeinstalaofielddropdowns_id",
+  tensovfield: "plugin_fields_tensovfielddropdowns_id",
+  tipoifield: "plugin_fields_tipoifielddropdowns_id",
+  tipollfield: "plugin_fields_tipollfielddropdowns_id",
 };
 
 /** Status do plugin: 3=Aprovado, 4=Reprovado, 5=Em análise. */
