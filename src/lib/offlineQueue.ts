@@ -116,6 +116,27 @@ export async function resetRunning(): Promise<void> {
   }
 }
 
+/** Retorna todas as ops em quarentena com seus erros (para exibir na UI). */
+export async function failedOps(): Promise<QueuedOperation[]> {
+  const db = await getDB();
+  const all = (await db.getAll(STORE_QUEUE)) as QueuedOperation[];
+  return all.filter((o) => o.status === "failed");
+}
+
+/** Remove permanentemente as ops em quarentena (descarte manual pelo técnico). */
+export async function discardFailed(): Promise<number> {
+  const db = await getDB();
+  const all = (await db.getAll(STORE_QUEUE)) as QueuedOperation[];
+  let n = 0;
+  for (const op of all) {
+    if (op.status === "failed") {
+      await db.delete(STORE_QUEUE, op.id);
+      n++;
+    }
+  }
+  return n;
+}
+
 /** Reativa as ops em quarentena (failed → pending). Reenvio manual. */
 export async function retryFailed(): Promise<number> {
   const db = await getDB();
