@@ -205,6 +205,11 @@ export default function DashboardPage() {
   // municípios atendidos pelo técnico + recalcular totals operacionais.
   useEffect(() => {
     let alive = true;
+    const ZERO_STATS: DashboardStats = {
+      total: 0, pendentes: 0, concluidas: 0, reprovadas: 0,
+      municipios: [], ultimaSincronizacao: new Date().toISOString(),
+    };
+
     Promise.all([
       vistoriasService.fetchDashboardStats(),
       vistoriasService.fetchVistorias(),
@@ -239,6 +244,10 @@ export default function DashboardPage() {
         municipios,
         ultimaSincronizacao: new Date().toISOString(),
       });
+    }).catch(() => {
+      // fetchVistorias falhou (403 sem expediente, sem rede, etc.) → mostra zeros reais
+      // em vez de cair no MOCK_SYNC_SNAPSHOTS que exibe "24 vistorias" falso.
+      if (alive) setStats(ZERO_STATS);
     });
     return () => {
       alive = false;
