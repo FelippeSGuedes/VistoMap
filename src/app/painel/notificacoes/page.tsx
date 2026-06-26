@@ -7,8 +7,11 @@ import { api } from "@/services/api";
 import type { OverrideRequest } from "@/app/api/painel/notificacoes/route";
 
 function timeAgo(dateStr: string): string {
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (diff < 60)  return `${diff}s atrás`;
+  // MySQL retorna "2026-06-26 17:22:32" sem timezone — tratar como UTC
+  const utc = new Date(dateStr.replace(" ", "T") + "Z");
+  const diff = Math.floor((Date.now() - utc.getTime()) / 1000);
+  if (diff < 0)    return "agora mesmo";
+  if (diff < 60)   return `${diff}s atrás`;
   if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
   return `${Math.floor(diff / 86400)}d atrás`;

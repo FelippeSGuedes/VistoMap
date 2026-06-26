@@ -556,14 +556,9 @@ export default function PainelMapaPage() {
           setSelectedVistoria(null);
           setTrailUsersId(t.users_id);
         });
-        el.addEventListener("mouseenter", () => {
-          const mapEl = mapElRef.current;
-          const mapInst = mapRef.current;
-          if (mapEl && mapInst) {
-            const mapRect = mapEl.getBoundingClientRect();
-            const pt = mapInst.project([t.longitude!, t.latitude!]);
-            setHoveredPos({ x: mapRect.left + pt.x, y: mapRect.top + pt.y });
-          }
+        el.addEventListener("mouseenter", (ev) => {
+          const e = ev as MouseEvent;
+          setHoveredPos({ x: e.clientX, y: e.clientY });
           setHoveredTec(t);
           setHoveredMetrics(null);
           setHoveredMetricsLoading(true);
