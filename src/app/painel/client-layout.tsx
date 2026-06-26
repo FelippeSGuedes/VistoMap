@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -29,8 +29,9 @@ import { asset } from "@/utils/asset";
 
 // Items simples do nav (sem grupo)
 const TOP_NAV = [
-  { href: "/painel",           label: "Operação",        icon: LayoutDashboard, exact: true },
-  { href: "/painel/mapa",      label: "Mapa Tempo Real", icon: MapIcon },
+  { href: "/painel",                label: "Operação",        icon: LayoutDashboard, exact: true },
+  { href: "/painel/mapa",           label: "Mapa Tempo Real", icon: MapIcon },
+  { href: "/painel/notificacoes",   label: "Notificações",    icon: Bell },
 ];
 
 const BOTTOM_NAV = [
@@ -155,6 +156,7 @@ export default function PainelClientLayout({ children }: { children: React.React
   const [isDark, setIsDark] = useState(false);
   const [vistoriasOpen, setVistoriasOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [pendentesCount, setPendentesCount] = useState(0);
   const prefRef = useRef(false); // preferência manual do usuário (expandido/recolhido)
 
   useEffect(() => {
@@ -176,6 +178,27 @@ export default function PainelClientLayout({ children }: { children: React.React
   useEffect(() => {
     if (VISTORIAS_HREFS.has(pathname)) setVistoriasOpen(true);
   }, [pathname]);
+
+  // Polling do badge de notificações pendentes
+  const fetchPendentes = useCallback(async () => {
+    if (!session?.token) return;
+    try {
+      const r = await fetch("/api/painel/notificacoes", {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (r.ok) {
+        const d = (await r.json()) as { pendentes: number };
+        setPendentesCount(d.pendentes);
+      }
+    } catch { /* ignora */ }
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    fetchPendentes();
+    const id = window.setInterval(fetchPendentes, 10_000);
+    return () => window.clearInterval(id);
+  }, [fetchPendentes, session?.token]);
 
   const toggleTheme = () => {
     const next = !isDark;
@@ -500,17 +523,21 @@ export default function PainelClientLayout({ children }: { children: React.React
               {isDark ? <Sun className="h-[15px] w-[15px]" /> : <Moon className="h-[15px] w-[15px]" />}
             </button>
 
-            <button
-              type="button"
-              className="relative flex h-8 w-8 items-center justify-center rounded-lg"
+            <Link
+              href="/painel/notificacoes"
+              className="relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5"
               style={{ color: T.textMuted }}
             >
               <Bell className="h-[15px] w-[15px]" />
-              <span
-                className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full bg-amber-400"
-                style={{ boxShadow: `0 0 0 1.5px ${T.badge}` }}
-              />
-            </button>
+              {pendentesCount > 0 && (
+                <span
+                  className="absolute right-[4px] top-[4px] flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-amber-500 px-[3px] text-[8px] font-bold text-white"
+                  style={{ boxShadow: `0 0 0 1.5px ${T.badge}` }}
+                >
+                  {pendentesCount > 9 ? "9+" : pendentesCount}
+                </span>
+              )}
+            </Link>
           </div>
         </header>
 

@@ -336,7 +336,10 @@ export interface AuditEntry {
     | "expediente-iniciado"
     | "vistoria-iniciada"
     | "vistoria-em-deslocamento"
-    | "vistoria-em-vistoria";
+    | "vistoria-em-vistoria"
+    | "override-solicitado"
+    | "override-aprovado"
+    | "override-reprovado";
   /** Alvo da ação. */
   alvo?: {
     tipo: "vistoria" | "tecnico" | "revisita" | "sistema";

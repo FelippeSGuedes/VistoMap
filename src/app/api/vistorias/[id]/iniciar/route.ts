@@ -5,6 +5,7 @@ import { expedienteAtual } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
+import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -186,6 +187,24 @@ export async function POST(
         }
         exceptionLabel = "SEM GPS";
       }
+    }
+
+    // ── Override online → cria pedido de aprovação (não inicia imediatamente) ──
+    if (exceptionLabel && forcar && !offline) {
+      await ensureOverrideTable();
+      const { insertId } = await execute(
+        `INSERT INTO \`glpi_plugin_vistomap_override_requests\`
+         (vistoria_id, users_id, equipamento, tecnico_nome, justificativa, status, distancia_m, exception_label)
+         VALUES (?, ?, ?, ?, ?, 'PENDENTE', ?, ?)`,
+        [id, actorId ?? 0, vistoria.equipamento ?? `NE-${id}`, actorNome, justificativa, distancia, exceptionLabel]
+      );
+      void auditInsert({
+        ator: { id: actorId ?? 0, nome: actorNome, role: "tecnico" },
+        acao: "override-solicitado",
+        alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento ?? `NE-${id}` },
+        descricao: `Solicitação de início fora do local enviada. ${exceptionLabel} — justificativa: ${justificativa}`,
+      });
+      return NextResponse.json({ pending: true, requestId: insertId }, { status: 202 });
     }
 
     // ── Atualiza situação → Em Vistoria (2) ────────────────────────────

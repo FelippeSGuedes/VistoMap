@@ -304,7 +304,7 @@ export default function PainelMapaPage() {
 
   useEffect(() => {
     fetchMapa();
-    const id = window.setInterval(fetchMapa, 15_000);
+    const id = window.setInterval(fetchMapa, 5_000);
     return () => window.clearInterval(id);
   }, [fetchMapa]);
 

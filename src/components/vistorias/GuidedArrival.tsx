@@ -14,10 +14,11 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import { Check, LocateFixed, Navigation, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Clock, LocateFixed, Navigation, X, XCircle } from "lucide-react";
 import type { Vistoria } from "@/types";
 import type { ApiError } from "@/services/api";
+import { api } from "@/services/api";
 import { useExpedienteStore } from "@/store/expediente";
 import { navegarVistoria, vistoriasService } from "@/services/vistorias";
 import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
@@ -85,6 +86,8 @@ interface GuidedArrivalProps {
   onStart: (vistoria: Vistoria) => void;
 }
 
+type ApprovalPhase = "idle" | "aguardando" | "aprovado" | "reprovado";
+
 export function GuidedArrival({
   vistoria,
   open,
@@ -97,6 +100,11 @@ export function GuidedArrival({
   const [error, setError] = useState<string | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [justificativa, setJustificativa] = useState("");
+  // Fluxo de aprovação remota
+  const [approvalPhase, setApprovalPhase] = useState<ApprovalPhase>("idle");
+  const [pendingRequestId, setPendingRequestId] = useState<number | null>(null);
+  const [reprovacaoMotivo, setReprovacaoMotivo] = useState("");
+  const pollRef = useRef<number | null>(null);
   const expediente = useExpedienteStore((s) => s.expediente);
 
   const hasCoord = useMemo(() => {
@@ -140,6 +148,30 @@ export function GuidedArrival({
   // Seta aponta pro poste no mundo real quando há bússola; senão, relativa ao Norte.
   const arrowRotation = heading != null ? bearing - heading : bearing;
 
+  // Polling de aprovação
+  useEffect(() => {
+    if (approvalPhase !== "aguardando" || !pendingRequestId || !vistoria) return;
+    const poll = async () => {
+      try {
+        const r = await api.get<{ status: string; motivo?: string }>(
+          `/vistorias/${vistoria.id}/override-request?requestId=${pendingRequestId}`
+        );
+        if (r.data.status === "APROVADO") {
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          setApprovalPhase("aprovado");
+          // Aguarda 2s exibindo tela verde antes de abrir a vistoria
+          window.setTimeout(() => onStart(vistoria), 2000);
+        } else if (r.data.status === "REPROVADO") {
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          setReprovacaoMotivo(r.data.motivo ?? "");
+          setApprovalPhase("reprovado");
+        }
+      } catch { /* rede ruim — tenta no próximo ciclo */ }
+    };
+    pollRef.current = window.setInterval(poll, 3000);
+    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
+  }, [approvalPhase, pendingRequestId, vistoria, onStart]);
+
   useEffect(() => {
     if (!open) {
       setStarting(false);
@@ -147,6 +179,10 @@ export function GuidedArrival({
       setOverrideOpen(false);
       setJustificativa("");
       setNavOpen(false);
+      setApprovalPhase("idle");
+      setPendingRequestId(null);
+      setReprovacaoMotivo("");
+      if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
     }
   }, [open]);
 
@@ -174,13 +210,19 @@ export function GuidedArrival({
     setStarting(true);
     setError(null);
     try {
-      await vistoriasService.iniciarVistoria(vistoria.id, {
+      const result = await vistoriasService.iniciarVistoria(vistoria.id, {
         latitude: userPosition?.lat ?? null,
         longitude: userPosition?.lng ?? null,
         forcar: !!override,
         justificativa: override?.justificativa ?? "",
       });
-      onStart(vistoria);
+      if (result.pending && result.requestId) {
+        setPendingRequestId(result.requestId);
+        setOverrideOpen(false);
+        setApprovalPhase("aguardando");
+      } else {
+        onStart(vistoria);
+      }
     } catch (err) {
       const apiErr = err as ApiError;
       const data = apiErr.response?.data as
@@ -199,12 +241,18 @@ export function GuidedArrival({
     setNavOpen(true);
   };
 
+  const BG_ORANGE = "linear-gradient(160deg,#EA580C 0%,#C2410C 60%,#9A3412 100%)";
+  const BG_GREEN  = "linear-gradient(160deg,#059669 0%,#047857 60%,#065F46 100%)";
+  const BG_RED    = "linear-gradient(160deg,#DC2626 0%,#B91C1C 60%,#991B1B 100%)";
+
   const bg =
-    concluida || fase === "verde"
-      ? "linear-gradient(160deg,#059669 0%,#047857 60%,#065F46 100%)"
-      : fase === "azul"
-      ? "linear-gradient(160deg,#2563EB 0%,#1D4ED8 60%,#1E3A8A 100%)"
-      : "linear-gradient(160deg,#0B1220 0%,#0F1B2D 60%,#0A0F1A 100%)";
+    approvalPhase === "aguardando" ? BG_ORANGE
+    : approvalPhase === "aprovado"  ? BG_GREEN
+    : approvalPhase === "reprovado" ? BG_RED
+    : concluida || fase === "verde" ? BG_GREEN
+    : fase === "azul"
+    ? "linear-gradient(160deg,#2563EB 0%,#1D4ED8 60%,#1E3A8A 100%)"
+    : "linear-gradient(160deg,#0B1220 0%,#0F1B2D 60%,#0A0F1A 100%)";
 
   const statusLabel: Record<string, string> = {
     FINALIZADA: "Finalizada",
@@ -245,7 +293,65 @@ export function GuidedArrival({
 
           {/* centro: muda por fase */}
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-            {concluida ? (
+            {approvalPhase === "aguardando" ? (
+              <>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                  className="flex h-36 w-36 items-center justify-center rounded-full"
+                  style={{ background: "rgba(255,255,255,0.15)", boxShadow: "0 0 0 12px rgba(255,255,255,0.07)" }}
+                >
+                  <Clock className="h-20 w-20 text-white" strokeWidth={1.5} />
+                </motion.div>
+                <p className="mt-8 text-[13px] font-bold uppercase tracking-[0.2em] text-white/60">
+                  Solicitação Enviada
+                </p>
+                <p className="mt-2 text-[26px] font-bold text-white leading-tight">
+                  Aguardando{"\n"}Aprovação
+                </p>
+                <p className="mt-3 max-w-[260px] text-[13px] text-white/70">
+                  O responsável pelo painel precisa autorizar o início fora do local.
+                </p>
+              </>
+            ) : approvalPhase === "aprovado" ? (
+              <>
+                <motion.div
+                  initial={{ scale: 0.4, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 14 }}
+                  className="flex h-36 w-36 items-center justify-center rounded-full bg-white/20"
+                  style={{ boxShadow: "0 0 0 14px rgba(255,255,255,0.09)" }}
+                >
+                  <Check className="h-24 w-24 text-white" strokeWidth={3} />
+                </motion.div>
+                <p className="mt-8 text-[13px] font-bold uppercase tracking-[0.2em] text-white/60">
+                  Solicitação Aprovada
+                </p>
+                <p className="mt-2 text-[26px] font-bold text-white">Abrindo vistoria…</p>
+              </>
+            ) : approvalPhase === "reprovado" ? (
+              <>
+                <motion.div
+                  initial={{ scale: 0.4, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 14 }}
+                  className="flex h-36 w-36 items-center justify-center rounded-full bg-white/15"
+                  style={{ boxShadow: "0 0 0 14px rgba(255,255,255,0.07)" }}
+                >
+                  <XCircle className="h-24 w-24 text-white" strokeWidth={2} />
+                </motion.div>
+                <p className="mt-8 text-[13px] font-bold uppercase tracking-[0.2em] text-white/60">
+                  Solicitação Recusada
+                </p>
+                <p className="mt-2 text-[26px] font-bold text-white">Não autorizado</p>
+                {reprovacaoMotivo ? (
+                  <div className="mt-4 max-w-[300px] rounded-2xl bg-white/10 px-4 py-3">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-white/50">Motivo</p>
+                    <p className="mt-1 text-[14px] text-white/90">{reprovacaoMotivo}</p>
+                  </div>
+                ) : null}
+              </>
+            ) : concluida ? (
               <>
                 <motion.div
                   initial={{ scale: 0.4, opacity: 0 }}
@@ -329,13 +435,22 @@ export function GuidedArrival({
 
           {/* rodapé: ação por fase */}
           <div className="px-5 pb-[max(env(safe-area-inset-bottom),20px)]">
-            {error && (
+            {approvalPhase === "reprovado" && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-14 w-full items-center justify-center rounded-2xl bg-white/20 text-[16px] font-bold text-white"
+              >
+                Fechar
+              </button>
+            )}
+            {approvalPhase === "idle" && error && (
               <p className="mb-3 text-center text-[13px] font-medium text-amber-200">
                 {error}
               </p>
             )}
 
-            {!concluida && hasCoord && fase === "verde" && (
+            {approvalPhase === "idle" && !concluida && hasCoord && fase === "verde" && (
               <button
                 type="button"
                 onClick={() => iniciar()}
@@ -346,7 +461,7 @@ export function GuidedArrival({
               </button>
             )}
 
-            {!concluida && hasCoord && fase !== "verde" && !overrideOpen && (
+            {approvalPhase === "idle" && !concluida && hasCoord && fase !== "verde" && !overrideOpen && (
               <div className="space-y-2">
                 <button
                   type="button"
@@ -367,7 +482,7 @@ export function GuidedArrival({
             )}
 
             {/* override (GPS ruim / não chega no verde) */}
-            {!concluida && hasCoord && overrideOpen && fase !== "verde" && (
+            {approvalPhase === "idle" && !concluida && hasCoord && overrideOpen && fase !== "verde" && (
               <div className="rounded-2xl bg-black/25 p-3">
                 <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/70">
                   Iniciar fora do local — justifique

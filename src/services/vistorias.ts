@@ -91,11 +91,14 @@ export interface IniciarVistoriaInput {
 }
 
 export interface IniciarVistoriaResult {
-  ok: true;
+  ok?: true;
   distancia_m?: number | null;
   foraDoRaio?: boolean;
   /** true quando foi enfileirado offline e será sincronizado depois. */
   queued?: boolean;
+  /** true quando o admin precisa aprovar (inicio fora do raio online). */
+  pending?: true;
+  requestId?: number;
 }
 
 /**
