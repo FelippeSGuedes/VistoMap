@@ -254,6 +254,7 @@ export default function PainelMapaPage() {
   const mapElRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const techMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
+  const cursorRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const editMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const lastDataRef = useRef<PainelMapaResponse | null>(null);
 
@@ -307,6 +308,13 @@ export default function PainelMapaPage() {
     const id = window.setInterval(fetchMapa, 5_000);
     return () => window.clearInterval(id);
   }, [fetchMapa]);
+
+  // Rastreia posição do cursor globalmente — usado pelo tooltip dos marcadores
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { cursorRef.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("mousemove", handler, { passive: true });
+    return () => window.removeEventListener("mousemove", handler);
+  }, []);
 
   /* ── trail ─────────────────────────────────────────────────────────────── */
 
@@ -556,9 +564,8 @@ export default function PainelMapaPage() {
           setSelectedVistoria(null);
           setTrailUsersId(t.users_id);
         });
-        el.addEventListener("mouseenter", (ev) => {
-          const e = ev as MouseEvent;
-          setHoveredPos({ x: e.clientX, y: e.clientY });
+        el.addEventListener("mouseenter", () => {
+          setHoveredPos({ ...cursorRef.current });
           setHoveredTec(t);
           setHoveredMetrics(null);
           setHoveredMetricsLoading(true);
