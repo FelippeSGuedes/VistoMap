@@ -150,7 +150,7 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
 
   const root = document.createElement("div");
   root.className = "vm-pin-root";
-  root.style.cssText = "position:relative;width:54px;height:68px;cursor:pointer;transition:transform .18s cubic-bezier(.2,.8,.2,1);will-change:transform;transform-origin:bottom center;";
+  root.style.cssText = "position:relative;width:54px;height:68px;cursor:pointer;";
 
   const pinWrap = document.createElement("div");
   pinWrap.style.cssText = "position:absolute;inset:0;filter:drop-shadow(0 6px 14px rgba(0,150,136,.38));transition:filter .18s ease;";
@@ -202,11 +202,9 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
   root.appendChild(pinWrap);
   root.appendChild(label);
   root.addEventListener("mouseenter", () => {
-    root.style.transform = "scale(1.08)";
-    pinWrap.style.filter = "drop-shadow(0 10px 20px rgba(0,200,150,.55))";
+    pinWrap.style.filter = "drop-shadow(0 10px 22px rgba(0,200,150,.75)) brightness(1.12)";
   });
   root.addEventListener("mouseleave", () => {
-    root.style.transform = "";
     pinWrap.style.filter = "drop-shadow(0 6px 14px rgba(0,150,136,.38))";
   });
   return root;
