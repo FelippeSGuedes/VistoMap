@@ -47,6 +47,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Camera + audio — requerido para getUserMedia no WebView (VideoRecorderSheet) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- GPS hardware feature -->
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 </manifest>
