@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifySessionJwt } from "@/lib/jwt";
-import { query, execute } from "@/lib/db";
+import { query } from "@/lib/db";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
-import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,7 +16,7 @@ interface OverrideRow {
 /** Mobile polling: GET /api/vistorias/[id]/override-request?requestId=N */
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  _ctx: { params: { id: string } }
 ) {
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
@@ -45,17 +44,6 @@ export async function GET(
   if (!rows.length) return NextResponse.json({ message: "Solicitação não encontrada" }, { status: 404 });
 
   const req = rows[0];
-
-  // Se foi aprovado, concretiza a situação no banco (Em Vistoria)
-  if (req.status === "APROVADO") {
-    const vistoriaId = Number(params.id.replace(/^NE-/, ""));
-    if (vistoriaId > 0) {
-      await execute(
-        `UPDATE \`${TABLE_FIELDS}\` SET \`${SITUACAO_COLUMN}\` = ? WHERE items_id = ?`,
-        [SITUACAO_EM_VISTORIA, vistoriaId]
-      );
-    }
-  }
 
   return NextResponse.json({
     status: req.status,
