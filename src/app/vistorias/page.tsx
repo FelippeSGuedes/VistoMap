@@ -52,7 +52,7 @@ function VistoriasPageInner() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [permissionDismissed, setPermissionDismissed] = useState(false);
   const [expedienteReady, setExpedienteReady] = useState(false);
-  const { position, refresh: refreshGeo } = useGeolocation(false);
+  const { position, refresh: refreshGeo } = useGeolocation(true, true);
   const permission = useLocationPermission();
   const accessBlockReason = getVistoriasAccessBlockReason(expediente);
 

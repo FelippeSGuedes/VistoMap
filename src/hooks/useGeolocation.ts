@@ -24,7 +24,7 @@ const DEFAULT_OPTIONS: PositionOptions = {
 // Cache MODULE-SCOPE: compartilhado entre todas as instancias do hook.
 // Evita re-prompt em navegacoes entre paginas: 1a chamada pede permissao,
 // proximas X segundos reaproveitam o ultimo fix.
-const CACHE_FRESH_MS = 60_000; // 1 min — bom pra UX, ruim pra precisao em movimento rapido
+const CACHE_FRESH_MS = 5_000; // 5s — watch atualiza continuamente; cache só evita double-fetch no mount
 let cachedPosition: GeoPosition | null = null;
 let inFlightPromise: Promise<GeoPosition | null> | null = null;
 let permissionState: PermissionState | "unsupported" | null = null;
