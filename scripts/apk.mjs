@@ -30,7 +30,7 @@ function loadMapboxToken() {
 
 function run(cmd, cwd) {
   console.log(`\n▶ ${cmd}  (em ${path.relative(ROOT, cwd) || "."})`);
-  execSync(cmd, { cwd, stdio: "inherit", env: process.env });
+  execSync(cmd, { cwd, stdio: "inherit", env: process.env, shell: true });
 }
 
 const token = loadMapboxToken();
@@ -47,9 +47,9 @@ try {
   // 3) Sincroniza pro projeto Android
   run("npx cap sync android", MOBILE);
   // 4) Compila o APK debug
-  run(isWin ? "gradlew.bat assembleDebug" : "./gradlew assembleDebug", ANDROID);
+  run(isWin ? ".\\gradlew.bat assembleRelease" : "./gradlew assembleRelease", ANDROID);
 
-  const apk = path.join(ANDROID, "app", "build", "outputs", "apk", "debug", "app-debug.apk");
+  const apk = path.join(ANDROID, "app", "build", "outputs", "apk", "release", "app-release.apk");
   console.log("\n============================================================");
   if (fs.existsSync(apk)) {
     const mb = (fs.statSync(apk).size / 1048576).toFixed(1);
