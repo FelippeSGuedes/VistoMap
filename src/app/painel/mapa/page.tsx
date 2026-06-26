@@ -202,7 +202,7 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
   root.appendChild(pinWrap);
   root.appendChild(label);
   root.addEventListener("mouseenter", () => {
-    root.style.transform = "translateY(-3px) scale(1.06)";
+    root.style.transform = "scale(1.08)";
     pinWrap.style.filter = "drop-shadow(0 10px 20px rgba(0,200,150,.55))";
   });
   root.addEventListener("mouseleave", () => {
@@ -556,10 +556,15 @@ export default function PainelMapaPage() {
           setSelectedVistoria(null);
           setTrailUsersId(t.users_id);
         });
-        el.addEventListener("mouseenter", (ev) => {
-          const rect = el.getBoundingClientRect();
+        el.addEventListener("mouseenter", () => {
+          const mapEl = mapElRef.current;
+          const mapInst = mapRef.current;
+          if (mapEl && mapInst) {
+            const mapRect = mapEl.getBoundingClientRect();
+            const pt = mapInst.project([t.longitude!, t.latitude!]);
+            setHoveredPos({ x: mapRect.left + pt.x, y: mapRect.top + pt.y });
+          }
           setHoveredTec(t);
-          setHoveredPos({ x: rect.left + rect.width / 2, y: rect.top });
           setHoveredMetrics(null);
           setHoveredMetricsLoading(true);
           api.get<TechTodayMetrics>(`/painel/tecnico-today?users_id=${t.users_id}`)
@@ -1009,7 +1014,7 @@ export default function PainelMapaPage() {
         <div
           className="pointer-events-none fixed z-[200] w-[220px] rounded-2xl p-3"
           style={{
-            left: hoveredPos.x - 110,
+            left: Math.min(Math.max(hoveredPos.x - 110, 8), (typeof window !== "undefined" ? window.innerWidth : 1200) - 228),
             top: hoveredPos.y - 8,
             transform: "translateY(-100%)",
             ...GLASS,
