@@ -105,6 +105,10 @@ export function GuidedArrival({
   const [pendingRequestId, setPendingRequestId] = useState<number | null>(null);
   const [reprovacaoMotivo, setReprovacaoMotivo] = useState("");
   const pollRef = useRef<number | null>(null);
+  const vistoriaRef = useRef(vistoria);
+  const onStartRef = useRef(onStart);
+  useEffect(() => { vistoriaRef.current = vistoria; }, [vistoria]);
+  useEffect(() => { onStartRef.current = onStart; }, [onStart]);
   const expediente = useExpedienteStore((s) => s.expediente);
 
   const hasCoord = useMemo(() => {
@@ -148,29 +152,30 @@ export function GuidedArrival({
   // Seta aponta pro poste no mundo real quando há bússola; senão, relativa ao Norte.
   const arrowRotation = heading != null ? bearing - heading : bearing;
 
-  // Polling de aprovação
+  // Polling de aprovação — deps mínimas para o interval não ser destruído por re-renders do GPS
   useEffect(() => {
-    if (approvalPhase !== "aguardando" || !pendingRequestId || !vistoria) return;
+    if (approvalPhase !== "aguardando" || !pendingRequestId) return;
     const poll = async () => {
+      const v = vistoriaRef.current;
+      if (!v) return;
       try {
         const r = await api.get<{ status: string; motivo?: string }>(
-          `/vistorias/${vistoria.id}/override-request?requestId=${pendingRequestId}`
+          `/vistorias/${v.id}/override-request?requestId=${pendingRequestId}`
         );
         if (r.data.status === "APROVADO") {
-          if (pollRef.current) window.clearInterval(pollRef.current);
+          window.clearInterval(pollRef.current!);
           setApprovalPhase("aprovado");
-          // Aguarda 2s exibindo tela verde antes de abrir a vistoria
-          window.setTimeout(() => onStart(vistoria), 2000);
+          window.setTimeout(() => onStartRef.current(v), 2000);
         } else if (r.data.status === "REPROVADO") {
-          if (pollRef.current) window.clearInterval(pollRef.current);
+          window.clearInterval(pollRef.current!);
           setReprovacaoMotivo(r.data.motivo ?? "");
           setApprovalPhase("reprovado");
         }
       } catch { /* rede ruim — tenta no próximo ciclo */ }
     };
     pollRef.current = window.setInterval(poll, 3000);
-    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
-  }, [approvalPhase, pendingRequestId, vistoria, onStart]);
+    return () => { window.clearInterval(pollRef.current!); };
+  }, [approvalPhase, pendingRequestId]);
 
   useEffect(() => {
     if (!open) {
