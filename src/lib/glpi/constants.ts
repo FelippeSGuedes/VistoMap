@@ -45,7 +45,8 @@ export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
   tipollfield: "plugin_fields_tipollfielddropdowns_id",
 };
 
-/** Status do plugin: 3=Aprovado, 4=Reprovado, 5=Em análise. */
+/** Status do plugin: 1=Pendente (inicial), 3=Aprovado, 4=Reprovado, 5=Em análise. */
+export const STATUS_VISTORIA_PENDENTE = 1;
 export const STATUS_VISTORIA_APROVADO = 3;
 export const STATUS_VISTORIA_REPROVADO = 4;
 export const STATUS_VISTORIA_EM_ANALISE = 5;

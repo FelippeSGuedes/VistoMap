@@ -23,6 +23,7 @@ import {
   ShieldAlert,
   Sun,
   Users,
+  Wrench,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
@@ -43,10 +44,11 @@ const BOTTOM_NAV = [
 
 // Sub-itens do grupo "Vistorias"
 const VISTORIAS_GROUP = [
-  { href: "/painel/vistorias",   label: "Pendentes",       icon: ClipboardList },
-  { href: "/painel/andamento",   label: "Em Andamento",    icon: Activity },
-  { href: "/painel/realizadas",  label: "Concluídas",      icon: CheckCircle2 },
-  { href: "/painel/revisitas",   label: "Revisitas",       icon: RotateCw },
+  { href: "/painel/vistorias",           label: "Pendentes",          icon: ClipboardList },
+  { href: "/painel/andamento",           label: "Em Andamento",       icon: Activity },
+  { href: "/painel/realizadas",          label: "Concluídas",         icon: CheckCircle2 },
+  { href: "/painel/revisitas",           label: "Revisitas",          icon: RotateCw },
+  { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench },
 ];
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));

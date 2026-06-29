@@ -16,6 +16,7 @@ import {
   Activity,
   Box,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   Clock,
   Copy,
@@ -28,6 +29,7 @@ import {
   Route,
   Search,
   Target,
+  UserCheck,
   Users,
   Wifi,
   WifiOff,
@@ -280,6 +282,12 @@ export default function PainelMapaPage() {
   // Modo correção GPS
   const [gpsEditMode, setGpsEditMode] = useState(false);
   const [correctedPos, setCorrectedPos] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Atribuição direta do mapa
+  const [atribuirVistoria, setAtribuirVistoria] = useState<PainelMapaVistoria | null>(null);
+  const [atribuirTecId, setAtribuirTecId] = useState<number | "">("");
+  const [atribuirMotivo, setAtribuirMotivo] = useState("");
+  const [atribuirLoading, setAtribuirLoading] = useState(false);
 
   /* ── fetch ─────────────────────────────────────────────────────────────── */
 
@@ -543,7 +551,8 @@ export default function PainelMapaPage() {
         if (filtroTec === "online") return t.status_operacional === "em-operacao" || t.status_operacional === "em-vistoria";
         if (filtroTec === "parado") return t.status_operacional === "parado";
         if (filtroTec === "offline") return t.status_operacional === "offline";
-        return true;
+        // "todos" — exclui offline do mapa para evitar falso positivo de localização
+        return t.status_operacional !== "offline";
       });
       const seen = new Set<number>();
       visible.forEach((t) => {
@@ -844,18 +853,8 @@ export default function PainelMapaPage() {
                 {vistoriasFiltradas.slice(0, 200).map((v) => {
                   const cor = SITUACAO_COR[v.situacao] ?? "#475569";
                   return (
-                    <button
+                    <div
                       key={v.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedVistoria(v);
-                        setSelectedTec(null);
-                        mapRef.current?.flyTo({
-                          center: [v.longitude, v.latitude],
-                          zoom: Math.max(16, mapRef.current?.getZoom() ?? 16),
-                          duration: 700,
-                        });
-                      }}
                       className="w-full rounded-xl p-2 text-left transition"
                       style={{
                         background: selectedVistoria?.id === v.id ? "rgba(0,179,136,0.10)" : "rgba(0,0,0,0.02)",
@@ -863,26 +862,55 @@ export default function PainelMapaPage() {
                         borderLeft: `3px solid ${cor}`,
                       }}
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <p className="truncate text-[11px] font-semibold" style={{ color: "#111827" }}>
-                          {v.equipamento}
-                        </p>
-                        <span
-                          className="shrink-0 rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase"
-                          style={{ background: `${cor}20`, color: cor }}
-                        >
-                          {SITUACAO_LABEL[v.situacao]}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1 text-[9.5px]" style={{ color: "#9CA3AF" }}>
-                        <MapPin className="h-2.5 w-2.5" />
-                        <span className="truncate">{v.municipio ?? "—"}</span>
-                        {v.tecnico_nome && <>
-                          <span>·</span>
-                          <span className="truncate" style={{ color: "#9CA3AF" }}>{v.tecnico_nome}</span>
-                        </>}
-                      </div>
-                    </button>
+                      {/* clique para focar no mapa */}
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => {
+                          setSelectedVistoria(v);
+                          setSelectedTec(null);
+                          mapRef.current?.flyTo({
+                            center: [v.longitude, v.latitude],
+                            zoom: Math.max(16, mapRef.current?.getZoom() ?? 16),
+                            duration: 700,
+                          });
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="truncate text-[11px] font-semibold" style={{ color: "#111827" }}>
+                            {v.equipamento}
+                          </p>
+                          <span
+                            className="shrink-0 rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase"
+                            style={{ background: `${cor}20`, color: cor }}
+                          >
+                            {SITUACAO_LABEL[v.situacao]}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1 text-[9.5px]" style={{ color: "#9CA3AF" }}>
+                          <MapPin className="h-2.5 w-2.5" />
+                          <span className="truncate">{v.municipio ?? "—"}</span>
+                          {v.tecnico_nome && <>
+                            <span>·</span>
+                            <span className="truncate" style={{ color: "#9CA3AF" }}>{v.tecnico_nome}</span>
+                          </>}
+                        </div>
+                      </button>
+                      {/* atribuição direta */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAtribuirVistoria(v);
+                          setAtribuirTecId("");
+                          setAtribuirMotivo("");
+                        }}
+                        className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1 text-[10px] font-semibold transition"
+                        style={{ background: "rgba(59,130,246,0.08)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.15)" }}
+                      >
+                        <UserCheck className="h-3 w-3" />
+                        Atribuir técnico
+                      </button>
+                    </div>
                   );
                 })}
                 {vistoriasFiltradas.length === 0 && (
@@ -1266,6 +1294,95 @@ export default function PainelMapaPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ── MODAL ATRIBUIR TÉCNICO ───────────────────────────────────────── */}
+      {atribuirVistoria && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100">
+                  <UserCheck className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-[14px] font-bold text-gray-900">Atribuir técnico</h2>
+                  <p className="truncate text-[11px] text-gray-400" style={{ maxWidth: 200 }}>{atribuirVistoria.equipamento}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setAtribuirVistoria(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {atribuirVistoria.tecnico_nome && (
+              <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                Atual: <strong>{atribuirVistoria.tecnico_nome}</strong>
+              </div>
+            )}
+
+            <label className="mb-1 block text-[11px] font-semibold text-gray-700">Técnico</label>
+            <div className="relative mb-3">
+              <select
+                value={atribuirTecId}
+                onChange={(e) => setAtribuirTecId(e.target.value === "" ? "" : Number(e.target.value))}
+                className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2 pl-3 pr-8 text-[12px] outline-none focus:border-blue-400"
+              >
+                <option value="">Selecione…</option>
+                {(data?.tecnicos ?? []).map((t) => (
+                  <option key={t.users_id} value={t.users_id}>
+                    {t.nome} {t.status_operacional !== "offline" ? "●" : "○"}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            </div>
+
+            <label className="mb-1 block text-[11px] font-semibold text-gray-700">Motivo *</label>
+            <textarea
+              value={atribuirMotivo}
+              onChange={(e) => setAtribuirMotivo(e.target.value)}
+              placeholder="Ex: técnico mais próximo…"
+              rows={2}
+              className="mb-4 w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-[11px] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
+            />
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAtribuirVistoria(null)}
+                className="flex-1 rounded-xl border border-gray-200 py-2 text-[12px] font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!atribuirTecId || !atribuirMotivo.trim() || atribuirLoading}
+                onClick={async () => {
+                  if (!atribuirTecId || !atribuirMotivo.trim() || !session?.token) return;
+                  setAtribuirLoading(true);
+                  try {
+                    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+                    await fetch(`${base}/api/painel/central-vistorias/${atribuirVistoria.id}/reatribuir`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+                      body: JSON.stringify({ tecnicoId: atribuirTecId, motivo: atribuirMotivo.trim() }),
+                    });
+                    setAtribuirVistoria(null);
+                    setAtribuirTecId("");
+                    setAtribuirMotivo("");
+                    void fetchMapa();
+                  } finally {
+                    setAtribuirLoading(false);
+                  }
+                }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2 text-[12px] font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+              >
+                {atribuirLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   SITUACAO_EM_REVISITA,
   SITUACAO_EM_VISTORIA,
   SITUACAO_REVISITADO,
+  STATUS_VISTORIA_PENDENTE,
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
@@ -1263,4 +1264,85 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
     vistorias,
     generated_at: new Date().toISOString(),
   };
+}
+
+/* ── Central de Vistorias ────────────────────────────────────────── */
+
+export interface CentralVistoria {
+  id: number;
+  equipamento: string;
+  municipio: string | null;
+  situacao_id: number;
+  situacao: string;
+  status_name: string | null;
+  tecnico_id: number | null;
+  tecnico_nome: string | null;
+  data_vistoria: string | null;
+  is_repeat: number;
+}
+
+export async function listCentralVistorias(): Promise<CentralVistoria[]> {
+  return query<CentralVistoria>(
+    `SELECT
+       ne.id,
+       ne.name                                           AS equipamento,
+       TRIM(f.municipiofield)                            AS municipio,
+       COALESCE(f.\`${SITUACAO_COLUMN}\`, 0)            AS situacao_id,
+       COALESCE(sv.name, 'Pendente')                    AS situacao,
+       sv.name                                           AS status_name,
+       f.users_id_vistoriadorafield                     AS tecnico_id,
+       u.name                                            AS tecnico_nome,
+       f.datadavistoriafield                            AS data_vistoria,
+       COALESCE(aux.is_repeat, 0)                       AS is_repeat
+     FROM \`${TABLE_NE}\` ne
+     JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+     LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+           ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+     LEFT JOIN \`${TABLE_USERS}\` u
+           ON u.id = f.users_id_vistoriadorafield
+     LEFT JOIN \`${TABLE_AUX}\` aux
+           ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+     WHERE ne.is_deleted = 0
+     ORDER BY ne.name ASC`
+  );
+}
+
+/**
+ * Cancela uma vistoria: volta ao estado inicial (A Vistoriar), remove
+ * técnico atribuído, limpa datas e apaga o registro de projeto no aux.
+ * Os arquivos físicos são removidos pela API (tem acesso ao filesystem).
+ */
+export async function cancelarVistoria(vistoriaId: number): Promise<void> {
+  await execute(
+    `UPDATE \`${TABLE_FIELDS}\`
+        SET \`${SITUACAO_COLUMN}\`                        = ?,
+            plugin_fields_statusvistoriafielddropdowns_id = ?,
+            users_id_vistoriadorafield                    = 0,
+            datadavistoriafield                           = NULL,
+            dataenvioconcessionriafield                   = NULL
+      WHERE items_id = ?`,
+    [SITUACAO_A_VISTORIAR, STATUS_VISTORIA_PENDENTE, vistoriaId]
+  );
+  await execute(
+    `DELETE FROM \`${TABLE_AUX}\`
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
+    [vistoriaId]
+  );
+}
+
+/**
+ * Reatribui a vistoria a outro técnico.
+ * Mantém o estado/situação atual — apenas troca o vistoriador.
+ */
+export async function reatribuirVistoria(
+  vistoriaId: number,
+  novoTecnicoId: number
+): Promise<void> {
+  await execute(
+    `UPDATE \`${TABLE_FIELDS}\`
+        SET users_id_vistoriadorafield = ?,
+            \`${SITUACAO_COLUMN}\`    = ?
+      WHERE items_id = ?`,
+    [novoTecnicoId, SITUACAO_A_VISTORIAR, vistoriaId]
+  );
 }
