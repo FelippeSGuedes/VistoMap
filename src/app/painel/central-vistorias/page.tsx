@@ -207,22 +207,32 @@ export default function CentralVistoriasPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => { setReatrib(v); setNovoTecnico(""); setMotivo(""); }}
-                        className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"
-                      >
-                        <UserCheck className="h-3.5 w-3.5" />
-                        Reatribuir
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setCancelando(v); setCancelConfirm(""); }}
-                        className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Cancelar
-                      </button>
+                      {/* Reatribuir: só quando há técnico vinculado */}
+                      {v.tecnico_nome && (
+                        <button
+                          type="button"
+                          onClick={() => { setReatrib(v); setNovoTecnico(""); setMotivo(""); }}
+                          className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                          Reatribuir
+                        </button>
+                      )}
+                      {/* Cancelar: só quando já foi iniciada (situação > A Vistoriar) */}
+                      {v.situacao_id > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => { setCancelando(v); setCancelConfirm(""); }}
+                          className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Cancelar
+                        </button>
+                      )}
+                      {/* Sem ações disponíveis */}
+                      {!v.tecnico_nome && v.situacao_id <= 1 && (
+                        <span className="text-[11px] text-gray-300">—</span>
+                      )}
                     </div>
                   </td>
                 </tr>

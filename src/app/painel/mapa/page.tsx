@@ -896,20 +896,22 @@ export default function PainelMapaPage() {
                           </>}
                         </div>
                       </button>
-                      {/* atribuição direta */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAtribuirVistoria(v);
-                          setAtribuirTecId("");
-                          setAtribuirMotivo("");
-                        }}
-                        className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1 text-[10px] font-semibold transition"
-                        style={{ background: "rgba(59,130,246,0.08)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.15)" }}
-                      >
-                        <UserCheck className="h-3 w-3" />
-                        Atribuir técnico
-                      </button>
+                      {/* atribuição direta — não faz sentido para vistorias concluídas */}
+                      {v.situacao !== "VISTORIADO" && v.situacao !== "REVISITADO" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAtribuirVistoria(v);
+                            setAtribuirTecId("");
+                            setAtribuirMotivo("");
+                          }}
+                          className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg py-1 text-[10px] font-semibold transition"
+                          style={{ background: "rgba(59,130,246,0.08)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.15)" }}
+                        >
+                          <UserCheck className="h-3 w-3" />
+                          {v.tecnico_nome ? "Reatribuir técnico" : "Atribuir técnico"}
+                        </button>
+                      )}
                     </div>
                   );
                 })}
