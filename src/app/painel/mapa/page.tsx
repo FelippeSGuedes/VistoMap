@@ -656,18 +656,25 @@ export default function PainelMapaPage() {
     [data]
   );
 
+  const SITUACAO_SORT: Record<string, number> = {
+    A_VISTORIAR: 0, EM_VISTORIA: 1, VISTORIADO: 2,
+    AGUARDANDO_REVISITA: 3, EM_REVISITA: 4, REVISITADO: 5,
+  };
+
   const vistoriasFiltradas = useMemo(() => {
     const all = data?.vistorias ?? [];
     const q = buscaVis.trim().toLowerCase();
-    return all.filter((v) => {
-      if (filtroSit !== "todas" && v.situacao !== filtroSit) return false;
-      if (!q) return true;
-      return (
-        v.equipamento.toLowerCase().includes(q) ||
-        (v.municipio ?? "").toLowerCase().includes(q) ||
-        (v.tecnico_nome ?? "").toLowerCase().includes(q)
-      );
-    });
+    return all
+      .filter((v) => {
+        if (filtroSit !== "todas" && v.situacao !== filtroSit) return false;
+        if (!q) return true;
+        return (
+          v.equipamento.toLowerCase().includes(q) ||
+          (v.municipio ?? "").toLowerCase().includes(q) ||
+          (v.tecnico_nome ?? "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (SITUACAO_SORT[a.situacao] ?? 9) - (SITUACAO_SORT[b.situacao] ?? 9));
   }, [data, filtroSit, buscaVis]);
 
   const contagemSit = useMemo(() => {
@@ -1267,28 +1274,46 @@ export default function PainelMapaPage() {
               </div>
 
               {/* Ações */}
-              <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `https://www.google.com/maps/search/?api=1&query=${selectedVistoria.latitude},${selectedVistoria.longitude}`;
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
-                  style={{ background: "rgba(96,165,250,0.12)", color: "#93C5FD", border: "1px solid rgba(96,165,250,0.20)" }}
-                >
-                  <Navigation className="h-3 w-3" />
-                  Navegar
-                </button>
-                {!gpsEditMode && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex gap-1.5">
                   <button
                     type="button"
-                    onClick={() => enterGpsEditMode(selectedVistoria)}
+                    onClick={() => {
+                      const url = `https://www.google.com/maps/search/?api=1&query=${selectedVistoria.latitude},${selectedVistoria.longitude}`;
+                      window.open(url, "_blank", "noopener,noreferrer");
+                    }}
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
-                    style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", border: "1px solid rgba(245,158,11,0.20)" }}
+                    style={{ background: "rgba(96,165,250,0.12)", color: "#93C5FD", border: "1px solid rgba(96,165,250,0.20)" }}
                   >
-                    <Target className="h-3 w-3" />
-                    Corrigir GPS
+                    <Navigation className="h-3 w-3" />
+                    Navegar
+                  </button>
+                  {!gpsEditMode && (
+                    <button
+                      type="button"
+                      onClick={() => enterGpsEditMode(selectedVistoria)}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
+                      style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", border: "1px solid rgba(245,158,11,0.20)" }}
+                    >
+                      <Target className="h-3 w-3" />
+                      Corrigir GPS
+                    </button>
+                  )}
+                </div>
+                {/* Atribuir/Reatribuir — não aparece para vistorias concluídas */}
+                {selectedVistoria.situacao !== "VISTORIADO" && selectedVistoria.situacao !== "REVISITADO" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAtribuirVistoria(selectedVistoria);
+                      setAtribuirTecId("");
+                      setAtribuirMotivo("");
+                    }}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
+                    style={{ background: "rgba(59,130,246,0.10)", color: "#60A5FA", border: "1px solid rgba(59,130,246,0.20)" }}
+                  >
+                    <UserCheck className="h-3 w-3" />
+                    {selectedVistoria.tecnico_nome ? "Reatribuir técnico" : "Atribuir técnico"}
                   </button>
                 )}
               </div>

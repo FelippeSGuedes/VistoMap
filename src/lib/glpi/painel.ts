@@ -1303,6 +1303,11 @@ export async function listCentralVistorias(): Promise<CentralVistoria[]> {
      LEFT JOIN \`${TABLE_AUX}\` aux
            ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
      WHERE ne.is_deleted = 0
+       AND (
+         -- exclui pendentes sem técnico: só aparecem aqui quem já foi trabalhado ou está atribuído
+         COALESCE(f.\`${SITUACAO_COLUMN}\`, 0) > 1
+         OR f.users_id_vistoriadorafield > 0
+       )
      ORDER BY ne.name ASC`
   );
 }
