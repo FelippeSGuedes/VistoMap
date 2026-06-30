@@ -124,77 +124,98 @@ function lightenHex(hex: string, f: number): string {
   return `rgb(${Math.max(0, Math.round(r * d))},${Math.max(0, Math.round(g * d))},${Math.max(0, Math.round(b * d))})`;
 }
 
-function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: number; height: number; data: Uint8Array } {
-  const S = 28;
-  const cx = S / 2, cy = S / 2;
-  const MAIN_R = 9;
+// Supersampling: renderiza grande e o Mapbox exibe no tamanho lógico → nitidez.
+const PIN_RATIO = 4;
+const PIN_SIZE = 30; // tamanho lógico em px
+
+function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: number; height: number; data: Uint8Array; pixelRatio: number } {
+  const S = PIN_SIZE;
+  const px = S * PIN_RATIO;
   const cvs = document.createElement("canvas");
-  cvs.width = S; cvs.height = S;
+  cvs.width = px; cvs.height = px;
   const ctx = cvs.getContext("2d")!;
+  ctx.scale(PIN_RATIO, PIN_RATIO);
+  ctx.imageSmoothingEnabled = true;
 
-  // Glow rings (outer aura)
-  for (let i = 4; i >= 0; i--) {
-    const r = MAIN_R + 1 + i * 1.5;
-    const alpha = Math.round(255 * (0.04 + i * 0.022)).toString(16).padStart(2, "0");
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = `${color}${alpha}`;
-    ctx.fill();
-  }
+  const cx = S / 2;
+  const cy = S / 2;
+  const R = 8.5;          // raio do disco colorido
+  const RING = 2.2;       // espessura do anel branco
 
-  // Drop shadow
+  // 1. Sombra suave (disco branco com shadow)
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.40)";
-  ctx.shadowBlur = 7;
-  ctx.shadowOffsetY = 2.5;
-
-  // Main circle — radial gradient (light at top-left → status color → slightly darker)
-  const grad = ctx.createRadialGradient(cx - 3, cy - 3, 1, cx, cy, MAIN_R);
-  grad.addColorStop(0, lightenHex(color, 0.40));
-  grad.addColorStop(0.55, color);
-  grad.addColorStop(1, lightenHex(color, -0.12));
+  ctx.shadowColor = "rgba(15,23,42,0.35)";
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 1.8;
   ctx.beginPath();
-  ctx.arc(cx, cy, MAIN_R, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
+  ctx.arc(cx, cy, R + RING, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
   ctx.fill();
   ctx.restore();
 
-  // White border
+  // 2. Disco colorido com gradiente vertical (mais claro em cima)
+  const grad = ctx.createLinearGradient(cx, cy - R, cx, cy + R);
+  grad.addColorStop(0, lightenHex(color, 0.26));
+  grad.addColorStop(0.55, color);
+  grad.addColorStop(1, lightenHex(color, -0.14));
   ctx.beginPath();
-  ctx.arc(cx, cy, MAIN_R, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(255,255,255,0.94)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
 
-  // Inner symbol
+  // 3. Brilho glossy no topo
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.clip();
+  const gloss = ctx.createLinearGradient(cx, cy - R, cx, cy);
+  gloss.addColorStop(0, "rgba(255,255,255,0.40)");
+  gloss.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - R * 0.34, R * 0.78, R * 0.52, 0, 0, Math.PI * 2);
+  ctx.fillStyle = gloss;
+  ctx.fill();
+  ctx.restore();
+
+  // 4. Aro interno sutil (contraste contra o branco)
+  ctx.beginPath();
+  ctx.arc(cx, cy, R - 0.4, 0, Math.PI * 2);
+  ctx.strokeStyle = lightenHex(color, -0.20);
+  ctx.lineWidth = 0.7;
+  ctx.globalAlpha = 0.35;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // 5. Símbolo interno branco
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   if (inner === "check") {
     ctx.beginPath();
-    ctx.moveTo(cx - 3.5, cy + 0.5);
-    ctx.lineTo(cx - 0.5, cy + 3.5);
-    ctx.lineTo(cx + 4.5, cy - 3.5);
-    ctx.strokeStyle = "rgba(255,255,255,0.96)";
-    ctx.lineWidth = 2;
+    ctx.moveTo(cx - 3.4, cy + 0.3);
+    ctx.lineTo(cx - 1, cy + 2.9);
+    ctx.lineTo(cx + 4, cy - 3.2);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2.1;
+    ctx.shadowColor = "rgba(0,0,0,0.18)";
+    ctx.shadowBlur = 1;
     ctx.stroke();
   } else if (inner === "ring") {
     ctx.beginPath();
-    ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.90)";
-    ctx.lineWidth = 1.8;
+    ctx.arc(cx, cy, 3.2, 0, Math.PI * 2);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
     ctx.stroke();
   } else {
     ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.arc(cx, cy, 2.7, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
     ctx.fill();
   }
   ctx.restore();
 
-  // Retorna no formato explícito que o Mapbox GL aceita em todas as versões
-  const imgData = ctx.getImageData(0, 0, S, S);
-  return { width: S, height: S, data: new Uint8Array(imgData.data.buffer) };
+  const imgData = ctx.getImageData(0, 0, px, px);
+  return { width: px, height: px, data: new Uint8Array(imgData.data.buffer), pixelRatio: PIN_RATIO };
 }
 
 const PIN_DEFS = [
@@ -210,7 +231,7 @@ function registerVistoriaPins(map: mapboxgl.Map) {
   for (const p of PIN_DEFS) {
     if (!map.hasImage(p.name)) {
       try {
-        map.addImage(p.name, makePinImage(p.color, p.inner));
+        map.addImage(p.name, makePinImage(p.color, p.inner), { pixelRatio: PIN_RATIO });
       } catch (e) {
         console.warn("[vm] addImage failed for", p.name, e);
       }

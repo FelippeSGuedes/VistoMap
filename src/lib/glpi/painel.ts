@@ -1308,7 +1308,18 @@ export async function listCentralVistorias(): Promise<CentralVistoria[]> {
          COALESCE(f.\`${SITUACAO_COLUMN}\`, 0) > 1
          OR f.users_id_vistoriadorafield > 0
        )
-     ORDER BY ne.name ASC`
+     ORDER BY
+       -- sequência: A Vistoriar → Em Vistoria → Vistoriado → revisitas
+       CASE COALESCE(f.\`${SITUACAO_COLUMN}\`, 0)
+         WHEN 1 THEN 0  -- A Vistoriar
+         WHEN 2 THEN 1  -- Em Vistoria
+         WHEN 3 THEN 2  -- Vistoriado
+         WHEN 4 THEN 3  -- Ag. Revisita
+         WHEN 5 THEN 4  -- Em Revisita
+         WHEN 6 THEN 5  -- Revisitado
+         ELSE 9
+       END,
+       ne.name ASC`
   );
 }
 
