@@ -56,12 +56,12 @@ const LAYER_OPTIONS = [
 type LayerKey = (typeof LAYER_OPTIONS)[number]["key"];
 
 const SITUACAO_COR: Record<string, string> = {
-  A_VISTORIAR:       "#F59E0B",
-  EM_VISTORIA:       "#3B82F6",
-  VISTORIADO:        "#00B388",
-  AGUARDANDO_REVISITA: "#F97316",
-  EM_REVISITA:       "#A855F7",
-  REVISITADO:        "#0EA5E9",
+  A_VISTORIAR:         "#F97316",  // laranja
+  EM_VISTORIA:         "#3B82F6",  // azul
+  VISTORIADO:          "#00B388",  // verde
+  AGUARDANDO_REVISITA: "#F59E0B",  // âmbar
+  EM_REVISITA:         "#A855F7",  // roxo
+  REVISITADO:          "#0EA5E9",  // ciano
 };
 const SITUACAO_LABEL: Record<string, string> = {
   A_VISTORIAR:       "A vistoriar",
@@ -102,12 +102,113 @@ function statusLabel(s: PainelMapaTecnico["status_operacional"]): string {
 
 function vistoriaColor(status: PainelMapaVistoria["status"]): string {
   switch (status) {
-    case "A_VISTORIAR": return "#F59E0B";
+    case "A_VISTORIAR": return "#F97316";
     case "EM_VISTORIA":  return "#3B82F6";
     case "VISTORIADO":   return "#00B388";
-    case "REVISITA":     return "#F97316";
+    case "REVISITA":     return "#F59E0B";
     case "REPROVADO":    return "#EF4444";
     default:             return "#475569";
+  }
+}
+
+/* ─── custom pin icons ────────────────────────────────────────────────────── */
+
+function lightenHex(hex: string, f: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  if (f >= 0) {
+    return `rgb(${Math.min(255, Math.round(r + (255 - r) * f))},${Math.min(255, Math.round(g + (255 - g) * f))},${Math.min(255, Math.round(b + (255 - b) * f))})`;
+  }
+  const d = 1 + f; // f negativo → escurece
+  return `rgb(${Math.max(0, Math.round(r * d))},${Math.max(0, Math.round(g * d))},${Math.max(0, Math.round(b * d))})`;
+}
+
+function makePinImage(color: string, inner: "dot" | "ring" | "check"): ImageData {
+  const S = 28;
+  const cx = S / 2, cy = S / 2;
+  const MAIN_R = 9;
+  const cvs = document.createElement("canvas");
+  cvs.width = S; cvs.height = S;
+  const ctx = cvs.getContext("2d")!;
+
+  // Glow rings (outer aura)
+  for (let i = 4; i >= 0; i--) {
+    const r = MAIN_R + 1 + i * 1.5;
+    const alpha = Math.round(255 * (0.04 + i * 0.022)).toString(16).padStart(2, "0");
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = `${color}${alpha}`;
+    ctx.fill();
+  }
+
+  // Drop shadow
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.40)";
+  ctx.shadowBlur = 7;
+  ctx.shadowOffsetY = 2.5;
+
+  // Main circle — radial gradient (light at top-left → status color → slightly darker)
+  const grad = ctx.createRadialGradient(cx - 3, cy - 3, 1, cx, cy, MAIN_R);
+  grad.addColorStop(0, lightenHex(color, 0.40));
+  grad.addColorStop(0.55, color);
+  grad.addColorStop(1, lightenHex(color, -0.12));
+  ctx.beginPath();
+  ctx.arc(cx, cy, MAIN_R, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+
+  // White border
+  ctx.beginPath();
+  ctx.arc(cx, cy, MAIN_R, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.94)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Inner symbol
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (inner === "check") {
+    ctx.beginPath();
+    ctx.moveTo(cx - 3.5, cy + 0.5);
+    ctx.lineTo(cx - 0.5, cy + 3.5);
+    ctx.lineTo(cx + 4.5, cy - 3.5);
+    ctx.strokeStyle = "rgba(255,255,255,0.96)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  } else if (inner === "ring") {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.90)";
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.fill();
+  }
+  ctx.restore();
+
+  return ctx.getImageData(0, 0, S, S);
+}
+
+const PIN_DEFS = [
+  { name: "vm-pin-a_vistoriar", color: "#F97316", inner: "ring"  as const },
+  { name: "vm-pin-em_vistoria", color: "#3B82F6", inner: "dot"   as const },
+  { name: "vm-pin-vistoriado",  color: "#00B388", inner: "check" as const },
+  { name: "vm-pin-revisita",    color: "#F59E0B", inner: "ring"  as const },
+  { name: "vm-pin-reprovado",   color: "#EF4444", inner: "dot"   as const },
+  { name: "vm-pin-default",     color: "#475569", inner: "dot"   as const },
+] as const;
+
+function registerVistoriaPins(map: mapboxgl.Map) {
+  for (const p of PIN_DEFS) {
+    if (!map.hasImage(p.name)) {
+      map.addImage(p.name, makePinImage(p.color, p.inner), { sdf: false });
+    }
   }
 }
 
@@ -493,6 +594,9 @@ export default function PainelMapaPage() {
     } else {
       map.addSource(VISTORIAS_SRC, { type: "geojson", data: geojson });
 
+      // Registra ícones customizados (canvas-drawn)
+      registerVistoriaPins(map);
+
       map.addLayer({
         id: HEATMAP_LAYER,
         type: "heatmap",
@@ -516,14 +620,22 @@ export default function PainelMapaPage() {
 
       map.addLayer({
         id: VISTORIAS_POINTS,
-        type: "circle",
+        type: "symbol",
         source: VISTORIAS_SRC,
-        paint: {
-          "circle-color": ["get", "color"],
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 7, 18, 10],
-          "circle-stroke-width": ["case", ["==", ["get", "is_revisita"], 1], 2.5, 1.5],
-          "circle-stroke-color": ["case", ["==", ["get", "is_revisita"], 1], "#F59E0B", "rgba(255,255,255,0.9)"],
-          "circle-opacity": 0.92,
+        layout: {
+          "icon-image": [
+            "match", ["get", "status"],
+            "A_VISTORIAR", "vm-pin-a_vistoriar",
+            "EM_VISTORIA",  "vm-pin-em_vistoria",
+            "VISTORIADO",   "vm-pin-vistoriado",
+            "REVISITA",     "vm-pin-revisita",
+            "REPROVADO",    "vm-pin-reprovado",
+            "vm-pin-default",
+          ],
+          "icon-anchor": "center",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 0.55, 14, 0.75, 18, 1],
         },
       });
 
@@ -835,11 +947,11 @@ export default function PainelMapaPage() {
                 <FiltroPill active={filtroSit === "todas"} label="Todas" n={data?.vistorias.length ?? 0} color="#111827" onClick={() => setFiltroSit("todas")} />
                 {(
                   [
-                    ["A_VISTORIAR", "A vistoriar", "#F59E0B"],
-                    ["EM_VISTORIA", "Em vistoria", "#60A5FA"],
+                    ["A_VISTORIAR", "A vistoriar", "#F97316"],
+                    ["EM_VISTORIA", "Em vistoria", "#3B82F6"],
                     ["VISTORIADO", "Vistoriado", "#00B388"],
-                    ["AGUARDANDO_REVISITA", "Ag. revisita", "#F97316"],
-                    ["EM_REVISITA", "Em revisita", "#C084FC"],
+                    ["AGUARDANDO_REVISITA", "Ag. revisita", "#F59E0B"],
+                    ["EM_REVISITA", "Em revisita", "#A855F7"],
                     ["REVISITADO", "Revisitado", "#38BDF8"],
                   ] as const
                 ).map(([key, label, cor]) => (
