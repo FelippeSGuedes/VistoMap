@@ -9,6 +9,7 @@
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { BundleVersion } from "@/components/BundleVersion";
 import {
   ArrowLeft,
   Award,
@@ -345,9 +346,7 @@ export default function PerfilPage() {
           Sair da conta
         </button>
 
-        <p className="text-center text-[10px] font-medium" style={{ color: "#A0ACBA" }}>
-          VistoMap · v0.1.0
-        </p>
+        <BundleVersion />
       </main>
 
       <BottomNav />
