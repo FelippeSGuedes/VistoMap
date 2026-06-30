@@ -113,21 +113,11 @@ function vistoriaColor(status: PainelMapaVistoria["status"]): string {
 
 /* ─── custom pin icons ────────────────────────────────────────────────────── */
 
-function lightenHex(hex: string, f: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  if (f >= 0) {
-    return `rgb(${Math.min(255, Math.round(r + (255 - r) * f))},${Math.min(255, Math.round(g + (255 - g) * f))},${Math.min(255, Math.round(b + (255 - b) * f))})`;
-  }
-  const d = 1 + f; // f negativo → escurece
-  return `rgb(${Math.max(0, Math.round(r * d))},${Math.max(0, Math.round(g * d))},${Math.max(0, Math.round(b * d))})`;
-}
-
 // Supersampling: renderiza grande e o Mapbox exibe no tamanho lógico → nitidez.
 const PIN_RATIO = 4;
 const PIN_SIZE = 30; // tamanho lógico em px
 
+// Conceito "anel/donut flat": anel colorido grosso, miolo branco, glifo na cor.
 function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: number; height: number; data: Uint8Array; pixelRatio: number } {
   const S = PIN_SIZE;
   const px = S * PIN_RATIO;
@@ -139,79 +129,56 @@ function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: 
 
   const cx = S / 2;
   const cy = S / 2;
-  const R = 8.5;          // raio do disco colorido
-  const RING = 2.2;       // espessura do anel branco
+  const R = 9;            // raio externo do anel colorido
+  const RING_W = 3.4;     // espessura do anel colorido
+  const HOLE = R - RING_W; // raio do miolo branco
 
-  // 1. Sombra suave (disco branco com shadow)
-  ctx.save();
-  ctx.shadowColor = "rgba(15,23,42,0.35)";
-  ctx.shadowBlur = 5;
-  ctx.shadowOffsetY = 1.8;
+  // 1. Halo externo translúcido (glow premium, bem sutil)
   ctx.beginPath();
-  ctx.arc(cx, cy, R + RING, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffffff";
+  ctx.arc(cx, cy, R + 3, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.12;
   ctx.fill();
-  ctx.restore();
-
-  // 2. Disco colorido com gradiente vertical (mais claro em cima)
-  const grad = ctx.createLinearGradient(cx, cy - R, cx, cy + R);
-  grad.addColorStop(0, lightenHex(color, 0.26));
-  grad.addColorStop(0.55, color);
-  grad.addColorStop(1, lightenHex(color, -0.14));
-  ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // 3. Brilho glossy no topo
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI * 2);
-  ctx.clip();
-  const gloss = ctx.createLinearGradient(cx, cy - R, cx, cy);
-  gloss.addColorStop(0, "rgba(255,255,255,0.40)");
-  gloss.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.beginPath();
-  ctx.ellipse(cx, cy - R * 0.34, R * 0.78, R * 0.52, 0, 0, Math.PI * 2);
-  ctx.fillStyle = gloss;
-  ctx.fill();
-  ctx.restore();
-
-  // 4. Aro interno sutil (contraste contra o branco)
-  ctx.beginPath();
-  ctx.arc(cx, cy, R - 0.4, 0, Math.PI * 2);
-  ctx.strokeStyle = lightenHex(color, -0.20);
-  ctx.lineWidth = 0.7;
-  ctx.globalAlpha = 0.35;
-  ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // 5. Símbolo interno branco
+  // 2. Disco colorido (base do anel) com sombra
+  ctx.save();
+  ctx.shadowColor = "rgba(15,23,42,0.30)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+
+  // 3. Miolo branco (cria o anel/donut)
+  ctx.beginPath();
+  ctx.arc(cx, cy, HOLE, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+
+  // 4. Glifo interno NA COR do status
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   if (inner === "check") {
+    // check = Vistoriado
     ctx.beginPath();
-    ctx.moveTo(cx - 3.4, cy + 0.3);
-    ctx.lineTo(cx - 1, cy + 2.9);
-    ctx.lineTo(cx + 4, cy - 3.2);
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2.1;
-    ctx.shadowColor = "rgba(0,0,0,0.18)";
-    ctx.shadowBlur = 1;
+    ctx.moveTo(cx - 2.6, cy + 0.2);
+    ctx.lineTo(cx - 0.7, cy + 2.2);
+    ctx.lineTo(cx + 3, cy - 2.4);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.9;
     ctx.stroke();
-  } else if (inner === "ring") {
+  } else if (inner === "dot") {
+    // ponto cheio = Em Vistoria (ativo)
     ctx.beginPath();
-    ctx.arc(cx, cy, 3.2, 0, Math.PI * 2);
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 2.7, 0, Math.PI * 2);
-    ctx.fillStyle = "#ffffff";
+    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
     ctx.fill();
   }
+  // inner === "ring" → miolo branco vazio = A Vistoriar (pendente)
   ctx.restore();
 
   const imgData = ctx.getImageData(0, 0, px, px);
