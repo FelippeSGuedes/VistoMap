@@ -100,17 +100,6 @@ function statusLabel(s: PainelMapaTecnico["status_operacional"]): string {
   return "Offline";
 }
 
-function vistoriaColor(status: PainelMapaVistoria["status"]): string {
-  switch (status) {
-    case "A_VISTORIAR": return "#F97316";
-    case "EM_VISTORIA":  return "#3B82F6";
-    case "VISTORIADO":   return "#00B388";
-    case "REVISITA":     return "#F59E0B";
-    case "REPROVADO":    return "#EF4444";
-    default:             return "#475569";
-  }
-}
-
 /* ─── custom pin icons ────────────────────────────────────────────────────── */
 
 // Supersampling: renderiza grande e o Mapbox exibe no tamanho lógico → nitidez.
@@ -185,13 +174,15 @@ function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: 
   return { width: px, height: px, data: new Uint8Array(imgData.data.buffer), pixelRatio: PIN_RATIO };
 }
 
+// Pins por SITUAÇÃO operacional (não por status de aprovação).
 const PIN_DEFS = [
-  { name: "vm-pin-a_vistoriar", color: "#F97316", inner: "ring"  as const },
-  { name: "vm-pin-em_vistoria", color: "#3B82F6", inner: "dot"   as const },
-  { name: "vm-pin-vistoriado",  color: "#00B388", inner: "check" as const },
-  { name: "vm-pin-revisita",    color: "#F59E0B", inner: "ring"  as const },
-  { name: "vm-pin-reprovado",   color: "#EF4444", inner: "dot"   as const },
-  { name: "vm-pin-default",     color: "#475569", inner: "dot"   as const },
+  { name: "vm-pin-a_vistoriar",         color: "#F97316", inner: "ring"  as const },
+  { name: "vm-pin-em_vistoria",         color: "#3B82F6", inner: "dot"   as const },
+  { name: "vm-pin-vistoriado",          color: "#00B388", inner: "check" as const },
+  { name: "vm-pin-aguardando_revisita", color: "#F59E0B", inner: "ring"  as const },
+  { name: "vm-pin-em_revisita",         color: "#A855F7", inner: "dot"   as const },
+  { name: "vm-pin-revisitado",          color: "#0EA5E9", inner: "check" as const },
+  { name: "vm-pin-default",             color: "#475569", inner: "dot"   as const },
 ] as const;
 
 function registerVistoriaPins(map: mapboxgl.Map) {
@@ -213,8 +204,8 @@ function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
       type: "Feature" as const,
       properties: {
         id: v.id,
-        status: v.status,
-        color: vistoriaColor(v.status),
+        situacao: v.situacao,
+        color: SITUACAO_COR[v.situacao] ?? "#475569",
         is_revisita: v.is_revisita ? 1 : 0,
         equipamento: v.equipamento,
       },
@@ -618,12 +609,13 @@ export default function PainelMapaPage() {
         source: VISTORIAS_SRC,
         layout: {
           "icon-image": [
-            "match", ["get", "status"],
-            "A_VISTORIAR", "vm-pin-a_vistoriar",
-            "EM_VISTORIA",  "vm-pin-em_vistoria",
-            "VISTORIADO",   "vm-pin-vistoriado",
-            "REVISITA",     "vm-pin-revisita",
-            "REPROVADO",    "vm-pin-reprovado",
+            "match", ["get", "situacao"],
+            "A_VISTORIAR",         "vm-pin-a_vistoriar",
+            "EM_VISTORIA",         "vm-pin-em_vistoria",
+            "VISTORIADO",          "vm-pin-vistoriado",
+            "AGUARDANDO_REVISITA", "vm-pin-aguardando_revisita",
+            "EM_REVISITA",         "vm-pin-em_revisita",
+            "REVISITADO",          "vm-pin-revisitado",
             "vm-pin-default",
           ],
           "icon-anchor": "center",
@@ -963,7 +955,7 @@ export default function PainelMapaPage() {
             {/* Lista */}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
               <div className="space-y-1">
-                {vistoriasFiltradas.slice(0, 200).map((v) => {
+                {vistoriasFiltradas.map((v) => {
                   const cor = SITUACAO_COR[v.situacao] ?? "#475569";
                   return (
                     <div
