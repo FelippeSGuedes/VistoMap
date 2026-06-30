@@ -5,6 +5,12 @@ on:
     branches:
       - main
 
+# Serializa TODO workflow que roda no runner gioc: nunca dois em paralelo
+# (dois builds Next.js concorrentes estouravam a RAM e o deploy falhava).
+concurrency:
+  group: gioc-runner
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy on company server

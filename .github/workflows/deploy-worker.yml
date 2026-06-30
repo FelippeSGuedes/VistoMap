@@ -9,6 +9,11 @@ on:
       - 'worker/template.html'
       - 'worker/style.css'
 
+# Mesmo grupo do ci.yml: serializa no runner gioc.
+concurrency:
+  group: gioc-runner
+  cancel-in-progress: false
+
 jobs:
   deploy-worker:
     name: Deploy worker PDF generator

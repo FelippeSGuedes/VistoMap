@@ -14,6 +14,11 @@ on:
       - 'package.json'
   workflow_dispatch:
 
+# Mesmo grupo do ci.yml: enfileira atrás do deploy em vez de rodar junto.
+concurrency:
+  group: gioc-runner
+  cancel-in-progress: false
+
 jobs:
   publish-ota:
     name: Build e publica bundle OTA
