@@ -124,7 +124,7 @@ function lightenHex(hex: string, f: number): string {
   return `rgb(${Math.max(0, Math.round(r * d))},${Math.max(0, Math.round(g * d))},${Math.max(0, Math.round(b * d))})`;
 }
 
-function makePinImage(color: string, inner: "dot" | "ring" | "check"): ImageData {
+function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: number; height: number; data: Uint8Array } {
   const S = 28;
   const cx = S / 2, cy = S / 2;
   const MAIN_R = 9;
@@ -192,7 +192,9 @@ function makePinImage(color: string, inner: "dot" | "ring" | "check"): ImageData
   }
   ctx.restore();
 
-  return ctx.getImageData(0, 0, S, S);
+  // Retorna no formato explícito que o Mapbox GL aceita em todas as versões
+  const imgData = ctx.getImageData(0, 0, S, S);
+  return { width: S, height: S, data: new Uint8Array(imgData.data.buffer) };
 }
 
 const PIN_DEFS = [
@@ -207,7 +209,11 @@ const PIN_DEFS = [
 function registerVistoriaPins(map: mapboxgl.Map) {
   for (const p of PIN_DEFS) {
     if (!map.hasImage(p.name)) {
-      map.addImage(p.name, makePinImage(p.color, p.inner), { sdf: false });
+      try {
+        map.addImage(p.name, makePinImage(p.color, p.inner));
+      } catch (e) {
+        console.warn("[vm] addImage failed for", p.name, e);
+      }
     }
   }
 }
