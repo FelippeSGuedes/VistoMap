@@ -72,6 +72,17 @@ function initials(nome: string): string {
 
 const ACCENT = "#00D084";
 
+// Tema para os mapas dos widgets (JS, fora do CSS var).
+function dashDark(): boolean {
+  return typeof window !== "undefined" && localStorage.getItem("vm_painel_theme") === "dark";
+}
+function dashMapStyle(lightStyle: string): string {
+  return dashDark() ? "mapbox://styles/mapbox/dark-v11" : lightStyle;
+}
+function dashMapBg(): string {
+  return dashDark() ? "#151B24" : "#ffffff";
+}
+
 const STATUS_DOT: Record<TecnicoAtivo["status"], string> = {
   "em-campo":  "#10B981",
   "base":      "#6366F1",
@@ -291,7 +302,7 @@ function VelocityChart({
             x2={VB_W - padX}
             y1={padTop + plotH * t}
             y2={padTop + plotH * t}
-            stroke="rgba(6,59,59,0.06)"
+            stroke="var(--vm-border-soft)"
             strokeWidth="1"
             vectorEffect="non-scaling-stroke"
           />
@@ -518,7 +529,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
 
     map.on("load", async () => {
       map.resize();
-      map.addLayer({ id: "vm-sp-bg", type: "background", paint: { "background-color": "#ffffff" } });
+      map.addLayer({ id: "vm-sp-bg", type: "background", paint: { "background-color": dashMapBg() } });
       try {
         const res = await fetch(SP_GEOJSON_URL);
         const geoJSON = await res.json();
@@ -745,7 +756,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
+      style: dashMapStyle("mapbox://styles/mapbox/light-v11"),
       center: [-47.0626, -22.9064],
       zoom: 9,
       interactive: false,
@@ -898,7 +909,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
 
     map.on("load", async () => {
       map.resize();
-      map.addLayer({ id: "vm-muni-bg", type: "background", paint: { "background-color": "#ffffff" } });
+      map.addLayer({ id: "vm-muni-bg", type: "background", paint: { "background-color": dashMapBg() } });
       try {
         const res = await fetch(SP_GEOJSON_URL);
         const geoJSON = await res.json() as {
@@ -1119,7 +1130,7 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
     mapboxgl.accessToken = token;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
+      style: dashMapStyle("mapbox://styles/mapbox/light-v11"),
       center: [-48.5, -22.0] as [number, number],
       zoom: 5.6,
       interactive: false,
@@ -1396,7 +1407,7 @@ export default function PainelOverviewPage() {
             <span style={{ fontSize: "1.05rem", fontWeight: 600, color: "#fff", fontFamily: "monospace", letterSpacing: "0.04em" }}>
               {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>
-            <Link href="/painel/vistorias" style={{ display: "flex", alignItems: "center", gap: 6, background: "#00ff88", color: "#050505", fontWeight: 700, fontSize: "0.83rem", borderRadius: 8, padding: "8px 20px", textDecoration: "none" }}>
+            <Link href="/painel/vistorias" style={{ display: "flex", alignItems: "center", gap: 6, background: "#00ff88", color: "var(--vm-text)", fontWeight: 700, fontSize: "0.83rem", borderRadius: 8, padding: "8px 20px", textDecoration: "none" }}>
               <UserPlus style={{ width: 13, height: 13 }} />Atribuir
             </Link>
           </div>
@@ -1435,7 +1446,7 @@ export default function PainelOverviewPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <Link
                   href="/painel/vistorias"
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#00ff88", color: "#050505", fontWeight: 700, fontSize: "0.88rem", borderRadius: 8, padding: "14px 20px", textDecoration: "none", transition: "transform 0.2s ease" }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#00ff88", color: "var(--vm-text)", fontWeight: 700, fontSize: "0.88rem", borderRadius: 8, padding: "14px 20px", textDecoration: "none", transition: "transform 0.2s ease" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(4px)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(0)"; }}
                 >
@@ -1576,7 +1587,7 @@ export default function PainelOverviewPage() {
                   )
                 )}
               </div>
-              <div className="mt-1.5 flex items-center gap-2" style={{ fontSize: "0.8rem", color: "#9ca3af" }}>
+              <div className="mt-1.5 flex items-center gap-2" style={{ fontSize: "0.8rem", color: "var(--vm-faint)" }}>
                 <span>vistorias na fila</span>
                 <span className="text-[#D1D5DB]">·</span>
                 <span>vs. período anterior</span>
@@ -1725,7 +1736,7 @@ export default function PainelOverviewPage() {
                       {t.kmPercorrido != null && t.kmPercorrido > 0 && (
                         <span
                           className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "rgba(100,116,139,0.12)", color: "#475569" }}
+                          style={{ background: "rgba(100,116,139,0.12)", color: "var(--vm-text-soft)" }}
                           title="Distância percorrida no período"
                         >
                           {t.kmPercorrido.toFixed(1).replace(".", ",")} km
@@ -1811,7 +1822,7 @@ export default function PainelOverviewPage() {
       {/* ════════════ RODAPÉ — barra de status NOC ════════════ */}
       <div
         className="vm-rise flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-5 py-3 text-[11px] text-[var(--vm-muted)]"
-        style={{ background: "#F8FAFC", border: "1px solid var(--vm-border)", animationDelay: "0.24s" }}
+        style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)", animationDelay: "0.24s" }}
       >
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">

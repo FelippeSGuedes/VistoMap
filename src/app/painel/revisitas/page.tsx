@@ -88,7 +88,7 @@ function RevisitaCard({
       exit={{ opacity: 0, y: -8, scale: 0.98 }}
       className="relative overflow-hidden rounded-[20px] transition-shadow"
       style={{
-        background: "#fff",
+        background: "var(--vm-card)",
         border: `1.5px solid ${pri.border}`,
         boxShadow: `0 2px 8px rgba(6,59,59,0.04), 0 0 0 1px rgba(6,59,59,0.01)`,
       }}
@@ -114,7 +114,7 @@ function RevisitaCard({
             {isCritica && (
               <span
                 className="inline-flex items-center gap-1 rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-[0.12em]"
-                style={{ background: "#FEF2F2", color: "#B91C1C" }}
+                style={{ background: "var(--vm-red-tint)", color: "#B91C1C" }}
               >
                 <Zap className="h-2 w-2" />
                 Urgente
@@ -131,7 +131,7 @@ function RevisitaCard({
           </h3>
 
           {/* Meta */}
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: "#7A8896" }}>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: "var(--vm-muted)" }}>
             <span className="flex items-center gap-1">
               <MapPin className="h-3 w-3" />
               {r.municipio}
@@ -170,9 +170,9 @@ function RevisitaCard({
                 className="flex h-9 w-9 items-center justify-center rounded-xl"
                 style={{ background: "var(--vm-tile-3)", border: "1.5px dashed #CBD5E1" }}
               >
-                <UserPlus className="h-4 w-4" style={{ color: "#94A3B8" }} strokeWidth={1.8} />
+                <UserPlus className="h-4 w-4" style={{ color: "var(--vm-faint)" }} strokeWidth={1.8} />
               </span>
-              <span className="text-[9.5px] font-medium" style={{ color: "#94A3B8" }}>Atribuir</span>
+              <span className="text-[9.5px] font-medium" style={{ color: "var(--vm-faint)" }}>Atribuir</span>
             </button>
           )}
         </div>
@@ -208,7 +208,7 @@ function RevisitaCard({
             );
           })()}
         </div>
-        <p className="text-[12.5px] font-medium leading-snug" style={{ color: "#1E293B" }}>
+        <p className="text-[12.5px] font-medium leading-snug" style={{ color: "var(--vm-text)" }}>
           {r.motivoReprovacao || "Não informado"}
         </p>
       </div>
@@ -221,13 +221,13 @@ function RevisitaCard({
             PDF anterior disponível
           </span>
         ) : (
-          <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "#94A3B8" }}>
+          <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--vm-faint)" }}>
             <FileText className="h-3.5 w-3.5" strokeWidth={2} />
             Sem PDF anterior
           </span>
         )}
         {r.reprovadoPor && (
-          <span className="flex items-center gap-1 text-[11px]" style={{ color: "#7A8896" }}>
+          <span className="flex items-center gap-1 text-[11px]" style={{ color: "var(--vm-muted)" }}>
             <UserCheck className="h-3 w-3" />
             por {r.reprovadoPor}
           </span>
@@ -262,7 +262,7 @@ function RevisitaCard({
           onClick={onRegerar}
           disabled={submitting}
           className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
-          style={{ background: "#F0FDFA", color: "#0F766E", border: "1px solid rgba(15,118,110,0.18)" }}
+          style={{ background: "var(--vm-teal-tint)", color: "#0F766E", border: "1px solid rgba(15,118,110,0.18)" }}
         >
           <RefreshCcw className={`h-3 w-3 ${submitting ? "animate-spin" : ""}`} strokeWidth={2.2} />
           Regenerar Projeto
@@ -409,7 +409,7 @@ export default function RevisitasPage() {
           <div className="mb-1 flex items-center gap-2">
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-[0.18em]"
-              style={{ background: "#FEF2F2", color: "#B91C1C", border: "1px solid rgba(239,68,68,0.2)" }}
+              style={{ background: "var(--vm-red-tint)", color: "#B91C1C", border: "1px solid rgba(239,68,68,0.2)" }}
             >
               <AlertTriangle className="h-2.5 w-2.5" />
               Tratamento operacional
@@ -432,12 +432,12 @@ export default function RevisitasPage() {
               urgentes
             </span>
           </div>
-          <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
+          <div className="h-10 w-px" style={{ background: "var(--vm-border)" }} />
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "var(--vm-ink)" }}>
               {lista.length}
             </span>
-            <span className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>
               total
             </span>
           </div>
@@ -447,7 +447,7 @@ export default function RevisitasPage() {
       {/* BARRA DE BUSCA */}
       <div
         className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
-        style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.06)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}
+        style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border-soft)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}
       >
         <Search className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
         <input
@@ -465,7 +465,7 @@ export default function RevisitasPage() {
         )}
         <span
           className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-bold uppercase tracking-[0.1em]"
-          style={{ background: "#FFF7ED", color: "#C2410C" }}
+          style={{ background: "var(--vm-orange-tint)", color: "#C2410C" }}
         >
           <RotateCw className="h-2.5 w-2.5" /> {filtrada.length}
         </span>
@@ -479,13 +479,13 @@ export default function RevisitasPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex flex-col items-center justify-center rounded-[20px] py-16"
-            style={{ background: "#fff", border: "1px solid var(--vm-border-soft)" }}
+            style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border-soft)" }}
           >
             <Sparkles className="mb-3 h-8 w-8" style={{ color: "#00B388" }} strokeWidth={1.5} />
             <p className="text-[14px] font-semibold" style={{ color: "var(--vm-ink)" }}>
               {query ? "Nenhuma revisita encontrada" : "Operação em dia"}
             </p>
-            <p className="mt-1 text-[12px]" style={{ color: "#94A3B8" }}>
+            <p className="mt-1 text-[12px]" style={{ color: "var(--vm-faint)" }}>
               {query ? "Tente outro termo de busca." : "Nenhuma revisita pendente no momento."}
             </p>
           </motion.div>
@@ -523,7 +523,7 @@ export default function RevisitasPage() {
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               onClick={(e) => e.stopPropagation()}
               className="w-full max-w-[420px] overflow-hidden rounded-[24px]"
-              style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.08)", boxShadow: "0 24px 60px rgba(6,59,59,0.2)" }}
+              style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", boxShadow: "0 24px 60px rgba(6,59,59,0.2)" }}
             >
               <header className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: "var(--vm-border-soft)" }}>
                 <div>
@@ -533,11 +533,11 @@ export default function RevisitasPage() {
                   <h3 className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]" style={{ color: "var(--vm-ink)" }}>
                     {atribuirOpen.equipamento}
                   </h3>
-                  <p className="text-[11px]" style={{ color: "#7A8896" }}>
+                  <p className="text-[11px]" style={{ color: "var(--vm-muted)" }}>
                     {atribuirOpen.municipio} · {atribuirOpen.glpiId}
                   </p>
                 </div>
-                <button type="button" onClick={() => setAtribuirOpen(null)} className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-black/5" style={{ color: "#7A8896" }}>
+                <button type="button" onClick={() => setAtribuirOpen(null)} className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-black/5" style={{ color: "var(--vm-muted)" }}>
                   <X className="h-4 w-4" />
                 </button>
               </header>
@@ -561,14 +561,14 @@ export default function RevisitasPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[12.5px] font-semibold" style={{ color: "var(--vm-ink)" }}>{t.nome}</p>
-                        <p className="text-[10px]" style={{ color: "#7A8896" }}>{t.municipio ?? "—"} · {t.atribuidas} atrib</p>
+                        <p className="text-[10px]" style={{ color: "var(--vm-muted)" }}>{t.municipio ?? "—"} · {t.atribuidas} atrib</p>
                       </div>
                       <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint-b)" }} />
                     </button>
                   );
                 })}
                 {tecnicos.filter((t) => t.status !== "offline").length === 0 && (
-                  <p className="px-2 py-4 text-center text-[12px]" style={{ color: "#94A3B8" }}>Nenhum técnico disponível no momento.</p>
+                  <p className="px-2 py-4 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>Nenhum técnico disponível no momento.</p>
                 )}
               </div>
             </motion.div>
@@ -599,7 +599,7 @@ export default function RevisitasPage() {
             animate={{ opacity: 1, y: 0, x: "-50%" }}
             exit={{ opacity: 0, y: 8 }}
             className="fixed bottom-8 left-1/2 z-[210] flex items-center gap-2 rounded-2xl px-4 py-2.5"
-            style={{ background: "#fff", border: "1px solid rgba(0,179,136,0.28)", boxShadow: "0 12px 32px rgba(0,179,136,0.16), 0 4px 12px rgba(6,59,59,0.08)" }}
+            style={{ background: "var(--vm-card)", border: "1px solid rgba(0,179,136,0.28)", boxShadow: "0 12px 32px rgba(0,179,136,0.16), 0 4px 12px var(--vm-border)" }}
           >
             <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: "#00B388" }} />
             <span className="text-[12.5px] font-medium" style={{ color: "var(--vm-ink)" }}>{toast}</span>

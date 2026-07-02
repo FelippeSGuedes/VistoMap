@@ -145,7 +145,7 @@ function EquipamentoRow({
       ) : (
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: C.iconBg, color: "#CBD5E1" }}
+          style={{ background: C.iconBg, color: "var(--vm-faint)" }}
         >
           <UserPlus className="h-4 w-4" strokeWidth={2} />
         </span>
@@ -318,7 +318,7 @@ function MunicipioCard({
       <div className="px-4 pt-3">
         <div
           className="h-1.5 w-full overflow-hidden rounded-full"
-          style={{ background: "rgba(6,59,59,0.06)" }}
+          style={{ background: "var(--vm-border-soft)" }}
         >
           <div
             className="h-full rounded-full transition-all duration-500"
@@ -616,7 +616,7 @@ function AtribuirDrawer({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[300]"
-            style={{ background: "rgba(6,59,59,0.08)", backdropFilter: "blur(4px)" }}
+            style={{ background: "var(--vm-border)", backdropFilter: "blur(4px)" }}
             onClick={onClose}
           />
           <motion.div
@@ -1286,7 +1286,7 @@ export default function FilaVistoriasPage() {
                 className="h-8 rounded-xl px-2.5 text-[12px] font-medium outline-none"
                 style={{
                   background: filtroMunicipio ? "rgba(0,179,136,0.08)" : "#F8FAFC",
-                  border: filtroMunicipio ? `1px solid ${C.brandLine}` : "1px solid rgba(6,59,59,0.08)",
+                  border: filtroMunicipio ? `1px solid ${C.brandLine}` : "1px solid var(--vm-border)",
                   color: filtroMunicipio ? C.brandDeep : "var(--vm-muted-b)",
                 }}
               >
@@ -1304,7 +1304,7 @@ export default function FilaVistoriasPage() {
                 className="h-8 rounded-xl px-2.5 text-[12px] font-medium outline-none"
                 style={{
                   background: filtroTecnico ? "rgba(0,179,136,0.08)" : "#F8FAFC",
-                  border: filtroTecnico ? `1px solid ${C.brandLine}` : "1px solid rgba(6,59,59,0.08)",
+                  border: filtroTecnico ? `1px solid ${C.brandLine}` : "1px solid var(--vm-border)",
                   color: filtroTecnico ? C.brandDeep : "var(--vm-muted-b)",
                 }}
               >
@@ -1318,7 +1318,7 @@ export default function FilaVistoriasPage() {
 
               <div
                 className="flex overflow-hidden rounded-xl"
-                style={{ border: "1px solid rgba(6,59,59,0.08)" }}
+                style={{ border: "1px solid var(--vm-border)" }}
               >
                 {(["todos", "nova", "revisita"] as FiltroTipo[]).map((v) => (
                   <button
@@ -1345,7 +1345,7 @@ export default function FilaVistoriasPage() {
                   border:
                     filtroAtrib === "sem"
                       ? `1px solid ${C.brandLine}`
-                      : "1px solid rgba(6,59,59,0.08)",
+                      : "1px solid var(--vm-border)",
                   color: filtroAtrib === "sem" ? C.brandDeep : "var(--vm-muted-b)",
                 }}
               >

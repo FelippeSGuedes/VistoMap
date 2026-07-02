@@ -223,7 +223,7 @@ const PIN_DEFS = [
   { name: "vm-pin-aguardando_revisita", color: "#F59E0B", inner: "ring"  as const },
   { name: "vm-pin-em_revisita",         color: "#A855F7", inner: "dot"   as const },
   { name: "vm-pin-revisitado",          color: "#0EA5E9", inner: "check" as const },
-  { name: "vm-pin-default",             color: "#475569", inner: "dot"   as const },
+  { name: "vm-pin-default",             color: "var(--vm-text-soft)", inner: "dot"   as const },
 ] as const;
 
 function registerVistoriaPins(map: mapboxgl.Map) {
@@ -1588,7 +1588,7 @@ function KpiChip({
     <div
       className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5"
       style={{
-        background: "rgba(255,255,255,0.96)",
+        background: "var(--vm-glass)",
         backdropFilter: "blur(12px)",
         border: "1px solid rgba(0,179,136,0.18)",
         boxShadow: "0 2px 8px rgba(0,0,0,0.08)",

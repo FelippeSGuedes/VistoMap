@@ -89,19 +89,19 @@ export default function HistoricoPainelPage() {
           </p>
           <h1
             className="mt-1 text-[28px] font-semibold tracking-[-0.5px]"
-            style={{ color: "#063B3B" }}
+            style={{ color: "var(--vm-ink)" }}
           >
             Histórico Operacional
           </h1>
-          <p className="mt-0.5 text-[12.5px]" style={{ color: "#566773" }}>
+          <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--vm-muted-b)" }}>
             Indicadores agregados, séries temporais e produtividade da equipe.
           </p>
         </div>
         <div
           className="flex items-center gap-1 rounded-2xl p-1"
           style={{
-            background: "#fff",
-            border: "1px solid rgba(6,59,59,0.06)",
+            background: "var(--vm-card)",
+            border: "1px solid var(--vm-border-soft)",
             boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
           }}
         >
@@ -190,10 +190,10 @@ export default function HistoricoPainelPage() {
           animate={{ opacity: 1, y: 0 }}
           className="col-span-8 overflow-hidden rounded-[20px] p-5"
           style={{
-            background: "#fff",
+            background: "var(--vm-card)",
             border: "1px solid rgba(6,59,59,0.05)",
             boxShadow:
-              "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.06)",
+              "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px var(--vm-border-soft)",
           }}
         >
           <div className="flex items-start justify-between">
@@ -206,7 +206,7 @@ export default function HistoricoPainelPage() {
               </p>
               <h3
                 className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]"
-                style={{ color: "#063B3B" }}
+                style={{ color: "var(--vm-ink)" }}
               >
                 Volume operacional · últimos {dias} dias
               </h3>
@@ -240,10 +240,10 @@ export default function HistoricoPainelPage() {
           <div
             className="rounded-[20px] p-4"
             style={{
-              background: "#fff",
+              background: "var(--vm-card)",
               border: "1px solid rgba(6,59,59,0.05)",
               boxShadow:
-                "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.06)",
+                "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px var(--vm-border-soft)",
             }}
           >
             <p
@@ -265,10 +265,10 @@ export default function HistoricoPainelPage() {
           <div
             className="rounded-[20px] p-4"
             style={{
-              background: "#fff",
+              background: "var(--vm-card)",
               border: "1px solid rgba(6,59,59,0.05)",
               boxShadow:
-                "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.06)",
+                "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px var(--vm-border-soft)",
             }}
           >
             <p
@@ -297,10 +297,10 @@ export default function HistoricoPainelPage() {
           animate={{ opacity: 1, y: 0 }}
           className="col-span-4 overflow-hidden rounded-[20px] p-5"
           style={{
-            background: "#fff",
+            background: "var(--vm-card)",
             border: "1px solid rgba(6,59,59,0.05)",
             boxShadow:
-              "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.06)",
+              "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px var(--vm-border-soft)",
           }}
         >
           <p
@@ -311,7 +311,7 @@ export default function HistoricoPainelPage() {
           </p>
           <h3
             className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]"
-            style={{ color: "#063B3B" }}
+            style={{ color: "var(--vm-ink)" }}
           >
             Distribuição
           </h3>
@@ -361,7 +361,7 @@ export default function HistoricoPainelPage() {
             </p>
             <h3
               className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]"
-              style={{ color: "#063B3B" }}
+              style={{ color: "var(--vm-ink)" }}
             >
               Média operacional
             </h3>
@@ -374,18 +374,18 @@ export default function HistoricoPainelPage() {
               >
                 {data?.medias.diariaVistorias ?? "—"}
               </p>
-              <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#566773" }}>
+              <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--vm-muted-b)" }}>
                 Vistorias / dia
               </p>
             </div>
             <div>
               <p
                 className="text-[40px] font-semibold leading-none tracking-[-0.8px] tabular-nums"
-                style={{ color: "#063B3B" }}
+                style={{ color: "var(--vm-ink)" }}
               >
                 {data?.medias.semanalVistorias ?? "—"}
               </p>
-              <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#566773" }}>
+              <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--vm-muted-b)" }}>
                 Vistorias / semana
               </p>
             </div>
@@ -403,10 +403,10 @@ export default function HistoricoPainelPage() {
           transition={{ delay: 0.08 }}
           className="col-span-4 overflow-hidden rounded-[20px] p-5"
           style={{
-            background: "#fff",
+            background: "var(--vm-card)",
             border: "1px solid rgba(6,59,59,0.05)",
             boxShadow:
-              "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.06)",
+              "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px var(--vm-border-soft)",
           }}
         >
           <p
@@ -417,7 +417,7 @@ export default function HistoricoPainelPage() {
           </p>
           <h3
             className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]"
-            style={{ color: "#063B3B" }}
+            style={{ color: "var(--vm-ink)" }}
           >
             Top {data?.topMunicipios.length ?? 0}
           </h3>
@@ -442,10 +442,10 @@ export default function HistoricoPainelPage() {
         animate={{ opacity: 1, y: 0 }}
         className="overflow-hidden rounded-[20px] p-5"
         style={{
-          background: "#fff",
+          background: "var(--vm-card)",
           border: "1px solid rgba(6,59,59,0.05)",
           boxShadow:
-            "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.06)",
+            "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px var(--vm-border-soft)",
         }}
       >
         <div className="flex items-start justify-between">
@@ -458,11 +458,11 @@ export default function HistoricoPainelPage() {
             </p>
             <h3
               className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]"
-              style={{ color: "#063B3B" }}
+              style={{ color: "var(--vm-ink)" }}
             >
               Categorização automática · {(data?.motivosReprovacao ?? []).reduce((a, m) => a + m.total, 0)} casos
             </h3>
-            <p className="mt-0.5 text-[11px]" style={{ color: "#7A8896" }}>
+            <p className="mt-0.5 text-[11px]" style={{ color: "var(--vm-muted)" }}>
               Motivos brutos do GIOC agrupados por padrão semântico (poste, antena, aterramento, etc).
             </p>
           </div>
@@ -472,7 +472,7 @@ export default function HistoricoPainelPage() {
         </div>
 
         {(data?.motivosReprovacao ?? []).length === 0 ? (
-          <p className="mt-6 py-6 text-center text-[12px]" style={{ color: "#94A3B8" }}>
+          <p className="mt-6 py-6 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>
             Sem reprovações classificáveis no período.
           </p>
         ) : (
@@ -492,7 +492,7 @@ export default function HistoricoPainelPage() {
                       />
                       <span
                         className="truncate text-[12.5px] font-semibold tracking-tight"
-                        style={{ color: "#063B3B" }}
+                        style={{ color: "var(--vm-ink)" }}
                       >
                         {m.label}
                       </span>
@@ -504,7 +504,7 @@ export default function HistoricoPainelPage() {
                       >
                         {m.pct.toFixed(1).replace(".", ",")}%
                       </span>
-                      <span className="text-[10.5px]" style={{ color: "#94A3B8" }}>
+                      <span className="text-[10.5px]" style={{ color: "var(--vm-faint)" }}>
                         {m.total} {m.total === 1 ? "caso" : "casos"}
                       </span>
                     </div>
@@ -527,7 +527,7 @@ export default function HistoricoPainelPage() {
                   {m.exemplos.length > 0 && (
                     <p
                       className="mt-1 truncate text-[10px] italic opacity-70"
-                      style={{ color: "#7A8896" }}
+                      style={{ color: "var(--vm-muted)" }}
                       title={m.exemplos.join(" · ")}
                     >
                       ex: "{m.exemplos[0]}"{m.exemplos.length > 1 ? ` · +${m.exemplos.length - 1}` : ""}
@@ -563,7 +563,7 @@ export default function HistoricoPainelPage() {
                     </p>
                     <p
                       className="mt-0.5 text-[11.5px]"
-                      style={{ color: "#566773" }}
+                      style={{ color: "var(--vm-muted-b)" }}
                     >
                       Responde por{" "}
                       <span className="font-semibold tabular-nums">
@@ -578,26 +578,26 @@ export default function HistoricoPainelPage() {
               <div
                 className="rounded-[14px] p-4"
                 style={{
-                  background: "#F7F9FB",
+                  background: "var(--vm-tile)",
                   border: "1px solid rgba(6,59,59,0.05)",
                 }}
               >
                 <p
                   className="text-[9.5px] font-bold uppercase tracking-[0.18em]"
-                  style={{ color: "#7A8896" }}
+                  style={{ color: "var(--vm-muted)" }}
                 >
                   Como funciona
                 </p>
-                <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "#566773" }}>
+                <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--vm-muted-b)" }}>
                   Textos livres de motivos (ex: "altura do poste errada",
                   "PSPOSTE incorreto") são normalizados (sem acento/caixa) e
                   classificados por palavras-chave em{" "}
-                  <span className="font-semibold" style={{ color: "#063B3B" }}>
+                  <span className="font-semibold" style={{ color: "var(--vm-ink)" }}>
                     10 categorias operacionais
                   </span>
                   . Variações da mesma raiz caem na mesma categoria.
                 </p>
-                <p className="mt-2 text-[10.5px]" style={{ color: "#7A8896" }}>
+                <p className="mt-2 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
                   Não classificáveis vão para "Outros".
                 </p>
               </div>
@@ -612,10 +612,10 @@ export default function HistoricoPainelPage() {
         animate={{ opacity: 1, y: 0 }}
         className="overflow-hidden rounded-[20px] p-5"
         style={{
-          background: "#fff",
+          background: "var(--vm-card)",
           border: "1px solid rgba(6,59,59,0.05)",
           boxShadow:
-            "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.06)",
+            "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px var(--vm-border-soft)",
         }}
       >
         <div className="flex items-start justify-between">
@@ -628,7 +628,7 @@ export default function HistoricoPainelPage() {
             </p>
             <h3
               className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]"
-              style={{ color: "#063B3B" }}
+              style={{ color: "var(--vm-ink)" }}
             >
               Produtividade dos técnicos
             </h3>
@@ -641,7 +641,7 @@ export default function HistoricoPainelPage() {
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>
-              <tr style={{ color: "#7A8896" }}>
+              <tr style={{ color: "var(--vm-muted)" }}>
                 <th className="px-2 py-1.5 text-left text-[9.5px] font-bold uppercase tracking-[0.14em]">#</th>
                 <th className="px-2 py-1.5 text-left text-[9.5px] font-bold uppercase tracking-[0.14em]">Técnico</th>
                 <th className="px-2 py-1.5 text-right text-[9.5px] font-bold uppercase tracking-[0.14em]">Total</th>
@@ -691,12 +691,12 @@ export default function HistoricoPainelPage() {
                             .join("")
                             .toUpperCase()}
                         </span>
-                        <span className="font-semibold" style={{ color: "#063B3B" }}>
+                        <span className="font-semibold" style={{ color: "var(--vm-ink)" }}>
                           {t.nome}
                         </span>
                       </div>
                     </td>
-                    <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: "#063B3B" }}>
+                    <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: "var(--vm-ink)" }}>
                       {t.total}
                     </td>
                     <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: "#00875F" }}>
@@ -773,7 +773,7 @@ function KpiCard({
       animate={{ opacity: 1, y: 0 }}
       className="relative overflow-hidden rounded-[18px] p-3.5"
       style={{
-        background: "#fff",
+        background: "var(--vm-card)",
         border: "1px solid rgba(6,59,59,0.05)",
         boxShadow:
           "0 1px 3px rgba(6,59,59,0.04), 0 8px 22px rgba(6,59,59,0.07)",
@@ -797,11 +797,11 @@ function KpiCard({
       </p>
       <div
         className="relative mt-0.5 text-[22px] font-semibold leading-none tracking-[-0.4px] tabular-nums"
-        style={{ color: "#063B3B" }}
+        style={{ color: "var(--vm-ink)" }}
       >
         {loading ? "—" : (value ?? 0)}
         {suffix && !loading && (
-          <span className="text-[12px] font-medium ml-0.5" style={{ color: "#7A8896" }}>
+          <span className="text-[12px] font-medium ml-0.5" style={{ color: "var(--vm-muted)" }}>
             {suffix}
           </span>
         )}
@@ -812,7 +812,7 @@ function KpiCard({
 
 function Legend({ color, label }: { color: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "#566773" }}>
+    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "var(--vm-muted-b)" }}>
       <span
         className="h-2 w-2 rounded-full"
         style={{ background: color, boxShadow: `0 0 6px ${color}aa` }}

@@ -150,14 +150,14 @@ function EventoItem({ entry, isLast }: { entry: AuditEntry; isLast: boolean }) {
           <span className="text-[12.5px] font-semibold" style={{ color: "var(--vm-ink)" }}>
             {entry.ator.nome}
           </span>
-          <span className="text-[11.5px]" style={{ color: "#7A8896" }}>
+          <span className="text-[11.5px]" style={{ color: "var(--vm-muted)" }}>
             {entry.ator.role === "admin" ? "Admin" : "Técnico"}
           </span>
         </div>
 
         {/* Alvo / descrição */}
         {(entry.alvo || entry.descricao) && (
-          <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: "#475569" }}>
+          <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: "var(--vm-text-soft)" }}>
             {entry.alvo && (
               <span className="font-medium" style={{ color: "var(--vm-ink)" }}>
                 {entry.alvo.label}
@@ -186,12 +186,12 @@ function DiaSeparador({ label, count }: { label: string; count: number }) {
       <div className="h-px flex-1" style={{ background: "rgba(6,59,59,0.07)" }} />
       <span
         className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
-        style={{ background: "var(--vm-tile-3)", color: "#64748B" }}
+        style={{ background: "var(--vm-tile-3)", color: "var(--vm-muted)" }}
       >
         {label}
         <span
           className="rounded-full px-1.5 text-[9px] tabular-nums"
-          style={{ background: "rgba(6,59,59,0.07)", color: "#475569" }}
+          style={{ background: "rgba(6,59,59,0.07)", color: "var(--vm-text-soft)" }}
         >
           {count}
         </span>
@@ -284,17 +284,17 @@ export default function AuditoriaPage() {
         <div className="flex shrink-0 items-center gap-5">
           <div className="flex flex-col items-end">
             <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "var(--vm-ink)" }}>{kpis.hoje}</span>
-            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>hoje</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>hoje</span>
           </div>
-          <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
+          <div className="h-10 w-px" style={{ background: "var(--vm-border)" }} />
           <div className="flex flex-col items-end">
             <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "#00875F" }}>{kpis.atribuicoes}</span>
-            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>atribuições</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>atribuições</span>
           </div>
-          <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
+          <div className="h-10 w-px" style={{ background: "var(--vm-border)" }} />
           <div className="flex flex-col items-end">
             <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "#B91C1C" }}>{kpis.reprovacoes}</span>
-            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>reprovações</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>reprovações</span>
           </div>
         </div>
       </motion.div>
@@ -302,7 +302,7 @@ export default function AuditoriaPage() {
       {/* BUSCA + FILTROS */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-[260px] flex-1 items-center gap-2 rounded-2xl px-3 py-2.5"
-          style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.06)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}>
+          style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border-soft)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}>
           <Search className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar ator, equipamento, descrição…"
@@ -314,7 +314,7 @@ export default function AuditoriaPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-1 rounded-2xl p-1.5"
-          style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.06)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}>
+          style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border-soft)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}>
           <Filter className="ml-1 h-3 w-3 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
           {TIPO_FILTROS.map((f) => {
             const active = tipoFiltro === f.id;
@@ -340,12 +340,12 @@ export default function AuditoriaPage() {
 
       {/* TIMELINE */}
       <div ref={topo} className="overflow-hidden rounded-[20px] p-6"
-        style={{ background: "#fff", border: "1px solid var(--vm-border-soft)", boxShadow: "0 1px 3px rgba(6,59,59,0.04),0 8px 24px rgba(6,59,59,0.06)" }}>
+        style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border-soft)", boxShadow: "0 1px 3px rgba(6,59,59,0.04),0 8px 24px var(--vm-border-soft)" }}>
         {grouped.length === 0 && !loading && (
           <div className="flex flex-col items-center py-16">
             <Sparkles className="mb-3 h-8 w-8" style={{ color: "#00B388" }} strokeWidth={1.5} />
             <p className="text-[13px] font-semibold" style={{ color: "var(--vm-ink)" }}>Nenhum evento registrado</p>
-            <p className="mt-0.5 text-[11.5px]" style={{ color: "#94A3B8" }}>
+            <p className="mt-0.5 text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
               {query ? "Nenhum resultado para a busca." : "Aguardando atividade da operação."}
             </p>
           </div>
@@ -362,7 +362,7 @@ export default function AuditoriaPage() {
 
         {lista.length > 0 && (
           <div className="mt-2 flex items-center justify-between border-t pt-4 text-[10.5px]"
-            style={{ borderColor: "var(--vm-border-soft)", color: "#94A3B8" }}>
+            style={{ borderColor: "var(--vm-border-soft)", color: "var(--vm-faint)" }}>
             <span className="inline-flex items-center gap-1.5">
               <Activity className="h-3 w-3" style={{ color: "#00B388" }} />
               {kpis.total} eventos carregados · atualiza a cada 20s

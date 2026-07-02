@@ -177,8 +177,8 @@ export default function TecnicosPage() {
         <div
           className="flex flex-1 items-center gap-2 rounded-2xl px-3 py-2.5"
           style={{
-            background: "#fff",
-            border: "1px solid rgba(6,59,59,0.06)",
+            background: "var(--vm-card)",
+            border: "1px solid var(--vm-border-soft)",
             boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
           }}
         >
@@ -195,8 +195,8 @@ export default function TecnicosPage() {
         <div
           className="flex items-center gap-1 rounded-2xl px-2 py-1.5"
           style={{
-            background: "#fff",
-            border: "1px solid rgba(6,59,59,0.06)",
+            background: "var(--vm-card)",
+            border: "1px solid var(--vm-border-soft)",
             boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
           }}
         >
@@ -242,7 +242,7 @@ export default function TecnicosPage() {
               transition={{ delay: 0.04 * i + 0.1 }}
               className="relative overflow-hidden rounded-[18px] p-4"
               style={{
-                background: "#fff",
+                background: "var(--vm-card)",
                 border: "1px solid var(--vm-border-soft)",
                 boxShadow:
                   "0 1px 3px rgba(6,59,59,0.04), 0 8px 22px rgba(6,59,59,0.07)",
@@ -303,7 +303,7 @@ export default function TecnicosPage() {
                   <h3 className="mt-1 truncate text-[15px] font-semibold tracking-tight" style={{ color: "var(--vm-ink)" }}>
                     {t.nome}
                   </h3>
-                  <p className="truncate text-[10.5px]" style={{ color: "#7A8896" }}>
+                  <p className="truncate text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
                     {t.email ?? "—"}
                   </p>
                 </div>
@@ -340,9 +340,9 @@ export default function TecnicosPage() {
               </div>
 
               {/* KPIs 30 dias — produtividade operacional */}
-              <div className="relative mt-2 rounded-xl p-2.5" style={{ background: "#FAFBFC", border: "1px solid var(--vm-border-soft)" }}>
+              <div className="relative mt-2 rounded-xl p-2.5" style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border-soft)" }}>
                 <div className="mb-1.5 flex items-center justify-between">
-                  <p className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>
+                  <p className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>
                     Últimos 30 dias
                   </p>
                   <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold tabular-nums" style={{ color: t.produtividadePct >= 70 ? "#00875F" : t.produtividadePct >= 30 ? "#92400E" : "#94A3B8" }}>
@@ -351,7 +351,7 @@ export default function TecnicosPage() {
                   </span>
                 </div>
                 {/* progress produtividade */}
-                <div className="mb-2 h-1 overflow-hidden rounded-full" style={{ background: "rgba(6,59,59,0.06)" }}>
+                <div className="mb-2 h-1 overflow-hidden rounded-full" style={{ background: "var(--vm-border-soft)" }}>
                   <div
                     className="h-full rounded-full transition-all"
                     style={{
@@ -417,7 +417,7 @@ export default function TecnicosPage() {
         {lista.length === 0 && (
           <div
             className="col-span-3 rounded-2xl p-8 text-center text-[12.5px]"
-            style={{ color: "var(--vm-faint-b)", background: "#fff", border: "1px solid var(--vm-border-soft)" }}
+            style={{ color: "var(--vm-faint-b)", background: "var(--vm-card)", border: "1px solid var(--vm-border-soft)" }}
           >
             Nenhum técnico encontrado com esses filtros.
           </div>
@@ -478,12 +478,12 @@ function MiniStat({
         className="flex items-center gap-1 text-[13px] font-semibold tabular-nums leading-none"
         style={{ color: "var(--vm-ink)" }}
       >
-        <span style={{ color: "#7A8896" }}>{icon}</span>
+        <span style={{ color: "var(--vm-muted)" }}>{icon}</span>
         {value}
       </span>
       <span
         className="mt-0.5 text-[8.5px] font-medium uppercase tracking-[0.1em]"
-        style={{ color: "#94A3B8" }}
+        style={{ color: "var(--vm-faint)" }}
       >
         {label}
       </span>
@@ -496,8 +496,8 @@ function ResumoChip({ cor, label, value }: { cor: string; label: string; value: 
     <div
       className="flex items-center gap-2 rounded-xl px-3 py-1.5"
       style={{
-        background: "#fff",
-        border: "1px solid rgba(6,59,59,0.06)",
+        background: "var(--vm-card)",
+        border: "1px solid var(--vm-border-soft)",
         boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
       }}
     >
@@ -527,7 +527,7 @@ function Meta({
   return (
     <div className="flex items-center gap-2">
       <span style={{ color: "var(--vm-faint-b)" }}>{icon}</span>
-      <span className="flex-1" style={{ color: "#7A8896" }}>
+      <span className="flex-1" style={{ color: "var(--vm-muted)" }}>
         {label}
       </span>
       <span className="font-semibold" style={{ color: "var(--vm-ink)" }}>

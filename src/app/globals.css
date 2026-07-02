@@ -194,6 +194,10 @@ select {
   --vm-tile-3:       #F1F5F9;
   --vm-tile-blue:    #F6F8FE;
   --vm-tile-purple:  #EDE9FE;
+  --vm-warm-tint:    #FFFBEB;
+  --vm-orange-tint:  #FFF7ED;
+  --vm-red-tint:     #FEF2F2;
+  --vm-teal-tint:    #F0FDFA;
 }
 
 .dark {
@@ -223,6 +227,10 @@ select {
   --vm-tile-3:       #212A36;
   --vm-tile-blue:    #1C2536;
   --vm-tile-purple:  rgba(124, 58, 237, 0.18);
+  --vm-warm-tint:    rgba(245, 158, 11, 0.13);
+  --vm-orange-tint:  rgba(249, 115, 22, 0.13);
+  --vm-red-tint:     rgba(239, 68, 68, 0.13);
+  --vm-teal-tint:    rgba(0, 212, 160, 0.11);
 }
 
 /* ── Overrides de classes Tailwind sob .dark ─────────────────────────────────
@@ -246,6 +254,12 @@ select {
 .dark .border-gray-100   { border-color: var(--vm-border) !important; }
 .dark .ring-gray-200     { --tw-ring-color: var(--vm-border) !important; }
 .dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--vm-border) !important; }
+
+/* Zebra/hover de tabela com opacity (bg-gray-50/30, hover:bg-gray-50/60) —
+   o modificador de opacidade gera classe própria que o seletor simples não pega. */
+.dark [class*="bg-gray-50/"] { background-color: var(--vm-fill) !important; }
+.dark tr[class*="hover:bg-gray-50"]:hover,
+.dark [class*="hover:bg-gray-50/"]:hover { background-color: var(--vm-card-hover) !important; }
 
 /* Tints claros de badge (azul/verde/vermelho/âmbar) — leve escurecida no dark
    pra não estourar sobre a base escura. */

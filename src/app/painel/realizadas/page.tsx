@@ -498,7 +498,7 @@ function VistoriaCard({
           initial={{ opacity: 0, height: 0 }}
           whileHover={{ opacity: 1 }}
           className="mt-3 flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold opacity-0 transition-all group-hover:opacity-100"
-          style={{ background: "#F0FDF9", color: "#059669" }}
+          style={{ background: "var(--vm-teal-tint)", color: "#059669" }}
         >
           Ver detalhes e fotos →
         </motion.div>
@@ -682,7 +682,7 @@ function DetailDrawer({
               {item.observacao && (
                 <div
                   className="mt-2 rounded-xl p-3"
-                  style={{ background: "#fff", border: "1px solid var(--vm-border)" }}
+                  style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
                 >
                   <p className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--vm-faint)]">
                     Observações
@@ -695,7 +695,7 @@ function DetailDrawer({
               {item.motivo && item.isRepeat && (
                 <div
                   className="mt-2 rounded-xl p-3"
-                  style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}
+                  style={{ background: "var(--vm-orange-tint)", border: "1px solid #FED7AA" }}
                 >
                   <p className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-amber-600">
                     Motivo da Revisita
@@ -738,7 +738,7 @@ function DetailDrawer({
           ) : (
             <div
               className="flex items-center gap-3 rounded-2xl p-4"
-              style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}
+              style={{ background: "var(--vm-warm-tint)", border: "1px solid #FDE68A" }}
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
                 <Clock className="h-5 w-5 text-amber-600" />
@@ -792,7 +792,7 @@ function DetailChip({
   return (
     <div
       className="rounded-xl p-2.5"
-      style={{ background: "#fff", border: "1px solid var(--vm-border)" }}
+      style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
     >
       <p className="flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--vm-faint)]">
         {icon} {label}
@@ -927,7 +927,7 @@ export default function RealizadasPage() {
       {apiError && (
         <div
           className="flex items-start gap-3 rounded-2xl px-5 py-4"
-          style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}
+          style={{ background: "var(--vm-red-tint)", border: "1px solid #FECACA" }}
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
           <div className="min-w-0">
@@ -942,7 +942,7 @@ export default function RealizadasPage() {
         {/* search */}
         <div
           className="flex h-9 min-w-[200px] flex-1 max-w-[380px] items-center gap-2 rounded-xl px-3"
-          style={{ background: "#fff", border: "1px solid var(--vm-border)" }}
+          style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
         >
           <Search className="h-3.5 w-3.5 shrink-0 text-[var(--vm-faint)]" />
           <input
