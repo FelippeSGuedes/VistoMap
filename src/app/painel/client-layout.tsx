@@ -72,7 +72,7 @@ const LIGHT = {
   navActiveTxt: "#064E3B",
   navInactive:  "#6B7280",
   badge:        "#FFFFFF",
-  search:       "#F8F9FB",
+  search:       "var(--vm-input)",
 } as const;
 
 const DARK = {
@@ -206,6 +206,8 @@ export default function PainelClientLayout({ children }: { children: React.React
     const next = !isDark;
     setIsDark(next);
     localStorage.setItem("vm_painel_theme", next ? "dark" : "light");
+    // Notifica páginas que reagem ao tema fora do React (ex.: estilo base do Mapbox).
+    window.dispatchEvent(new CustomEvent("vm-theme", { detail: next }));
   };
 
   const toggleCollapse = () => {
@@ -230,7 +232,10 @@ export default function PainelClientLayout({ children }: { children: React.React
   const vistoriasActive = VISTORIAS_HREFS.has(pathname);
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden" style={{ background: T.shell }}>
+    <div
+      className={`flex h-[100dvh] overflow-hidden ${isDark ? "dark" : ""}`}
+      style={{ background: T.shell }}
+    >
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside
@@ -450,7 +455,7 @@ export default function PainelClientLayout({ children }: { children: React.React
           ) : (
             <div
               className="flex items-center gap-2.5 rounded-lg p-2"
-              style={{ background: isDark ? "rgba(255,255,255,0.03)" : "#F8FAFB" }}
+              style={{ background: isDark ? "rgba(255,255,255,0.03)" : "var(--vm-tile)" }}
             >
               <span
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10.5px] font-bold text-white"

@@ -41,20 +41,20 @@ import type { TecnicoAtivo } from "@/types";
 
 // ─── Paleta neutra/corporativa ────────────────────────────────────────────
 const C = {
-  ink: "#063B3B",
-  inkSoft: "#475569",
-  muted: "#7A8896",
-  faint: "#94A3B8",
-  line: "rgba(6,59,59,0.08)",
-  lineSoft: "rgba(6,59,59,0.05)",
-  surface: "#FFFFFF",
-  surfaceAlt: "#F7F9FA",
+  ink: "var(--vm-ink)",
+  inkSoft: "var(--vm-text-soft)",
+  muted: "var(--vm-muted)",
+  faint: "var(--vm-faint)",
+  line: "var(--vm-border)",
+  lineSoft: "var(--vm-border-soft)",
+  surface: "var(--vm-card)",
+  surfaceAlt: "var(--vm-card-hover)",
   brand: "#00B388",
   brandDeep: "#00875F",
-  brandTint: "#ECFDF5",
+  brandTint: "var(--vm-accent-tint)",
   brandLine: "rgba(0,179,136,0.22)",
-  iconBg: "#F1F5F9",
-  iconFg: "#475569",
+  iconBg: "var(--vm-fill-2)",
+  iconFg: "var(--vm-text-soft)",
 } as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ function initials(nome: string) {
 const STATUS_COR: Record<string, string> = {
   "em-campo": "#00B388",
   base: "#6366F1",
-  "off-shift": "#9CA3AF",
+  "off-shift": "var(--vm-faint)",
   offline: "#4B5563",
 };
 
@@ -266,7 +266,7 @@ function MunicipioCard({
         boxShadow:
           selCount > 0
             ? "0 4px 16px rgba(0,179,136,0.12)"
-            : "0 1px 4px rgba(6,59,59,0.05)",
+            : "0 1px 4px var(--vm-border-soft)",
       }}
     >
       {/* Topo: ícone + nome + seleção */}
@@ -694,7 +694,7 @@ function AtribuirDrawer({
                     <span
                       className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full"
                       style={{
-                        background: STATUS_COR[tec.status] ?? "#9CA3AF",
+                        background: STATUS_COR[tec.status] ?? "var(--vm-faint)",
                         boxShadow: "0 0 0 2px #fff",
                       }}
                     />
@@ -728,10 +728,10 @@ function AtribuirDrawer({
                   {atribuindo ? (
                     <RefreshCcw
                       className="h-3.5 w-3.5 shrink-0 animate-spin"
-                      style={{ color: "#A0ACBA" }}
+                      style={{ color: "var(--vm-faint-b)" }}
                     />
                   ) : (
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "#A0ACBA" }} />
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint-b)" }} />
                   )}
                 </button>
               ))}
@@ -853,7 +853,7 @@ function AtribuirModal({
           {jaTemTecnico && ativos.length > 0 && (
             <p
               className="px-1 pb-0.5 pt-1 text-[8.5px] font-bold uppercase tracking-[0.14em]"
-              style={{ color: "#A0ACBA" }}
+              style={{ color: "var(--vm-faint-b)" }}
             >
               Ou reatribuir para
             </p>
@@ -878,7 +878,7 @@ function AtribuirModal({
                   <span
                     className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
                     style={{
-                      background: STATUS_COR[t.status] ?? "#9CA3AF",
+                      background: STATUS_COR[t.status] ?? "var(--vm-faint)",
                       boxShadow: "0 0 0 2px #fff",
                     }}
                   />
@@ -904,7 +904,7 @@ function AtribuirModal({
                     {t.municipio ?? "—"} · {t.atribuidas} atrib · {t.concluidasHoje} hoje
                   </p>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "#A0ACBA" }} />
+                <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint-b)" }} />
               </button>
             );
           })}
@@ -1217,7 +1217,7 @@ export default function FilaVistoriasPage() {
             boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
           }}
         >
-          <Search className="h-4 w-4 shrink-0" style={{ color: "#A0ACBA" }} strokeWidth={2.2} />
+          <Search className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
           <input
             type="search"
             value={query}
@@ -1227,7 +1227,7 @@ export default function FilaVistoriasPage() {
             style={{ color: C.ink }}
           />
           {query && (
-            <button type="button" onClick={() => setQuery("")} style={{ color: "#A0ACBA" }}>
+            <button type="button" onClick={() => setQuery("")} style={{ color: "var(--vm-faint-b)" }}>
               <X className="h-3.5 w-3.5" />
             </button>
           )}
@@ -1239,7 +1239,7 @@ export default function FilaVistoriasPage() {
           style={{
             background: temFiltros ? "rgba(0,179,136,0.08)" : C.surface,
             border: temFiltros ? `1px solid ${C.brandLine}` : `1px solid ${C.line}`,
-            color: temFiltros ? C.brandDeep : "#566773",
+            color: temFiltros ? C.brandDeep : "var(--vm-muted-b)",
             boxShadow: "0 1px 3px rgba(6,59,59,0.03)",
           }}
         >
@@ -1287,7 +1287,7 @@ export default function FilaVistoriasPage() {
                 style={{
                   background: filtroMunicipio ? "rgba(0,179,136,0.08)" : "#F8FAFC",
                   border: filtroMunicipio ? `1px solid ${C.brandLine}` : "1px solid rgba(6,59,59,0.08)",
-                  color: filtroMunicipio ? C.brandDeep : "#566773",
+                  color: filtroMunicipio ? C.brandDeep : "var(--vm-muted-b)",
                 }}
               >
                 <option value="">Todos os municípios</option>
@@ -1305,7 +1305,7 @@ export default function FilaVistoriasPage() {
                 style={{
                   background: filtroTecnico ? "rgba(0,179,136,0.08)" : "#F8FAFC",
                   border: filtroTecnico ? `1px solid ${C.brandLine}` : "1px solid rgba(6,59,59,0.08)",
-                  color: filtroTecnico ? C.brandDeep : "#566773",
+                  color: filtroTecnico ? C.brandDeep : "var(--vm-muted-b)",
                 }}
               >
                 <option value="">Todos os técnicos</option>
@@ -1328,7 +1328,7 @@ export default function FilaVistoriasPage() {
                     className="h-8 px-3 text-[11px] font-semibold transition"
                     style={{
                       background: filtroTipo === v ? "rgba(0,179,136,0.1)" : "transparent",
-                      color: filtroTipo === v ? C.brandDeep : "#566773",
+                      color: filtroTipo === v ? C.brandDeep : "var(--vm-muted-b)",
                     }}
                   >
                     {v === "todos" ? "Todos" : v === "nova" ? "Novas" : "Revisitas"}
@@ -1346,7 +1346,7 @@ export default function FilaVistoriasPage() {
                     filtroAtrib === "sem"
                       ? `1px solid ${C.brandLine}`
                       : "1px solid rgba(6,59,59,0.08)",
-                  color: filtroAtrib === "sem" ? C.brandDeep : "#566773",
+                  color: filtroAtrib === "sem" ? C.brandDeep : "var(--vm-muted-b)",
                 }}
               >
                 Somente a atribuir

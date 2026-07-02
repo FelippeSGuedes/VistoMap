@@ -33,13 +33,13 @@ const SITUACAO_LABEL: Record<number, string> = {
   4: "Ag. Revisita", 5: "Em Revisita", 6: "Revisitado",
 };
 const SITUACAO_COLOR: Record<number, string> = {
-  0: "#9CA3AF", 1: "#F59E0B", 2: "#3B82F6", 3: "#00B388",
+  0: "var(--vm-faint)", 1: "#F59E0B", 2: "#3B82F6", 3: "#00B388",
   4: "#F97316", 5: "#0EA5E9", 6: "#10B981",
 };
 
 function SituacaoBadge({ id }: { id: number }) {
   const label = SITUACAO_LABEL[id] ?? "?";
-  const color = SITUACAO_COLOR[id] ?? "#9CA3AF";
+  const color = SITUACAO_COLOR[id] ?? "var(--vm-faint)";
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold"

@@ -160,3 +160,114 @@ select {
   width: 100%;
   height: 100%;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PAINEL — sistema de tema (light/dark) via CSS variables
+   Os valores LIGHT são idênticos aos hardcoded atuais → light mode não muda.
+   O DARK é uma paleta nova, coesa (base neutra profunda + accent teal da marca).
+   Variáveis resolvem em `style={{}}` inline e respondem à classe `.dark`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --vm-shell:        #EFF1F5;
+  --vm-surface:      #FFFFFF;
+  --vm-card:         #FFFFFF;
+  --vm-card-hover:   #F8FAFB;
+  --vm-border:       #E8EAED;
+  --vm-border-soft:  rgba(6, 59, 59, 0.05);
+  --vm-text:         #111827;
+  --vm-ink:          #063B3B;
+  --vm-text-soft:    #374151;
+  --vm-muted:        #6B7280;
+  --vm-muted-b:      #566773;
+  --vm-faint:        #9CA3AF;
+  --vm-faint-b:      #A0ACBA;
+  --vm-accent:       #00B388;
+  --vm-glass:        rgba(255, 255, 255, 0.96);
+  --vm-glass-border: rgba(0, 179, 136, 0.16);
+  --vm-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.10), 0 1px 0 rgba(255, 255, 255, 0.90) inset;
+  --vm-input:        #F8F9FB;
+  --vm-fill:         rgba(0, 0, 0, 0.03);
+  --vm-fill-2:       rgba(0, 0, 0, 0.05);
+  --vm-accent-tint:  #ECFDF5;
+  --vm-tile:         #F9FAFB;
+  --vm-tile-2:       #F3F4F6;
+  --vm-tile-3:       #F1F5F9;
+  --vm-tile-blue:    #F6F8FE;
+  --vm-tile-purple:  #EDE9FE;
+}
+
+.dark {
+  --vm-shell:        #0D1117;
+  --vm-surface:      #151B24;
+  --vm-card:         #1A212C;
+  --vm-card-hover:   #222B38;
+  --vm-border:       rgba(255, 255, 255, 0.09);
+  --vm-border-soft:  rgba(255, 255, 255, 0.06);
+  --vm-text:         #E6EDF3;
+  --vm-ink:          #E8EEF4;
+  --vm-text-soft:    #C6D0DB;
+  --vm-muted:        #9AA7B4;
+  --vm-muted-b:      #93A1AF;
+  --vm-faint:        #6E7A88;
+  --vm-faint-b:      #6E7A88;
+  --vm-accent:       #00D4A0;
+  --vm-glass:        rgba(22, 28, 37, 0.88);
+  --vm-glass-border: rgba(0, 212, 160, 0.20);
+  --vm-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  --vm-input:        rgba(255, 255, 255, 0.05);
+  --vm-fill:         rgba(255, 255, 255, 0.04);
+  --vm-fill-2:       rgba(255, 255, 255, 0.07);
+  --vm-accent-tint:  rgba(0, 212, 160, 0.13);
+  --vm-tile:         #212A36;
+  --vm-tile-2:       #1E2732;
+  --vm-tile-3:       #212A36;
+  --vm-tile-blue:    #1C2536;
+  --vm-tile-purple:  rgba(124, 58, 237, 0.18);
+}
+
+/* ── Overrides de classes Tailwind sob .dark ─────────────────────────────────
+   Regras fora de @layer + especificidade .dark .x → vencem as utilities.
+   Só ativam quando há ancestral .dark (light mode intocado). ── */
+.dark .bg-white          { background-color: var(--vm-card) !important; }
+.dark .bg-gray-50        { background-color: var(--vm-fill) !important; }
+.dark .bg-gray-100       { background-color: var(--vm-fill-2) !important; }
+.dark .hover\:bg-gray-50:hover  { background-color: var(--vm-card-hover) !important; }
+.dark .hover\:bg-gray-100:hover { background-color: var(--vm-fill-2) !important; }
+
+.dark .text-gray-900     { color: var(--vm-text) !important; }
+.dark .text-gray-800     { color: var(--vm-text) !important; }
+.dark .text-gray-700     { color: var(--vm-text-soft) !important; }
+.dark .text-gray-600     { color: var(--vm-muted) !important; }
+.dark .text-gray-500     { color: var(--vm-muted) !important; }
+.dark .text-gray-400     { color: var(--vm-faint) !important; }
+.dark .text-gray-300     { color: var(--vm-faint) !important; }
+
+.dark .border-gray-200   { border-color: var(--vm-border) !important; }
+.dark .border-gray-100   { border-color: var(--vm-border) !important; }
+.dark .ring-gray-200     { --tw-ring-color: var(--vm-border) !important; }
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--vm-border) !important; }
+
+/* Tints claros de badge (azul/verde/vermelho/âmbar) — leve escurecida no dark
+   pra não estourar sobre a base escura. */
+.dark .bg-blue-50   { background-color: rgba(59, 130, 246, 0.15) !important; }
+.dark .bg-green-50  { background-color: rgba(0, 179, 136, 0.15) !important; }
+.dark .bg-red-50    { background-color: rgba(239, 68, 68, 0.14) !important; }
+.dark .bg-amber-50  { background-color: rgba(245, 158, 11, 0.14) !important; }
+.dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.14) !important; }
+
+/* ── Mapbox no dark: popups e controles escuros ── */
+.dark .mapboxgl-popup-content {
+  background: var(--vm-card) !important;
+  border-color: var(--vm-border) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5) !important;
+  color: var(--vm-text);
+}
+.dark .mapboxgl-popup-tip { border-top-color: var(--vm-card) !important; }
+.dark .mapboxgl-ctrl-group {
+  background: var(--vm-surface) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+.dark .mapboxgl-ctrl-group button + button { border-top-color: var(--vm-border) !important; }
+
+/* Scrollbar dentro do painel dark */
+.dark ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); }

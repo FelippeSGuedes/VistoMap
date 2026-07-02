@@ -147,7 +147,7 @@ function EventoItem({ entry, isLast }: { entry: AuditEntry; isLast: boolean }) {
           </span>
 
           {/* Ator */}
-          <span className="text-[12.5px] font-semibold" style={{ color: "#063B3B" }}>
+          <span className="text-[12.5px] font-semibold" style={{ color: "var(--vm-ink)" }}>
             {entry.ator.nome}
           </span>
           <span className="text-[11.5px]" style={{ color: "#7A8896" }}>
@@ -159,7 +159,7 @@ function EventoItem({ entry, isLast }: { entry: AuditEntry; isLast: boolean }) {
         {(entry.alvo || entry.descricao) && (
           <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: "#475569" }}>
             {entry.alvo && (
-              <span className="font-medium" style={{ color: "#063B3B" }}>
+              <span className="font-medium" style={{ color: "var(--vm-ink)" }}>
                 {entry.alvo.label}
               </span>
             )}
@@ -169,7 +169,7 @@ function EventoItem({ entry, isLast }: { entry: AuditEntry; isLast: boolean }) {
         )}
 
         {/* Meta — hora + relativo */}
-        <p className="mt-1 flex items-center gap-2 text-[10.5px]" style={{ color: "#A0ACBA" }}>
+        <p className="mt-1 flex items-center gap-2 text-[10.5px]" style={{ color: "var(--vm-faint-b)" }}>
           <span className="font-mono">{fmtHora(entry.timestamp)}</span>
           <span>·</span>
           <span>{relativo(entry.timestamp)}</span>
@@ -186,7 +186,7 @@ function DiaSeparador({ label, count }: { label: string; count: number }) {
       <div className="h-px flex-1" style={{ background: "rgba(6,59,59,0.07)" }} />
       <span
         className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em]"
-        style={{ background: "#F1F5F9", color: "#64748B" }}
+        style={{ background: "var(--vm-tile-3)", color: "#64748B" }}
       >
         {label}
         <span
@@ -273,17 +273,17 @@ export default function AuditoriaPage() {
               style={{ background: "#ECFDF5", color: "#00875F", border: "1px solid rgba(0,179,136,0.22)" }}>
               <Activity className="h-2.5 w-2.5" /> Timeline operacional
             </span>
-            {loading && <RefreshCcw className="h-3 w-3 animate-spin" style={{ color: "#A0ACBA" }} />}
+            {loading && <RefreshCcw className="h-3 w-3 animate-spin" style={{ color: "var(--vm-faint-b)" }} />}
           </div>
-          <h1 className="text-[28px] font-semibold tracking-[-0.5px]" style={{ color: "#063B3B" }}>Auditoria</h1>
-          <p className="mt-0.5 text-[12.5px]" style={{ color: "#566773" }}>
+          <h1 className="text-[28px] font-semibold tracking-[-0.5px]" style={{ color: "var(--vm-ink)" }}>Auditoria</h1>
+          <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--vm-muted-b)" }}>
             Rastreabilidade completa de cada ação na operação.
           </p>
         </div>
         {/* KPIs */}
         <div className="flex shrink-0 items-center gap-5">
           <div className="flex flex-col items-end">
-            <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "#063B3B" }}>{kpis.hoje}</span>
+            <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "var(--vm-ink)" }}>{kpis.hoje}</span>
             <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>hoje</span>
           </div>
           <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
@@ -303,19 +303,19 @@ export default function AuditoriaPage() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-[260px] flex-1 items-center gap-2 rounded-2xl px-3 py-2.5"
           style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.06)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}>
-          <Search className="h-4 w-4 shrink-0" style={{ color: "#A0ACBA" }} strokeWidth={2.2} />
+          <Search className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar ator, equipamento, descrição…"
             className="flex-1 bg-transparent text-[13px] font-medium outline-none placeholder:text-[#C0C8D2]"
-            style={{ color: "#063B3B" }} />
+            style={{ color: "var(--vm-ink)" }} />
           {query && (
-            <button type="button" onClick={() => setQuery("")} className="text-[#A0ACBA]"><X className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => setQuery("")} className="text-[var(--vm-faint-b)]"><X className="h-3.5 w-3.5" /></button>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1 rounded-2xl p-1.5"
           style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.06)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}>
-          <Filter className="ml-1 h-3 w-3 shrink-0" style={{ color: "#A0ACBA" }} strokeWidth={2.2} />
+          <Filter className="ml-1 h-3 w-3 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
           {TIPO_FILTROS.map((f) => {
             const active = tipoFiltro === f.id;
             const cfg = f.id !== "todos" ? ACAO[f.id as AuditEntry["acao"]] : null;
@@ -331,7 +331,7 @@ export default function AuditoriaPage() {
                 }}>
                 {cfg && <span className="h-1.5 w-1.5 rounded-full" style={{ background: cfg.dot }} />}
                 {f.label}
-                <span className="tabular-nums text-[9.5px]" style={{ color: active ? cor : "#A0ACBA" }}>{count}</span>
+                <span className="tabular-nums text-[9.5px]" style={{ color: active ? cor : "var(--vm-faint-b)" }}>{count}</span>
               </button>
             );
           })}
@@ -340,11 +340,11 @@ export default function AuditoriaPage() {
 
       {/* TIMELINE */}
       <div ref={topo} className="overflow-hidden rounded-[20px] p-6"
-        style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.05)", boxShadow: "0 1px 3px rgba(6,59,59,0.04),0 8px 24px rgba(6,59,59,0.06)" }}>
+        style={{ background: "#fff", border: "1px solid var(--vm-border-soft)", boxShadow: "0 1px 3px rgba(6,59,59,0.04),0 8px 24px rgba(6,59,59,0.06)" }}>
         {grouped.length === 0 && !loading && (
           <div className="flex flex-col items-center py-16">
             <Sparkles className="mb-3 h-8 w-8" style={{ color: "#00B388" }} strokeWidth={1.5} />
-            <p className="text-[13px] font-semibold" style={{ color: "#063B3B" }}>Nenhum evento registrado</p>
+            <p className="text-[13px] font-semibold" style={{ color: "var(--vm-ink)" }}>Nenhum evento registrado</p>
             <p className="mt-0.5 text-[11.5px]" style={{ color: "#94A3B8" }}>
               {query ? "Nenhum resultado para a busca." : "Aguardando atividade da operação."}
             </p>
@@ -362,7 +362,7 @@ export default function AuditoriaPage() {
 
         {lista.length > 0 && (
           <div className="mt-2 flex items-center justify-between border-t pt-4 text-[10.5px]"
-            style={{ borderColor: "rgba(6,59,59,0.05)", color: "#94A3B8" }}>
+            style={{ borderColor: "var(--vm-border-soft)", color: "#94A3B8" }}>
             <span className="inline-flex items-center gap-1.5">
               <Activity className="h-3 w-3" style={{ color: "#00B388" }} />
               {kpis.total} eventos carregados · atualiza a cada 20s

@@ -79,7 +79,7 @@ const STATUS_CFG = {
   REVISITADO: {
     label:  "Revisitado",
     color:  "#7C3AED",
-    bg:     "#EDE9FE",
+    bg:     "var(--vm-tile-purple)",
     border: "#C4B5FD",
     strip:  "linear-gradient(135deg,#7C3AED,#A78BFA)",
     glow:   "rgba(124,58,237,0.15)",
@@ -98,7 +98,7 @@ function SkeletonCard() {
   return (
     <div
       className="animate-pulse overflow-hidden rounded-2xl bg-white"
-      style={{ border: "1px solid #E8EAED" }}
+      style={{ border: "1px solid var(--vm-border)" }}
     >
       <div className="h-1.5 rounded-t-2xl bg-gray-200" />
       <div className="space-y-3 p-4">
@@ -147,7 +147,7 @@ function StatusBadge({
       {isRepeat && (
         <span
           className={`inline-flex items-center gap-1 rounded-full font-bold ${cls}`}
-          style={{ background: "#EDE9FE", color: "#7C3AED" }}
+          style={{ background: "var(--vm-tile-purple)", color: "#7C3AED" }}
         >
           <RefreshCw className="h-2.5 w-2.5" />
           Revisita
@@ -214,7 +214,7 @@ function ExecutionTimeline({
   ].filter(e => e.date);
 
   if (!events.length) {
-    return <p className="text-[11px] text-[#9CA3AF]">Sem dados de timeline.</p>;
+    return <p className="text-[11px] text-[var(--vm-faint)]">Sem dados de timeline.</p>;
   }
 
   return (
@@ -239,8 +239,8 @@ function ExecutionTimeline({
             }}
           />
           <div>
-            <p className="text-[12px] font-semibold text-[#374151]">{e.label}</p>
-            <p className="text-[11px] text-[#9CA3AF]">{fmtDateTime(e.date)}</p>
+            <p className="text-[12px] font-semibold text-[var(--vm-text-soft)]">{e.label}</p>
+            <p className="text-[11px] text-[var(--vm-faint)]">{fmtDateTime(e.date)}</p>
           </div>
         </motion.div>
       ))}
@@ -371,7 +371,7 @@ function PhotoGallery({
     return (
       <div className="grid grid-cols-3 gap-2">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="aspect-square animate-pulse rounded-xl bg-[#F3F4F6]" />
+          <div key={i} className="aspect-square animate-pulse rounded-xl bg-[var(--vm-tile-2)]" />
         ))}
       </div>
     );
@@ -379,8 +379,8 @@ function PhotoGallery({
   if (!files.length) {
     return (
       <div
-        className="flex h-24 items-center justify-center gap-2 rounded-xl text-[12px] text-[#9CA3AF]"
-        style={{ background: "#F9FAFB", border: "1px dashed #E8EAED" }}
+        className="flex h-24 items-center justify-center gap-2 rounded-xl text-[12px] text-[var(--vm-faint)]"
+        style={{ background: "var(--vm-tile)", border: "1px dashed var(--vm-border)" }}
       >
         <Camera className="h-4 w-4" /> Nenhuma foto disponível
       </div>
@@ -394,8 +394,8 @@ function PhotoGallery({
           whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.97 }}
           onClick={() => onOpen(i)}
-          className="group relative aspect-square overflow-hidden rounded-xl bg-[#F3F4F6]"
-          style={{ border: "1px solid #E8EAED" }}
+          className="group relative aspect-square overflow-hidden rounded-xl bg-[var(--vm-tile-2)]"
+          style={{ border: "1px solid var(--vm-border)" }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={f.url} alt={f.name} className="h-full w-full object-cover transition group-hover:brightness-90" />
@@ -431,7 +431,7 @@ function VistoriaCard({
       whileHover={{ y: -4, boxShadow: `0 16px 40px ${cfg.glow}, 0 4px 16px rgba(0,0,0,0.07)` }}
       onClick={onClick}
       className="group cursor-pointer overflow-hidden rounded-2xl bg-white"
-      style={{ border: `1px solid #E8EAED`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+      style={{ border: `1px solid var(--vm-border)`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
     >
       {/* colored top strip */}
       <div style={{ height: 3, background: cfg.strip, flexShrink: 0 }} />
@@ -450,12 +450,12 @@ function VistoriaCard({
               )}
             </p>
             <h3
-              className="truncate text-[13.5px] font-bold text-[#111827] transition-colors group-hover:text-[#059669]"
+              className="truncate text-[13.5px] font-bold text-[var(--vm-text)] transition-colors group-hover:text-[#059669]"
               title={item.equipamento}
             >
               {item.equipamento}
             </h3>
-            <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-[#6B7280]">
+            <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-[var(--vm-muted)]">
               <MapPin className="h-2.5 w-2.5 shrink-0" />
               {item.municipio}
               {item.endereco && (
@@ -471,19 +471,19 @@ function VistoriaCard({
           <div className="mb-3 flex items-center gap-2">
             <TecnicoAvatar nome={item.tecnico.nome} />
             <div className="min-w-0">
-              <p className="truncate text-[12px] font-semibold text-[#374151]">
+              <p className="truncate text-[12px] font-semibold text-[var(--vm-text-soft)]">
                 {item.tecnico.nome.split(" ")[0]}
               </p>
-              <p className="text-[10px] text-[#9CA3AF]">{relativo(item.dataVistoria)}</p>
+              <p className="text-[10px] text-[var(--vm-faint)]">{relativo(item.dataVistoria)}</p>
             </div>
           </div>
         ) : (
-          <div className="mb-3 flex items-center gap-1.5 text-[11px] text-[#9CA3AF]">
+          <div className="mb-3 flex items-center gap-1.5 text-[11px] text-[var(--vm-faint)]">
             <User className="h-3.5 w-3.5" /> Sem técnico
           </div>
         )}
 
-        <div className="h-px bg-[#F3F4F6]" />
+        <div className="h-px bg-[var(--vm-tile-2)]" />
 
         {/* row 3: status + date */}
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -602,7 +602,7 @@ function DetailDrawer({
           {/* ── timeline ── */}
           <section
             className="rounded-2xl p-4"
-            style={{ background: "#F9FAFB", border: "1px solid #F3F4F6" }}
+            style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-tile-2)" }}
           >
             <SectionLabel>Linha do Tempo</SectionLabel>
             <ExecutionTimeline
@@ -616,14 +616,14 @@ function DetailDrawer({
           {item.tecnico && (
             <section
               className="flex items-center gap-3 rounded-2xl p-4"
-              style={{ background: "#F9FAFB", border: "1px solid #F3F4F6" }}
+              style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-tile-2)" }}
             >
               <TecnicoAvatar nome={item.tecnico.nome} size="lg" />
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--vm-faint)]">
                   Técnico Responsável
                 </p>
-                <p className="mt-0.5 text-[15px] font-bold text-[#111827]">
+                <p className="mt-0.5 text-[15px] font-bold text-[var(--vm-text)]">
                   {item.tecnico.nome}
                 </p>
               </div>
@@ -633,20 +633,20 @@ function DetailDrawer({
           {/* ── localização ── */}
           <section
             className="rounded-2xl p-4"
-            style={{ background: "#F9FAFB", border: "1px solid #F3F4F6" }}
+            style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-tile-2)" }}
           >
             <SectionLabel>Localização</SectionLabel>
             <div className="flex items-start gap-2">
               <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#059669]" />
               <div>
-                <p className="text-[13px] font-semibold text-[#374151]">
+                <p className="text-[13px] font-semibold text-[var(--vm-text-soft)]">
                   {item.municipio}
                 </p>
                 {item.endereco && (
-                  <p className="mt-0.5 text-[12px] text-[#6B7280]">{item.endereco}</p>
+                  <p className="mt-0.5 text-[12px] text-[var(--vm-muted)]">{item.endereco}</p>
                 )}
                 {item.latitude != null && item.longitude != null && (
-                  <p className="mt-1 font-mono text-[10.5px] text-[#9CA3AF]">
+                  <p className="mt-1 font-mono text-[10.5px] text-[var(--vm-faint)]">
                     {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}
                   </p>
                 )}
@@ -658,7 +658,7 @@ function DetailDrawer({
           {(item.alturaAntena || item.aterramento || item.intensidadeSinal || item.velocidade || item.observacao || item.motivo) && (
             <section
               className="rounded-2xl p-4"
-              style={{ background: "#F9FAFB", border: "1px solid #F3F4F6" }}
+              style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-tile-2)" }}
             >
               <SectionLabel>Detalhes Técnicos</SectionLabel>
               <div className="grid grid-cols-2 gap-2">
@@ -682,12 +682,12 @@ function DetailDrawer({
               {item.observacao && (
                 <div
                   className="mt-2 rounded-xl p-3"
-                  style={{ background: "#fff", border: "1px solid #E8EAED" }}
+                  style={{ background: "#fff", border: "1px solid var(--vm-border)" }}
                 >
-                  <p className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                  <p className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--vm-faint)]">
                     Observações
                   </p>
-                  <p className="text-[12.5px] leading-relaxed text-[#374151]">
+                  <p className="text-[12.5px] leading-relaxed text-[var(--vm-text-soft)]">
                     {item.observacao}
                   </p>
                 </div>
@@ -776,7 +776,7 @@ function DetailDrawer({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#9CA3AF]">
+    <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--vm-faint)]">
       {children}
     </p>
   );
@@ -792,12 +792,12 @@ function DetailChip({
   return (
     <div
       className="rounded-xl p-2.5"
-      style={{ background: "#fff", border: "1px solid #E8EAED" }}
+      style={{ background: "#fff", border: "1px solid var(--vm-border)" }}
     >
-      <p className="flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+      <p className="flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--vm-faint)]">
         {icon} {label}
       </p>
-      <p className="mt-0.5 text-[13px] font-semibold text-[#374151]">{value}</p>
+      <p className="mt-0.5 text-[13px] font-semibold text-[var(--vm-text-soft)]">{value}</p>
     </div>
   );
 }
@@ -942,18 +942,18 @@ export default function RealizadasPage() {
         {/* search */}
         <div
           className="flex h-9 min-w-[200px] flex-1 max-w-[380px] items-center gap-2 rounded-xl px-3"
-          style={{ background: "#fff", border: "1px solid #E8EAED" }}
+          style={{ background: "#fff", border: "1px solid var(--vm-border)" }}
         >
-          <Search className="h-3.5 w-3.5 shrink-0 text-[#9CA3AF]" />
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--vm-faint)]" />
           <input
             type="text"
             placeholder="Buscar equipamento, técnico, município…"
             value={q}
             onChange={e => setQ(e.target.value)}
-            className="flex-1 bg-transparent text-[12px] text-[#374151] outline-none placeholder:text-[#D1D5DB]"
+            className="flex-1 bg-transparent text-[12px] text-[var(--vm-text-soft)] outline-none placeholder:text-[#D1D5DB]"
           />
           {q && (
-            <button onClick={() => setQ("")} className="text-[#9CA3AF] hover:text-[#374151]">
+            <button onClick={() => setQ("")} className="text-[var(--vm-faint)] hover:text-[var(--vm-text-soft)]">
               <X className="h-3 w-3" />
             </button>
           )}
@@ -962,7 +962,7 @@ export default function RealizadasPage() {
         {/* status filter */}
         <div
           className="flex items-center rounded-xl p-0.5"
-          style={{ background: "#F3F4F6", border: "1px solid #E8EAED" }}
+          style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)" }}
         >
           {(["", "VISTORIADO", "REVISITADO"] as const).map(s => (
             <button
@@ -972,8 +972,8 @@ export default function RealizadasPage() {
               style={{
                 background: filterStatus === s ? "#fff" : "transparent",
                 color: filterStatus === s
-                  ? (s === "REVISITADO" ? "#7C3AED" : s === "VISTORIADO" ? "#059669" : "#374151")
-                  : "#9CA3AF",
+                  ? (s === "REVISITADO" ? "#7C3AED" : s === "VISTORIADO" ? "#059669" : "var(--vm-text-soft)")
+                  : "var(--vm-faint)",
                 boxShadow: filterStatus === s ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
               }}
             >
@@ -985,7 +985,7 @@ export default function RealizadasPage() {
         {/* pdf filter */}
         <div
           className="flex items-center rounded-xl p-0.5"
-          style={{ background: "#F3F4F6", border: "1px solid #E8EAED" }}
+          style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)" }}
         >
           {(["", "GERADO", "PENDENTE", "ERRO"] as const).map(s => (
             <button
@@ -995,8 +995,8 @@ export default function RealizadasPage() {
               style={{
                 background: filterPDF === s ? "#fff" : "transparent",
                 color: filterPDF === s
-                  ? (s === "GERADO" ? "#2563EB" : s === "ERRO" ? "#DC2626" : s === "PENDENTE" ? "#D97706" : "#374151")
-                  : "#9CA3AF",
+                  ? (s === "GERADO" ? "#2563EB" : s === "ERRO" ? "#DC2626" : s === "PENDENTE" ? "#D97706" : "var(--vm-text-soft)")
+                  : "var(--vm-faint)",
                 boxShadow: filterPDF === s ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
               }}
             >
@@ -1007,7 +1007,7 @@ export default function RealizadasPage() {
 
         {/* result count */}
         {!loading && (q || filterStatus || filterPDF) && (
-          <span className="ml-auto text-[11px] text-[#9CA3AF]">
+          <span className="ml-auto text-[11px] text-[var(--vm-faint)]">
             {filtered.length} resultado{filtered.length !== 1 ? "s" : ""}
           </span>
         )}
@@ -1023,15 +1023,15 @@ export default function RealizadasPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center justify-center rounded-2xl bg-white py-20"
-          style={{ border: "1px solid #E8EAED" }}
+          style={{ border: "1px solid var(--vm-border)" }}
         >
-          <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F9FAFB]">
+          <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--vm-tile)]">
             <CheckCircle2 className="h-8 w-8 text-[#D1D5DB]" />
           </div>
-          <p className="text-[14px] font-semibold text-[#374151]">
+          <p className="text-[14px] font-semibold text-[var(--vm-text-soft)]">
             Nenhum registro encontrado
           </p>
-          <p className="mt-1 text-[12px] text-[#9CA3AF]">
+          <p className="mt-1 text-[12px] text-[var(--vm-faint)]">
             Ajuste os filtros para ver mais resultados
           </p>
           {(q || filterStatus || filterPDF) && (

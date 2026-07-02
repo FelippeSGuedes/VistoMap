@@ -53,7 +53,7 @@ const PRIORIDADE_CONFIG: Record<
   CRITICA: { bg: "#FEF2F2", fg: "#B91C1C", border: "rgba(239,68,68,0.3)", label: "Crítica", glow: "rgba(239,68,68,0.12)" },
   ALTA:    { bg: "#FFF7ED", fg: "#C2410C", border: "rgba(249,115,22,0.3)", label: "Alta",    glow: "rgba(249,115,22,0.10)" },
   MEDIA:   { bg: "#EEF2FF", fg: "#4338CA", border: "rgba(99,102,241,0.25)", label: "Média",  glow: "rgba(99,102,241,0.06)" },
-  BAIXA:   { bg: "#F1F5F9", fg: "#475569", border: "rgba(71,85,105,0.18)",  label: "Baixa",  glow: "rgba(71,85,105,0.04)" },
+  BAIXA:   { bg: "var(--vm-tile-3)", fg: "#475569", border: "rgba(71,85,105,0.18)",  label: "Baixa",  glow: "rgba(71,85,105,0.04)" },
 };
 
 function initials(nome: string) {
@@ -125,7 +125,7 @@ function RevisitaCard({
           {/* Equipamento */}
           <h3
             className="truncate text-[15px] font-semibold tracking-[-0.3px]"
-            style={{ color: "#063B3B" }}
+            style={{ color: "var(--vm-ink)" }}
           >
             {r.equipamento}
           </h3>
@@ -156,7 +156,7 @@ function RevisitaCard({
               >
                 {initials(r.tecnicoAtribuido.nome)}
               </span>
-              <span className="max-w-[64px] truncate text-center text-[9.5px] font-medium" style={{ color: "#566773" }}>
+              <span className="max-w-[64px] truncate text-center text-[9.5px] font-medium" style={{ color: "var(--vm-muted-b)" }}>
                 {r.tecnicoAtribuido.nome.split(" ")[0]}
               </span>
             </div>
@@ -168,7 +168,7 @@ function RevisitaCard({
             >
               <span
                 className="flex h-9 w-9 items-center justify-center rounded-xl"
-                style={{ background: "#F1F5F9", border: "1.5px dashed #CBD5E1" }}
+                style={{ background: "var(--vm-tile-3)", border: "1.5px dashed #CBD5E1" }}
               >
                 <UserPlus className="h-4 w-4" style={{ color: "#94A3B8" }} strokeWidth={1.8} />
               </span>
@@ -237,7 +237,7 @@ function RevisitaCard({
       {/* AÇÕES */}
       <div
         className="flex items-center gap-1.5 border-t px-4 py-2.5 pl-6"
-        style={{ borderColor: "rgba(6,59,59,0.05)" }}
+        style={{ borderColor: "var(--vm-border-soft)" }}
       >
         <button
           type="button"
@@ -415,10 +415,10 @@ export default function RevisitasPage() {
               Tratamento operacional
             </span>
           </div>
-          <h1 className="text-[28px] font-semibold tracking-[-0.5px]" style={{ color: "#063B3B" }}>
+          <h1 className="text-[28px] font-semibold tracking-[-0.5px]" style={{ color: "var(--vm-ink)" }}>
             Central de Revisitas
           </h1>
-          <p className="mt-0.5 text-[12.5px]" style={{ color: "#566773" }}>
+          <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--vm-muted-b)" }}>
             Cada equipamento reprovado é um caso a tratar. Corrija, revise e decida o próximo passo operacional.
           </p>
         </div>
@@ -434,7 +434,7 @@ export default function RevisitasPage() {
           </div>
           <div className="h-10 w-px" style={{ background: "rgba(6,59,59,0.08)" }} />
           <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "#063B3B" }}>
+            <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "var(--vm-ink)" }}>
               {lista.length}
             </span>
             <span className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#7A8896" }}>
@@ -449,17 +449,17 @@ export default function RevisitasPage() {
         className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
         style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.06)", boxShadow: "0 1px 3px rgba(6,59,59,0.03)" }}
       >
-        <Search className="h-4 w-4 shrink-0" style={{ color: "#A0ACBA" }} strokeWidth={2.2} />
+        <Search className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar equipamento, município, motivo…"
           className="flex-1 bg-transparent text-[13px] font-medium outline-none placeholder:text-[#C0C8D2]"
-          style={{ color: "#063B3B" }}
+          style={{ color: "var(--vm-ink)" }}
         />
         {query && (
-          <button type="button" onClick={() => setQuery("")} className="text-[#A0ACBA] transition hover:text-[#566773]">
+          <button type="button" onClick={() => setQuery("")} className="text-[var(--vm-faint-b)] transition hover:text-[var(--vm-muted-b)]">
             <X className="h-3.5 w-3.5" />
           </button>
         )}
@@ -479,10 +479,10 @@ export default function RevisitasPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex flex-col items-center justify-center rounded-[20px] py-16"
-            style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.05)" }}
+            style={{ background: "#fff", border: "1px solid var(--vm-border-soft)" }}
           >
             <Sparkles className="mb-3 h-8 w-8" style={{ color: "#00B388" }} strokeWidth={1.5} />
-            <p className="text-[14px] font-semibold" style={{ color: "#063B3B" }}>
+            <p className="text-[14px] font-semibold" style={{ color: "var(--vm-ink)" }}>
               {query ? "Nenhuma revisita encontrada" : "Operação em dia"}
             </p>
             <p className="mt-1 text-[12px]" style={{ color: "#94A3B8" }}>
@@ -525,12 +525,12 @@ export default function RevisitasPage() {
               className="w-full max-w-[420px] overflow-hidden rounded-[24px]"
               style={{ background: "#fff", border: "1px solid rgba(6,59,59,0.08)", boxShadow: "0 24px 60px rgba(6,59,59,0.2)" }}
             >
-              <header className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: "rgba(6,59,59,0.05)" }}>
+              <header className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: "var(--vm-border-soft)" }}>
                 <div>
                   <p className="text-[9.5px] font-bold uppercase tracking-[0.18em]" style={{ color: "#C2410C" }}>
                     Atribuir revisita
                   </p>
-                  <h3 className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]" style={{ color: "#063B3B" }}>
+                  <h3 className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]" style={{ color: "var(--vm-ink)" }}>
                     {atribuirOpen.equipamento}
                   </h3>
                   <p className="text-[11px]" style={{ color: "#7A8896" }}>
@@ -542,11 +542,11 @@ export default function RevisitasPage() {
                 </button>
               </header>
               <div className="space-y-1 p-3">
-                <p className="px-2 pb-1 text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "#A0ACBA" }}>
+                <p className="px-2 pb-1 text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-faint-b)" }}>
                   Técnicos disponíveis
                 </p>
                 {tecnicos.filter((t) => t.status !== "offline").map((t) => {
-                  const statusColor = t.status === "em-campo" ? "#00B388" : t.status === "base" ? "#6366F1" : "#9CA3AF";
+                  const statusColor = t.status === "em-campo" ? "#00B388" : t.status === "base" ? "#6366F1" : "var(--vm-faint)";
                   return (
                     <button
                       key={t.id}
@@ -560,10 +560,10 @@ export default function RevisitasPage() {
                         <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full" style={{ background: statusColor, boxShadow: "0 0 0 2px #fff" }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[12.5px] font-semibold" style={{ color: "#063B3B" }}>{t.nome}</p>
+                        <p className="truncate text-[12.5px] font-semibold" style={{ color: "var(--vm-ink)" }}>{t.nome}</p>
                         <p className="text-[10px]" style={{ color: "#7A8896" }}>{t.municipio ?? "—"} · {t.atribuidas} atrib</p>
                       </div>
-                      <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "#A0ACBA" }} />
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint-b)" }} />
                     </button>
                   );
                 })}
@@ -602,7 +602,7 @@ export default function RevisitasPage() {
             style={{ background: "#fff", border: "1px solid rgba(0,179,136,0.28)", boxShadow: "0 12px 32px rgba(0,179,136,0.16), 0 4px 12px rgba(6,59,59,0.08)" }}
           >
             <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: "#00B388" }} />
-            <span className="text-[12.5px] font-medium" style={{ color: "#063B3B" }}>{toast}</span>
+            <span className="text-[12.5px] font-medium" style={{ color: "var(--vm-ink)" }}>{toast}</span>
           </motion.div>
         )}
       </AnimatePresence>

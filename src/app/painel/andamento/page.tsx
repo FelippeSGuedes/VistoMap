@@ -85,7 +85,7 @@ function Skeleton() {
         <div
           key={i}
           className="h-[88px] animate-pulse rounded-xl"
-          style={{ background: "rgba(0,0,0,0.05)" }}
+          style={{ background: "var(--vm-fill-2)" }}
         />
       ))}
     </div>

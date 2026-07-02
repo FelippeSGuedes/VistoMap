@@ -76,7 +76,7 @@ const STATUS_DOT: Record<TecnicoAtivo["status"], string> = {
   "em-campo":  "#10B981",
   "base":      "#6366F1",
   "off-shift": "#F59E0B",
-  "offline":   "#9CA3AF",
+  "offline":   "var(--vm-faint)",
 };
 
 const STATUS_LABEL: Record<TecnicoAtivo["status"], string> = {
@@ -176,7 +176,7 @@ const NOC_CSS = `
 /* ─── primitives ────────────────────────────────────────────────────────── */
 
 function Skeleton({ h }: { h: number }) {
-  return <div className="w-full animate-pulse rounded-xl bg-[#F3F4F6]" style={{ height: h }} />;
+  return <div className="w-full animate-pulse rounded-xl bg-[var(--vm-tile-2)]" style={{ height: h }} />;
 }
 
 function Card({
@@ -192,7 +192,7 @@ function Card({
   return (
     <div
       className={`vm-card flex flex-col overflow-hidden rounded-2xl bg-white ${className}`}
-      style={{ border: "1px solid #E8EAED", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", ...style }}
+      style={{ border: "1px solid var(--vm-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", ...style }}
     >
       {children}
     </div>
@@ -355,7 +355,7 @@ function VelocityChart({
         {tickIdx.map((i) => (
           <span
             key={i}
-            className="absolute -translate-x-1/2 text-[0.7rem] text-[#9CA3AF]"
+            className="absolute -translate-x-1/2 text-[0.7rem] text-[var(--vm-faint)]"
             style={{ left: pctLeft(x(i)) }}
           >
             {labels[i]}
@@ -423,12 +423,12 @@ function MiniDonut({
         </svg>
         <div
           className="absolute inset-0 flex items-center justify-center text-[1.6rem] font-bold tabular-nums"
-          style={{ color: "#111827" }}
+          style={{ color: "var(--vm-text)" }}
         >
           {Math.round(clamped)}%
         </div>
       </div>
-      <p className="mt-1.5 text-center text-[10px] text-[#9CA3AF]">{caption}</p>
+      <p className="mt-1.5 text-center text-[10px] text-[var(--vm-faint)]">{caption}</p>
     </div>
   );
 }
@@ -608,8 +608,8 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
             .setLngLat(e.lngLat)
             .setHTML(
               `<div style="font-family:ui-sans-serif;padding:8px 12px;min-width:130px">
-                <div style="font-size:12px;font-weight:700;color:#111827;margin-bottom:3px">${name || "—"}</div>
-                <div style="font-size:11px;color:#374151">${total > 0 ? `${total} vistorias · ${pctStr}%` : "Sem atividade"}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--vm-text);margin-bottom:3px">${name || "—"}</div>
+                <div style="font-size:11px;color:var(--vm-text-soft)">${total > 0 ? `${total} vistorias · ${pctStr}%` : "Sem atividade"}</div>
               </div>`,
             )
             .addTo(map);
@@ -654,9 +654,9 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-          <span className="text-[13px] font-semibold text-[#111827]">Padrão Diário · 30 dias</span>
+          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Padrão Diário · 30 dias</span>
         </div>
-        <div className="flex items-center gap-1 text-[9.5px] text-[#9CA3AF]">
+        <div className="flex items-center gap-1 text-[9.5px] text-[var(--vm-faint)]">
           {["#e8f5ee", "#a8d5b5", "#5a9e74", "#1a6b3c"].map(c => (
             <span key={c} className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
           ))}
@@ -670,20 +670,20 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 flex-col items-center justify-center gap-1"
           style={{ width: 48 }}
         >
-          <span className="text-center text-[0.65rem] leading-tight text-[#9CA3AF]">Mais<br />vistorias</span>
+          <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Mais<br />vistorias</span>
           <div
             className="w-2.5 rounded-full"
             style={{ height: 80, background: "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
           />
-          <span className="text-center text-[0.65rem] leading-tight text-[#9CA3AF]">Menos<br />vistorias</span>
+          <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Menos<br />vistorias</span>
         </div>
         {!geoLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#F9FAFB]">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#E8EAED] border-t-[#059669]" />
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--vm-tile)]">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--vm-border)] border-t-[#059669]" />
           </div>
         )}
       </div>
-      <div className="mt-auto grid grid-cols-3 border-t border-[#F3F4F6]">
+      <div className="mt-auto grid grid-cols-3 border-t border-[var(--vm-tile-2)]">
         {[
           { icon: Activity, label: "Total no período", value: String(totais.vistoriasFinalizadas), color: "#059669" },
           { icon: Clock,    label: "Média semanal",    value: mediaSemanal.toFixed(1).replace(".", ","), color: "#0EA5E9" },
@@ -692,7 +692,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           <div
             key={m.label}
             className="flex flex-col gap-1.5 px-4 py-3.5"
-            style={{ borderLeft: i > 0 ? "1px solid #F3F4F6" : undefined }}
+            style={{ borderLeft: i > 0 ? "1px solid var(--vm-tile-2)" : undefined }}
           >
             <span
               className="flex h-7 w-7 items-center justify-center rounded-lg"
@@ -700,8 +700,8 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
             >
               <m.icon className="h-3.5 w-3.5" strokeWidth={2.2} />
             </span>
-            <div className="text-[20px] font-bold leading-none tabular-nums text-[#111827]">{m.value}</div>
-            <div className="text-[9.5px] font-medium uppercase tracking-[0.08em] text-[#9CA3AF]">{m.label}</div>
+            <div className="text-[20px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{m.value}</div>
+            <div className="text-[9.5px] font-medium uppercase tracking-[0.08em] text-[var(--vm-faint)]">{m.label}</div>
           </div>
         ))}
       </div>
@@ -802,7 +802,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2">
           <Zap className="h-4 w-4 text-[#059669]" strokeWidth={2.2} />
-          <span className="text-[13px] font-semibold text-[#111827]">Equipe · ao vivo</span>
+          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Equipe · ao vivo</span>
         </div>
         <div className="flex items-center gap-2">
           {emCampoCount > 0 && (
@@ -818,7 +818,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       </div>
       <div ref={containerRef} className="vm-dash-team h-[190px] w-full shrink-0" />
       {destaque && (
-        <div className="flex items-center gap-3 border-t border-[#F3F4F6] px-4 py-3">
+        <div className="flex items-center gap-3 border-t border-[var(--vm-tile-2)] px-4 py-3">
           <span
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white"
             style={{ background: "linear-gradient(135deg,#10B981,#059669)" }}
@@ -826,8 +826,8 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
             {initials(destaque.nome)}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-semibold text-[#111827]">{destaque.nome.split(" ")[0]}</p>
-            <p className="truncate text-[10px] text-[#9CA3AF]">{destaque.municipio ?? "—"} · {destaque.concluidasHoje} hoje</p>
+            <p className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{destaque.nome.split(" ")[0]}</p>
+            <p className="truncate text-[10px] text-[var(--vm-faint)]">{destaque.municipio ?? "—"} · {destaque.concluidasHoje} hoje</p>
           </div>
           <span
             className="shrink-0 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-wide"
@@ -842,8 +842,8 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
           { title: "Aprovação", value: taxaAprov,    color: "#16a34a", caption: "aprovadas no período" },
           { title: "Revisitas", value: taxaRevisita, color: "#f59e0b", caption: "pendentes (30d)" },
         ].map(g => (
-          <div key={g.title} className="flex flex-col items-center rounded-xl bg-[#F9FAFB] p-3">
-            <p className="mb-2 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-[#9CA3AF]">{g.title}</p>
+          <div key={g.title} className="flex flex-col items-center rounded-xl bg-[var(--vm-tile)] p-3">
+            <p className="mb-2 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-[var(--vm-faint)]">{g.title}</p>
             <MiniDonut value={g.value} color={g.color} caption={g.caption} />
           </div>
         ))}
@@ -1018,8 +1018,8 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
             <Building2 className="h-3.5 w-3.5 text-[#4A6CF7]" strokeWidth={2} />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-[13px] font-semibold text-[#111827]">Top Municípios</span>
-            <span className="text-[9.5px] text-[#9CA3AF]">30 dias{totalGlobal > 0 ? ` · ${totalGlobal} vistorias` : ""}</span>
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Municípios</span>
+            <span className="text-[9.5px] text-[var(--vm-faint)]">30 dias{totalGlobal > 0 ? ` · ${totalGlobal} vistorias` : ""}</span>
           </div>
         </div>
         <span
@@ -1046,7 +1046,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[#F6F8FE]"
+              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile-blue)]"
               style={{ borderLeft: "2px solid transparent" }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.borderLeftColor = "#4A6CF7";
@@ -1075,13 +1075,13 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
               </span>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center justify-between gap-1">
-                  <span className="truncate text-[10.5px] font-semibold text-[#374151]">{m.municipio}</span>
+                  <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <span className="text-[9.5px] text-[#9CA3AF]">{pct.toFixed(0)}%</span>
-                    <span className="tabular-nums text-[11px] font-bold text-[#111827]">{m.total}</span>
+                    <span className="text-[9.5px] text-[var(--vm-faint)]">{pct.toFixed(0)}%</span>
+                    <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.total}</span>
                   </div>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[#EEF0F4]">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                   <motion.div
                     className="h-full rounded-full"
                     style={{ background: i === 0 ? "linear-gradient(90deg,#4A6CF7,#7C3AED)" : "linear-gradient(90deg,#5E84F7,#93B3FF)" }}
@@ -1161,14 +1161,14 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   }, [revisitas]);
 
   return (
-    <Card style={{ border: hasRevisitas ? "1px solid rgba(249,115,22,0.22)" : "1px solid #E8EAED" }}>
+    <Card style={{ border: hasRevisitas ? "1px solid rgba(249,115,22,0.22)" : "1px solid var(--vm-border)" }}>
       <div
         className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: `1px solid ${hasRevisitas ? "#FFEDD5" : "#F3F4F6"}` }}
+        style={{ borderBottom: `1px solid ${hasRevisitas ? "#FFEDD5" : "var(--vm-tile-2)"}` }}
       >
         <div className="flex items-center gap-2">
           <RotateCw className="h-3.5 w-3.5 text-orange-500" strokeWidth={2} />
-          <span className="text-[12.5px] font-semibold text-[#111827]">
+          <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">
             Revisitas
             {hasRevisitas && (
               <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-bold text-orange-600">
@@ -1191,8 +1191,8 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 shadow-sm">
               <Sparkles className="h-5 w-5 text-emerald-500" strokeWidth={1.5} />
             </div>
-            <p className="text-[12px] font-semibold text-[#374151]">Operação em dia</p>
-            <p className="text-[10.5px] text-[#9CA3AF]">Sem revisitas pendentes.</p>
+            <p className="text-[12px] font-semibold text-[var(--vm-text-soft)]">Operação em dia</p>
+            <p className="text-[10.5px] text-[var(--vm-faint)]">Sem revisitas pendentes.</p>
           </div>
         )}
       </div>
@@ -1205,8 +1205,8 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
                 <ShieldAlert className="h-3 w-3 text-orange-500" strokeWidth={2.4} />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[11.5px] font-semibold text-[#374151]">{r.equipamento}</p>
-                <p className="line-clamp-1 text-[10px] text-[#9CA3AF]">{r.municipio} · {relativo(r.reprovadoEm)}</p>
+                <p className="truncate text-[11.5px] font-semibold text-[var(--vm-text-soft)]">{r.equipamento}</p>
+                <p className="line-clamp-1 text-[10px] text-[var(--vm-faint)]">{r.municipio} · {relativo(r.reprovadoEm)}</p>
               </div>
             </li>
           ))}
@@ -1540,7 +1540,7 @@ export default function PainelOverviewPage() {
             <div>
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-                <span className="text-[13px] font-semibold text-[#111827]">Vistorias Finalizadas · 14 dias</span>
+                <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias Finalizadas · 14 dias</span>
               </div>
               <div className="mt-3 flex items-end gap-3">
                 <span
@@ -1647,7 +1647,7 @@ export default function PainelOverviewPage() {
           <div className="flex items-center justify-between px-5 pt-4 pb-3">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-              <span className="text-[13px] font-semibold text-[#111827]">Top Técnicos · 30d</span>
+              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos · 30d</span>
             </div>
             <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
           </div>
@@ -1657,15 +1657,15 @@ export default function PainelOverviewPage() {
                 const maxTotal = topTecs[0]?.total ?? 1;
                 const pct = (t.total / maxTotal) * 100;
                 const aprovPct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
-                const badgeColors = ["#F59E0B", "#9CA3AF", "#B45309", "#6B7280", "#6B7280"];
-                const badgeBg    = ["#FEF3C7", "#F3F4F6", "#FEF3C7", "#F9FAFB", "#F9FAFB"];
+                const badgeColors = ["#F59E0B", "var(--vm-faint)", "#B45309", "var(--vm-muted)", "var(--vm-muted)"];
+                const badgeBg    = ["#FEF3C7", "var(--vm-tile-2)", "#FEF3C7", "var(--vm-tile)", "var(--vm-tile)"];
                 return (
                   <motion.div
                     key={t.id}
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.06 * i, duration: 0.35, ease: "easeOut" }}
-                    className="rounded-xl px-2 py-2.5 transition hover:bg-[#F9FAFB]"
+                    className="rounded-xl px-2 py-2.5 transition hover:bg-[var(--vm-tile)]"
                   >
                     <div className="flex items-center gap-2.5">
                       <span
@@ -1676,10 +1676,10 @@ export default function PainelOverviewPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-1">
-                          <span className="truncate text-[12px] font-semibold text-[#111827]">{t.nome.split(" ")[0]}</span>
-                          <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[#111827]">{t.total}</span>
+                          <span className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{t.nome.split(" ")[0]}</span>
+                          <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[var(--vm-text)]">{t.total}</span>
                         </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                           <motion.div
                             className="h-full rounded-full"
                             style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
@@ -1695,7 +1695,7 @@ export default function PainelOverviewPage() {
                         {aprovPct}% aprov.
                       </span>
                       {t.cidades > 0 && (
-                        <span className="rounded-full bg-[#EDE9FE] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
+                        <span className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
                           {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
                         </span>
                       )}
@@ -1743,10 +1743,10 @@ export default function PainelOverviewPage() {
 
         {/* Widget 06 — Atividade ao Vivo: operational timeline */}
         <Card>
-          <div className="flex items-center justify-between border-b border-[#F3F4F6] px-4 py-3">
+          <div className="flex items-center justify-between border-b border-[var(--vm-tile-2)] px-4 py-3">
             <div className="flex items-center gap-2">
               <Activity className="h-3.5 w-3.5 text-[#3B82F6]" strokeWidth={2} />
-              <span className="text-[12.5px] font-semibold text-[#111827]">Atividade ao vivo</span>
+              <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Atividade ao vivo</span>
               <span
                 className="flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-blue-600"
               >
@@ -1764,7 +1764,7 @@ export default function PainelOverviewPage() {
             ) : (
               <div className="relative flex flex-col">
                 {/* vertical connector line */}
-                <div className="absolute left-[10px] top-3 bottom-3 w-px bg-gradient-to-b from-[#E8EAED] via-[#E8EAED] to-transparent" />
+                <div className="absolute left-[10px] top-3 bottom-3 w-px bg-gradient-to-b from-[var(--vm-border)] via-[var(--vm-border)] to-transparent" />
                 {audit.slice(0, 6).map((e, i) => {
                   const color = auditColor(e.acao);
                   const Icon  = auditIcon(e.acao);
@@ -1789,12 +1789,12 @@ export default function PainelOverviewPage() {
                         <Icon className="h-2.5 w-2.5" style={{ color }} strokeWidth={2.5} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11.5px] leading-snug text-[#374151]">
+                        <p className="text-[11.5px] leading-snug text-[var(--vm-text-soft)]">
                           <span className="font-semibold">{e.ator.nome.split(" ")[0]}</span>{" "}
-                          <span className="text-[#9CA3AF]">{e.acao.replace(/[-_]/g, " ")}</span>
+                          <span className="text-[var(--vm-faint)]">{e.acao.replace(/[-_]/g, " ")}</span>
                           {e.alvo && <span className="ml-1 font-semibold" style={{ color }}>{e.alvo.label}</span>}
                         </p>
-                        <p className="text-[9.5px] text-[#9CA3AF]">{relativo(e.timestamp)}</p>
+                        <p className="text-[9.5px] text-[var(--vm-faint)]">{relativo(e.timestamp)}</p>
                       </div>
                     </motion.div>
                   );
@@ -1810,15 +1810,15 @@ export default function PainelOverviewPage() {
 
       {/* ════════════ RODAPÉ — barra de status NOC ════════════ */}
       <div
-        className="vm-rise flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-5 py-3 text-[11px] text-[#6B7280]"
-        style={{ background: "#F8FAFC", border: "1px solid #E8EAED", animationDelay: "0.24s" }}
+        className="vm-rise flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-5 py-3 text-[11px] text-[var(--vm-muted)]"
+        style={{ background: "#F8FAFC", border: "1px solid var(--vm-border)", animationDelay: "0.24s" }}
       >
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="absolute inset-0 rounded-full bg-emerald-500" style={{ animation: "vmRing 2s ease-out infinite" }} />
             <span className="relative h-2 w-2 rounded-full bg-emerald-500" />
           </span>
-          <span className="font-medium text-[#374151]">Sistema em operação</span>
+          <span className="font-medium text-[var(--vm-text-soft)]">Sistema em operação</span>
           <span className="text-[#D1D5DB]">·</span>
           <span className="flex items-center gap-1.5">
             próx. sync
@@ -1832,11 +1832,11 @@ export default function PainelOverviewPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <Users className="h-3.5 w-3.5" />
-          <span>Técnicos em campo: <span className="font-semibold text-[#374151]">{emCampo}</span></span>
+          <span>Técnicos em campo: <span className="font-semibold text-[var(--vm-text-soft)]">{emCampo}</span></span>
         </div>
         <div className="flex items-center gap-1.5">
           <Activity className="h-3.5 w-3.5" />
-          <span>Em vistoria: <span className="font-semibold text-[#374151]">{stats?.emVistoria ?? 0}</span></span>
+          <span>Em vistoria: <span className="font-semibold text-[var(--vm-text-soft)]">{stats?.emVistoria ?? 0}</span></span>
         </div>
         {alertaRevisitas.length > 0 && (
           <div className="flex items-center gap-1.5 text-orange-500">
@@ -1844,7 +1844,7 @@ export default function PainelOverviewPage() {
             <span>Alertas: <span className="font-semibold">{alertaRevisitas.length}</span></span>
           </div>
         )}
-        <div className="ml-auto flex items-center gap-2 font-mono tabular-nums text-[#9CA3AF]">
+        <div className="ml-auto flex items-center gap-2 font-mono tabular-nums text-[var(--vm-faint)]">
           <Clock className="h-3.5 w-3.5" />
           <span>
             {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
