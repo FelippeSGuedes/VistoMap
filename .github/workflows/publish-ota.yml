@@ -83,3 +83,24 @@ jobs:
           echo "Deploy concluido:"
           ls -lh /data/vistomap/ota/bundles/${VERSION}.zip
           cat /data/vistomap/ota/latest.json
+
+      - name: Verificar que o bundle está acessível publicamente
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('dist-ota/latest.json'))['version'])")
+          echo "Confirmando que $VERSION responde em vistomap.nansen.com.br/ota…"
+          for i in 1 2 3 4 5; do
+            PUB=$(curl -s -m 15 https://vistomap.nansen.com.br/ota/latest.json \
+                  | python3 -c "import sys,json; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || echo "")
+            if [ "$PUB" = "$VERSION" ]; then
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 30 \
+                     "https://vistomap.nansen.com.br/ota/bundles/${VERSION}.zip")
+              echo "latest.json OK ($VERSION) · bundle zip HTTP $CODE"
+              [ "$CODE" = "200" ] && exit 0
+              echo "::error::latest.json publicado mas o zip retornou HTTP $CODE"
+              exit 1
+            fi
+            echo "tentativa $i: público=$PUB, esperado=$VERSION — aguardando propagação…"
+            sleep 5
+          done
+          echo "::error::Bundle $VERSION NÃO acessível em vistomap.nansen.com.br/ota — o runner pode ter publicado num servidor diferente do que o nginx serve"
+          exit 1
