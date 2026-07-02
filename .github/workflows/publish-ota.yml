@@ -12,6 +12,10 @@ on:
       - 'scripts/build-mobile.mjs'
       - 'scripts/publish-mobile.mjs'
       - 'package.json'
+      # O build-mobile.mjs ESCONDE estas pastas — mudanças aqui não afetam o
+      # bundle do app, então não devem disparar o OTA (trabalho de painel/API).
+      - '!src/app/painel/**'
+      - '!src/app/api/**'
   workflow_dispatch:
 
 # Mesmo grupo do ci.yml: enfileira atrás do deploy em vez de rodar junto.
