@@ -261,13 +261,45 @@ select {
 .dark tr[class*="hover:bg-gray-50"]:hover,
 .dark [class*="hover:bg-gray-50/"]:hover { background-color: var(--vm-card-hover) !important; }
 
-/* Tints claros de badge (azul/verde/vermelho/âmbar) — leve escurecida no dark
-   pra não estourar sobre a base escura. */
-.dark .bg-blue-50   { background-color: rgba(59, 130, 246, 0.15) !important; }
-.dark .bg-green-50  { background-color: rgba(0, 179, 136, 0.15) !important; }
-.dark .bg-red-50    { background-color: rgba(239, 68, 68, 0.14) !important; }
-.dark .bg-amber-50  { background-color: rgba(245, 158, 11, 0.14) !important; }
-.dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.14) !important; }
+/* ── Cores semânticas sob .dark: tint escuro + texto claro legível ──────────
+   Badges, banners e textos coloridos (azul/verde/âmbar/vermelho/laranja/roxo/
+   ciano). No light-mode nada disso aplica. ── */
+/* AZUL */
+.dark .bg-blue-50, .dark .bg-blue-100   { background-color: rgba(59, 130, 246, 0.16) !important; }
+.dark .text-blue-800, .dark .text-blue-700, .dark .text-blue-600 { color: #93C5FD !important; }
+.dark .text-blue-500, .dark .text-blue-400 { color: #7FB0F5 !important; }
+.dark .border-blue-200, .dark .border-blue-300 { border-color: rgba(59, 130, 246, 0.32) !important; }
+/* VERDE / EMERALD */
+.dark .bg-green-50, .dark .bg-green-100, .dark .bg-emerald-50, .dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.16) !important; }
+.dark .text-green-800, .dark .text-green-700, .dark .text-green-600,
+.dark .text-emerald-800, .dark .text-emerald-700, .dark .text-emerald-600 { color: #6EE7B7 !important; }
+.dark .text-green-500, .dark .text-green-400 { color: #5FD3A3 !important; }
+.dark .border-green-200, .dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.32) !important; }
+/* ÂMBAR / AMARELO */
+.dark .bg-amber-50, .dark .bg-amber-100, .dark .bg-yellow-50, .dark .bg-yellow-100 { background-color: rgba(245, 158, 11, 0.15) !important; }
+.dark .text-amber-800, .dark .text-amber-700, .dark .text-amber-600,
+.dark .text-yellow-800, .dark .text-yellow-700, .dark .text-yellow-600 { color: #FCD34D !important; }
+.dark .border-amber-200, .dark .border-yellow-200 { border-color: rgba(245, 158, 11, 0.32) !important; }
+/* LARANJA */
+.dark .bg-orange-50, .dark .bg-orange-100 { background-color: rgba(249, 115, 22, 0.15) !important; }
+.dark .text-orange-800, .dark .text-orange-700, .dark .text-orange-600 { color: #FDBA74 !important; }
+.dark .border-orange-200, .dark .border-orange-300 { border-color: rgba(249, 115, 22, 0.32) !important; }
+/* VERMELHO */
+.dark .bg-red-50, .dark .bg-red-100     { background-color: rgba(239, 68, 68, 0.15) !important; }
+.dark .text-red-800, .dark .text-red-700, .dark .text-red-600 { color: #FCA5A5 !important; }
+.dark .text-red-500, .dark .text-red-400 { color: #F79999 !important; }
+.dark .border-red-200, .dark .border-red-300 { border-color: rgba(239, 68, 68, 0.32) !important; }
+/* ROXO / INDIGO / VIOLET */
+.dark .bg-purple-50, .dark .bg-purple-100, .dark .bg-indigo-50, .dark .bg-indigo-100, .dark .bg-violet-100 { background-color: rgba(139, 92, 246, 0.16) !important; }
+.dark .text-purple-800, .dark .text-purple-700, .dark .text-purple-600,
+.dark .text-indigo-800, .dark .text-indigo-700, .dark .text-indigo-600,
+.dark .text-violet-700, .dark .text-violet-600 { color: #C4B5FD !important; }
+.dark .border-purple-200, .dark .border-indigo-200 { border-color: rgba(139, 92, 246, 0.32) !important; }
+/* CIANO / TEAL / SKY */
+.dark .bg-cyan-50, .dark .bg-cyan-100, .dark .bg-teal-50, .dark .bg-teal-100, .dark .bg-sky-100 { background-color: rgba(14, 165, 233, 0.16) !important; }
+.dark .text-cyan-800, .dark .text-cyan-700, .dark .text-cyan-600,
+.dark .text-teal-800, .dark .text-teal-700, .dark .text-sky-700, .dark .text-sky-600 { color: #67E8F9 !important; }
+.dark .border-cyan-200, .dark .border-teal-200, .dark .border-sky-200 { border-color: rgba(14, 165, 233, 0.32) !important; }
 
 /* ── Mapbox no dark: popups e controles escuros ── */
 .dark .mapboxgl-popup-content {

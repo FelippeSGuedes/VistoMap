@@ -324,7 +324,7 @@ export default function TecnicosPage() {
                 <KpiBox
                   label="Atribuídas"
                   value={t.atribuidas}
-                  bg="#F7F9FB"
+                  bg="var(--vm-tile)"
                   borderColor="var(--vm-border-soft)"
                   labelColor="var(--vm-faint-b)"
                   valueColor="var(--vm-ink)"

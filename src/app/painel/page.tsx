@@ -80,7 +80,17 @@ function dashMapStyle(lightStyle: string): string {
   return dashDark() ? "mapbox://styles/mapbox/dark-v11" : lightStyle;
 }
 function dashMapBg(): string {
-  return dashDark() ? "#151B24" : "#ffffff";
+  return dashDark() ? "#141A23" : "#ffffff";
+}
+// Coroplético: preenchimento de município SEM dados + rampa de intensidade,
+// ambos adaptados ao tema (no dark o "vazio" é um tom escuro sutil, não branco).
+function choroEmpty(): string {
+  return dashDark() ? "#1E2733" : "#e8f5ee";
+}
+function choroRamp(): [string, string, string] {
+  return dashDark()
+    ? ["#2E7D5B", "#00B388", "#22E0A6"] // dark: verdes vivos que destacam no escuro
+    : ["#7bc49a", "#3f9468", "#1a6b3c"];
 }
 
 const STATUS_DOT: Record<TecnicoAtivo["status"], string> = {
@@ -485,13 +495,14 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
   const fillExpr = (munis: Array<{ municipio: string; total: number }>) => {
     const top = Math.max(...munis.map(m => m.total), 2);
     const mid = Math.max(Math.round(top / 2), 1);
+    const [lo, md, hi] = choroRamp();
     return [
       "case", [">", ["get", "total"], 0],
       ["interpolate", ["linear"], ["get", "total"],
-        1, "#7bc49a",
-        mid, "#3f9468",
-        top, "#1a6b3c"],
-      "#e8f5ee",
+        1, lo,
+        mid, md,
+        top, hi],
+      choroEmpty(),
     ] as unknown as mapboxgl.Expression;
   };
 
@@ -563,7 +574,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           id: "vm-sp-outline",
           type: "line",
           source: "vm-sp-src",
-          paint: { "line-color": "#ffffff", "line-width": 0.5 },
+          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
         });
 
         map.addLayer({
@@ -668,7 +679,10 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           <span className="text-[13px] font-semibold text-[var(--vm-text)]">Padrão Diário · 30 dias</span>
         </div>
         <div className="flex items-center gap-1 text-[9.5px] text-[var(--vm-faint)]">
-          {["#e8f5ee", "#a8d5b5", "#5a9e74", "#1a6b3c"].map(c => (
+          {(dashDark()
+            ? [choroEmpty(), ...choroRamp()]
+            : ["#e8f5ee", "#a8d5b5", "#5a9e74", "#1a6b3c"]
+          ).map(c => (
             <span key={c} className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
           ))}
           <span className="ml-0.5">+ ativo</span>
@@ -684,7 +698,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
           <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Mais<br />vistorias</span>
           <div
             className="w-2.5 rounded-full"
-            style={{ height: 80, background: "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
+            style={{ height: 80, background: dashDark() ? "linear-gradient(to bottom,#22E0A6,#1E2733)" : "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
           />
           <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Menos<br />vistorias</span>
         </div>
@@ -923,11 +937,11 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
         map.addSource("vm-muni-sp", { type: "geojson", data: geoJSON as never });
         map.addLayer({
           id: "vm-muni-fill", type: "fill", source: "vm-muni-sp",
-          paint: { "fill-color": "#dff0e8", "fill-opacity": 1 },
+          paint: { "fill-color": choroEmpty(), "fill-opacity": 1 },
         });
         map.addLayer({
           id: "vm-muni-line", type: "line", source: "vm-muni-sp",
-          paint: { "line-color": "#ffffff", "line-width": 0.5 },
+          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
         });
 
         const bounds = new mapboxgl.LngLatBounds();
@@ -983,10 +997,11 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
     (map.getSource("vm-muni-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
     const topVal = Math.max(...topMunicipios.map(m => m.total), 2);
     const midVal = Math.max(Math.round(topVal / 2), 1);
+    const [rlo, rmd, rhi] = choroRamp();
     const fillExpr: mapboxgl.Expression = [
       "case", [">", ["get", "total"], 0],
-      ["interpolate", ["linear"], ["get", "total"], 1, "#6dbf8b", midVal, "#2d8a55", topVal, "#1a6b3c"],
-      "#dff0e8",
+      ["interpolate", ["linear"], ["get", "total"], 1, rlo, midVal, rmd, topVal, rhi],
+      choroEmpty(),
     ];
     fillExprRef.current = fillExpr;
     map.setPaintProperty("vm-muni-fill", "fill-color", fillExpr);
@@ -1573,7 +1588,7 @@ export default function PainelOverviewPage() {
                     <span
                       className="mb-2 inline-flex items-center gap-0.5"
                       style={{
-                        background: velocity.delta >= 0 ? "#dcfce7" : "#FEE2E2",
+                        background: velocity.delta >= 0 ? "#dcfce7" : "var(--vm-red-tint)",
                         color:      velocity.delta >= 0 ? "#16a34a" : "#DC2626",
                         borderRadius: 999,
                         padding: "2px 10px",
@@ -1669,7 +1684,7 @@ export default function PainelOverviewPage() {
                 const pct = (t.total / maxTotal) * 100;
                 const aprovPct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
                 const badgeColors = ["#F59E0B", "var(--vm-faint)", "#B45309", "var(--vm-muted)", "var(--vm-muted)"];
-                const badgeBg    = ["#FEF3C7", "var(--vm-tile-2)", "#FEF3C7", "var(--vm-tile)", "var(--vm-tile)"];
+                const badgeBg    = ["var(--vm-warm-tint)", "var(--vm-tile-2)", "var(--vm-warm-tint)", "var(--vm-tile)", "var(--vm-tile)"];
                 return (
                   <motion.div
                     key={t.id}

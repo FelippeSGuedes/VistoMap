@@ -19,14 +19,13 @@ function timeAgo(dateStr: string): string {
 
 function StatusBadge({ status }: { status: OverrideRequest["status"] }) {
   const cfg = {
-    PENDENTE:  { label: "Aguardando", bg: "#FFF7ED", color: "#C2410C", border: "#FDBA74" },
-    APROVADO:  { label: "Aprovado",   bg: "#F0FDF4", color: "#15803D", border: "#86EFAC" },
-    REPROVADO: { label: "Recusado",   bg: "#FEF2F2", color: "#B91C1C", border: "#FCA5A5" },
+    PENDENTE:  { label: "Aguardando", cls: "bg-orange-50 text-orange-700 border-orange-200" },
+    APROVADO:  { label: "Aprovado",   cls: "bg-green-50 text-green-700 border-green-200" },
+    REPROVADO: { label: "Recusado",   cls: "bg-red-50 text-red-700 border-red-200" },
   }[status];
   return (
     <span
-      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-      style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cfg.cls}`}
     >
       {cfg.label}
     </span>
@@ -58,8 +57,8 @@ function RequestCard({ req, onReply }: CardProps) {
     <div
       className="rounded-2xl border p-4 transition"
       style={{
-        background: req.status === "PENDENTE" ? "#FFFBEB" : "#FAFAFA",
-        borderColor: req.status === "PENDENTE" ? "#FDE68A" : "#E5E7EB",
+        background: req.status === "PENDENTE" ? "var(--vm-warm-tint)" : "var(--vm-card)",
+        borderColor: req.status === "PENDENTE" ? "rgba(245,158,11,0.35)" : "var(--vm-border)",
         boxShadow: req.status === "PENDENTE" ? "0 2px 12px rgba(245,158,11,0.10)" : "none",
       }}
     >
@@ -82,7 +81,10 @@ function RequestCard({ req, onReply }: CardProps) {
               </span>
             )}
           </div>
-          <p className="mt-1 rounded-xl bg-white px-3 py-2 text-[12px] leading-relaxed text-gray-700 ring-1 ring-gray-200">
+          <p
+            className="mt-1 rounded-xl px-3 py-2 text-[12px] leading-relaxed text-gray-700 ring-1 ring-gray-200"
+            style={{ background: "var(--vm-fill)" }}
+          >
             <span className="font-semibold text-gray-500">Justificativa: </span>
             {req.justificativa}
           </p>

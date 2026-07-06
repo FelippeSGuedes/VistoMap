@@ -1285,7 +1285,7 @@ export default function FilaVistoriasPage() {
                 onChange={(e) => setFiltroMunicipio(e.target.value)}
                 className="h-8 rounded-xl px-2.5 text-[12px] font-medium outline-none"
                 style={{
-                  background: filtroMunicipio ? "rgba(0,179,136,0.08)" : "#F8FAFC",
+                  background: filtroMunicipio ? "rgba(0,179,136,0.08)" : "var(--vm-tile)",
                   border: filtroMunicipio ? `1px solid ${C.brandLine}` : "1px solid var(--vm-border)",
                   color: filtroMunicipio ? C.brandDeep : "var(--vm-muted-b)",
                 }}
@@ -1303,7 +1303,7 @@ export default function FilaVistoriasPage() {
                 onChange={(e) => setFiltroTecnico(e.target.value)}
                 className="h-8 rounded-xl px-2.5 text-[12px] font-medium outline-none"
                 style={{
-                  background: filtroTecnico ? "rgba(0,179,136,0.08)" : "#F8FAFC",
+                  background: filtroTecnico ? "rgba(0,179,136,0.08)" : "var(--vm-tile)",
                   border: filtroTecnico ? `1px solid ${C.brandLine}` : "1px solid var(--vm-border)",
                   color: filtroTecnico ? C.brandDeep : "var(--vm-muted-b)",
                 }}
@@ -1341,7 +1341,7 @@ export default function FilaVistoriasPage() {
                 onClick={() => setFiltroAtrib(filtroAtrib === "sem" ? "todos" : "sem")}
                 className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11px] font-semibold transition"
                 style={{
-                  background: filtroAtrib === "sem" ? "rgba(0,179,136,0.08)" : "#F8FAFC",
+                  background: filtroAtrib === "sem" ? "rgba(0,179,136,0.08)" : "var(--vm-tile)",
                   border:
                     filtroAtrib === "sem"
                       ? `1px solid ${C.brandLine}`

@@ -88,8 +88,8 @@ const STATUS_CFG = {
 
 const PDF_CFG = {
   GERADO:   { label: "PDF Gerado",   color: "#2563EB", bg: "#EFF6FF", icon: FileText },
-  PENDENTE: { label: "PDF Pendente", color: "#D97706", bg: "#FEF3C7", icon: Clock },
-  ERRO:     { label: "PDF Erro",     color: "#DC2626", bg: "#FEF2F2", icon: AlertTriangle },
+  PENDENTE: { label: "PDF Pendente", color: "#D97706", bg: "var(--vm-warm-tint)", icon: Clock },
+  ERRO:     { label: "PDF Erro",     color: "#DC2626", bg: "var(--vm-red-tint)", icon: AlertTriangle },
 } as const;
 
 /* ─── atoms ──────────────────────────────────────────────────────── */
@@ -1037,7 +1037,7 @@ export default function RealizadasPage() {
           {(q || filterStatus || filterPDF) && (
             <button
               onClick={() => { setQ(""); setFilterStatus(""); setFilterPDF(""); }}
-              className="mt-4 rounded-lg bg-[#F0FDF9] px-4 py-2 text-[12px] font-semibold text-[#059669] transition hover:bg-[#D1FAE5]"
+              className="mt-4 rounded-lg bg-[var(--vm-teal-tint)] px-4 py-2 text-[12px] font-semibold text-[#059669] transition hover:bg-[var(--vm-teal-tint)]"
             >
               Limpar filtros
             </button>

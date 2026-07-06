@@ -50,8 +50,8 @@ const PRIORIDADE_CONFIG: Record<
   VistoriaPriority,
   { bg: string; fg: string; border: string; label: string; glow: string }
 > = {
-  CRITICA: { bg: "#FEF2F2", fg: "#B91C1C", border: "rgba(239,68,68,0.3)", label: "Crítica", glow: "rgba(239,68,68,0.12)" },
-  ALTA:    { bg: "#FFF7ED", fg: "#C2410C", border: "rgba(249,115,22,0.3)", label: "Alta",    glow: "rgba(249,115,22,0.10)" },
+  CRITICA: { bg: "var(--vm-red-tint)", fg: "#B91C1C", border: "rgba(239,68,68,0.3)", label: "Crítica", glow: "rgba(239,68,68,0.12)" },
+  ALTA:    { bg: "var(--vm-orange-tint)", fg: "#C2410C", border: "rgba(249,115,22,0.3)", label: "Alta",    glow: "rgba(249,115,22,0.10)" },
   MEDIA:   { bg: "#EEF2FF", fg: "#4338CA", border: "rgba(99,102,241,0.25)", label: "Média",  glow: "rgba(99,102,241,0.06)" },
   BAIXA:   { bg: "var(--vm-tile-3)", fg: "#475569", border: "rgba(71,85,105,0.18)",  label: "Baixa",  glow: "rgba(71,85,105,0.04)" },
 };

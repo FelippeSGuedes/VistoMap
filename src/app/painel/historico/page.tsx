@@ -153,7 +153,7 @@ export default function HistoricoPainelPage() {
           label="Reprovadas"
           value={data?.totais.reprovadas}
           hex="#B91C1C"
-          pill="#FEF2F2"
+          pill="var(--vm-red-tint)"
           loading={loading}
         />
         <KpiCard
@@ -161,7 +161,7 @@ export default function HistoricoPainelPage() {
           label="Revisitas finalizadas"
           value={data?.totais.revisitasFinalizadas}
           hex="#C2410C"
-          pill="#FFF7ED"
+          pill="var(--vm-orange-tint)"
           loading={loading}
         />
         <KpiCard
