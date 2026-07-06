@@ -18,6 +18,10 @@ jobs:
   deploy-worker:
     name: Deploy worker PDF generator
     runs-on: [self-hosted, gioc]
+    # Hard cap: compartilha o grupo de concurrency com ci.yml (deploy do
+    # painel) — sem timeout, uma run travada aqui bloqueia o deploy do
+    # painel indefinidamente. Ver ci.yml para o incidente que motivou isto.
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
