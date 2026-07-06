@@ -1579,7 +1579,7 @@ export default function PainelOverviewPage() {
                   velocity.totalPrev === 0 ? (
                     <span
                       className="mb-2 inline-flex items-center gap-0.5"
-                      style={{ background: "#dcfce7", color: "#16a34a", borderRadius: 999, padding: "2px 10px", fontSize: "0.8rem", fontWeight: 700 }}
+                      style={{ background: "var(--vm-lime-100)", color: "#16a34a", borderRadius: 999, padding: "2px 10px", fontSize: "0.8rem", fontWeight: 700 }}
                     >
                       <ArrowUp className="h-3 w-3" strokeWidth={2.6} />
                       novo
@@ -1588,7 +1588,7 @@ export default function PainelOverviewPage() {
                     <span
                       className="mb-2 inline-flex items-center gap-0.5"
                       style={{
-                        background: velocity.delta >= 0 ? "#dcfce7" : "var(--vm-red-tint)",
+                        background: velocity.delta >= 0 ? "var(--vm-lime-100)" : "var(--vm-red-100)",
                         color:      velocity.delta >= 0 ? "#16a34a" : "#DC2626",
                         borderRadius: 999,
                         padding: "2px 10px",
@@ -1684,7 +1684,7 @@ export default function PainelOverviewPage() {
                 const pct = (t.total / maxTotal) * 100;
                 const aprovPct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
                 const badgeColors = ["#F59E0B", "var(--vm-faint)", "#B45309", "var(--vm-muted)", "var(--vm-muted)"];
-                const badgeBg    = ["var(--vm-warm-tint)", "var(--vm-tile-2)", "var(--vm-warm-tint)", "var(--vm-tile)", "var(--vm-tile)"];
+                const badgeBg    = ["var(--vm-amber-100)", "var(--vm-tile-2)", "var(--vm-amber-100)", "var(--vm-tile)", "var(--vm-tile)"];
                 return (
                   <motion.div
                     key={t.id}

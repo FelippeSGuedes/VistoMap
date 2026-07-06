@@ -388,38 +388,10 @@ export default function PainelMapaPage() {
   const [data, setData] = useState<PainelMapaResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeLayer, setActiveLayer] = useState<LayerKey>("dark");
-  const [isDark, setIsDark] = useState(false);
-  const isDarkRef = useRef(false);
+  // Tema lido apenas no init — o toggle no client-layout recarrega a página,
+  // então o mapa sempre nasce no tema certo (sem setStyle reativo/flicker).
   const activeLayerRef = useRef<LayerKey>("dark");
   useEffect(() => { activeLayerRef.current = activeLayer; }, [activeLayer]);
-  useEffect(() => { isDarkRef.current = isDark; }, [isDark]);
-
-  // Tema: lê no mount e reage ao toggle do client-layout (evento vm-theme).
-  useEffect(() => {
-    setIsDark(readDarkTheme());
-    const onTheme = (e: Event) => {
-      const next = (e as CustomEvent<boolean>).detail;
-      setIsDark(typeof next === "boolean" ? next : readDarkTheme());
-    };
-    window.addEventListener("vm-theme", onTheme);
-    return () => window.removeEventListener("vm-theme", onTheme);
-  }, []);
-
-  // Ao alternar o tema, troca o estilo base do mapa se estiver em Padrão/3D.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const key = activeLayerRef.current;
-    if (key !== "dark" && key !== "3d") return; // satélite/híbrido não mudam
-    map.setStyle(mapStyleFor(key, isDark));
-    map.once("style.load", () => {
-      const d = lastDataRef.current;
-      if (d) ensureVistoriaLayers(map, d.vistorias);
-      if (trailUsersId) fetchTrail(trailUsersId);
-      if (key === "3d") add3DBuildings(map);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark]);
 
   // Seleção
   const [selectedTec, setSelectedTec] = useState<PainelMapaTecnico | null>(null);
@@ -599,7 +571,7 @@ export default function PainelMapaPage() {
     if (key === "3d") {
       // 3D pode trocar de estilo (claro/escuro) se o tema mudou desde o último.
       map.easeTo({ pitch: 50, bearing: -17, duration: 800 });
-      const target3d = mapStyleFor("3d", isDarkRef.current);
+      const target3d = mapStyleFor("3d", readDarkTheme());
       if (prev !== "3d") {
         map.setStyle(target3d);
         map.once("style.load", () => {
@@ -615,8 +587,8 @@ export default function PainelMapaPage() {
     }
 
     // Para satellite/hybrid/dark: troca estilo
-    const targetStyle = mapStyleFor(key, isDarkRef.current);
-    const currentStyle = mapStyleFor(prev, isDarkRef.current);
+    const targetStyle = mapStyleFor(key, readDarkTheme());
+    const currentStyle = mapStyleFor(prev, readDarkTheme());
     if (targetStyle === currentStyle) return;
 
     map.setStyle(targetStyle);

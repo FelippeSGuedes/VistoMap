@@ -204,10 +204,10 @@ export default function PainelClientLayout({ children }: { children: React.React
 
   const toggleTheme = () => {
     const next = !isDark;
-    setIsDark(next);
     localStorage.setItem("vm_painel_theme", next ? "dark" : "light");
-    // Notifica páginas que reagem ao tema fora do React (ex.: estilo base do Mapbox).
-    window.dispatchEvent(new CustomEvent("vm-theme", { detail: next }));
+    // Mapas e widgets (Mapbox) leem o tema apenas no init — recarregar é a
+    // única forma de garantir TODOS os elementos no tema certo, nos 2 sentidos.
+    window.location.reload();
   };
 
   const toggleCollapse = () => {

@@ -19,9 +19,9 @@ function timeAgo(dateStr: string): string {
 
 function StatusBadge({ status }: { status: OverrideRequest["status"] }) {
   const cfg = {
-    PENDENTE:  { label: "Aguardando", cls: "bg-orange-50 text-orange-700 border-orange-200" },
-    APROVADO:  { label: "Aprovado",   cls: "bg-green-50 text-green-700 border-green-200" },
-    REPROVADO: { label: "Recusado",   cls: "bg-red-50 text-red-700 border-red-200" },
+    PENDENTE:  { label: "Aguardando", cls: "bg-orange-50 text-orange-700 border-orange-300" },
+    APROVADO:  { label: "Aprovado",   cls: "bg-green-50 text-green-700 border-green-300" },
+    REPROVADO: { label: "Recusado",   cls: "bg-red-50 text-red-700 border-red-300" },
   }[status];
   return (
     <span
@@ -57,8 +57,8 @@ function RequestCard({ req, onReply }: CardProps) {
     <div
       className="rounded-2xl border p-4 transition"
       style={{
-        background: req.status === "PENDENTE" ? "var(--vm-warm-tint)" : "var(--vm-card)",
-        borderColor: req.status === "PENDENTE" ? "rgba(245,158,11,0.35)" : "var(--vm-border)",
+        background: req.status === "PENDENTE" ? "var(--vm-warm-tint)" : "var(--vm-card-alt)",
+        borderColor: req.status === "PENDENTE" ? "var(--vm-warm-border)" : "var(--vm-border)",
         boxShadow: req.status === "PENDENTE" ? "0 2px 12px rgba(245,158,11,0.10)" : "none",
       }}
     >
@@ -83,7 +83,7 @@ function RequestCard({ req, onReply }: CardProps) {
           </div>
           <p
             className="mt-1 rounded-xl px-3 py-2 text-[12px] leading-relaxed text-gray-700 ring-1 ring-gray-200"
-            style={{ background: "var(--vm-fill)" }}
+            style={{ background: "var(--vm-surface)" }}
           >
             <span className="font-semibold text-gray-500">Justificativa: </span>
             {req.justificativa}

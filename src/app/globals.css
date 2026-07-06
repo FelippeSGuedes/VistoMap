@@ -198,6 +198,14 @@ select {
   --vm-orange-tint:  #FFF7ED;
   --vm-red-tint:     #FEF2F2;
   --vm-teal-tint:    #F0FDFA;
+  /* Valores exatos do light preservados 1:1 (não aproximar!) */
+  --vm-card-alt:     #FAFAFA;
+  --vm-warm-border:  #FDE68A;
+  --vm-amber-100:    #FEF3C7;
+  --vm-red-100:      #FEE2E2;
+  --vm-green-100:    #D1FAE5;
+  --vm-lime-100:     #dcfce7;
+  --vm-ph-icon:      #CBD5E1;
 }
 
 .dark {
@@ -231,6 +239,13 @@ select {
   --vm-orange-tint:  rgba(249, 115, 22, 0.13);
   --vm-red-tint:     rgba(239, 68, 68, 0.13);
   --vm-teal-tint:    rgba(0, 212, 160, 0.11);
+  --vm-card-alt:     #161D28;
+  --vm-warm-border:  rgba(245, 158, 11, 0.35);
+  --vm-amber-100:    rgba(245, 158, 11, 0.22);
+  --vm-red-100:      rgba(239, 68, 68, 0.20);
+  --vm-green-100:    rgba(16, 185, 129, 0.20);
+  --vm-lime-100:     rgba(34, 197, 94, 0.20);
+  --vm-ph-icon:      #4A5560;
 }
 
 /* ── Overrides de classes Tailwind sob .dark ─────────────────────────────────
@@ -274,12 +289,12 @@ select {
 .dark .text-green-800, .dark .text-green-700, .dark .text-green-600,
 .dark .text-emerald-800, .dark .text-emerald-700, .dark .text-emerald-600 { color: #6EE7B7 !important; }
 .dark .text-green-500, .dark .text-green-400 { color: #5FD3A3 !important; }
-.dark .border-green-200, .dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.32) !important; }
+.dark .border-green-200, .dark .border-green-300, .dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.32) !important; }
 /* ÂMBAR / AMARELO */
 .dark .bg-amber-50, .dark .bg-amber-100, .dark .bg-yellow-50, .dark .bg-yellow-100 { background-color: rgba(245, 158, 11, 0.15) !important; }
 .dark .text-amber-800, .dark .text-amber-700, .dark .text-amber-600,
 .dark .text-yellow-800, .dark .text-yellow-700, .dark .text-yellow-600 { color: #FCD34D !important; }
-.dark .border-amber-200, .dark .border-yellow-200 { border-color: rgba(245, 158, 11, 0.32) !important; }
+.dark .border-amber-200, .dark .border-amber-300, .dark .border-yellow-200 { border-color: rgba(245, 158, 11, 0.32) !important; }
 /* LARANJA */
 .dark .bg-orange-50, .dark .bg-orange-100 { background-color: rgba(249, 115, 22, 0.15) !important; }
 .dark .text-orange-800, .dark .text-orange-700, .dark .text-orange-600 { color: #FDBA74 !important; }
