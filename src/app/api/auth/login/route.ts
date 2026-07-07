@@ -24,8 +24,27 @@ interface GlpiUser {
   password: string;
 }
 
+// Versão mínima do APK (versionCode) aceita. 0 = gate desligado (default).
+// Ative em produção definindo APP_MIN_BUILD no .env.local DEPOIS de distribuir
+// o APK novo — senão trava todos os técnicos em campo de uma vez.
+const APP_MIN_BUILD = Number(process.env.APP_MIN_BUILD ?? "0");
+const APP_OUTDATED_MSG =
+  "App desatualizado. Atualize para a versão mais recente ou entre em " +
+  "contato com a equipe de Engenharia de Desenvolvimento.";
+
 export async function POST(req: NextRequest) {
   try {
+    // Gate de versão: bloqueia APKs legados (sem header ou abaixo do mínimo).
+    if (APP_MIN_BUILD > 0) {
+      const build = Number(req.headers.get("x-app-build") ?? "0");
+      if (!Number.isFinite(build) || build < APP_MIN_BUILD) {
+        return NextResponse.json(
+          { message: APP_OUTDATED_MSG, code: "APP_OUTDATED" },
+          { status: 426 } // Upgrade Required
+        );
+      }
+    }
+
     const { login, senha } = (await req.json()) as {
       login: string;
       senha: string;
