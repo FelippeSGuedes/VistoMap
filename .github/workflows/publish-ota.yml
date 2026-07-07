@@ -83,9 +83,10 @@ jobs:
         run: |
           VERSION=$(python3 -c "import json; print(json.load(open('dist-ota/latest.json'))['version'])")
           echo "Publicando versao $VERSION..."
-          # Garante a estrutura de diretórios (runner novo / servidor recém-provisionado).
-          sudo mkdir -p /data/vistomap/ota/bundles
-          sudo chown -R "$(id -u):$(id -g)" /data/vistomap/ota
+          # /data/vistomap/ota já pertence a zabbmap:zabbmap (rwx) — sem sudo.
+          # (Só falha se o runner for outra máquina sem essa pasta provisionada;
+          # nesse caso o provisionamento deve ser feito manualmente uma vez.)
+          mkdir -p /data/vistomap/ota/bundles
           cp dist-ota/${VERSION}.zip /data/vistomap/ota/bundles/
           cp dist-ota/latest.json /data/vistomap/ota/latest.json
           echo "Deploy concluido:"
