@@ -52,7 +52,7 @@ const PRIORIDADE_CONFIG: Record<
 > = {
   CRITICA: { bg: "var(--vm-red-tint)", fg: "#B91C1C", border: "rgba(239,68,68,0.3)", label: "Crítica", glow: "rgba(239,68,68,0.12)" },
   ALTA:    { bg: "var(--vm-orange-tint)", fg: "#C2410C", border: "rgba(249,115,22,0.3)", label: "Alta",    glow: "rgba(249,115,22,0.10)" },
-  MEDIA:   { bg: "#EEF2FF", fg: "#4338CA", border: "rgba(99,102,241,0.25)", label: "Média",  glow: "rgba(99,102,241,0.06)" },
+  MEDIA:   { bg: "var(--vm-indigo-tint)", fg: "#4338CA", border: "rgba(99,102,241,0.25)", label: "Média",  glow: "rgba(99,102,241,0.06)" },
   BAIXA:   { bg: "var(--vm-tile-3)", fg: "#475569", border: "rgba(71,85,105,0.18)",  label: "Baixa",  glow: "rgba(71,85,105,0.04)" },
 };
 
@@ -168,7 +168,7 @@ function RevisitaCard({
             >
               <span
                 className="flex h-9 w-9 items-center justify-center rounded-xl"
-                style={{ background: "var(--vm-tile-3)", border: "1.5px dashed #CBD5E1" }}
+                style={{ background: "var(--vm-tile-3)", border: "1.5px dashed var(--vm-ph-icon)" }}
               >
                 <UserPlus className="h-4 w-4" style={{ color: "var(--vm-faint)" }} strokeWidth={1.8} />
               </span>
@@ -243,7 +243,7 @@ function RevisitaCard({
           type="button"
           onClick={onEditar}
           className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
-          style={{ background: "#EEF2FF", color: "#4338CA", border: "1px solid rgba(99,102,241,0.2)" }}
+          style={{ background: "var(--vm-indigo-tint)", color: "#4338CA", border: "1px solid rgba(99,102,241,0.2)" }}
         >
           <Wrench className="h-3 w-3" strokeWidth={2.2} />
           Corrigir Campos
@@ -252,7 +252,7 @@ function RevisitaCard({
           type="button"
           onClick={onAtribuir}
           className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
-          style={{ background: "#ECFDF5", color: "#00875F", border: "1px solid rgba(0,179,136,0.2)" }}
+          style={{ background: "var(--vm-accent-tint)", color: "#00875F", border: "1px solid rgba(0,179,136,0.2)" }}
         >
           <UserPlus className="h-3 w-3" strokeWidth={2.2} />
           {r.tecnicoAtribuido ? "Reatribuir" : "Atribuir Revisita"}
@@ -514,7 +514,7 @@ export default function RevisitasPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[200] flex items-center justify-center p-6"
-            style={{ background: "rgba(247,249,251,0.72)", backdropFilter: "blur(12px)" }}
+            style={{ background: "var(--vm-backdrop)", backdropFilter: "blur(12px)" }}
             onClick={() => setAtribuirOpen(null)}
           >
             <motion.div
@@ -557,7 +557,7 @@ export default function RevisitasPage() {
                     >
                       <span className="relative flex h-8 w-8 items-center justify-center rounded-xl text-[10px] font-bold text-white" style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}>
                         {initials(t.nome)}
-                        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full" style={{ background: statusColor, boxShadow: "0 0 0 2px #fff" }} />
+                        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full" style={{ background: statusColor, boxShadow: "0 0 0 2px var(--vm-card)" }} />
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[12.5px] font-semibold" style={{ color: "var(--vm-ink)" }}>{t.nome}</p>

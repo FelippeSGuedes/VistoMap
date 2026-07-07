@@ -209,8 +209,8 @@ export default function AndamentoPage() {
             onClick={() => setFilterStatus(filterStatus === key ? "all" : key)}
             className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition hover:opacity-80"
             style={{
-              background: filterStatus === key ? bg : "#fff",
-              borderColor: filterStatus === key ? border : "#E5E7EB",
+              background: filterStatus === key ? bg : "var(--vm-card)",
+              borderColor: filterStatus === key ? border : "var(--vm-border)",
             }}
           >
             <span
@@ -316,7 +316,7 @@ function VistoriaCard({ item }: { item: VistoriaAndamento }) {
   return (
     <div
       className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border bg-white px-5 py-4 transition-shadow hover:shadow-md"
-      style={{ borderColor: "#E5E7EB", borderLeftWidth: 3, borderLeftColor: cfg.dot }}
+      style={{ borderColor: "var(--vm-border)", borderLeftWidth: 3, borderLeftColor: cfg.dot }}
     >
       {/* Status icon */}
       <span

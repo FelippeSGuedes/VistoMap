@@ -117,7 +117,7 @@ export default function HistoricoPainelPage() {
                   background: active
                     ? "linear-gradient(135deg, #00C99B 0%, #00875F 100%)"
                     : "transparent",
-                  color: active ? "#fff" : "#566773",
+                  color: active ? "#fff" : "var(--vm-muted-b)",
                   boxShadow: active
                     ? "0 4px 12px rgba(0,179,136,0.28)"
                     : "none",
@@ -137,7 +137,7 @@ export default function HistoricoPainelPage() {
           label="Finalizadas"
           value={data?.totais.vistoriasFinalizadas}
           hex="#00B388"
-          pill="#ECFDF5"
+          pill="var(--vm-accent-tint)"
           loading={loading}
         />
         <KpiCard
@@ -145,7 +145,7 @@ export default function HistoricoPainelPage() {
           label="Aprovadas"
           value={data?.totais.aprovadas}
           hex="#00875F"
-          pill="#ECFDF5"
+          pill="var(--vm-accent-tint)"
           loading={loading}
         />
         <KpiCard
@@ -169,7 +169,7 @@ export default function HistoricoPainelPage() {
           label="PDFs gerados"
           value={data?.totais.pdfsGerados}
           hex="#4338CA"
-          pill="#EEF2FF"
+          pill="var(--vm-indigo-tint)"
           loading={loading}
         />
         <KpiCard

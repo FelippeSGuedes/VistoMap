@@ -1213,7 +1213,10 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
         <div ref={containerRef} className="vm-dash-rev h-[155px] w-full" />
         {/* Success overlay when no revisitas */}
         {!hasRevisitas && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/80 backdrop-blur-[3px]">
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2 backdrop-blur-[3px]"
+            style={{ background: "var(--vm-overlay)" }}
+          >
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 shadow-sm">
               <Sparkles className="h-5 w-5 text-emerald-500" strokeWidth={1.5} />
             </div>

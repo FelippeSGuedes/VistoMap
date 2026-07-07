@@ -970,7 +970,7 @@ export default function RealizadasPage() {
               onClick={() => setFilterStatus(s)}
               className="rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all"
               style={{
-                background: filterStatus === s ? "#fff" : "transparent",
+                background: filterStatus === s ? "var(--vm-card)" : "transparent",
                 color: filterStatus === s
                   ? (s === "REVISITADO" ? "#7C3AED" : s === "VISTORIADO" ? "#059669" : "var(--vm-text-soft)")
                   : "var(--vm-faint)",
@@ -993,7 +993,7 @@ export default function RealizadasPage() {
               onClick={() => setFilterPDF(s)}
               className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all"
               style={{
-                background: filterPDF === s ? "#fff" : "transparent",
+                background: filterPDF === s ? "var(--vm-card)" : "transparent",
                 color: filterPDF === s
                   ? (s === "GERADO" ? "#2563EB" : s === "ERRO" ? "#DC2626" : s === "PENDENTE" ? "#D97706" : "var(--vm-text-soft)")
                   : "var(--vm-faint)",

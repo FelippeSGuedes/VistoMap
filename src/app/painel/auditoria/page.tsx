@@ -35,15 +35,15 @@ const ACAO: Record<
   AuditEntry["acao"],
   { label: string; icon: typeof Activity; fg: string; bg: string; dot: string }
 > = {
-  "vistoria-atribuida":  { label: "Atribuição",           icon: Send,         fg: "#00875F", bg: "#ECFDF5", dot: "#00B388" },
+  "vistoria-atribuida":  { label: "Atribuição",           icon: Send,         fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "vistoria-desvinculada":{ label: "Desvinculação",       icon: XCircle,      fg: "#B45309", bg: "var(--vm-orange-tint)", dot: "#F97316" },
-  "vistoria-finalizada": { label: "Vistoria finalizada",  icon: ClipboardCheck,fg: "#00875F", bg: "#ECFDF5", dot: "#00B388" },
+  "vistoria-finalizada": { label: "Vistoria finalizada",  icon: ClipboardCheck,fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "revisita-criada":     { label: "Revisita criada",      icon: RotateCw,     fg: "#B45309", bg: "#FFFBEB", dot: "#F59E0B" },
   "revisita-atribuida":  { label: "Revisita atribuída",   icon: Send,         fg: "#C2410C", bg: "var(--vm-orange-tint)", dot: "#F97316" },
   "revisita-finalizada": { label: "Revisita concluída",   icon: ClipboardCheck,fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
-  "vistoria-aprovada":   { label: "Aprovada",             icon: ShieldCheck,  fg: "#00875F", bg: "#ECFDF5", dot: "#00B388" },
+  "vistoria-aprovada":   { label: "Aprovada",             icon: ShieldCheck,  fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "vistoria-reprovada":  { label: "Reprovada",            icon: XCircle,      fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#EF4444" },
-  "pdf-regenerado":      { label: "PDF regenerado",       icon: FileText,     fg: "#4338CA", bg: "#EEF2FF", dot: "#6366F1" },
+  "pdf-regenerado":      { label: "PDF regenerado",       icon: FileText,     fg: "#4338CA", bg: "var(--vm-indigo-tint)", dot: "#6366F1" },
   "motivo-alterado":     { label: "Motivo alterado",      icon: Edit3,        fg: "#854D0E", bg: "#FEFCE8", dot: "#CA8A04" },
   "dados-editados":      { label: "Dados editados",       icon: Edit3,        fg: "#475569", bg: "var(--vm-tile)", dot: "#94A3B8" },
   sincronizacao:         { label: "Sincronização",        icon: RefreshCcw,   fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
@@ -55,7 +55,7 @@ const ACAO: Record<
   "vistoria-em-deslocamento":{ label: "Em Deslocamento",          icon: Activity,     fg: "#D97706", bg: "#FFFBEB", dot: "#F59E0B" },
   "vistoria-em-vistoria":    { label: "Em Vistoria (campo)",      icon: Activity,     fg: "#2563EB", bg: "#EFF6FF", dot: "#3B82F6" },
   "override-solicitado":     { label: "Início fora do raio",      icon: ShieldAlert,  fg: "#C2410C", bg: "var(--vm-orange-tint)", dot: "#F97316" },
-  "override-aprovado":       { label: "Override aprovado",        icon: ShieldCheck,  fg: "#00875F", bg: "#ECFDF5", dot: "#00B388" },
+  "override-aprovado":       { label: "Override aprovado",        icon: ShieldCheck,  fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "override-reprovado":      { label: "Override reprovado",       icon: XCircle,      fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#EF4444" },
 };
 
@@ -270,7 +270,7 @@ export default function AuditoriaPage() {
         <div>
           <div className="mb-1 flex items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-[0.18em]"
-              style={{ background: "#ECFDF5", color: "#00875F", border: "1px solid rgba(0,179,136,0.22)" }}>
+              style={{ background: "var(--vm-accent-tint)", color: "#00875F", border: "1px solid rgba(0,179,136,0.22)" }}>
               <Activity className="h-2.5 w-2.5" /> Timeline operacional
             </span>
             {loading && <RefreshCcw className="h-3 w-3 animate-spin" style={{ color: "var(--vm-faint-b)" }} />}

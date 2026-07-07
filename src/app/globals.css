@@ -206,6 +206,10 @@ select {
   --vm-green-100:    #D1FAE5;
   --vm-lime-100:     #dcfce7;
   --vm-ph-icon:      #CBD5E1;
+  --vm-overlay:      rgba(255, 255, 255, 0.80);
+  --vm-indigo-tint:  #EEF2FF;
+  --vm-backdrop:     rgba(247, 249, 251, 0.72);
+  --vm-ring:         #ffffff;
 }
 
 .dark {
@@ -246,6 +250,10 @@ select {
   --vm-green-100:    rgba(16, 185, 129, 0.20);
   --vm-lime-100:     rgba(34, 197, 94, 0.20);
   --vm-ph-icon:      #4A5560;
+  --vm-overlay:      rgba(21, 27, 36, 0.80);
+  --vm-indigo-tint:  rgba(99, 102, 241, 0.18);
+  --vm-backdrop:     rgba(5, 8, 14, 0.75);
+  --vm-ring:         #1A212C;
 }
 
 /* ── Overrides de classes Tailwind sob .dark ─────────────────────────────────
@@ -264,6 +272,10 @@ select {
 .dark .text-gray-500     { color: var(--vm-muted) !important; }
 .dark .text-gray-400     { color: var(--vm-faint) !important; }
 .dark .text-gray-300     { color: var(--vm-faint) !important; }
+.dark .text-gray-200     { color: var(--vm-faint) !important; }
+.dark .text-gray-100     { color: var(--vm-faint) !important; }
+.dark .placeholder\:text-gray-400::placeholder { color: var(--vm-faint) !important; }
+.dark .placeholder\:text-gray-300::placeholder { color: var(--vm-faint) !important; }
 
 .dark .border-gray-200   { border-color: var(--vm-border) !important; }
 .dark .border-gray-100   { border-color: var(--vm-border) !important; }

@@ -49,8 +49,8 @@ const STATUS_CFG: Record<
   TecnicoAtivo["status"],
   { label: string; bg: string; fg: string; ring: string }
 > = {
-  "em-campo": { label: "Em campo", bg: "#ECFDF5", fg: "#00875F", ring: "#00B388" },
-  base: { label: "Na base", bg: "#EEF2FF", fg: "#4338CA", ring: "#6366F1" },
+  "em-campo": { label: "Em campo", bg: "var(--vm-accent-tint)", fg: "#00875F", ring: "#00B388" },
+  base: { label: "Na base", bg: "var(--vm-indigo-tint)", fg: "#4338CA", ring: "#6366F1" },
   "off-shift": { label: "Fora de plantão", bg: "var(--vm-tile-3)", fg: "#475569", ring: "var(--vm-faint)" },
   offline: { label: "Offline", bg: "var(--vm-tile-3)", fg: "#64748B", ring: "#94A3B8" },
 };
@@ -210,7 +210,7 @@ export default function TecnicosPage() {
                   onClick={() => setFiltroStatus(s)}
                   className="rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition"
                   style={{
-                    background: active ? "#ECFDF5" : "transparent",
+                    background: active ? "var(--vm-accent-tint)" : "transparent",
                     color: active ? "#00875F" : "#7A8896",
                   }}
                 >
@@ -287,7 +287,7 @@ export default function TecnicosPage() {
                     className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
                     style={{
                       background: cfg.ring,
-                      boxShadow: "0 0 0 3px #fff",
+                      boxShadow: "0 0 0 3px var(--vm-card)",
                     }}
                   >
                     <span className="h-1 w-1 rounded-full bg-white" />
@@ -332,7 +332,7 @@ export default function TecnicosPage() {
                 <KpiBox
                   label="Hoje"
                   value={t.concluidasHoje}
-                  bg="#ECFDF5"
+                  bg="var(--vm-accent-tint)"
                   borderColor="rgba(0,179,136,0.22)"
                   labelColor="#00875F"
                   valueColor="#00875F"

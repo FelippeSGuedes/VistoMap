@@ -695,7 +695,7 @@ function AtribuirDrawer({
                       className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full"
                       style={{
                         background: STATUS_COR[tec.status] ?? "var(--vm-faint)",
-                        boxShadow: "0 0 0 2px #fff",
+                        boxShadow: "0 0 0 2px var(--vm-card)",
                       }}
                     />
                   </span>
@@ -775,7 +775,7 @@ function AtribuirModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-[400] flex items-center justify-center p-6"
-      style={{ background: "rgba(247,249,251,0.72)", backdropFilter: "blur(12px)" }}
+      style={{ background: "var(--vm-backdrop)", backdropFilter: "blur(12px)" }}
       onClick={onClose}
     >
       <motion.div
@@ -879,7 +879,7 @@ function AtribuirModal({
                     className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
                     style={{
                       background: STATUS_COR[t.status] ?? "var(--vm-faint)",
-                      boxShadow: "0 0 0 2px #fff",
+                      boxShadow: "0 0 0 2px var(--vm-card)",
                     }}
                   />
                 </span>
