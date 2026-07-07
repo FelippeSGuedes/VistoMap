@@ -1,6 +1,7 @@
 import { isMobileDevice } from "@/utils/format";
 
-export const DEFAULT_CENTER: [number, number] = [-46.6333, -23.5505];
+// Campinas/SP — centro da operação GIOC (era São Paulo capital).
+export const DEFAULT_CENTER: [number, number] = [-47.0608, -22.9056];
 export const DEFAULT_ZOOM = 11;
 export const MAP_STYLE = "mapbox://styles/mapbox/streets-v12";
 export const MAP_STYLE_DARK = "mapbox://styles/mapbox/dark-v11";
