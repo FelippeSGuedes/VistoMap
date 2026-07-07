@@ -281,22 +281,35 @@ export default function PainelLoginPage() {
                     </span>
                   </div>
                   <h1
-                    className="text-[28px] font-semibold leading-[1.1] tracking-[-0.6px]"
+                    className="text-[26px] font-semibold leading-[1.14] tracking-[-0.6px]"
                     style={{
                       color: "rgba(255,255,255,0.98)",
                       fontFamily: "'Inter', 'Plus Jakarta Sans', sans-serif",
                     }}
                   >
-                    Bem-vindo de
+                    Gestão inteligente
                     <br />
-                    <span style={{ color: "#00C99B" }}>volta.</span>
+                    de operações
+                    <br />
+                    em{" "}
+                    <span
+                      style={{
+                        background:
+                          "linear-gradient(105deg,#00E5A8 0%,#00C99B 55%,#00A882 100%)",
+                        WebkitBackgroundClip: "text",
+                        backgroundClip: "text",
+                        color: "transparent",
+                      }}
+                    >
+                      campo.
+                    </span>
                   </h1>
                   <p
                     className="text-[13px] leading-[1.55]"
                     style={{ color: "rgba(255,255,255,0.46)" }}
                   >
-                    Entre com sua conta GIOC para gerenciar vistorias,
-                    técnicos e a operação em campo.
+                    Acesse a central GIOC para acompanhar vistorias,
+                    técnicos e revisitas em tempo real.
                   </p>
                 </div>
 
