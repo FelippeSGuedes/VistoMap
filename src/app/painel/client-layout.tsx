@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
   RotateCw,
   Search,
+  Settings,
   ShieldAlert,
   Sun,
   Users,
@@ -38,8 +39,7 @@ const BOTTOM_NAV = [
   { href: "/painel/tecnicos",       label: "Técnicos",      icon: Users },
   { href: "/painel/auditoria",      label: "Auditoria",     icon: ShieldAlert },
   { href: "/painel/historico",      label: "Histórico",     icon: History },
-  // "Configurações" removido: apontava para /painel/configuracoes (rota
-  // inexistente) → 404 no prefetch. Readicionar quando a página existir.
+  { href: "/painel/configuracoes",  label: "Configurações", icon: Settings },
 ];
 
 // Sub-itens do grupo "Vistorias"

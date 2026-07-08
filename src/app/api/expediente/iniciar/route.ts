@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionJwt } from "@/lib/jwt";
-import { iniciarExpediente } from "@/lib/expediente";
+import { iniciarExpediente, janelaRastreio } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,12 @@ interface Body {
 /**
  * POST /api/expediente/iniciar
  * Body: { aceitarLGPD?: boolean, dispositivoInfo?: string }
+ *
+ * Rota LEGADA — mantida para compat com bundles antigos do app (a transição
+ * do OTA não é instantânea). O fluxo novo é automático (ver /api/expediente/
+ * atual → ensureExpedienteAuto), então este botão manual, se ainda existir
+ * em algum bundle em campo, apenas adianta o que aconteceria sozinho — mas
+ * respeita a mesma janela de horário (não deixa abrir fora dela).
  *
  * Inicia turno. Se LGPD nunca foi aceito e body.aceitarLGPD nao for true,
  * retorna 409 com precisaAceiteLGPD=true.
@@ -36,6 +42,14 @@ export async function POST(req: NextRequest) {
     body = (await req.json()) as Body;
   } catch {
     /* body vazio ok */
+  }
+  const janela = await janelaRastreio();
+  if (!janela.dentro) {
+    const msg =
+      janela.motivo === "fds"
+        ? "Expediente não abre em fins de semana."
+        : `Fora do horário de expediente (${janela.config.inicio}–${janela.config.fim}).`;
+    return NextResponse.json({ message: msg, motivo: janela.motivo }, { status: 403 });
   }
   const result = await iniciarExpediente({
     usersId: userId,

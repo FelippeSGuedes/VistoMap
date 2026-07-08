@@ -43,6 +43,8 @@ function VistoriasPageInner() {
   const searchParams = useSearchParams();
   const { hydrated, session } = useAuthStore();
   const expediente = useExpedienteStore((s) => s.expediente);
+  const janela = useExpedienteStore((s) => s.janela);
+  const lgpdAceito = useExpedienteStore((s) => s.lgpdAceito);
   const refreshExpediente = useExpedienteStore((s) => s.refresh);
   const { items, loading, fetchAll, filters, setFilters, resetFilters, selectedId, setSelected } =
     useVistoriasStore();
@@ -54,7 +56,7 @@ function VistoriasPageInner() {
   const [expedienteReady, setExpedienteReady] = useState(false);
   const { position, refresh: refreshGeo } = useGeolocation(true, true);
   const permission = useLocationPermission();
-  const accessBlockReason = getVistoriasAccessBlockReason(expediente);
+  const accessBlockReason = getVistoriasAccessBlockReason(expediente, janela, lgpdAceito);
 
   // /postes — visualização operacional. Liga/desliga via FAB.
   const postesProximos = usePostesProximos();
@@ -171,7 +173,7 @@ function VistoriasPageInner() {
           <EmptyState
             icon={Compass}
             tone="default"
-            title={expediente?.emPausa ? "Almoço em andamento" : "Expediente não iniciado"}
+            title={janela?.motivo === "fds" ? "Fim de semana" : "Fora de expediente"}
             description={accessBlockReason}
             actionLabel="Ir para o dashboard"
             onAction={() => router.push("/dashboard")}

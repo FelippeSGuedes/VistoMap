@@ -57,6 +57,7 @@ export function VistoriaPinSheet({
   const [justificativa, setJustificativa] = useState("");
   const [startError, setStartError] = useState<string | null>(null);
   const expediente = useExpedienteStore((s) => s.expediente);
+  const janela = useExpedienteStore((s) => s.janela);
 
   const hasCoord = useMemo(() => {
     if (!vistoria) return false;
@@ -113,11 +114,13 @@ export function VistoriaPinSheet({
 
   const perto = distancia != null && distancia <= RAIO_M;
 
-  const expedienteBloqueio = !expediente?.emAndamento
-    ? "Inicie o expediente antes de começar a vistoria."
-    : expediente.emPausa
-    ? "Você está em pausa para almoço. Retorne do almoço para iniciar."
-    : null;
+  const expedienteBloqueio = expediente?.emAndamento
+    ? null
+    : janela?.motivo === "fds"
+      ? "Sem expediente aos fins de semana."
+      : janela
+        ? `Fora do horário de expediente (${janela.inicio}–${janela.fim}).`
+        : "Fora do horário de expediente.";
 
   const handleStart = async (override?: { justificativa: string }) => {
     if (!vistoria) return;

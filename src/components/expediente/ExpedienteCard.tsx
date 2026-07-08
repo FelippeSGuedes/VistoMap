@@ -2,21 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Clock, Play, Square, Coffee, ShieldCheck } from "lucide-react";
+import { Clock, ShieldCheck, CalendarOff, MoonStar } from "lucide-react";
 import { useExpedienteStore } from "@/store/expediente";
 
 /**
- * Card grande do dashboard do tecnico.
- * Estados: fora-de-expediente | em-expediente | em-pausa.
+ * Card do dashboard do técnico — 100% passivo, sem botões.
  *
- * Iniciar expediente — primeira vez pede aceite LGPD via modal.
- * Sem expediente aberto: GPS reporter pausa, app bloqueia iniciar vistoria.
+ * O expediente é automático: abre sozinho quando o técnico usa o app dentro
+ * da janela configurada pelo admin (padrão 07:30–18:00, dias úteis) e fecha
+ * sozinho fora dela. Contínuo — sem pausa de almoço. Este card só reflete o
+ * estado atual; a única interação possível é o aceite de consentimento LGPD
+ * (obrigatório 1x, aparece sozinho quando pendente).
  */
 export function ExpedienteCard() {
-  const { expediente, lgpdAceito, refresh, iniciar, finalizar, togglePausa, loading } =
+  const { expediente, lgpdAceito, janela, refresh, aceitarLGPD, loading } =
     useExpedienteStore();
-  const [showLGPD, setShowLGPD] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   // refresh inicial + a cada 30s
   useEffect(() => {
@@ -25,28 +27,14 @@ export function ExpedienteCard() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const handleIniciar = async () => {
-    if (!lgpdAceito) {
-      setShowLGPD(true);
-      return;
-    }
+  const handleAceitar = async () => {
     setBusy(true);
-    const r = await iniciar(false);
+    const r = await aceitarLGPD();
     setBusy(false);
-    if (!r.ok && r.precisaLGPD) setShowLGPD(true);
+    if (!r.ok) alert(r.message ?? "Falha ao registrar aceite");
   };
 
-  const aceitarLGPDeIniciar = async () => {
-    setBusy(true);
-    const r = await iniciar(true);
-    setBusy(false);
-    setShowLGPD(false);
-    if (!r.ok) {
-      alert(r.message ?? "Falha ao iniciar expediente");
-    }
-  };
-
-  if (loading && !expediente) {
+  if (loading && !expediente && !janela) {
     return (
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-sm text-slate-500">Carregando expediente…</p>
@@ -54,136 +42,117 @@ export function ExpedienteCard() {
     );
   }
 
-  // ─── Fora de expediente ───
-  if (!expediente?.emAndamento) {
-    return (
-      <>
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+  // Consentimento LGPD pendente — bloqueia o rastreio/vistorias até aceitar
+  // (o gate real é no servidor). Aparece sozinho, sem precisar de um botão
+  // "iniciar" antes; "Agora não" só fecha o modal, não desbloqueia nada.
+  if (!lgpdAceito) {
+    if (dismissed) {
+      return (
+        <button
+          type="button"
+          onClick={() => setDismissed(false)}
+          className="flex w-full items-center gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-left"
         >
-          <div className="mb-3 flex items-center gap-2">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
-              <Clock className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Status do dia
-              </p>
-              <h3 className="text-base font-semibold text-slate-800">Fora de expediente</h3>
-            </div>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-[13px] font-semibold text-amber-800">Consentimento pendente</p>
+            <p className="text-[11.5px] text-amber-600">Toque para revisar e liberar o rastreio.</p>
           </div>
-          <p className="mb-4 text-xs text-slate-500">
-            GPS desativado. Inicie o expediente para começar suas vistorias e
-            autorizar o rastreio de localização durante o turno.
-          </p>
-          <button
-            type="button"
-            onClick={handleIniciar}
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-md transition active:scale-[0.98] disabled:opacity-60"
-          >
-            <Play className="h-4 w-4" />
-            Iniciar expediente
-          </button>
-        </motion.div>
-
-        {showLGPD && (
-          <LGPDModal
-            onAceitar={aceitarLGPDeIniciar}
-            onRecusar={() => setShowLGPD(false)}
-            busy={busy}
-          />
-        )}
-      </>
+        </button>
+      );
+    }
+    return (
+      <LGPDModal onAceitar={handleAceitar} onFechar={() => setDismissed(true)} busy={busy} />
     );
   }
 
-  // ─── Em expediente / em pausa ───
-  const corBase = expediente.emPausa ? "#F59E0B" : "#00B388";
-  const labelStatus = expediente.emPausa ? "Pausa-almoço" : "Em expediente";
-  const desde = new Date(expediente.inicio_at).toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // ─── Em expediente (dentro da janela + turno aberto) ───
+  if (expediente?.emAndamento) {
+    const desde = new Date(expediente.inicio_at).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+      >
+        <div
+          className="flex items-center gap-3 px-5 py-4"
+          style={{ background: "linear-gradient(135deg, #00B38818, #00B38806)" }}
+        >
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
+            style={{ background: "#00B3881f", color: "#00B388" }}
+          >
+            <ShieldCheck className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#00B388" }}>
+              Em expediente
+            </p>
+            <p className="text-[13px] font-medium text-slate-600">Ativo desde {desde}</p>
+          </div>
+          <span
+            className="flex h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ background: "#00B388", boxShadow: "0 0 10px #00B388" }}
+          />
+        </div>
+        <p className="px-5 pb-4 pt-3 text-[11.5px] text-slate-400">
+          Rastreio automático · encerra sozinho às {janela?.fim ?? "18:00"}.
+        </p>
+      </motion.div>
+    );
+  }
+
+  // ─── Fora da janela: fim de semana, antes ou depois do horário ───
+  const motivo = janela?.motivo;
+  const Icone = motivo === "fds" ? CalendarOff : MoonStar;
+  const titulo =
+    motivo === "fds"
+      ? "Fim de semana"
+      : motivo === "antes"
+        ? "Expediente ainda não começou"
+        : "Expediente encerrado";
+  const desc =
+    motivo === "fds"
+      ? "Sem rastreio aos fins de semana. Vistorias ficam disponíveis nos dias úteis."
+      : janela
+        ? `Rastreio ativo das ${janela.inicio} às ${janela.fim}, dias úteis.`
+        : "Fora do horário de expediente.";
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+      className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
     >
-      <div
-        className="flex items-center gap-3 px-5 py-4"
-        style={{ background: `linear-gradient(135deg, ${corBase}18, ${corBase}06)` }}
-      >
-        <span
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
-          style={{ background: `${corBase}1f`, color: corBase }}
-        >
-          {expediente.emPausa ? (
-            <Coffee className="h-5 w-5" />
-          ) : (
-            <ShieldCheck className="h-5 w-5" />
-          )}
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+          <Icone className="h-5 w-5" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-[10px] font-semibold uppercase tracking-[0.18em]"
-            style={{ color: corBase }}
-          >
-            {labelStatus}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Status do dia
           </p>
-          <p className="text-[13px] font-medium text-slate-600">
-            Iniciado às {desde}
-          </p>
+          <h3 className="text-base font-semibold text-slate-800">{titulo}</h3>
         </div>
-        <span
-          className="flex h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ background: corBase, boxShadow: `0 0 10px ${corBase}` }}
-        />
       </div>
-      <div className="flex gap-2 p-3">
-        <button
-          type="button"
-          onClick={async () => {
-            setBusy(true);
-            await togglePausa();
-            setBusy(false);
-          }}
-          disabled={busy}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition active:scale-[0.98] disabled:opacity-60"
-        >
-          <Coffee className="h-3.5 w-3.5" />
-          {expediente.emPausa ? "Voltar do almoço" : "Pausa almoço"}
-        </button>
-        <button
-          type="button"
-          onClick={async () => {
-            if (!confirm("Finalizar expediente? GPS será desligado.")) return;
-            setBusy(true);
-            await finalizar();
-            setBusy(false);
-          }}
-          disabled={busy}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition active:scale-[0.98] disabled:opacity-60"
-        >
-          <Square className="h-3.5 w-3.5" />
-          Finalizar
-        </button>
-      </div>
+      <p className="mt-3 text-xs text-slate-500">{desc}</p>
     </motion.div>
   );
 }
 
 function LGPDModal({
   onAceitar,
-  onRecusar,
+  onFechar,
   busy,
 }: {
   onAceitar: () => void;
-  onRecusar: () => void;
+  onFechar: () => void;
   busy: boolean;
 }) {
   return (
@@ -193,8 +162,6 @@ function LGPDModal({
         animate={{ opacity: 1, y: 0 }}
         className="flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-xl"
       >
-        {/* Conteudo rolavel — em telas baixas o texto rola sem empurrar os
-            botoes pra fora da viewport. */}
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="mb-3 flex items-center gap-2">
             <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
@@ -205,11 +172,13 @@ function LGPDModal({
             </h3>
           </div>
           <p className="mb-2 text-[13px] leading-relaxed text-slate-600">
-            Ao iniciar o expediente, você autoriza a coleta da sua localização GPS{" "}
-            <strong>exclusivamente durante o turno de trabalho declarado</strong>.
+            O app coleta sua localização GPS automaticamente{" "}
+            <strong>apenas durante o horário de expediente</strong> — abre e
+            fecha sozinho, sem precisar iniciar nem finalizar nada.
           </p>
           <ul className="mb-4 list-disc space-y-1 pl-5 text-[12.5px] text-slate-600">
-            <li>Coleta cessa ao finalizar o expediente.</li>
+            <li>Coleta ativa só dentro do horário de expediente configurado.</li>
+            <li>Sem rastreio fora do expediente, à noite ou fins de semana.</li>
             <li>Dados usados para coordenação operacional e auditoria.</li>
             <li>Retenção máxima: 12 meses.</li>
             <li>Base legal: LGPD art. 7º V (execução de contrato).</li>
@@ -220,14 +189,13 @@ function LGPDModal({
             Sem aceite, o app não permite iniciar vistorias.
           </p>
         </div>
-        {/* Rodapé fixo — botoes sempre visiveis e clicaveis. */}
         <div className="flex shrink-0 gap-2 border-t border-slate-100 bg-white p-4">
           <button
             type="button"
-            onClick={onRecusar}
-            className="flex-1 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700 transition active:scale-[0.98]"
+            onClick={onFechar}
+            className="rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-500 transition active:scale-[0.98]"
           >
-            Recusar
+            Agora não
           </button>
           <button
             type="button"
@@ -235,7 +203,7 @@ function LGPDModal({
             disabled={busy}
             className="flex-1 rounded-xl bg-emerald-500 px-3 py-2.5 text-sm font-semibold text-white shadow-md transition active:scale-[0.98] disabled:opacity-60"
           >
-            Aceitar e iniciar
+            {busy ? "Registrando…" : "Aceitar termo"}
           </button>
         </div>
       </motion.div>

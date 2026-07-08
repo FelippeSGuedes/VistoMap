@@ -15,19 +15,33 @@ export interface ExpedienteAtual {
   emAndamento: boolean;
 }
 
+export interface JanelaExpediente {
+  dentro: boolean;
+  motivo: "fds" | "antes" | "depois" | null;
+  inicio: string;
+  fim: string;
+  fimDeSemana: boolean;
+}
+
 interface ExpedienteState {
   expediente: ExpedienteAtual | null;
   lgpdAceito: boolean;
+  janela: JanelaExpediente | null;
   loading: boolean;
+  /**
+   * GET /expediente/atual — expediente automático: esta chamada já abre o
+   * turno do dia se estiver dentro da janela e o LGPD tiver sido aceito.
+   * Chamada no mount do app e a cada 60s (ver providers.tsx).
+   */
   refresh: () => Promise<void>;
-  iniciar: (aceitarLGPD?: boolean) => Promise<{ ok: boolean; precisaLGPD?: boolean; message?: string }>;
-  finalizar: () => Promise<{ ok: boolean }>;
-  togglePausa: () => Promise<{ ok: boolean; emPausa?: boolean }>;
+  /** Só usado para o aceite de consentimento LGPD (1x). */
+  aceitarLGPD: () => Promise<{ ok: boolean; message?: string }>;
 }
 
 export const useExpedienteStore = create<ExpedienteState>((set) => ({
   expediente: null,
   lgpdAceito: false,
+  janela: null,
   loading: false,
   refresh: async () => {
     set({ loading: true });
@@ -35,57 +49,28 @@ export const useExpedienteStore = create<ExpedienteState>((set) => ({
       const { data } = await api.get<{
         expediente: ExpedienteAtual | null;
         lgpdAceito: boolean;
+        janela: JanelaExpediente;
       }>("/expediente/atual");
-      set({ expediente: data.expediente, lgpdAceito: data.lgpdAceito });
+      set({ expediente: data.expediente, lgpdAceito: data.lgpdAceito, janela: data.janela });
     } catch {
       /* sem sessao ou off */
     } finally {
       set({ loading: false });
     }
   },
-  iniciar: async (aceitarLGPD) => {
+  aceitarLGPD: async () => {
     try {
       const ua =
         typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null;
       const { data } = await api.post<{ ok: true; expediente: ExpedienteAtual }>(
         "/expediente/iniciar",
-        { aceitarLGPD, dispositivoInfo: ua }
+        { aceitarLGPD: true, dispositivoInfo: ua }
       );
       set({ expediente: data.expediente, lgpdAceito: true });
       return { ok: true };
     } catch (err: unknown) {
-      const e = err as {
-        response?: { status?: number; data?: { precisaAceiteLGPD?: boolean; message?: string } };
-      };
-      if (e.response?.status === 409 && e.response.data?.precisaAceiteLGPD) {
-        return { ok: false, precisaLGPD: true };
-      }
-      return { ok: false, message: e.response?.data?.message ?? "Falha ao iniciar" };
-    }
-  },
-  finalizar: async () => {
-    try {
-      await api.post("/expediente/finalizar");
-      set({ expediente: null });
-      return { ok: true };
-    } catch {
-      return { ok: false };
-    }
-  },
-  togglePausa: async () => {
-    try {
-      const { data } = await api.post<{ ok: true; emPausa: boolean }>(
-        "/expediente/pausa"
-      );
-      // refresh pra trazer timestamps atualizados
-      const { data: cur } = await api.get<{
-        expediente: ExpedienteAtual | null;
-        lgpdAceito: boolean;
-      }>("/expediente/atual");
-      set({ expediente: cur.expediente });
-      return { ok: true, emPausa: data.emPausa };
-    } catch {
-      return { ok: false };
+      const e = err as { response?: { data?: { message?: string } } };
+      return { ok: false, message: e.response?.data?.message ?? "Falha ao registrar aceite" };
     }
   },
 }));

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionJwt } from "@/lib/jwt";
 import { execute } from "@/lib/db";
-import { expedienteAtual } from "@/lib/expediente";
+import { ensureExpedienteAuto } from "@/lib/expediente";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -50,18 +50,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Coordenadas fora de range" }, { status: 400 });
   }
 
-  const expediente = await expedienteAtual(usersId);
-  if (!expediente?.emAndamento) {
-    return NextResponse.json(
-      { message: "Rastreio indisponível fora de expediente" },
-      { status: 403 }
-    );
-  }
-  if (expediente.emPausa) {
-    return NextResponse.json(
-      { message: "Rastreio pausado durante o horário de almoço" },
-      { status: 403 }
-    );
+  // Expediente automático: abre sozinho se estiver na janela (07:30–18:00
+  // configurável, dias úteis) e o técnico já tiver consentido LGPD (1x).
+  // Fora da janela / sem consentimento → ping recusado (403, app ignora).
+  const gate = await ensureExpedienteAuto(usersId);
+  if (!gate.permitido) {
+    const msg =
+      gate.motivo === "lgpd-pendente"
+        ? "Consentimento LGPD pendente — abra o app e aceite o termo"
+        : "Fora da janela de rastreamento";
+    return NextResponse.json({ message: msg, motivo: gate.motivo }, { status: 403 });
   }
 
   try {

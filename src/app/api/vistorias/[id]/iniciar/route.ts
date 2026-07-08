@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getVistoria } from "@/lib/glpi/equipments";
 import { verifySessionJwt } from "@/lib/jwt";
-import { expedienteAtual } from "@/lib/expediente";
+import { ensureExpedienteAuto } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
@@ -89,23 +89,19 @@ export async function POST(
       actorNome = claims.email ?? "Tecnico";
       if (userId > 0) {
         actorId = userId;
-        const exp = await expedienteAtual(userId);
-        if (!exp || !exp.emAndamento) {
+        // Expediente automático: abre sozinho se dentro da janela. Fora da
+        // janela (fds / antes / depois) ou sem LGPD → bloqueia o início.
+        const gate = await ensureExpedienteAuto(userId);
+        if (!gate.permitido) {
+          const cfg = gate.janela.config;
+          const msg =
+            gate.motivo === "lgpd-pendente"
+              ? "Aceite o termo de consentimento (LGPD) no app antes de iniciar vistorias."
+              : gate.motivo === "fds"
+                ? "Vistorias não podem ser iniciadas em fins de semana."
+                : `Fora do horário de expediente (${cfg.inicio}–${cfg.fim}).`;
           return NextResponse.json(
-            {
-              message: "Inicie o expediente antes de começar a vistoria.",
-              precisaIniciarExpediente: true,
-            },
-            { status: 403 }
-          );
-        }
-        if (exp.emPausa) {
-          return NextResponse.json(
-            {
-              message:
-                "Você está em pausa para almoço. Retorne do almoço antes de iniciar a vistoria.",
-              emPausaAlmoco: true,
-            },
+            { message: msg, motivo: gate.motivo },
             { status: 403 }
           );
         }

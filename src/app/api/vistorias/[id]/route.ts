@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getVistoria } from "@/lib/glpi/equipments";
 import { getActorFromRequest } from "@/lib/auth-request";
-import { expedienteAtual } from "@/lib/expediente";
+import { ensureExpedienteAuto } from "@/lib/expediente";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,25 +26,16 @@ export async function GET(
       return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
     }
 
-    const exp = await expedienteAtual(actor.id);
-    if (!exp?.emAndamento) {
-      return NextResponse.json(
-        {
-          message: "Inicie o expediente antes de abrir o mapa e acessar as vistorias do dia.",
-          precisaIniciarExpediente: true,
-        },
-        { status: 403 }
-      );
-    }
-
-    if (exp.emPausa) {
-      return NextResponse.json(
-        {
-          message: "Você está em pausa para almoço. Retorne do almoço para acessar as vistorias.",
-          emPausaAlmoco: true,
-        },
-        { status: 403 }
-      );
+    // Expediente automático: abre sozinho se dentro da janela + LGPD aceito.
+    const gate = await ensureExpedienteAuto(actor.id);
+    if (!gate.permitido) {
+      const msg =
+        gate.motivo === "lgpd-pendente"
+          ? "Aceite o termo de consentimento (LGPD) no app antes de acessar as vistorias."
+          : gate.motivo === "fds"
+            ? "Sem expediente aos fins de semana."
+            : `Fora do horário de expediente (${gate.janela.config.inicio}–${gate.janela.config.fim}).`;
+      return NextResponse.json({ message: msg, motivo: gate.motivo }, { status: 403 });
     }
 
     const vistoria = await getVistoria(id);

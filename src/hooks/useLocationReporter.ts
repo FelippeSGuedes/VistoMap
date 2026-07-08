@@ -91,8 +91,12 @@ export function useLocationReporter() {
       return;
     }
 
-    if (!expediente?.emAndamento || expediente.emPausa) {
-      console.log("[useLocationReporter] Fora de expediente ativo, rastreio suspenso.");
+    if (!expediente?.emAndamento) {
+      // Expediente é automático (abre sozinho via refreshExpediente acima,
+      // dentro da janela configurada). Enquanto o store ainda não refletir
+      // isso (cold start / fora da janela), o rastreio fica suspenso — o
+      // efeito reexecuta assim que `expediente` atualizar.
+      console.log("[useLocationReporter] Fora de expediente, rastreio suspenso.");
       return;
     }
 
@@ -243,5 +247,5 @@ export function useLocationReporter() {
       if (intervalRef.current != null) window.clearInterval(intervalRef.current);
       if (wakeLock) wakeLock.release().catch(() => {});
     };
-  }, [expediente?.emAndamento, expediente?.emPausa, session?.token, refreshExpediente]);
+  }, [expediente?.emAndamento, session?.token, refreshExpediente]);
 }
