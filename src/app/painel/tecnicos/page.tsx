@@ -30,7 +30,12 @@ interface ExpedienteAtivo {
 }
 
 function elapsedShort(fromIso: string): string {
-  const totalMin = Math.floor((Date.now() - new Date(fromIso).getTime()) / 60000);
+  // MySQL retorna "2026-07-08 18:25:00" sem timezone (é UTC) — sem forçar o
+  // "Z", o browser interpreta como horário local e o cálculo de duração fica
+  // errado (negativo nas primeiras ~3h). Mesmo bug já corrigido em
+  // notificacoes/page.tsx e ExpedienteCard.tsx.
+  const utcIso = fromIso.includes("T") ? fromIso : fromIso.replace(" ", "T") + "Z";
+  const totalMin = Math.floor((Date.now() - new Date(utcIso).getTime()) / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;

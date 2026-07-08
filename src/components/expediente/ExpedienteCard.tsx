@@ -70,10 +70,13 @@ export function ExpedienteCard() {
 
   // ─── Em expediente (dentro da janela + turno aberto) ───
   if (expediente?.emAndamento) {
-    const desde = new Date(expediente.inicio_at).toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    // MySQL retorna "2026-07-08 18:25:00" sem timezone — o browser assume
+    // horário local se não forçarmos UTC (mesmo bug já corrigido em
+    // notificacoes/page.tsx: sem o "Z", o horário aparece ~3h adiantado).
+    const desde = new Date(expediente.inicio_at.replace(" ", "T") + "Z").toLocaleTimeString(
+      "pt-BR",
+      { hour: "2-digit", minute: "2-digit" }
+    );
     return (
       <motion.div
         initial={{ opacity: 0, y: 6 }}
@@ -101,9 +104,6 @@ export function ExpedienteCard() {
             style={{ background: "#00B388", boxShadow: "0 0 10px #00B388" }}
           />
         </div>
-        <p className="px-5 pb-4 pt-3 text-[11.5px] text-slate-400">
-          Rastreio automático · encerra sozinho às {janela?.fim ?? "18:00"}.
-        </p>
       </motion.div>
     );
   }
