@@ -45,10 +45,12 @@ export function BundleVersion() {
     }
     Updater.current()
       .then((cur) => {
-        const v = cur?.bundle?.version;
-        // capgo retorna "builtin" pro bundle embutido no APK
-        if (!v || v === "builtin") setLabel(`builtin (nativo ${cur?.native ?? "?"})`);
-        else setLabel(`OTA ${v}`);
+        // O sinalizador de "sem OTA aplicado" é bundle.ID === "builtin" — NÃO
+        // bundle.version (que no builtin reflete o versionName nativo, ex.
+        // "1.1", e por isso parecia um número de versão OTA por engano).
+        const isBuiltin = !cur?.bundle?.id || cur.bundle.id === "builtin";
+        if (isBuiltin) setLabel(`builtin (nativo ${cur?.native ?? "?"})`);
+        else setLabel(`OTA ${cur.bundle.version}`);
       })
       .catch(() => setLabel("nativo"));
   }, []);

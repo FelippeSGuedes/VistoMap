@@ -62,6 +62,13 @@ function restore() {
   fs.rmSync(STASH, { recursive: true, force: true });
 }
 
+// Assets de /public usados SÓ pelo painel admin (nunca aparecem no app
+// técnico) — o export estático inclui todo /public de qualquer forma, mas
+// não faz sentido inflar o zip OTA do técnico (baixado no campo, às vezes em
+// sinal fraco) com branding administrativo. Confirmado via grep: sem
+// nenhuma referência fora de src/app/painel/**.
+const PAINEL_ONLY_ASSETS = ["vis.png", "login_painel.png", "logo-vistomap.png"];
+
 function copyOutToWww() {
   const out = path.join(ROOT, "out");
   const www = path.join(ROOT, "mobile", "www");
@@ -70,8 +77,11 @@ function copyOutToWww() {
   }
   fs.rmSync(www, { recursive: true, force: true });
   fs.mkdirSync(www, { recursive: true });
-  fs.cpSync(out, www, { recursive: true });
-  console.log(`[mobile] copiado out/ → mobile/www`);
+  fs.cpSync(out, www, {
+    recursive: true,
+    filter: (src) => !PAINEL_ONLY_ASSETS.includes(path.basename(src)),
+  });
+  console.log(`[mobile] copiado out/ → mobile/www (excluindo assets só-painel)`);
 }
 
 console.log("[mobile] iniciando build estático do app técnico…");
