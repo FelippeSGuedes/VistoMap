@@ -19,7 +19,6 @@ import {
   PanelLeftOpen,
   RotateCw,
   Search,
-  Settings,
   ShieldAlert,
   Sun,
   Users,
@@ -39,7 +38,8 @@ const BOTTOM_NAV = [
   { href: "/painel/tecnicos",       label: "Técnicos",      icon: Users },
   { href: "/painel/auditoria",      label: "Auditoria",     icon: ShieldAlert },
   { href: "/painel/historico",      label: "Histórico",     icon: History },
-  { href: "/painel/configuracoes",  label: "Configurações", icon: Settings },
+  // "Configurações" removido: apontava para /painel/configuracoes (rota
+  // inexistente) → 404 no prefetch. Readicionar quando a página existir.
 ];
 
 // Sub-itens do grupo "Vistorias"
@@ -185,7 +185,10 @@ export default function PainelClientLayout({ children }: { children: React.React
   const fetchPendentes = useCallback(async () => {
     if (!session?.token) return;
     try {
-      const r = await fetch("/api/painel/notificacoes", {
+      // raw fetch NÃO herda o basePath/assetPrefix do Next — prefixar manual,
+      // senão vira /api/... (sem /painel) e o nginx responde 404.
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      const r = await fetch(`${base}/api/painel/notificacoes`, {
         headers: { Authorization: `Bearer ${session.token}` },
       });
       if (r.ok) {

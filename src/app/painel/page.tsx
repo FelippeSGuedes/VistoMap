@@ -1425,7 +1425,7 @@ export default function PainelOverviewPage() {
             <span style={{ fontSize: "1.05rem", fontWeight: 600, color: "#fff", fontFamily: "monospace", letterSpacing: "0.04em" }}>
               {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>
-            <Link href="/painel/vistorias" style={{ display: "flex", alignItems: "center", gap: 6, background: "#00ff88", color: "var(--vm-text)", fontWeight: 700, fontSize: "0.83rem", borderRadius: 8, padding: "8px 20px", textDecoration: "none" }}>
+            <Link href="/painel/vistorias" style={{ display: "flex", alignItems: "center", gap: 6, background: "#00ff88", color: "#052e28", fontWeight: 700, fontSize: "0.83rem", borderRadius: 8, padding: "8px 20px", textDecoration: "none" }}>
               <UserPlus style={{ width: 13, height: 13 }} />Atribuir
             </Link>
           </div>
@@ -1464,7 +1464,7 @@ export default function PainelOverviewPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <Link
                   href="/painel/vistorias"
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#00ff88", color: "var(--vm-text)", fontWeight: 700, fontSize: "0.88rem", borderRadius: 8, padding: "14px 20px", textDecoration: "none", transition: "transform 0.2s ease" }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#00ff88", color: "#052e28", fontWeight: 700, fontSize: "0.88rem", borderRadius: 8, padding: "14px 20px", textDecoration: "none", transition: "transform 0.2s ease" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(4px)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = "translateX(0)"; }}
                 >
