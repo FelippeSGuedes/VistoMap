@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, RefreshCw, Search,
-  Trash2, UserCheck, X, ChevronDown,
+  AlertTriangle, Calendar, CheckCircle2, MapPin, RefreshCw, Search,
+  Trash2, User, UserCheck, X, ChevronDown,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
@@ -170,77 +170,93 @@ export default function CentralVistoriasPage() {
         </div>
       </div>
 
-      {/* Tabela */}
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400 text-[13px]">
-            <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Carregando…
-          </div>
-        ) : filtradas.length === 0 ? (
-          <div className="py-16 text-center text-[13px] text-gray-400">Nenhuma vistoria encontrada.</div>
-        ) : (
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-3 text-left">Equipamento</th>
-                <th className="px-4 py-3 text-left">Município</th>
-                <th className="px-4 py-3 text-left">Situação</th>
-                <th className="px-4 py-3 text-left">Técnico</th>
-                <th className="px-4 py-3 text-left">Data vistoria</th>
-                <th className="px-4 py-3 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtradas.map((v, i) => (
-                <tr
-                  key={v.id}
-                  className={`border-b border-gray-50 transition hover:bg-gray-50/60 ${i % 2 === 0 ? "" : "bg-gray-50/30"}`}
-                >
-                  <td className="px-4 py-3 font-medium text-gray-800">{v.equipamento}</td>
-                  <td className="px-4 py-3 text-gray-500">{v.municipio ?? "—"}</td>
-                  <td className="px-4 py-3"><SituacaoBadge id={v.situacao_id} /></td>
-                  <td className="px-4 py-3 text-gray-600">{v.tecnico_nome ?? <span className="text-gray-300">sem técnico</span>}</td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {v.data_vistoria
-                      ? new Date(v.data_vistoria).toLocaleDateString("pt-BR")
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {/* Reatribuir: só quando há técnico vinculado */}
-                      {v.tecnico_nome && (
-                        <button
-                          type="button"
-                          onClick={() => { setReatrib(v); setNovoTecnico(""); setMotivo(""); }}
-                          className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"
-                        >
-                          <UserCheck className="h-3.5 w-3.5" />
-                          Reatribuir
-                        </button>
-                      )}
-                      {/* Cancelar: só quando já foi iniciada (situação > A Vistoriar) */}
-                      {v.situacao_id > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => { setCancelando(v); setCancelConfirm(""); }}
-                          className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Cancelar
-                        </button>
-                      )}
-                      {/* Sem ações disponíveis */}
-                      {!v.tecnico_nome && v.situacao_id <= 1 && (
-                        <span className="text-[11px] text-gray-300">—</span>
-                      )}
+      {/* Grid de cards */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16 text-[13px] text-gray-400">
+          <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Carregando…
+        </div>
+      ) : filtradas.length === 0 ? (
+        <div className="rounded-2xl border border-gray-100 bg-white py-16 text-center text-[13px] text-gray-400">
+          Nenhuma vistoria encontrada.
+        </div>
+      ) : (
+        <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
+          {filtradas.map((v) => {
+            const cor = SITUACAO_COLOR[v.situacao_id] ?? "var(--vm-faint)";
+            const semAcoes = !v.tecnico_nome && v.situacao_id <= 1;
+            return (
+              <div
+                key={v.id}
+                className="flex flex-col overflow-hidden rounded-2xl bg-white transition hover:-translate-y-0.5"
+                style={{ border: "1px solid var(--vm-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+              >
+                {/* faixa de situação */}
+                <div style={{ height: 3, background: cor, flexShrink: 0 }} />
+
+                <div className="flex flex-1 flex-col p-4">
+                  {/* equipamento + badge */}
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-[14px] font-bold text-[var(--vm-text)]" title={v.equipamento}>
+                        {v.equipamento}
+                      </h3>
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] text-[var(--vm-muted)]">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        {v.municipio ?? "—"}
+                      </p>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                    <SituacaoBadge id={v.situacao_id} />
+                  </div>
+
+                  {/* técnico + data */}
+                  <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-[var(--vm-muted)]">
+                    <span className="flex items-center gap-1">
+                      <User className="h-3 w-3 shrink-0" />
+                      {v.tecnico_nome ?? <span className="text-[var(--vm-faint)]">sem técnico</span>}
+                    </span>
+                    {v.data_vistoria && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3 shrink-0" />
+                        {new Date(v.data_vistoria).toLocaleDateString("pt-BR")}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* ações */}
+                  <div
+                    className="mt-auto flex items-center gap-1.5 border-t pt-3"
+                    style={{ borderColor: "var(--vm-border-soft)" }}
+                  >
+                    {v.tecnico_nome && (
+                      <button
+                        type="button"
+                        onClick={() => { setReatrib(v); setNovoTecnico(""); setMotivo(""); }}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"
+                      >
+                        <UserCheck className="h-3.5 w-3.5" />
+                        Reatribuir
+                      </button>
+                    )}
+                    {v.situacao_id > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => { setCancelando(v); setCancelConfirm(""); }}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Cancelar
+                      </button>
+                    )}
+                    {semAcoes && (
+                      <span className="text-[11px] text-[var(--vm-faint)]">Sem ações disponíveis</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modal Cancelar */}
       {cancelando && (

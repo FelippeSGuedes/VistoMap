@@ -299,7 +299,7 @@ export default function AndamentoPage() {
           </div>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
           {filtered.map((item) => (
             <VistoriaCard key={item.id} item={item} />
           ))}
@@ -315,59 +315,69 @@ function VistoriaCard({ item }: { item: VistoriaAndamento }) {
 
   return (
     <div
-      className="group relative flex items-center gap-4 overflow-hidden rounded-2xl border bg-white px-5 py-4 transition-shadow hover:shadow-md"
-      style={{ borderColor: "var(--vm-border)", borderLeftWidth: 3, borderLeftColor: cfg.dot }}
+      className="flex flex-col overflow-hidden rounded-2xl bg-white transition hover:-translate-y-0.5 hover:shadow-md"
+      style={{ border: "1px solid var(--vm-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
     >
-      {/* Status icon */}
-      <span
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-        style={{ background: cfg.bg }}
-      >
-        {item.situacao === "Em Deslocamento" ? (
-          <Navigation className="h-5 w-5" style={{ color: cfg.color }} />
-        ) : (
-          <Activity className="h-5 w-5" style={{ color: cfg.color }} />
-        )}
-      </span>
+      {/* faixa de status */}
+      <div style={{ height: 3, background: cfg.dot, flexShrink: 0 }} />
 
-      {/* Info principal */}
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13.5px] font-semibold text-gray-900 truncate">
-            {item.equipamento}
-          </span>
-          <span className="text-[11px] font-medium text-gray-400">{item.glpiId}</span>
+      <div className="flex flex-1 flex-col p-4">
+        {/* topo: ícone + equipamento + badge */}
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: cfg.bg }}
+            >
+              {item.situacao === "Em Deslocamento" ? (
+                <Navigation className="h-[18px] w-[18px]" style={{ color: cfg.color }} />
+              ) : (
+                <Activity className="h-[18px] w-[18px]" style={{ color: cfg.color }} />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="truncate text-[13.5px] font-bold text-[var(--vm-text)]" title={item.equipamento}>
+                {item.equipamento}
+              </h3>
+              <p className="truncate text-[10.5px] font-medium text-[var(--vm-faint)]">{item.glpiId}</p>
+            </div>
+          </div>
           <StatusChip situacao={item.situacao} />
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+
+        {/* meta */}
+        <div className="flex flex-col gap-1 text-[11.5px] text-[var(--vm-muted)]">
           {item.municipio && (
-            <span className="flex items-center gap-1 text-[11.5px] text-gray-500">
+            <span className="flex items-center gap-1.5">
               <MapPin className="h-3 w-3 shrink-0" />
               {item.municipio}
             </span>
           )}
           {item.tecnico_nome && (
-            <span className="flex items-center gap-1 text-[11.5px] text-gray-500">
+            <span className="flex items-center gap-1.5">
               <User className="h-3 w-3 shrink-0" />
               {item.tecnico_nome}
             </span>
           )}
           {inicioTs && (
-            <span className="flex items-center gap-1 text-[11.5px] text-gray-500">
+            <span className="flex items-center gap-1.5">
               <Clock className="h-3 w-3 shrink-0" />
               Início: {formatHorario(inicioTs)}
             </span>
           )}
         </div>
-      </div>
 
-      {/* Tempo decorrido */}
-      <div className="shrink-0 text-right">
-        <div className="text-[22px] font-bold tabular-nums" style={{ color: cfg.color }}>
-          {formatTempo(item.tempo_decorrido_min)}
-        </div>
-        <div className="text-[9.5px] font-semibold uppercase tracking-wider text-gray-400">
-          em campo
+        {/* tempo decorrido */}
+        <div
+          className="mt-3 flex items-baseline justify-between border-t pt-3"
+          style={{ borderColor: "var(--vm-border-soft)" }}
+        >
+          <span className="text-[9.5px] font-semibold uppercase tracking-wider text-[var(--vm-faint)]">
+            Em campo há
+          </span>
+          <span className="text-[20px] font-bold tabular-nums" style={{ color: cfg.color }}>
+            {formatTempo(item.tempo_decorrido_min)}
+          </span>
         </div>
       </div>
     </div>
