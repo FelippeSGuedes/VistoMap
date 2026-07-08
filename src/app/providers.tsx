@@ -9,7 +9,17 @@ import { useLocationReporter } from "@/hooks/useLocationReporter";
 import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useOtaUpdate } from "@/hooks/useOtaUpdate";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
+
+// BUG HISTÓRICO (2026-07-08): useOtaUpdate existia e estava correto, mas
+// nunca era montado em lugar nenhum — o app JAMAIS checava OTA, daí "OTA não
+// funciona" mesmo com o servidor publicando certo. Se algum dia parecer não
+// estar rodando de novo, confirmar que este mount segue presente aqui.
+function OtaUpdateMount() {
+  useOtaUpdate();
+  return null;
+}
 
 function LocationReporterMount() {
   useLocationReporter();
@@ -89,6 +99,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <OtaUpdateMount />
       <LocationReporterMount />
       <PushRegistrationMount />
       <TecnicoNotificationsMount />
