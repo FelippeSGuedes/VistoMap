@@ -186,11 +186,18 @@ export default function DashboardPage() {
   const { hydrated, session } = useAuthStore();
   const [stats, setStats]     = useState<DashboardStats | null>(null);
   const [online, setOnline]   = useState(true);
+  // Calculado só no client: no export estático, new Date().getHours() no
+  // corpo do render baka a hora do BUILD no HTML, que quase nunca bate com a
+  // hora real do celular no primeiro paint — isso disparava erro de
+  // hidratação (React descarta o HTML e re-renderiza tudo, visível como um
+  // flash na abertura do app).
+  const [saudacao, setSaudacao] = useState("Olá");
   const heroRef = useRef<HTMLDivElement>(null);
   const { scrollY } = useScroll();
   const heroParallax = useTransform(scrollY, [0, 200], [0, -30]);
 
   useEffect(() => { if (hydrated && !session) router.replace("/login"); }, [hydrated, session, router]);
+  useEffect(() => { setSaudacao(greeting()); }, []);
 
   useEffect(() => {
     setOnline(navigator.onLine);
@@ -310,7 +317,7 @@ export default function DashboardPage() {
           <img src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo_favicon.PNG`} alt="VistoMap" className="h-8 w-8 rounded-xl" style={{ objectFit: "contain" }} />
           <div className="flex flex-col">
             <span className="text-[21px] font-semibold leading-none tracking-[-0.4px]">
-              <span style={{ color: "#00B388" }}>{greeting()},&nbsp;</span>
+              <span style={{ color: "#00B388" }}>{saudacao},&nbsp;</span>
               <span style={{ color: "#063B3B" }}>{firstName}</span>
             </span>
           </div>
