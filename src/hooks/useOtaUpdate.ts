@@ -11,10 +11,15 @@
  *     capgo faz rollback automático (proteção contra bundle quebrado).
  *  2. Busca o manifesto em {origin}/ota/latest.json (silencioso, offline-safe).
  *  3. Se a versão publicada for diferente da ativa, baixa o zip e aplica com
- *     set() — o webview recarrega no bundle novo. O hook remonta e chama
- *     notifyAppReady() de novo, confirmando.
+ *     set() — reinicia o WebView JÁ nesta mesma abertura do app (não precisa
+ *     fechar/abrir de novo). O hook remonta no bundle novo e confirma com
+ *     notifyAppReady() outra vez.
  *
- * Aplica só no cold-start pra não interromper o técnico no meio do trabalho.
+ * set() em vez de next(): checagem só roda no cold-start (mount deste hook),
+ * que já é o momento seguro pra recarregar — o técnico está abrindo o app
+ * agora, não no meio de uma vistoria. Aplicar na hora evita o técnico precisar
+ * fechar e abrir o app duas vezes pra receber uma atualização.
+ *
  * Sem rede (zona rural) o fetch falha, é capturado, e o app segue no bundle atual.
  */
 
@@ -33,9 +38,8 @@ interface UpdaterPlugin {
   notifyAppReady: () => Promise<unknown>;
   current: () => Promise<{ bundle: BundleInfo; native: string }>;
   download: (opts: { url: string; version: string }) => Promise<BundleInfo>;
+  /** Aplica o bundle AGORA — recarrega o WebView imediatamente. */
   set: (opts: { id: string }) => Promise<void>;
-  /** Agenda o bundle para ser ativado no PRÓXIMO cold-start (sem recarregar agora). */
-  next: (opts: { id: string }) => Promise<void>;
 }
 
 interface CapacitorBridge {
@@ -86,14 +90,14 @@ export function useOtaUpdate() {
           `[useOtaUpdate] Atualização: ${cur?.bundle?.version ?? "?"} → ${manifest.version}`
         );
 
-        // 3. Baixa e agenda para o próximo cold-start (sem recarregar agora).
+        // 3. Baixa e aplica JÁ — recarrega o WebView nesta mesma abertura.
         const bundle = await Updater.download({
           url: manifest.url,
           version: manifest.version,
         });
         if (cancelled || !bundle?.id) return;
-        await Updater.next({ id: bundle.id });
-        console.log(`[useOtaUpdate] Bundle ${manifest.version} agendado — ativo no próximo cold-start.`);
+        await Updater.set({ id: bundle.id });
+        console.log(`[useOtaUpdate] Bundle ${manifest.version} aplicado — recarregando.`);
       } catch (err) {
         console.warn("[useOtaUpdate] Checagem OTA falhou (offline?):", err);
       }
