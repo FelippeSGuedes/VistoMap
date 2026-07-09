@@ -119,7 +119,7 @@ export function ExpedienteCard() {
         : "Expediente encerrado";
   const desc =
     motivo === "fds"
-      ? "Sem rastreio aos fins de semana. Vistorias ficam disponíveis nos dias úteis."
+      ? "Sem rastreio aos fins de semana, salvo acordo prévio com o Gestor. Vistorias ficam disponíveis nos dias úteis."
       : janela
         ? `Rastreio ativo das ${janela.inicio} às ${janela.fim}, dias úteis.`
         : "Fora do horário de expediente.";
