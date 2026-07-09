@@ -168,25 +168,51 @@ function LGPDModal({
               <ShieldCheck className="h-5 w-5" />
             </span>
             <h3 className="text-base font-semibold text-slate-800">
-              Consentimento de rastreio (LGPD)
+              Termo de Consentimento — Tratamento de Dados de Geolocalização
             </h3>
           </div>
           <p className="mb-2 text-[13px] leading-relaxed text-slate-600">
-            O app coleta sua localização GPS automaticamente{" "}
-            <strong>apenas durante o horário de expediente</strong> — abre e
-            fecha sozinho, sem precisar iniciar nem finalizar nada.
+            Em conformidade com a Lei nº 13.709/2018 (Lei Geral de Proteção de
+            Dados Pessoais — LGPD), o presente termo tem por finalidade obter
+            o consentimento livre, informado e inequívoco do titular para a
+            coleta e o tratamento de dados de geolocalização (GPS) durante o
+            exercício das atividades laborais.
           </p>
-          <ul className="mb-4 list-disc space-y-1 pl-5 text-[12.5px] text-slate-600">
-            <li>Coleta ativa só dentro do horário de expediente configurado.</li>
-            <li>Sem rastreio fora do expediente, à noite ou fins de semana.</li>
-            <li>Dados usados para coordenação operacional e auditoria.</li>
-            <li>Retenção máxima: 12 meses.</li>
-            <li>Base legal: LGPD art. 7º V (execução de contrato).</li>
+          <ul className="mb-4 list-disc space-y-1.5 pl-5 text-[12.5px] leading-snug text-slate-600">
+            <li>
+              A coleta de dados de localização ocorre exclusivamente durante o
+              período de expediente definido conforme jornada de trabalho
+              vigente.
+            </li>
+            <li>
+              É vedada a coleta de dados fora do horário de expediente, no
+              período noturno ou em finais de semana,{" "}
+              <strong>salvo mediante acordo prévio e expresso com o
+              Gestor imediato</strong>, nas hipóteses de necessidade
+              operacional devidamente justificada.
+            </li>
+            <li>
+              Os dados coletados serão utilizados exclusivamente para fins de
+              coordenação operacional, controle de jornada e auditoria
+              interna.
+            </li>
+            <li>
+              Prazo de retenção: até 12 (doze) meses, findo o qual os dados
+              serão eliminados ou anonimizados.
+            </li>
+            <li>
+              Fundamento legal: art. 7º, inciso V, da LGPD (execução de
+              contrato ou de procedimentos preliminares a ele relacionados,
+              dos quais seja parte o titular).
+            </li>
           </ul>
-          <p className="text-[12px] text-slate-500">
-            Você pode revogar o consentimento a qualquer momento comunicando ao
-            Administrador do Sistema ou ao seu Gestor Imediato.
-            Sem aceite, o app não permite iniciar vistorias.
+          <p className="text-[12px] leading-relaxed text-slate-500">
+            O titular poderá revogar o presente consentimento a qualquer
+            tempo, mediante comunicação ao Administrador do Sistema ou ao
+            Gestor imediato, sem prejuízo dos tratamentos realizados
+            anteriormente à revogação. A ausência ou a revogação do
+            consentimento impede o início de vistorias por meio da
+            plataforma.
           </p>
         </div>
         <div className="flex shrink-0 gap-2 border-t border-slate-100 bg-white p-4">

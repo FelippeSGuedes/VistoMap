@@ -62,11 +62,19 @@ export const useExpedienteStore = create<ExpedienteState>((set) => ({
     try {
       const ua =
         typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null;
-      const { data } = await api.post<{ ok: true; expediente: ExpedienteAtual }>(
-        "/expediente/iniciar",
-        { aceitarLGPD: true, dispositivoInfo: ua }
-      );
-      set({ expediente: data.expediente, lgpdAceito: true });
+      // Endpoint dedicado — só registra o consentimento, sem tentar abrir
+      // turno (que é bloqueado fora da janela de horário). Aceitar o termo
+      // precisa funcionar a qualquer hora.
+      await api.post("/expediente/lgpd", { dispositivoInfo: ua });
+      set({ lgpdAceito: true });
+      // Se já estiver dentro da janela agora, isso já abre o turno na hora;
+      // fora da janela, fica só o consentimento registrado (correto).
+      const { data } = await api.get<{
+        expediente: ExpedienteAtual | null;
+        lgpdAceito: boolean;
+        janela: JanelaExpediente;
+      }>("/expediente/atual");
+      set({ expediente: data.expediente, janela: data.janela });
       return { ok: true };
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
