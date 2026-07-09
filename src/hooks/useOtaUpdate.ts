@@ -26,8 +26,26 @@
 import { useEffect } from "react";
 import { API_BASE } from "@/services/api";
 
-// {origin}/ota — mesmo host que a API, sem o sufixo /app/api.
-const OTA_BASE = API_BASE.replace(/\/app\/api\/?$/, "") + "/ota";
+/**
+ * {origin}/ota — mesmo host que a API, na raiz (nginx serve /ota como path
+ * top-level, não sob /app). Deriva da ORIGEM de API_BASE via URL(), não de
+ * um replace() de sufixo esperado — se API_BASE algum dia vier com um path
+ * inesperado (ex.: sem o /api final, por erro de config), um replace()
+ * baseado em sufixo simplesmente não bate e deixa o path errado passar
+ * batido (isso já aconteceu — foi assim que uma config quebrada consertou
+ * a URL da API mas quebrou silenciosamente a URL do OTA, criando um bundle
+ * que nunca mais conseguia se autoatualizar). new URL().origin ignora
+ * completamente o path de API_BASE, então é imune a esse tipo de bug.
+ */
+function computeOtaBase(): string {
+  try {
+    return new URL(API_BASE).origin + "/ota";
+  } catch {
+    // API_BASE relativo (web/painel, sem host) — OTA não se aplica lá mesmo.
+    return "/ota";
+  }
+}
+const OTA_BASE = computeOtaBase();
 
 interface BundleInfo {
   id: string;
