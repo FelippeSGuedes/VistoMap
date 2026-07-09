@@ -17,12 +17,13 @@ export type NotificationPermissionState =
   | "unsupported";
 
 export function useNotificationPermission() {
-  const [state, setState] = useState<NotificationPermissionState>(() => {
-    if (typeof window === "undefined" || typeof Notification === "undefined") {
-      return "unsupported";
-    }
-    return Notification.permission as NotificationPermissionState;
-  });
+  // Sempre parte de "unsupported" — mesmo no client, que tem `window` e
+  // `Notification` disponíveis (WebView do Android suporta a API). Ler
+  // Notification.permission direto no inicializador do useState divergia do
+  // HTML estático (buildado sem window, sempre "unsupported"), causando
+  // mismatch de hidratação toda vez que este card aparecia. O valor real é
+  // aplicado só depois do mount, pelo effect abaixo.
+  const [state, setState] = useState<NotificationPermissionState>("unsupported");
 
   useEffect(() => {
     if (typeof Notification === "undefined") return;
