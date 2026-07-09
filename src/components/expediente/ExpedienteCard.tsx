@@ -97,7 +97,7 @@ export function ExpedienteCard() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#00B388" }}>
               Em expediente
             </p>
-            <p className="text-[13px] font-medium text-slate-600">Ativo desde {desde}</p>
+            <p className="text-[13px] font-medium text-slate-600">Em atividade desde {desde}</p>
           </div>
           <span
             className="flex h-2.5 w-2.5 shrink-0 rounded-full"
