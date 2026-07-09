@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Credenciais de assinatura fora do controle de versão — ver
+// mobile/android/keystore.properties (git-ignored, criado localmente).
+// Sem esse arquivo, o build de release fica sem assinatura configurada
+// (build de debug continua funcionando normalmente, sem depender disso).
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystoreConfig = keystorePropertiesFile.exists()
+if (hasKeystoreConfig) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace "br.com.nansen.vistomap"
     compileSdk rootProject.ext.compileSdkVersion
@@ -17,18 +28,22 @@ android {
         }
     }
     signingConfigs {
-        release {
-            storeFile file("vistomap.keystore")
-            storePassword "VistomapKey2026!"
-            keyAlias "vistomap"
-            keyPassword "VistomapKey2026!"
+        if (hasKeystoreConfig) {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
         }
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (hasKeystoreConfig) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
