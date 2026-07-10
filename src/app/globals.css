@@ -87,6 +87,9 @@ select {
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(7, 59, 76, 0.1) !important;
 }
+.mapboxgl-ctrl-logo {
+  display: none !important;
+}
 
 @keyframes shimmer {
   0% {
