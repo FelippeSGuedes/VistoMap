@@ -123,8 +123,16 @@ export async function POST(
 
     let distancia: number | null = null;
     let exceptionLabel: string | null = null;
+    // Precisa de aprovação do admin — presença não pôde ser confirmada
+    // (fora do raio ou sem GPS), seja pedido online forçado, seja um
+    // "iniciar" sincronizado depois da fila offline. Antes, o offline caía
+    // direto pra "Em Vistoria" sem aprovação nenhuma — bastava o app cair em
+    // modo offline (rede ruim, timeout) pra pular a checagem de presença
+    // por completo, mesmo o técnico estando longe do equipamento.
+    let precisaAprovacao = false;
 
-    // Equipamento sem coordenada → bloqueia online; offline segue marcado.
+    // Equipamento sem coordenada → bloqueia online; offline segue marcado
+    // (problema de cadastro do equipamento, não de presença do técnico).
     if (equipLat == null || equipLng == null) {
       if (!offline) {
         return NextResponse.json(
@@ -140,9 +148,8 @@ export async function POST(
     } else if (devLat != null && devLng != null) {
       distancia = distanciaMetros({ lat: devLat, lng: devLng }, { lat: equipLat, lng: equipLng });
       if (distancia > RAIO_M) {
-        if (offline) {
-          exceptionLabel = `FORA DO RAIO (${distancia} m)`;
-        } else if (!forcar) {
+        exceptionLabel = `FORA DO RAIO (${distancia} m)`;
+        if (!offline && !forcar) {
           return NextResponse.json(
             {
               message: `Você está a ${distancia} m do equipamento. Aproxime-se para iniciar.`,
@@ -152,21 +159,19 @@ export async function POST(
             },
             { status: 422 }
           );
-        } else {
-          if (!justificativa) {
-            return NextResponse.json(
-              { message: "Justificativa obrigatória para iniciar fora do raio.", precisaJustificativa: true },
-              { status: 400 }
-            );
-          }
-          exceptionLabel = `FORA DO RAIO (${distancia} m)`;
         }
+        if (!offline && !justificativa) {
+          return NextResponse.json(
+            { message: "Justificativa obrigatória para iniciar fora do raio.", precisaJustificativa: true },
+            { status: 400 }
+          );
+        }
+        precisaAprovacao = true;
       }
     } else {
       // Sem GPS do aparelho.
-      if (offline) {
-        exceptionLabel = "SEM GPS";
-      } else if (!forcar) {
+      exceptionLabel = "SEM GPS";
+      if (!offline && !forcar) {
         return NextResponse.json(
           {
             message: "Não foi possível obter sua localização. Ative o GPS e tente novamente.",
@@ -174,19 +179,20 @@ export async function POST(
           },
           { status: 422 }
         );
-      } else {
-        if (!justificativa) {
-          return NextResponse.json(
-            { message: "Justificativa obrigatória para iniciar sem GPS.", precisaJustificativa: true },
-            { status: 400 }
-          );
-        }
-        exceptionLabel = "SEM GPS";
       }
+      if (!offline && !justificativa) {
+        return NextResponse.json(
+          { message: "Justificativa obrigatória para iniciar sem GPS.", precisaJustificativa: true },
+          { status: 400 }
+        );
+      }
+      precisaAprovacao = true;
     }
 
-    // ── Override online → cria pedido de aprovação (não inicia imediatamente) ──
-    if (exceptionLabel && forcar && !offline) {
+    // ── Override → cria pedido de aprovação (não inicia imediatamente) ──
+    // Vale tanto pro forcar online quanto pro sync da fila offline: presença
+    // não confirmada sempre passa por um admin, nunca inicia direto sozinha.
+    if (precisaAprovacao) {
       await ensureOverrideTable();
       const { insertId } = await execute(
         `INSERT INTO \`glpi_plugin_vistomap_override_requests\`
@@ -194,11 +200,14 @@ export async function POST(
          VALUES (?, ?, ?, ?, ?, 'PENDENTE', ?, ?)`,
         [id, actorId ?? 0, vistoria.equipamento ?? `NE-${id}`, actorNome, justificativa, distancia, exceptionLabel]
       );
+      const motivoTexto = offline
+        ? "sincronizado da fila offline, sem justificativa (dispositivo sem conexão no momento)"
+        : `justificativa: ${justificativa}`;
       void auditInsert({
         ator: { id: actorId ?? 0, nome: actorNome, role: "tecnico" },
         acao: "override-solicitado",
         alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento ?? `NE-${id}` },
-        descricao: `Solicitação de início fora do local enviada. ${exceptionLabel} — justificativa: ${justificativa}`,
+        descricao: `Solicitação de início fora do local enviada. ${exceptionLabel} — ${motivoTexto}`,
       });
       return NextResponse.json({ pending: true, requestId: insertId }, { status: 202 });
     }
