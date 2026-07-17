@@ -217,45 +217,57 @@ export default function DashboardPage() {
       municipios: [], ultimaSincronizacao: new Date().toISOString(),
     };
 
-    Promise.all([
-      vistoriasService.fetchDashboardStats(),
-      vistoriasService.fetchVistorias(),
-    ]).then(([s, vistorias]) => {
-      if (!alive) return;
-      // SELECT DISTINCT cidade + COUNT(*) FROM vistorias do técnico
-      const counts = new Map<string, number>();
-      for (const v of vistorias) {
-        const nome = v.cidade?.trim();
-        if (!nome) continue;
-        counts.set(nome, (counts.get(nome) ?? 0) + 1);
-      }
-      const municipios = Array.from(counts.entries())
-        .map(([nome, totalVistorias]) => ({ nome, totalVistorias }))
-        .sort((a, b) => b.totalVistorias - a.totalVistorias);
+    const carregar = () =>
+      Promise.all([
+        vistoriasService.fetchDashboardStats(),
+        vistoriasService.fetchVistorias(),
+      ]).then(([s, vistorias]) => {
+        if (!alive) return;
+        // SELECT DISTINCT cidade + COUNT(*) FROM vistorias do técnico
+        const counts = new Map<string, number>();
+        for (const v of vistorias) {
+          const nome = v.cidade?.trim();
+          if (!nome) continue;
+          counts.set(nome, (counts.get(nome) ?? 0) + 1);
+        }
+        const municipios = Array.from(counts.entries())
+          .map(([nome, totalVistorias]) => ({ nome, totalVistorias }))
+          .sort((a, b) => b.totalVistorias - a.totalVistorias);
 
-      // KPIs reais agregados do GLPI.
-      const pendentes = vistorias.filter((v) => v.status === "PENDENTE").length;
-      const concluidas = vistorias.filter(
-        (v) => v.status === "FINALIZADA" || v.status === "APROVADA"
-      ).length;
-      const reprovadas = vistorias.filter(
-        (v) => v.status === "REPROVADA" || v.isRepeat
-      ).length;
+        // KPIs reais agregados do GLPI.
+        const pendentes = vistorias.filter((v) => v.status === "PENDENTE").length;
+        const concluidas = vistorias.filter(
+          (v) => v.status === "FINALIZADA" || v.status === "APROVADA"
+        ).length;
+        const reprovadas = vistorias.filter(
+          (v) => v.status === "REPROVADA" || v.isRepeat
+        ).length;
 
-      setStats({
-        ...s,
-        total: vistorias.length,
-        pendentes,
-        concluidas,
-        reprovadas,
-        municipios,
-        ultimaSincronizacao: new Date().toISOString(),
+        setStats({
+          ...s,
+          total: vistorias.length,
+          pendentes,
+          concluidas,
+          reprovadas,
+          municipios,
+          ultimaSincronizacao: new Date().toISOString(),
+        });
       });
-    }).catch(() => {
-      // fetchVistorias falhou (403 sem expediente, sem rede, etc.) → mostra zeros reais
-      // em vez de cair no MOCK_SYNC_SNAPSHOTS que exibe "24 vistorias" falso.
-      if (alive) setStats(ZERO_STATS);
+
+    // 1a falha pode ser só um soluço passageiro de rede — tenta mais uma vez
+    // antes de exibir zerado. Antes caía direto em ZERO_STATS numa falha só,
+    // o que deixava o dashboard mostrando "0 vistorias" mesmo o técnico tendo
+    // trabalho normal, só por causa de um hiccup momentâneo.
+    carregar().catch(() => {
+      if (!alive) return;
+      setTimeout(() => {
+        if (!alive) return;
+        carregar().catch(() => {
+          if (alive) setStats(ZERO_STATS);
+        });
+      }, 4000);
     });
+
     return () => {
       alive = false;
     };
