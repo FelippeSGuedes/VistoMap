@@ -953,8 +953,8 @@ export default function FilaVistoriasPage() {
     setLoading(true);
     try {
       const [aVistoriar, aguardando] = await Promise.all([
-        painelService.fetchFila({ status: "A_VISTORIAR", limit: 2000 }),
-        painelService.fetchFila({ status: "AGUARDANDO_REVISITA", limit: 2000 }),
+        painelService.fetchFila({ status: "A_VISTORIAR", limit: 10000 }),
+        painelService.fetchFila({ status: "AGUARDANDO_REVISITA", limit: 10000 }),
       ]);
       setItems([...aVistoriar, ...aguardando]);
     } finally {

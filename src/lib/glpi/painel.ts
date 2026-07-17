@@ -493,8 +493,19 @@ export async function fetchFilaVistorias(
     params.push(q, q, q);
   }
 
-  const limit = Math.min(Math.max(filtros.limit ?? 200, 1), 2000);
+  const limit = Math.min(Math.max(filtros.limit ?? 200, 1), 10000);
   const offset = Math.max(filtros.offset ?? 0, 0);
+
+  // O status admin (A_VISTORIAR/AGUARDANDO_REVISITA/etc.) so' e' conhecido
+  // depois de resolveAdminStatus() em JS (mistura dropdown + is_repeat +
+  // situacao_id — regra demais pra replicar 1:1 em SQL sem risco de
+  // divergir). Por isso, quando ha filtro de status, NAO aplicamos
+  // LIMIT/OFFSET na query — buscamos tudo que bate no WHERE base, filtramos
+  // por status em JS, e SO' ENTAO paginamos. Aplicar o LIMIT antes do
+  // filtro (como era) cortava resultado por status incompleto sempre que o
+  // total de linhas (todas as situacoes somadas) passava do limite — um
+  // "A_VISTORIAR" podia nem chegar a ser buscado do banco.
+  const applyLimitInSql = !filtros.status;
 
   const rows = await query<FilaRow>(
     `
@@ -529,7 +540,7 @@ export async function fetchFilaVistorias(
              ELSE 2 END,
         f.datadavistoriafield DESC,
         ne.id DESC
-      LIMIT ${limit} OFFSET ${offset}
+      ${applyLimitInSql ? `LIMIT ${limit} OFFSET ${offset}` : ""}
     `,
     params
   );
@@ -567,9 +578,11 @@ export async function fetchFilaVistorias(
   });
 
   // Filtro de status admin é feito em JS (deriva do dropdown × is_repeat).
-  return filtros.status
-    ? items.filter((i) => i.status === filtros.status)
-    : items;
+  // Quando ha' filtro, a query acima buscou TUDO (sem LIMIT) — pagina aqui,
+  // depois de filtrar, pra nao cortar resultado por status incompleto.
+  if (!filtros.status) return items;
+  const filtered = items.filter((i) => i.status === filtros.status);
+  return filtered.slice(offset, offset + limit);
 }
 
 /* ── Atualizar campos de vistoria (admin edita) ─────────────────── */
