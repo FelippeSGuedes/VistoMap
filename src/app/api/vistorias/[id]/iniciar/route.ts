@@ -6,6 +6,7 @@ import { auditInsert } from "@/lib/glpi/audit";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
+import { logError } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -241,6 +242,7 @@ export async function POST(
     });
   } catch (error) {
     console.error("[api/vistorias/:id/iniciar] error", error);
+    void logError("app", "vistorias/:id/iniciar", error, { id });
     return NextResponse.json(
       { message: "Falha ao iniciar vistoria", error: String(error) },
       { status: 500 }

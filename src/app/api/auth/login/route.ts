@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import { getJwtExpiresAtMs, signSessionJwt } from "@/lib/jwt";
+import { logError } from "@/lib/observability";
 import type { AuthSession, Tecnico } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +116,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(session);
   } catch (error) {
     console.error("[api/auth/login] POST error", error);
+    void logError("app", "auth/login", error);
     return NextResponse.json(
       { message: "Erro interno ao autenticar" },
       { status: 500 }

@@ -18,6 +18,7 @@ import {
 import { query } from "@/lib/db";
 import { auditInsert } from "@/lib/glpi/audit";
 import { getActorFromRequest } from "@/lib/auth-request";
+import { logError } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -223,6 +224,7 @@ export async function POST(
     });
   } catch (error) {
     console.error("[api/vistorias/:id/finalizar] error", error);
+    void logError("app", "vistorias/:id/finalizar", error, { id });
     return NextResponse.json(
       { message: "Falha ao finalizar vistoria", error: String(error) },
       { status: 500 }

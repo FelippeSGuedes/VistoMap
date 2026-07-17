@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  HeartPulse,
   History,
   LayoutDashboard,
   LogOut,
@@ -39,6 +40,7 @@ const BOTTOM_NAV = [
   { href: "/painel/tecnicos",       label: "Técnicos",      icon: Users },
   { href: "/painel/auditoria",      label: "Auditoria",     icon: ShieldAlert },
   { href: "/painel/historico",      label: "Histórico",     icon: History },
+  { href: "/painel/status",         label: "Status",        icon: HeartPulse },
   { href: "/painel/configuracoes",  label: "Configurações", icon: Settings },
 ];
 

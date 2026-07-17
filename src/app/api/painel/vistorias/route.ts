@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFilaVistorias, type FilaFilters } from "@/lib/glpi/painel";
+import { logError } from "@/lib/observability";
 import type { AdminStatus } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export async function GET(req: Request) {
     return NextResponse.json(items);
   } catch (err) {
     console.error("[api/painel/vistorias] error", err);
+    void logError("painel", "painel/vistorias", err);
     return NextResponse.json(
       { message: "Falha ao listar fila", error: String(err) },
       { status: 500 }

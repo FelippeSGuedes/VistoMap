@@ -296,6 +296,41 @@ export async function fetchRealizadas(
   return tryReal(api.get<VistoriaRealizada[]>(url).then(r => r.data), []);
 }
 
+export interface ServiceCheck {
+  nome: string;
+  ok: boolean;
+  detalhe: string;
+  tempo_ms: number | null;
+}
+
+export interface PainelStatus {
+  checadoEm: string;
+  saudeGeral: "saudavel" | "atencao";
+  servicos: ServiceCheck[];
+  otaVersao: string | null;
+  workerUltimaAtividade: string | null;
+  erros: {
+    ultimaHora: number;
+    ultimas24h: number;
+    recentes: ErrorLogEntry[];
+  };
+}
+
+export interface ErrorLogEntry {
+  id: number;
+  ts: string;
+  source: "app" | "painel" | "worker" | "glpi";
+  level: "error" | "warning";
+  rota: string | null;
+  mensagem: string;
+  contexto: string | null;
+}
+
+/** Sem mock — status precisa refletir a realidade, nunca fingir saudável. */
+export async function fetchStatus(): Promise<PainelStatus> {
+  return api.get<PainelStatus>("/painel/status").then((r) => r.data);
+}
+
 export const painelService = {
   fetchStats,
   fetchTecnicos,
@@ -309,4 +344,5 @@ export const painelService = {
   aprovarVistoria,
   reprovarVistoria,
   fetchRealizadas,
+  fetchStatus,
 };
