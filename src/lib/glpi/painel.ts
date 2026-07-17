@@ -821,6 +821,8 @@ export interface VistoriaRealizada {
   motivo: string | null;
   alturaAntena: string | null;
   aterramento: string | null;
+  rsrpClaro: string | null;
+  rsrpVivo: string | null;
   observacao: string | null;
   pdfPath: string | null;
   projectStatus: "PENDENTE" | "GERADO" | "ERRO";
@@ -844,6 +846,8 @@ interface RealizadaRow {
   motivo: string | null;
   altura_antena: string | null;
   aterramento: string | null;
+  rsrp_claro: string | null;
+  rsrp_vivo: string | null;
   observacao: string | null;
   data_vistoria: string | null;
   data_envio: string | null;
@@ -900,6 +904,8 @@ export async function fetchVistoriasRealizadas(
         f.motivofield          AS motivo,
         f.alturadaantenafield  AS altura_antena,
         f.aterramentofield     AS aterramento,
+        f.rsrpifield            AS rsrp_claro,
+        f.rsrpllfield           AS rsrp_vivo,
         f.observaofield        AS observacao,
         f.datadavistoriafield         AS data_vistoria,
         f.dataenvioconcessionriafield AS data_envio,
@@ -963,6 +969,8 @@ export async function fetchVistoriasRealizadas(
       motivo: r.motivo?.trim() ?? null,
       alturaAntena: r.altura_antena != null ? String(r.altura_antena).trim() || null : null,
       aterramento: r.aterramento != null && Number(r.aterramento) !== 0 ? String(r.aterramento).trim() || null : null,
+      rsrpClaro: r.rsrp_claro != null ? String(r.rsrp_claro).trim() || null : null,
+      rsrpVivo: r.rsrp_vivo != null ? String(r.rsrp_vivo).trim() || null : null,
       observacao: r.observacao != null ? String(r.observacao).trim() || null : null,
       pdfPath: r.pdf_path ?? null,
       projectStatus: (["PENDENTE", "GERADO", "ERRO"].includes(ps) ? ps : "PENDENTE") as VistoriaRealizada["projectStatus"],

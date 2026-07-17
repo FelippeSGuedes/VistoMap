@@ -265,6 +265,8 @@ export interface VistoriaRealizada {
   motivo: string | null;
   alturaAntena: string | null;
   aterramento: string | null;
+  rsrpClaro: string | null;
+  rsrpVivo: string | null;
   observacao: string | null;
   pdfPath: string | null;
   projectStatus: "PENDENTE" | "GERADO" | "ERRO";
