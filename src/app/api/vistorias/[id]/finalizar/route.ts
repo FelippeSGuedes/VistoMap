@@ -37,6 +37,7 @@ interface FinalizarPayload {
   pspostefield?: string;
   municipiofield?: string;
   alturadopostemfield?: string;
+  materialfield?: string;
   endereofield?: string;
   aterramentofield?: string;
   instalartpfield?: string;
@@ -174,6 +175,7 @@ export async function POST(
       pspostefield: payload.pspostefield,
       municipiofield: payload.municipiofield,
       alturadopostemfield: payload.alturadopostemfield,
+      materialfield: payload.materialfield,
       endereofield: payload.endereofield,
       observaofield: payload.observacoes,
       aterramentofield: payload.aterramentofield,

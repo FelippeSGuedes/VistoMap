@@ -16,7 +16,8 @@ logger = logging.getLogger("vistomap_worker")
 
 # ─── Mapeamento campo MySQL → tabela dropdown ─────────────────────────────────
 DROPDOWN_MAP: Dict[str, str] = {
-    "tipodematerialfield":         "glpi_plugin_fields_tipodematerialfielddropdowns",
+    # "tipodematerialfield" deixou de ser dropdown no GLPI (agora e' texto
+    # livre) — cai no branch "else" de resolve_all() abaixo, sem lookup.
     # Tensão (mostrada só quando instalou TP) + Tipo de rede móvel por operadora
     "tensovfield":                 "glpi_plugin_fields_tensovfielddropdowns",
     "tipoifield":                  "glpi_plugin_fields_tipoifielddropdowns",   # Claro

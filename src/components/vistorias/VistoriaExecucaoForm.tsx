@@ -283,7 +283,6 @@ export function VistoriaExecucaoForm({
     try {
       const dropdowns: Partial<Record<DropdownKey, string>> = {};
       const dropdownKeys: DropdownKey[] = [
-        "tipodematerial",
         "tipoifield",
         "tipollfield",
         "tensovfield",
@@ -301,6 +300,7 @@ export function VistoriaExecucaoForm({
           pspostefield: form.pspostefield || undefined,
           municipiofield: form.municipiofield || undefined,
           alturadopostemfield: form.alturadopostemfield || undefined,
+          materialfield: form.tipodematerial || undefined,
           endereofield: buildEndereco() || undefined,
           aterramentofield: form.aterramentofield || undefined,
           instalartpfield: form.instalartpfield || undefined,

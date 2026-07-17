@@ -29,7 +29,7 @@ const SELECT_BASE = `
     sv.name AS status_vistoria_name,
     f.plugin_fields_pendnciafielddropdowns_id AS pendencia_id,
     f.datadavistoriafield AS data_vistoria,
-    d_tm.name AS tipodematerial,
+    f.materialfield AS tipodematerial,
     f.instalartpfield AS instalartpfield,
     f.danfield AS danfield,
     f.rsrpifield AS rsrpifield,
@@ -42,7 +42,6 @@ const SELECT_BASE = `
   FROM \`${TABLE_NE}\` ne
   INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
   LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
-  LEFT JOIN \`${DROPDOWN_TABLES.tipodematerial}\` d_tm ON d_tm.id = f.${DROPDOWN_COLUMNS.tipodematerial}
   LEFT JOIN \`${DROPDOWN_TABLES.tipoifield}\` d_ti ON d_ti.id = f.${DROPDOWN_COLUMNS.tipoifield}
   LEFT JOIN \`${DROPDOWN_TABLES.tipollfield}\` d_tl ON d_tl.id = f.${DROPDOWN_COLUMNS.tipollfield}
   LEFT JOIN \`${DROPDOWN_TABLES.tensovfield}\` d_tv ON d_tv.id = f.${DROPDOWN_COLUMNS.tensovfield}
@@ -203,6 +202,7 @@ export interface UpdateFieldsInput {
   longitudefield?: number | string;
   alturadaantenafield?: string;
   alturadopostemfield?: string;
+  materialfield?: string;
   instalartpfield?: string;
   danfield?: string;
   rsrpifield?: string;
@@ -229,6 +229,7 @@ const UPDATABLE_COLUMNS = new Set([
   "longitudefield",
   "alturadaantenafield",
   "alturadopostemfield",
+  "materialfield",
   "instalartpfield",
   "danfield",
   "rsrpifield",

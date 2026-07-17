@@ -19,7 +19,8 @@ export const DROPDOWN_TABLES = {
   ganhodbi: "glpi_plugin_fields_ganhodbifielddropdowns",
   mododeoperacao: "glpi_plugin_fields_mododeoperaofielddropdowns",
   operadorafourg: "glpi_plugin_fields_operadorafourgfielddropdowns",
-  tipodematerial: "glpi_plugin_fields_tipodematerialfielddropdowns",
+  // "tipodematerial" deixou de ser dropdown no GLPI (virou campo de texto
+  // livre, materialfield) — ver UPDATABLE_COLUMNS/SELECT_BASE em equipments.ts.
   tensao: "glpi_plugin_fields_tensofielddropdowns",
   alimentacaodoequipamento: "glpi_plugin_fields_alimentaodoequipamentofielddropdowns",
   localdeinstalacao: "glpi_plugin_fields_localdeinstalaofielddropdowns",
@@ -36,7 +37,6 @@ export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
   ganhodbi: "plugin_fields_ganhodbifielddropdowns_id",
   mododeoperacao: "plugin_fields_mododeoperaofielddropdowns_id",
   operadorafourg: "plugin_fields_operadorafourgfielddropdowns_id",
-  tipodematerial: "plugin_fields_tipodematerialfielddropdowns_id",
   tensao: "plugin_fields_tensofielddropdowns_id",
   alimentacaodoequipamento: "plugin_fields_alimentaodoequipamentofielddropdowns_id",
   localdeinstalacao: "plugin_fields_localdeinstalaofielddropdowns_id",

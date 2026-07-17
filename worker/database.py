@@ -121,7 +121,7 @@ class Database:
                 f.rsrpifield,
                 f.rsrpllfield,
 
-                f.plugin_fields_tipodematerialfielddropdowns_id,
+                f.materialfield AS tipodematerialfield,
 
                 f.plugin_fields_tensovfielddropdowns_id,
                 f.plugin_fields_tipoifielddropdowns_id,
@@ -166,7 +166,8 @@ class Database:
             plugin_fields_ganhodbifielddropdowns_id → ganhodbifield
         """
         mapping = {
-            "plugin_fields_tipodematerialfielddropdowns_id":         "tipodematerialfield",
+            # tipodematerialfield ja' vem com esse nome direto da query
+            # (nao e' mais dropdown, "materialfield" e' campo de texto).
             "plugin_fields_tensovfielddropdowns_id":                 "tensovfield",
             "plugin_fields_tipoifielddropdowns_id":                  "tipoifield",
             "plugin_fields_tipollfielddropdowns_id":                 "tipollfield",

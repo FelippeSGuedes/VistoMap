@@ -95,6 +95,7 @@ export interface VistoriaPayload {
   pspostefield?: string;
   municipiofield?: string;
   alturadopostemfield?: string;
+  materialfield?: string;
   endereofield?: string;
   aterramentofield?: string;
   instalartpfield?: string;
