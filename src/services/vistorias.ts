@@ -63,6 +63,29 @@ export async function fetchVistoriasConcluidas(): Promise<Vistoria[]> {
   }
 }
 
+export interface DropdownOption {
+  id: number;
+  name: string;
+}
+
+/**
+ * Opções de um dropdown do GLPI (ex.: tipoifield → 2G/3G/4G), pra popular
+ * <select> no formulário. Cacheia por chave — são listas pequenas e estáveis,
+ * não precisam de fetch a cada abertura de tela offline.
+ */
+export async function fetchDropdownOptions(key: string): Promise<DropdownOption[]> {
+  const cacheKey = `dropdown-options:${key}`;
+  try {
+    const data = (
+      await api.get<DropdownOption[]>(`/vistorias/dropdown-options?key=${key}`)
+    ).data;
+    void cachePutSafe(cacheKey, data);
+    return data;
+  } catch {
+    return (await cacheGetSafe<DropdownOption[]>(cacheKey)) ?? [];
+  }
+}
+
 /**
  * Detalhe de uma vistoria — offline-first (cache por id, com fallback na
  * lista cacheada).
@@ -270,6 +293,7 @@ export const vistoriasService = {
   fetchVistorias,
   fetchVistoriasConcluidas,
   fetchVistoria,
+  fetchDropdownOptions,
   iniciarVistoria,
   finalizarVistoria,
 };

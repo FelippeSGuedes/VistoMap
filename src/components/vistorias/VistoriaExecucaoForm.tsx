@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EditableField } from "./EditableField";
+import { SelectField } from "./SelectField";
 import { VistoriaHeaderHero } from "./VistoriaHeaderHero";
 import { CaptureCameraModal } from "./CaptureCameraModal";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
@@ -186,6 +187,21 @@ export function VistoriaExecucaoForm({
   const [detectingAddress, setDetectingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   const geoForAddress = useGeolocation(false);
+
+  // Opções de "Tipo" (2G/3G/4G…) puxadas do dropdown do GLPI — evita o
+  // técnico digitar valor livre e criar entradas duplicadas/inconsistentes.
+  const [tipoIOptions, setTipoIOptions] = useState<{ value: string; label: string }[]>([]);
+  const [tipoLLOptions, setTipoLLOptions] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    vistoriasService
+      .fetchDropdownOptions("tipoifield")
+      .then((opts) => setTipoIOptions(opts.map((o) => ({ value: o.name, label: o.name }))))
+      .catch(() => {});
+    vistoriasService
+      .fetchDropdownOptions("tipollfield")
+      .then((opts) => setTipoLLOptions(opts.map((o) => ({ value: o.name, label: o.name }))))
+      .catch(() => {});
+  }, []);
 
   // Técnico SEMPRE puxado da sessão logada (não do `vistoria.tecnico` do GLPI,
   // que vem com placeholder "—"). Mostra nome completo.
@@ -564,10 +580,11 @@ export function VistoriaExecucaoForm({
             {/* Claro */}
             <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">Claro</p>
-              <EditableField
+              <SelectField
                 label="Tipo"
                 value={form.tipoifield}
-                placeholder="4G, 4G+…"
+                options={tipoIOptions}
+                placeholder="Selecione…"
                 onChange={(v) => setField("tipoifield", v)}
                 colSpan
               />
@@ -583,10 +600,11 @@ export function VistoriaExecucaoForm({
             {/* Vivo */}
             <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Vivo</p>
-              <EditableField
+              <SelectField
                 label="Tipo"
                 value={form.tipollfield}
-                placeholder="4G, 4G+…"
+                options={tipoLLOptions}
+                placeholder="Selecione…"
                 onChange={(v) => setField("tipollfield", v)}
                 colSpan
               />
