@@ -96,16 +96,19 @@ export async function POST(req: NextRequest) {
     };
 
     // JWT real (HS256) com o mesmo JWT_SECRET do Fastify postes-api.
-    const token = await signSessionJwt({
-      sub: tecnico.id,
-      email: tecnico.email,
-      tecnicoId: tecnico.id,
-    });
+    // Sessão de 30 dias — app de campo num aparelho pessoal do técnico, não
+    // faz sentido pedir login de novo no meio do turno (8h < turno de 10h30).
+    // Continua revalidando o token em cada chamada; deslogar continua
+    // disponível manualmente em Perfil.
+    const token = await signSessionJwt(
+      { sub: tecnico.id, email: tecnico.email, tecnicoId: tecnico.id },
+      "30d"
+    );
 
     const session: AuthSession = {
       token,
       tecnico,
-      expiresAt: getJwtExpiresAtMs(),
+      expiresAt: getJwtExpiresAtMs(24 * 30),
       role: "tecnico",
     };
 

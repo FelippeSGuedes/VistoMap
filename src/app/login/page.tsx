@@ -21,11 +21,14 @@ interface FormValues {
   senha: string;
 }
 
+const REMEMBER_KEY = "vistomap.login.usuario";
+
 export default function LoginPage() {
   const router = useRouter();
   const { setSession, hydrated, session } = useAuthStore();
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lembrar, setLembrar] = useState(false);
 
   useEffect(() => {
     if (hydrated && session) router.replace("/dashboard");
@@ -34,15 +37,32 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     defaultValues: { login: "", senha: "" },
   });
 
+  // Só depois do mount (evita mismatch de hidratação — localStorage não
+  // existe no HTML estático do build). Preenche o usuário lembrado da
+  // última vez, se houver.
+  useEffect(() => {
+    const salvo = window.localStorage.getItem(REMEMBER_KEY);
+    if (salvo) {
+      setValue("login", salvo);
+      setLembrar(true);
+    }
+  }, [setValue]);
+
   const onSubmit = async (values: FormValues) => {
     setError(null);
     try {
       const next = await authService.login(values);
+      if (lembrar) {
+        window.localStorage.setItem(REMEMBER_KEY, values.login.trim());
+      } else {
+        window.localStorage.removeItem(REMEMBER_KEY);
+      }
       setSession(next);
       router.replace("/dashboard");
     } catch (err) {
@@ -152,6 +172,16 @@ export default function LoginPage() {
               )}
             </div>
           </div>
+
+          <label className="mt-3 flex items-center gap-2 text-[12.5px] font-medium text-white/70">
+            <input
+              type="checkbox"
+              checked={lembrar}
+              onChange={(e) => setLembrar(e.target.checked)}
+              className="h-4 w-4 rounded border-white/30 bg-white/10 accent-brand-emerald"
+            />
+            Lembrar meu usuário
+          </label>
 
           {error && (
             <motion.div

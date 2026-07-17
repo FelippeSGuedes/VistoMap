@@ -6,7 +6,10 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
  *
  * - Algoritmo: HS256 (segredo simétrico via env JWT_SECRET).
  * - Payload obrigatório: { sub: string, email?: string }.
- * - Expiração: 8h (alinhada com a sessão atual do app).
+ * - Expiração: 8h por padrão (usado pelo painel — web, computador
+ *   potencialmente compartilhado). O app do técnico pede uma duração maior
+ *   explicitamente (ver /api/auth/login) — 8h era menor que o próprio turno
+ *   (07:30–18:00 = 10h30), obrigando login de novo no meio do dia.
  */
 
 const ALG = "HS256";
@@ -33,12 +36,15 @@ export interface SessionClaims extends JWTPayload {
   role?: SessionRole;
 }
 
-export async function signSessionJwt(claims: {
-  sub: string;
-  email?: string;
-  tecnicoId?: string;
-  role?: SessionRole;
-}): Promise<string> {
+export async function signSessionJwt(
+  claims: {
+    sub: string;
+    email?: string;
+    tecnicoId?: string;
+    role?: SessionRole;
+  },
+  expiresIn: string = EXPIRES_IN
+): Promise<string> {
   return new SignJWT({
     email: claims.email,
     tecnicoId: claims.tecnicoId,
@@ -47,7 +53,7 @@ export async function signSessionJwt(claims: {
     .setProtectedHeader({ alg: ALG })
     .setSubject(claims.sub)
     .setIssuedAt()
-    .setExpirationTime(EXPIRES_IN)
+    .setExpirationTime(expiresIn)
     .sign(getSecret());
 }
 
@@ -57,7 +63,7 @@ export async function verifySessionJwt(token: string): Promise<SessionClaims> {
   return payload as SessionClaims;
 }
 
-export function getJwtExpiresAtMs(): number {
-  // 8h em ms — usado para AuthSession.expiresAt no client.
-  return Date.now() + 1000 * 60 * 60 * 8;
+/** @param hours Duração em horas (padrão 8h, igual ao token do painel). */
+export function getJwtExpiresAtMs(hours = 8): number {
+  return Date.now() + 1000 * 60 * 60 * hours;
 }
