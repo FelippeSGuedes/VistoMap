@@ -23,8 +23,6 @@ export interface EditarVistoriaModalProps {
     motivofield?: string;
     alturadaantenafield?: string;
     aterramentofield?: string;
-    intensidadedesinalfield?: string;
-    velocidadefield?: string;
     observaofield?: string;
   };
   onClose: () => void;
@@ -41,8 +39,6 @@ const FIELDS: Array<{
   { key: "motivofield", label: "Motivo", placeholder: "Motivo operacional…" },
   { key: "alturadaantenafield", label: "Altura da antena", placeholder: "12 m" },
   { key: "aterramentofield", label: "Aterramento", placeholder: "1 (Sim) / 0 (Não)" },
-  { key: "intensidadedesinalfield", label: "Intensidade do sinal", placeholder: "-65 dBm" },
-  { key: "velocidadefield", label: "Velocidade", placeholder: "50 Mbps" },
   { key: "observaofield", label: "Observações", placeholder: "Notas adicionais…", multiline: true },
 ];
 

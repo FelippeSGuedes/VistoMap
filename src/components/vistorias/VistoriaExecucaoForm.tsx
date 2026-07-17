@@ -56,8 +56,6 @@ interface FormState {
   endereco_estado: string;
   endereco_cep: string;
   aterramentofield: string;
-  intensidadedesinalfield: string;
-  velocidadefield: string;
   motivofield: string;
   observaofield: string;
   tipodeantena: string;
@@ -116,8 +114,6 @@ const EMPTY: FormState = {
   endereco_estado: "",
   endereco_cep: "",
   aterramentofield: "",
-  intensidadedesinalfield: "",
-  velocidadefield: "",
   motivofield: "",
   observaofield: "",
   tipodeantena: "",
@@ -163,8 +159,6 @@ export function VistoriaExecucaoForm({
       endereco_estado: addr.estado,
       endereco_cep: addr.cep,
       aterramentofield: vistoria.fields?.aterramentofield ?? "",
-      intensidadedesinalfield: vistoria.fields?.intensidadedesinalfield ?? "",
-      velocidadefield: vistoria.fields?.velocidadefield ?? "",
       motivofield: vistoria.fields?.motivofield ?? "",
       observaofield: vistoria.fields?.observaofield ?? "",
       tipodeantena: vistoria.fields?.tipodeantena ?? "",

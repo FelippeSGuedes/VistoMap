@@ -126,8 +126,6 @@ export interface EditarVistoriaInput {
     motivofield?: string;
     alturadaantenafield?: string;
     aterramentofield?: string;
-    intensidadedesinalfield?: string;
-    velocidadefield?: string;
     observaofield?: string;
   };
   regenerar_pdf?: boolean;
@@ -267,8 +265,6 @@ export interface VistoriaRealizada {
   motivo: string | null;
   alturaAntena: string | null;
   aterramento: string | null;
-  intensidadeSinal: string | null;
-  velocidade: string | null;
   observacao: string | null;
   pdfPath: string | null;
   projectStatus: "PENDENTE" | "GERADO" | "ERRO";

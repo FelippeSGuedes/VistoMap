@@ -113,8 +113,6 @@ class Database:
                 f.endereofield,
                 f.observaofield,
                 f.aterramentofield,
-                f.intensidadedesinalfield,
-                f.velocidadefield,
 
                 f.instalartpfield,
                 f.danfield,

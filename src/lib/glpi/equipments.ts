@@ -210,8 +210,6 @@ export interface UpdateFieldsInput {
   endereofield?: string;
   observaofield?: string;
   aterramentofield?: string;
-  intensidadedesinalfield?: string;
-  velocidadefield?: string;
   motivofield?: string;
   datadavistoriafield?: string;
   dataenvioconcessionriafield?: string;
@@ -237,8 +235,6 @@ const UPDATABLE_COLUMNS = new Set([
   "endereofield",
   "observaofield",
   "aterramentofield",
-  "intensidadedesinalfield",
-  "velocidadefield",
   "motivofield",
   "datadavistoriafield",
   "dataenvioconcessionriafield",

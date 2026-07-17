@@ -579,8 +579,6 @@ export interface AtualizarCamposInput {
   motivofield?: string;
   alturadaantenafield?: string;
   aterramentofield?: string;
-  intensidadedesinalfield?: string;
-  velocidadefield?: string;
   observaofield?: string;
 }
 
@@ -589,8 +587,6 @@ const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "motivofield",
   "alturadaantenafield",
   "aterramentofield",
-  "intensidadedesinalfield",
-  "velocidadefield",
   "observaofield",
 ]);
 
@@ -825,8 +821,6 @@ export interface VistoriaRealizada {
   motivo: string | null;
   alturaAntena: string | null;
   aterramento: string | null;
-  intensidadeSinal: string | null;
-  velocidade: string | null;
   observacao: string | null;
   pdfPath: string | null;
   projectStatus: "PENDENTE" | "GERADO" | "ERRO";
@@ -850,8 +844,6 @@ interface RealizadaRow {
   motivo: string | null;
   altura_antena: string | null;
   aterramento: string | null;
-  intensidade_sinal: string | null;
-  velocidade: string | null;
   observacao: string | null;
   data_vistoria: string | null;
   data_envio: string | null;
@@ -908,8 +900,6 @@ export async function fetchVistoriasRealizadas(
         f.motivofield          AS motivo,
         f.alturadaantenafield  AS altura_antena,
         f.aterramentofield     AS aterramento,
-        f.intensidadedesinalfield AS intensidade_sinal,
-        f.velocidadefield      AS velocidade,
         f.observaofield        AS observacao,
         f.datadavistoriafield         AS data_vistoria,
         f.dataenvioconcessionriafield AS data_envio,
@@ -973,8 +963,6 @@ export async function fetchVistoriasRealizadas(
       motivo: r.motivo?.trim() ?? null,
       alturaAntena: r.altura_antena != null ? String(r.altura_antena).trim() || null : null,
       aterramento: r.aterramento != null && Number(r.aterramento) !== 0 ? String(r.aterramento).trim() || null : null,
-      intensidadeSinal: r.intensidade_sinal != null ? String(r.intensidade_sinal).trim() || null : null,
-      velocidade: r.velocidade != null ? String(r.velocidade).trim() || null : null,
       observacao: r.observacao != null ? String(r.observacao).trim() || null : null,
       pdfPath: r.pdf_path ?? null,
       projectStatus: (["PENDENTE", "GERADO", "ERRO"].includes(ps) ? ps : "PENDENTE") as VistoriaRealizada["projectStatus"],

@@ -44,8 +44,6 @@ interface FinalizarPayload {
   danfield?: string;
   rsrpifield?: string;
   rsrpllfield?: string;
-  intensidadedesinalfield?: string;
-  velocidadefield?: string;
   motivofield?: string;
   dropdowns?: Partial<Record<DropdownKey, string>>;
   finalizadaEm?: string;
@@ -183,8 +181,6 @@ export async function POST(
       danfield: payload.danfield,
       rsrpifield: payload.rsrpifield,
       rsrpllfield: payload.rsrpllfield,
-      intensidadedesinalfield: payload.intensidadedesinalfield,
-      velocidadefield: payload.velocidadefield,
       motivofield: payload.motivofield,
       datadavistoriafield: datavistoria,
       dataenvioconcessionriafield: datavistoria,

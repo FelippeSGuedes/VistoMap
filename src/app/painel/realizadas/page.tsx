@@ -23,7 +23,6 @@ import {
   MapPin,
   RefreshCw,
   Search,
-  Signal,
   User,
   X,
   ZoomIn,
@@ -655,7 +654,7 @@ function DetailDrawer({
           </section>
 
           {/* ── detalhes técnicos ── */}
-          {(item.alturaAntena || item.aterramento || item.intensidadeSinal || item.velocidade || item.observacao || item.motivo) && (
+          {(item.alturaAntena || item.aterramento || item.observacao || item.motivo) && (
             <section
               className="rounded-2xl p-4"
               style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-tile-2)" }}
@@ -667,16 +666,6 @@ function DetailDrawer({
                 )}
                 {item.aterramento && (
                   <DetailChip label="Aterramento" value={item.aterramento} />
-                )}
-                {item.intensidadeSinal && (
-                  <DetailChip
-                    label="Sinal"
-                    value={item.intensidadeSinal}
-                    icon={<Signal className="h-3 w-3" />}
-                  />
-                )}
-                {item.velocidade && (
-                  <DetailChip label="Velocidade" value={item.velocidade} />
                 )}
               </div>
               {item.observacao && (

@@ -38,8 +38,6 @@ FIELD_TO_KEY: Dict[str, str] = {
     "municipiofield":              "MUNICIPIO",
     "latitudefield":               "LATITUDE",
     "longitudefield":              "LONGITUDE",
-    "intensidadedesinalfield":     "INTENSIDADE",
-    "velocidadefield":             "VELOCIDADE",
     "observaofield":               "OBSERVACAO",    # Observação (ASCII-safe)
     "project_date":                "DATE",
     # Dropdowns existentes no GLPI
