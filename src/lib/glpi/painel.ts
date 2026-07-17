@@ -1206,7 +1206,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         AND TRIM(f.latitudefield) <> '' AND TRIM(f.longitudefield) <> ''
         AND REPLACE(f.latitudefield, ',', '.') + 0.0 <> 0
         AND REPLACE(f.longitudefield, ',', '.') + 0.0 <> 0
-      LIMIT 3000
+      LIMIT 10000
     `
   );
 
