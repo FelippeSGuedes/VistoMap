@@ -122,16 +122,19 @@ export function MudarPosteFlow({
     setStep("saving");
     setSubmitError(null);
     try {
-      const response = await registrarMudancaPoste({
-        vistoria_id: vistoriaId,
-        lat_antiga: latAtual,
-        lng_antiga: lngAtual,
-        psposte_antigo: psposteAntigo || null,
-        municipio_antigo: municipioAntigo || null,
-        poste_id_novo: posteNovo.id,
-        motivo,
-        observacao: observacao.trim() || null,
-      });
+      const response = await registrarMudancaPoste(
+        {
+          vistoria_id: vistoriaId,
+          lat_antiga: latAtual,
+          lng_antiga: lngAtual,
+          psposte_antigo: psposteAntigo || null,
+          municipio_antigo: municipioAntigo || null,
+          poste_id_novo: posteNovo.id,
+          motivo,
+          observacao: observacao.trim() || null,
+        },
+        posteNovo
+      );
       onApplied(response);
       onClose();
     } catch (err: unknown) {

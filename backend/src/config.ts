@@ -24,7 +24,7 @@ const Env = z.object({
    * NÃO bloqueia mais a troca (técnicos em campo pediram flexibilidade;
    * a distância real fica registrada em mudancas_postes de qualquer jeito).
    */
-  POSTE_TROCA_RAIO_M: z.coerce.number().int().positive().default(300),
+  POSTE_TROCA_RAIO_M: z.coerce.number().int().positive().default(150),
 
   /** CIDRs internos que podem chamar endpoints administrativos sem JWT. */
   INTERNAL_ALLOWLIST: z

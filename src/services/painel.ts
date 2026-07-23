@@ -267,6 +267,7 @@ export interface VistoriaRealizada {
   aterramento: string | null;
   rsrpClaro: string | null;
   rsrpVivo: string | null;
+  tipoEquipamento: string | null;
   observacao: string | null;
   pdfPath: string | null;
   projectStatus: "PENDENTE" | "GERADO" | "ERRO";

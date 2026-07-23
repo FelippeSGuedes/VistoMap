@@ -16,6 +16,12 @@ import { API_BASE } from "@/services/api";
 
 const UPLOAD_TIMEOUT_MS = 45_000;
 
+// Mesma resolucao de base do services/postes.ts — backend Fastify separado
+// (nao e' o /app/api do Next), so' replicada aqui pq o sync roda em
+// background, fora do axios instance daquele service.
+const POSTES_API_BASE =
+  process.env.NEXT_PUBLIC_POSTES_URL || process.env.NEXT_PUBLIC_API_URL || "";
+
 async function fetchWithTimeout(
   url: string,
   opts: RequestInit,
@@ -122,12 +128,48 @@ async function executeIniciar(op: QueuedOperation): Promise<void> {
   }
 }
 
+interface MudarPostePayloadOp {
+  vistoria_id: string;
+  lat_antiga: number;
+  lng_antiga: number;
+  psposte_antigo: string | null;
+  municipio_antigo: string | null;
+  poste_id_antigo: number | null;
+  poste_id_novo: number;
+  motivo: string;
+  observacao: string | null;
+  token: string;
+}
+
+async function executeMudarPoste(op: QueuedOperation): Promise<void> {
+  const p = op.payload as unknown as MudarPostePayloadOp;
+  const { token, ...body } = p;
+  const resp = await fetchWithTimeout(
+    `${POSTES_API_BASE}/postes/mudancas`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    },
+    20_000
+  );
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    if (resp.status === 401 || resp.status === 403) {
+      throw new Error(`auth: ${resp.status} ${txt}`);
+    }
+    throw new Error(`http ${resp.status}: ${txt.slice(0, 120)}`);
+  }
+}
+
 async function executor(op: QueuedOperation): Promise<void> {
   switch (op.type) {
     case "finalize-vistoria":
       return executeFinalize(op);
     case "iniciar-vistoria":
       return executeIniciar(op);
+    case "mudar-poste":
+      return executeMudarPoste(op);
     case "upload-photo":
       throw new Error("upload-photo nao implementado no escopo A");
     default:

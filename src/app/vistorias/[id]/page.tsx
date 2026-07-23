@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/layout/AppHeader";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
 import { VistoriaExecucaoForm } from "@/components/vistorias/VistoriaExecucaoForm";
+import { OfflinePrepBanner } from "@/components/vistorias/OfflinePrepBanner";
 import { vistoriasService } from "@/services/vistorias";
 import type { Vistoria } from "@/types";
 
@@ -51,6 +52,12 @@ export default function VistoriaExecucaoPage() {
         backHref="/vistorias"
         title={vistoria.equipamento}
         subtitle={`${vistoria.cidade}${vistoria.estado ? " · " + vistoria.estado : ""}`}
+      />
+      <OfflinePrepBanner
+        equipamento={vistoria.fields?.equipamentofield}
+        lat={vistoria.latitude}
+        lng={vistoria.longitude}
+        municipio={vistoria.cidade}
       />
       <VistoriaExecucaoForm
         vistoria={vistoria}

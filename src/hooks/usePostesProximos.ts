@@ -29,8 +29,10 @@ const INITIAL: UsePostesProximosState = {
 /**
  * Grade de ~1,1 km: garante que posições próximas (dentro do raio de busca)
  * caiam na mesma chave de cache e reaproveitem o resultado.
+ * Exportada pra quem quiser "esquentar" o cache antecipadamente (ver
+ * useOfflinePosteCache) sem duplicar o formato da chave.
  */
-function buildCacheKey(lat: number, lng: number, raio: number): string {
+export function buildCacheKey(lat: number, lng: number, raio: number): string {
   return `postes:${lat.toFixed(2)}:${lng.toFixed(2)}:${raio}`;
 }
 

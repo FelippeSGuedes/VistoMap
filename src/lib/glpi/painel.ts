@@ -1,6 +1,8 @@
 import "server-only";
 import { execute, query } from "@/lib/db";
 import {
+  DROPDOWN_COLUMNS,
+  DROPDOWN_TABLES,
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
   SITUACAO_A_VISTORIAR,
@@ -836,6 +838,10 @@ export interface VistoriaRealizada {
   aterramento: string | null;
   rsrpClaro: string | null;
   rsrpVivo: string | null;
+  /** Tipo do equipamento (DCU/Repetidor/etc.) — quando "Repetidor", indica
+   *  provável zona rural / baixa cobertura de rede (sinalizado pelos
+   *  técnicos em campo). */
+  tipoEquipamento: string | null;
   observacao: string | null;
   pdfPath: string | null;
   projectStatus: "PENDENTE" | "GERADO" | "ERRO";
@@ -861,6 +867,7 @@ interface RealizadaRow {
   aterramento: string | null;
   rsrp_claro: string | null;
   rsrp_vivo: string | null;
+  tipo_equipamento: string | null;
   observacao: string | null;
   data_vistoria: string | null;
   data_envio: string | null;
@@ -919,6 +926,7 @@ export async function fetchVistoriasRealizadas(
         f.aterramentofield     AS aterramento,
         f.rsrpifield            AS rsrp_claro,
         f.rsrpllfield           AS rsrp_vivo,
+        d_eq.name               AS tipo_equipamento,
         f.observaofield        AS observacao,
         f.datadavistoriafield         AS data_vistoria,
         f.dataenvioconcessionriafield AS data_envio,
@@ -943,6 +951,8 @@ export async function fetchVistoriasRealizadas(
              ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       LEFT  JOIN \`${TABLE_USERS}\` u
              ON u.id = f.users_id_vistoriadorafield
+      LEFT  JOIN \`${DROPDOWN_TABLES.equipamento}\` d_eq
+             ON d_eq.id = f.${DROPDOWN_COLUMNS.equipamento}
       WHERE ${where.join(" AND ")}
       ORDER BY f.datadavistoriafield DESC, ne.id DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -984,6 +994,7 @@ export async function fetchVistoriasRealizadas(
       aterramento: r.aterramento != null && Number(r.aterramento) !== 0 ? String(r.aterramento).trim() || null : null,
       rsrpClaro: r.rsrp_claro != null ? String(r.rsrp_claro).trim() || null : null,
       rsrpVivo: r.rsrp_vivo != null ? String(r.rsrp_vivo).trim() || null : null,
+      tipoEquipamento: r.tipo_equipamento?.trim() || null,
       observacao: r.observacao != null ? String(r.observacao).trim() || null : null,
       pdfPath: r.pdf_path ?? null,
       projectStatus: (["PENDENTE", "GERADO", "ERRO"].includes(ps) ? ps : "PENDENTE") as VistoriaRealizada["projectStatus"],

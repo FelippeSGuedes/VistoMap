@@ -34,6 +34,7 @@ const SELECT_BASE = `
     f.danfield AS danfield,
     f.rsrpifield AS rsrpifield,
     f.rsrpllfield AS rsrpllfield,
+    d_eq.name AS equipamento,
     d_ti.name AS tipoifield,
     d_tl.name AS tipollfield,
     d_tv.name AS tensovfield,
@@ -42,6 +43,7 @@ const SELECT_BASE = `
   FROM \`${TABLE_NE}\` ne
   INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
   LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+  LEFT JOIN \`${DROPDOWN_TABLES.equipamento}\` d_eq ON d_eq.id = f.${DROPDOWN_COLUMNS.equipamento}
   LEFT JOIN \`${DROPDOWN_TABLES.tipoifield}\` d_ti ON d_ti.id = f.${DROPDOWN_COLUMNS.tipoifield}
   LEFT JOIN \`${DROPDOWN_TABLES.tipollfield}\` d_tl ON d_tl.id = f.${DROPDOWN_COLUMNS.tipollfield}
   LEFT JOIN \`${DROPDOWN_TABLES.tensovfield}\` d_tv ON d_tv.id = f.${DROPDOWN_COLUMNS.tensovfield}
@@ -85,6 +87,7 @@ interface RawRow {
   danfield: string | null;
   rsrpifield: string | null;
   rsrpllfield: string | null;
+  equipamento: string | null;
   tipoifield: string | null;
   tipollfield: string | null;
   tensovfield: string | null;
@@ -127,6 +130,7 @@ function mapRow(r: RawRow) {
       tipollfield: r.tipollfield ?? "",
       tensovfield: r.tensovfield ?? "",
       tipodematerial: r.tipodematerial ?? "",
+      equipamentofield: r.equipamento ?? "",
     },
     dropdownIds: {
       statusVistoria: r.status_vistoria_id,

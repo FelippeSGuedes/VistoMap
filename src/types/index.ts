@@ -48,6 +48,7 @@ export interface VistoriaFields {
   aterramentofield?: string;
   motivofield?: string;
   // Dropdowns resolvidos (texto, vindos de JOIN com tabelas glpi_plugin_fields_*).
+  equipamentofield?: string;
   tipodeantena?: string;
   ganhodbi?: string;
   mododeoperacao?: string;

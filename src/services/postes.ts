@@ -113,7 +113,7 @@ export interface RegistrarMudancaInput {
   observacao?: string | null;
 }
 
-export async function registrarMudancaPoste(
+async function registrarMudancaPosteOnline(
   input: RegistrarMudancaInput
 ): Promise<MudancaPosteResponse> {
   const { data } = await postesApi.post<MudancaPosteResponse>(
@@ -121,6 +121,82 @@ export async function registrarMudancaPoste(
     input
   );
   return data;
+}
+
+/**
+ * Registra a mudança de poste — offline-first, mesmo padrão de
+ * iniciar/finalizar vistoria: sem rede (ou falha de rede/timeout), enfileira
+ * localmente e devolve uma resposta "provisória" montada com os dados do
+ * poste já selecionado (o técnico já tem tudo isso na tela — não precisa
+ * do servidor pra continuar o formulário). Sincroniza quando a rede voltar.
+ *
+ * Erros de REGRA (4xx que não seja rede) sobem pro caller tratar.
+ */
+export async function registrarMudancaPoste(
+  input: RegistrarMudancaInput,
+  posteNovo: Poste
+): Promise<MudancaPosteResponse & { queued?: true }> {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return queueMudancaPoste(input, posteNovo);
+  }
+  try {
+    return await registrarMudancaPosteOnline(input);
+  } catch (err) {
+    const e = err as { code?: string; message?: string; response?: { status?: number } };
+    const status = e.response?.status;
+    const isNetwork =
+      e.code === "ERR_NETWORK" ||
+      e.code === "ECONNABORTED" ||
+      /network|timeout|offline/i.test(e.message ?? "");
+    const is5xx = status != null && status >= 500;
+    if ((!e.response && isNetwork) || is5xx) {
+      return queueMudancaPoste(input, posteNovo);
+    }
+    throw err;
+  }
+}
+
+async function queueMudancaPoste(
+  input: RegistrarMudancaInput,
+  posteNovo: Poste
+): Promise<MudancaPosteResponse & { queued: true }> {
+  const { enqueue } = await import("@/lib/offlineQueue");
+  const { notifyQueueChanged } = await import("@/hooks/useNetworkStatus");
+  const token = getAuthToken() ?? "";
+
+  await enqueue({
+    type: "mudar-poste",
+    vistoriaId: input.vistoria_id,
+    payload: { ...input, token } as Record<string, unknown>,
+  });
+  notifyQueueChanged();
+  void import("@/lib/syncRunner").then((m) => m.runDrain()).catch(() => {});
+
+  const descricao =
+    `Mudança de poste (sincronizada depois — sem conexão no momento): ` +
+    `${input.psposte_antigo ?? "?"} → ${posteNovo.pspostefield} ` +
+    `(${input.municipio_antigo ?? "?"} → ${posteNovo.municipiofield}). Motivo: ${input.motivo}` +
+    (input.observacao ? ` — ${input.observacao}` : "");
+
+  return {
+    ok: true,
+    mudanca_id: -1,
+    distancia_m: 0,
+    raio_max_m: 0,
+    poste_novo: posteNovo,
+    descricao_glpi: descricao,
+    payload_glpi: {
+      vistoria_id: input.vistoria_id,
+      pspostefield: posteNovo.pspostefield,
+      municipiofield: posteNovo.municipiofield,
+      materialfield: posteNovo.materialfield,
+      alturadopostemfield: posteNovo.alturadopostemfield,
+      latitudefield: posteNovo.latitudefield,
+      longitudefield: posteNovo.longitudefield,
+      observaofield_append: descricao,
+    },
+    queued: true,
+  };
 }
 
 /* ─── helpers para Mapbox ─────────────────────────────────────────────────── */

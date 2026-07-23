@@ -448,6 +448,15 @@ function VistoriaCard({
               {item.isRepeat && (
                 <span className="ml-1.5 text-violet-500">· REVISITA</span>
               )}
+              {item.tipoEquipamento?.trim().toLowerCase() === "repetidor" && (
+                <span
+                  className="ml-1.5"
+                  style={{ color: "#B45309" }}
+                  title="Repetidor — provável zona rural / baixa cobertura"
+                >
+                  · 📡 RURAL
+                </span>
+              )}
             </p>
             <h3
               className="truncate text-[13.5px] font-bold text-[var(--vm-text)] transition-colors group-hover:text-[#059669]"
@@ -575,6 +584,15 @@ function DetailDrawer({
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <StatusBadge status={item.status} isRepeat={item.isRepeat} size="md" />
                 <PDFBadge projectStatus={item.projectStatus} />
+                {item.tipoEquipamento?.trim().toLowerCase() === "repetidor" && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide"
+                    style={{ background: "rgba(251,191,36,0.18)", color: "#B45309" }}
+                    title="Equipamento tipo Repetidor — provável zona rural / baixa cobertura de rede"
+                  >
+                    📡 Repetidor · zona rural
+                  </span>
+                )}
               </div>
             </div>
             <button

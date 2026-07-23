@@ -19,7 +19,11 @@
 
 import { getOfflineDB as getDB, STORE_QUEUE } from "./offlineDb";
 
-export type OperationType = "finalize-vistoria" | "upload-photo" | "iniciar-vistoria";
+export type OperationType =
+  | "finalize-vistoria"
+  | "upload-photo"
+  | "iniciar-vistoria"
+  | "mudar-poste";
 
 export interface QueuedOperation {
   id: string;

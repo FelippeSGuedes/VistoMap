@@ -15,6 +15,7 @@ export const ITEMTYPE_NE = "NetworkEquipment";
  * E a tabela é `glpi_plugin_fields_<slug>fielddropdowns`.
  */
 export const DROPDOWN_TABLES = {
+  equipamento: "glpi_plugin_fields_equipamentofielddropdowns",
   tipodeantena: "glpi_plugin_fields_tipodeantenafielddropdowns",
   ganhodbi: "glpi_plugin_fields_ganhodbifielddropdowns",
   mododeoperacao: "glpi_plugin_fields_mododeoperaofielddropdowns",
@@ -33,6 +34,7 @@ export type DropdownKey = keyof typeof DROPDOWN_TABLES;
 
 /** Mapeia DropdownKey → coluna FK na tabela TABLE_FIELDS. */
 export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
+  equipamento: "plugin_fields_equipamentofielddropdowns_id",
   tipodeantena: "plugin_fields_tipodeantenafielddropdowns_id",
   ganhodbi: "plugin_fields_ganhodbifielddropdowns_id",
   mododeoperacao: "plugin_fields_mododeoperaofielddropdowns_id",
