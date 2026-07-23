@@ -14,12 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CloudDownload, CheckCircle2, WifiOff } from "lucide-react";
-import { fetchPostesProximos } from "@/services/postes";
-import { cacheGet, cachePut } from "@/lib/offlineDb";
-import { buildCacheKey } from "@/hooks/usePostesProximos";
-import type { PostesProximosResponse } from "@/types";
-
-const RAIO_PADRAO = 500;
+import { useOfflinePrep } from "@/hooks/useOfflinePrep";
 
 interface OfflinePrepBannerProps {
   equipamento?: string | null;
@@ -28,60 +23,29 @@ interface OfflinePrepBannerProps {
   municipio?: string;
 }
 
-type Fase = "oculto" | "baixando" | "pronto" | "falhou";
-
 export function OfflinePrepBanner({ equipamento, lat, lng, municipio }: OfflinePrepBannerProps) {
-  const [fase, setFase] = useState<Fase>("oculto");
-  const [progresso, setProgresso] = useState(0);
-  const started = useRef(false);
-
-  const isRepetidor = (equipamento ?? "").trim().toLowerCase() === "repetidor";
+  const { fase, progresso } = useOfflinePrep({ equipamento, lat, lng, municipio });
+  const [mostrar, setMostrar] = useState(false);
+  const passouPorBaixando = useRef(false);
 
   useEffect(() => {
-    if (!isRepetidor || started.current) return;
-    if (!lat || !lng) return;
-    started.current = true;
-
-    (async () => {
-      const key = buildCacheKey(lat, lng, RAIO_PADRAO);
-      const jaTemCache = await cacheGet<PostesProximosResponse>(key);
-      if (jaTemCache) return; // já preparado — não incomoda o técnico de novo
-
-      setFase("baixando");
-      setProgresso(8);
-
-      // Progresso "fake" suave enquanto a requisição real roda — não tem
-      // como saber o progresso real de uma chamada HTTP única, isso é só
-      // feedback visual pro técnico não achar que travou.
-      const tick = window.setInterval(() => {
-        setProgresso((p) => (p < 88 ? p + Math.random() * 14 : p));
-      }, 220);
-
-      try {
-        const res = await fetchPostesProximos({
-          lat,
-          lng,
-          raio: RAIO_PADRAO,
-          limit: 80,
-          municipio,
-        });
-        await cachePut(key, res);
-        window.clearInterval(tick);
-        setProgresso(100);
-        setFase("pronto");
-        window.setTimeout(() => setFase("oculto"), 2200);
-      } catch {
-        window.clearInterval(tick);
-        setFase("falhou");
-        window.setTimeout(() => setFase("oculto"), 3000);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRepetidor, lat, lng, municipio]);
+    if (fase === "baixando") {
+      passouPorBaixando.current = true;
+      setMostrar(true);
+      return;
+    }
+    // Já estava em cache (nunca passou por "baixando") — não incomoda o técnico.
+    if (!passouPorBaixando.current) return;
+    if (fase === "pronto" || fase === "falhou") {
+      setMostrar(true);
+      const t = window.setTimeout(() => setMostrar(false), fase === "pronto" ? 2200 : 3000);
+      return () => window.clearTimeout(t);
+    }
+  }, [fase]);
 
   return (
     <AnimatePresence>
-      {fase !== "oculto" && (
+      {mostrar && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}

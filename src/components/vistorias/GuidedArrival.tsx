@@ -15,12 +15,13 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Clock, LocateFixed, Navigation, X, XCircle } from "lucide-react";
+import { Check, Clock, LocateFixed, Lock, Navigation, X, XCircle } from "lucide-react";
 import type { Vistoria } from "@/types";
 import type { ApiError } from "@/services/api";
 import { api } from "@/services/api";
 import { useExpedienteStore } from "@/store/expediente";
 import { navegarVistoria, vistoriasService } from "@/services/vistorias";
+import { useOfflinePrep } from "@/hooks/useOfflinePrep";
 import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
 
 const BLUE_M = 50; // entra no modo "aproximando" (azul + seta)
@@ -111,6 +112,16 @@ export function GuidedArrival({
   useEffect(() => { onStartRef.current = onStart; }, [onStart]);
   const expediente = useExpedienteStore((s) => s.expediente);
   const janela = useExpedienteStore((s) => s.janela);
+
+  // Zona rural / pouco sinal (equipamento "Repetidor"): baixa os postes da
+  // região antes de liberar a rota, pra troca de poste funcionar offline.
+  const offlinePrep = useOfflinePrep({
+    equipamento: vistoria?.fields?.equipamentofield,
+    lat: vistoria?.latitude ?? 0,
+    lng: vistoria?.longitude ?? 0,
+    municipio: vistoria?.cidade,
+  });
+  const rotaBloqueada = offlinePrep.bloqueado;
 
   const hasCoord = useMemo(() => {
     if (!vistoria) return false;
@@ -387,16 +398,31 @@ export function GuidedArrival({
                   animate={{ scale: 1, opacity: 1 }}
                   className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10"
                 >
-                  <LocateFixed className="h-9 w-9 text-white/80" />
+                  {rotaBloqueada ? (
+                    <Lock className="h-9 w-9 text-white/80" />
+                  ) : (
+                    <LocateFixed className="h-9 w-9 text-white/80" />
+                  )}
                 </motion.div>
                 <p className="mt-5 text-[13px] font-semibold uppercase tracking-[0.2em] text-white/55">
-                  Aguardando deslocamento
+                  {rotaBloqueada ? "Preparando modo offline" : "Aguardando deslocamento"}
                 </p>
                 <p className="mt-2 max-w-[280px] text-[14px] text-white/70">
-                  {distancia == null
+                  {rotaBloqueada
+                    ? "Região com sinal de rede baixo identificada. Baixando informações da área automaticamente — a rota libera em instantes."
+                    : distancia == null
                     ? "Obtendo sua localização…"
                     : `Você está a ${distancia} m do poste. Selecione a rota para começar o trajeto.`}
                 </p>
+                {rotaBloqueada && (
+                  <div className="mt-4 h-1.5 w-[220px] overflow-hidden rounded-full bg-white/15">
+                    <motion.div
+                      className="h-full rounded-full bg-white"
+                      animate={{ width: `${offlinePrep.progresso}%` }}
+                      transition={{ duration: 0.25 }}
+                    />
+                  </div>
+                )}
               </>
             ) : fase === "azul" ? (
               <>
@@ -474,10 +500,20 @@ export function GuidedArrival({
                 <button
                   type="button"
                   onClick={handleRota}
-                  className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-white/15 text-[16px] font-bold text-white backdrop-blur"
+                  disabled={rotaBloqueada}
+                  className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-white/15 text-[16px] font-bold text-white backdrop-blur disabled:opacity-60"
                 >
-                  <Navigation className="h-5 w-5" />
-                  Selecionar rota
+                  {rotaBloqueada ? (
+                    <>
+                      <Lock className="h-5 w-5" />
+                      Baixando modo offline…
+                    </>
+                  ) : (
+                    <>
+                      <Navigation className="h-5 w-5" />
+                      Selecionar rota
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"
