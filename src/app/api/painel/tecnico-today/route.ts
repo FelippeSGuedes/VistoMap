@@ -50,26 +50,36 @@ export async function GET(req: NextRequest) {
     [usersId]
   ).then((r) => r.length ? r : [{ n: 0 }]);
 
-  // Avg duration for completed vistorias today (paired iniciada + finalizada)
-  const pairs = await query<{ alvo_id: string; inicio: string; fim: string }>(
+  // Avg duration for completed vistorias today (paired iniciada + finalizada).
+  // A vistoria pode ter várias revisitas ao longo do tempo (mesmo alvo_id
+  // com vários ciclos iniciada→finalizada em dias diferentes) — um JOIN
+  // simples por alvo_id+ator_id casava a "iniciada" de hoje com QUALQUER
+  // "finalizada" já registrada pra aquele poste, inclusive uma antiga de
+  // dias atrás, dando fim-inicio NEGATIVO (ex.: -36062min). O subselect
+  // correlacionado pega a finalizada MAIS PRÓXIMA que veio DEPOIS da
+  // iniciada — só essa é o par correto do ciclo de hoje.
+  const pairs = await query<{ alvo_id: string; inicio: string; fim: string | null }>(
     `SELECT a_inicio.alvo_id,
             a_inicio.ts AS inicio,
-            a_fim.ts    AS fim
+            (
+              SELECT MIN(a_fim.ts)
+                FROM glpi_plugin_vistomap_audit a_fim
+               WHERE a_fim.alvo_id = a_inicio.alvo_id
+                 AND a_fim.ator_id = a_inicio.ator_id
+                 AND a_fim.acao = 'vistoria-finalizada'
+                 AND a_fim.ts > a_inicio.ts
+            ) AS fim
        FROM glpi_plugin_vistomap_audit a_inicio
-       JOIN glpi_plugin_vistomap_audit a_fim
-         ON a_fim.alvo_id = a_inicio.alvo_id
-        AND a_fim.acao = 'vistoria-finalizada'
-        AND a_fim.ator_id = a_inicio.ator_id
       WHERE a_inicio.ator_id = ?
         AND a_inicio.acao = 'vistoria-iniciada'
         AND DATE(a_inicio.ts) = CURDATE()`,
     [usersId]
-  );
+  ).then((rows) => rows.filter((r) => r.fim != null));
 
   let tempoMedioMin: number | null = null;
   if (pairs.length > 0) {
     const totalMs = pairs.reduce((acc, p) => {
-      return acc + (new Date(p.fim).getTime() - new Date(p.inicio).getTime());
+      return acc + (new Date(p.fim as string).getTime() - new Date(p.inicio).getTime());
     }, 0);
     tempoMedioMin = Math.round(totalMs / pairs.length / 60_000);
   }
