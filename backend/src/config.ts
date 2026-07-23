@@ -19,8 +19,12 @@ const Env = z.object({
   /** Diretório lido pelo importador de CSV (somente leitura). */
   CSV_PATH: z.string().default("/csv"),
 
-  /** Raio máximo (m) para uma mudança de poste ser permitida. */
-  POSTE_TROCA_RAIO_M: z.coerce.number().int().positive().default(100),
+  /**
+   * Raio (m) usado só para fins de auditoria/alerta na mudança de poste —
+   * NÃO bloqueia mais a troca (técnicos em campo pediram flexibilidade;
+   * a distância real fica registrada em mudancas_postes de qualquer jeito).
+   */
+  POSTE_TROCA_RAIO_M: z.coerce.number().int().positive().default(300),
 
   /** CIDRs internos que podem chamar endpoints administrativos sem JWT. */
   INTERNAL_ALLOWLIST: z
