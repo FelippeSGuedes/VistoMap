@@ -638,8 +638,29 @@ export function GuidedCaptureFlow({
   onComplete,
   watermark,
 }: GuidedCaptureFlowProps) {
-  const [stepIdx, setStepIdx] = useState(0);
-  const [previews, setPreviews] = useState<Partial<Record<StepKey, PreviewState>>>({});
+  // Ao reabrir pra "revisar evidências", começa na primeira etapa que ainda
+  // falta — se já está tudo completo (reabriu só pra conferir/refazer algo
+  // específico), fica na etapa 1 mas o técnico pode pular direto pra
+  // qualquer uma clicando na barra de progresso (ver ProgressHeader).
+  const [stepIdx, setStepIdx] = useState(() => {
+    const firstMissing = STEPS.findIndex((s) => !bundle[s.key]);
+    return firstMissing === -1 ? 0 : firstMissing;
+  });
+  // Inicializa com os previews do que já está no bundle (senão reabrir
+  // pra revisão mostrava tudo como "não capturado", mesmo já tendo dado).
+  const [previews, setPreviews] = useState<Partial<Record<StepKey, PreviewState>>>(() => {
+    const initial: Partial<Record<StepKey, PreviewState>> = {};
+    for (const s of STEPS) {
+      const blob = bundle[s.key];
+      if (blob) {
+        initial[s.key] = {
+          url: URL.createObjectURL(blob),
+          feedback: { tone: "ok", message: "Evidência já capturada." },
+        };
+      }
+    }
+    return initial;
+  });
   const [busy, setBusy] = useState(false);
   const [orbitProgress, setOrbitProgress] = useState(0);
   const [recorderOpen, setRecorderOpen] = useState(false);
@@ -657,9 +678,13 @@ export function GuidedCaptureFlow({
     !!bundle.imagem4 &&
     !!bundle.imagem5;
 
-  // Auto-fechar 2s após completar (mostra banner antes de voltar pro form).
+  // Auto-fechar 2s só na TRANSIÇÃO pra completo (acabou de capturar a
+  // última etapa) — nunca ao reabrir um bundle que já estava 100% completo
+  // (reabrir era só pra revisar, e fechava sozinho em 2s antes do técnico
+  // conseguir olhar qualquer coisa).
+  const wasDoneOnMount = useRef(allDone);
   useEffect(() => {
-    if (!allDone || !onComplete) return;
+    if (!allDone || !onComplete || wasDoneOnMount.current) return;
     const t = window.setTimeout(() => onComplete(), 2000);
     return () => window.clearTimeout(t);
   }, [allDone, onComplete]);
@@ -757,7 +782,7 @@ export function GuidedCaptureFlow({
 
   return (
     <div className="space-y-4">
-      <ProgressHeader stepIdx={stepIdx} total={total} />
+      <ProgressHeader stepIdx={stepIdx} total={total} onStepClick={setStepIdx} />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -949,7 +974,17 @@ export function GuidedCaptureFlow({
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
 
-function ProgressHeader({ stepIdx, total }: { stepIdx: number; total: number }) {
+function ProgressHeader({
+  stepIdx,
+  total,
+  onStepClick,
+}: {
+  stepIdx: number;
+  total: number;
+  /** Pular direto pra etapa `i` — pra revisar/refazer uma etapa específica
+      sem ter que passar por todas de novo em ordem. */
+  onStepClick?: (i: number) => void;
+}) {
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em]">
@@ -960,17 +995,24 @@ function ProgressHeader({ stepIdx, total }: { stepIdx: number; total: number }) 
           {Math.round(((stepIdx + 1) / total) * 100)}%
         </span>
       </div>
-      <div className="flex h-1.5 gap-1 overflow-hidden rounded-full bg-brand-steel/60">
+      <div className="flex h-2.5 gap-1 overflow-hidden rounded-full bg-brand-steel/60">
         {Array.from({ length: total }).map((_, i) => (
-          <motion.span
+          <button
             key={i}
-            initial={false}
-            animate={{
-              backgroundColor: i <= stepIdx ? "#06D6A0" : "rgba(229,231,235,0)",
-            }}
-            transition={{ duration: 0.4 }}
-            className="h-full flex-1 rounded-full"
-          />
+            type="button"
+            onClick={() => onStepClick?.(i)}
+            aria-label={`Ir para etapa ${i + 1}`}
+            className="h-full flex-1 cursor-pointer rounded-full p-0"
+          >
+            <motion.span
+              initial={false}
+              animate={{
+                backgroundColor: i <= stepIdx ? "#06D6A0" : "rgba(229,231,235,0)",
+              }}
+              transition={{ duration: 0.4 }}
+              className="block h-full w-full rounded-full"
+            />
+          </button>
         ))}
       </div>
     </div>
