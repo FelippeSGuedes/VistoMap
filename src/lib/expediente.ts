@@ -435,3 +435,76 @@ export async function expedientesAtivos(): Promise<
       `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.username,
   }));
 }
+
+export interface ExpedienteHistoricoItem {
+  id: number;
+  inicio_at: string;
+  fim_at: string | null;
+  duracao_min: number | null;
+  pausa_almoco_inicio: string | null;
+  pausa_almoco_fim: string | null;
+  consentimento_lgpd_at: string | null;
+  dispositivo_info: string | null;
+  total_km: number | null;
+  emAndamento: boolean;
+}
+
+/**
+ * Histórico completo de expedientes de um técnico (não só o em aberto) —
+ * cada linha de `glpi_plugin_vistomap_expediente` é um turno já encerrado
+ * (ou em aberto), nunca sobrescrita/apagada. Serve pra auditoria de
+ * "disse que começou às X mas não tem log" — a tabela já tinha esse
+ * histórico, só não existia consulta pra ele até agora.
+ */
+export async function expedienteHistorico(
+  usersId: number,
+  opts: { desde?: string; ate?: string; limit?: number } = {}
+): Promise<ExpedienteHistoricoItem[]> {
+  const where: string[] = ["users_id = ?"];
+  const params: unknown[] = [usersId];
+  if (opts.desde) {
+    where.push("inicio_at >= ?");
+    params.push(opts.desde);
+  }
+  if (opts.ate) {
+    where.push("inicio_at <= ?");
+    params.push(opts.ate);
+  }
+  const limit = Math.min(Math.max(opts.limit ?? 90, 1), 500);
+
+  const rows = await query<{
+    id: number;
+    inicio_at: string;
+    fim_at: string | null;
+    pausa_almoco_inicio: string | null;
+    pausa_almoco_fim: string | null;
+    consentimento_lgpd_at: string | null;
+    dispositivo_info: string | null;
+    total_km: number | string | null;
+  }>(
+    `SELECT id, inicio_at, fim_at, pausa_almoco_inicio, pausa_almoco_fim,
+            consentimento_lgpd_at, dispositivo_info, total_km
+       FROM glpi_plugin_vistomap_expediente
+      WHERE ${where.join(" AND ")}
+      ORDER BY inicio_at DESC
+      LIMIT ${limit}`,
+    params
+  );
+
+  return rows.map((r) => {
+    const inicio = new Date(r.inicio_at.replace(" ", "T") + "Z").getTime();
+    const fim = r.fim_at ? new Date(r.fim_at.replace(" ", "T") + "Z").getTime() : null;
+    return {
+      id: r.id,
+      inicio_at: r.inicio_at,
+      fim_at: r.fim_at,
+      duracao_min: fim ? Math.round((fim - inicio) / 60_000) : null,
+      pausa_almoco_inicio: r.pausa_almoco_inicio,
+      pausa_almoco_fim: r.pausa_almoco_fim,
+      consentimento_lgpd_at: r.consentimento_lgpd_at,
+      dispositivo_info: r.dispositivo_info,
+      total_km: r.total_km != null ? Number(r.total_km) : null,
+      emAndamento: r.fim_at == null,
+    };
+  });
+}

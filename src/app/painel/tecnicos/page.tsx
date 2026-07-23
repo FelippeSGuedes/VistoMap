@@ -6,6 +6,7 @@
  */
 
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
@@ -72,6 +73,7 @@ function relativo(iso?: string): string {
 }
 
 export default function TecnicosPage() {
+  const router = useRouter();
   const [tecnicos, setTecnicos] = useState<TecnicoAtivo[]>([]);
   const [historico, setHistorico] = useState<HistoricoAnalytics | null>(null);
   const [expedientes, setExpedientes] = useState<ExpedienteAtivo[]>([]);
@@ -245,7 +247,13 @@ export default function TecnicosPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.04 * i + 0.1 }}
-              className="relative overflow-hidden rounded-[18px] p-4"
+              onClick={() => router.push(`/painel/tecnicos/${t.id}`)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") router.push(`/painel/tecnicos/${t.id}`);
+              }}
+              className="relative cursor-pointer overflow-hidden rounded-[18px] p-4 transition hover:shadow-md"
               style={{
                 background: "var(--vm-card)",
                 border: "1px solid var(--vm-border-soft)",
@@ -385,7 +393,7 @@ export default function TecnicosPage() {
               </div>
 
               {/* actions */}
-              <div className="relative mt-3 flex items-center gap-1.5">
+              <div className="relative mt-3 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   disabled={isOffline}

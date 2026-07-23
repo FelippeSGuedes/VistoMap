@@ -42,11 +42,11 @@ export async function GET(req: NextRequest) {
   }
 
   const audits = await query<AuditRow>(
-    `SELECT acao, ator_id, ator_nome, criado_em
+    `SELECT acao, ator_id, ator_nome, ts AS criado_em
        FROM glpi_plugin_vistomap_audit
       WHERE alvo_id = ? AND alvo_tipo = 'vistoria'
         AND acao IN ('vistoria-iniciada','vistoria-finalizada')
-      ORDER BY criado_em ASC`,
+      ORDER BY ts ASC`,
     [String(vistoriaId)]
   );
 

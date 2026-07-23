@@ -74,7 +74,7 @@ const STEPS: StepDef[] = [
     title: "Vídeo 360°",
     objective: "Caminhe ao redor do poste mantendo-o centralizado",
     instruction:
-      "Inicie pela esquerda da rua e caminhe em sentido horário mantendo o poste centralizado.",
+      "Vire o celular na HORIZONTAL. Inicie pela esquerda da rua e caminhe em sentido horário mantendo o poste centralizado.",
     filename: "video360.mp4",
     kind: "video",
     capture: "environment",
@@ -563,7 +563,7 @@ function OrbitAnim({ progress }: { progress: number }) {
 
 function BrandAnim({ brand }: { brand: "vivo" | "claro" }) {
   const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  const src = brand === "vivo" ? `${BP}/Logo_VIVO.svg` : `${BP}/claro.svg`;
+  const src = brand === "vivo" ? `${BP}/Logo_VIVO.png` : `${BP}/claro.svg`;
   return (
     <div className="flex h-full w-full items-center justify-center p-10">
       <motion.img

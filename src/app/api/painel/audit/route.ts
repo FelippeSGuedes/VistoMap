@@ -11,9 +11,12 @@ export async function GET(req: Request) {
     const offset = Number(searchParams.get("offset") ?? 0);
     const acao = searchParams.get("acao") ?? undefined;
     const alvo_id = searchParams.get("alvo_id") ?? undefined;
+    const ator_idParam = searchParams.get("ator_id");
+    const ator_id = ator_idParam ? Number(ator_idParam) : undefined;
     const entries = await fetchAudit({
       acao,
       alvo_id,
+      ator_id,
       limit: Number.isFinite(limit) ? limit : 100,
       offset: Number.isFinite(offset) ? offset : 0,
     });

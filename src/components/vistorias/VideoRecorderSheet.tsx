@@ -13,11 +13,25 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Circle, Square, X, Camera, AlertTriangle } from "lucide-react";
+import { Circle, Square, X, Camera, AlertTriangle, RotateCw } from "lucide-react";
 
 const MAX_SECONDS = 15;
 const VIDEO_BITRATE = 1_200_000; // ~1.2 Mbps
 const AUDIO_BITRATE = 64_000;
+
+/** Detecta orientação do aparelho via matchMedia — sem plugin nativo. */
+function usePortrait(active: boolean): boolean {
+  const [portrait, setPortrait] = useState(true);
+  useEffect(() => {
+    if (!active || typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(orientation: portrait)");
+    setPortrait(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setPortrait(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [active]);
+  return portrait;
+}
 
 function pickMime(): { mime: string; ext: string } | null {
   if (typeof MediaRecorder === "undefined") return null;
@@ -55,6 +69,7 @@ export function VideoRecorderSheet({
   const [secs, setSecs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const isPortrait = usePortrait(open);
 
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -112,6 +127,7 @@ export function VideoRecorderSheet({
   }, [open]);
 
   const startRec = () => {
+    if (isPortrait) return; // trava: vídeo tem que começar na horizontal
     const stream = streamRef.current;
     const picked = pickMime();
     if (!stream || !picked) return;
@@ -211,6 +227,28 @@ export function VideoRecorderSheet({
                 <p className="text-sm text-white/90">{error}</p>
               </div>
             )}
+            {/* trava: obriga girar o celular antes de gravar */}
+            {!error && isPortrait && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80 px-6 text-center">
+                <motion.div
+                  animate={{ rotate: [0, 90, 90, 0] }}
+                  transition={{ duration: 1.8, repeat: Infinity, times: [0, 0.5, 0.85, 1] }}
+                >
+                  <RotateCw className="h-12 w-12 text-white" strokeWidth={1.6} />
+                </motion.div>
+                <div>
+                  <p className="text-[16px] font-bold text-white">Gire o celular na horizontal</p>
+                  <p className="mt-1 text-[13px] text-white/70">
+                    O vídeo 360° precisa ser gravado deitado, senão fica de lado.
+                  </p>
+                </div>
+                {recording && (
+                  <p className="mt-1 rounded-full bg-red-500/90 px-3 py-1 text-[12px] font-semibold text-white">
+                    Gravação em andamento — volte pra horizontal
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* controles */}
@@ -220,7 +258,7 @@ export function VideoRecorderSheet({
                 <button
                   type="button"
                   onClick={startRec}
-                  disabled={!ready}
+                  disabled={!ready || isPortrait}
                   className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white disabled:opacity-40"
                   aria-label="Gravar"
                 >

@@ -46,15 +46,15 @@ export async function GET(req: NextRequest) {
        FROM glpi_plugin_vistomap_audit
       WHERE ator_id = ?
         AND acao = 'vistoria-iniciada'
-        AND DATE(criado_em) = CURDATE()`,
+        AND DATE(ts) = CURDATE()`,
     [usersId]
   ).then((r) => r.length ? r : [{ n: 0 }]);
 
   // Avg duration for completed vistorias today (paired iniciada + finalizada)
   const pairs = await query<{ alvo_id: string; inicio: string; fim: string }>(
     `SELECT a_inicio.alvo_id,
-            a_inicio.criado_em AS inicio,
-            a_fim.criado_em    AS fim
+            a_inicio.ts AS inicio,
+            a_fim.ts    AS fim
        FROM glpi_plugin_vistomap_audit a_inicio
        JOIN glpi_plugin_vistomap_audit a_fim
          ON a_fim.alvo_id = a_inicio.alvo_id
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
         AND a_fim.ator_id = a_inicio.ator_id
       WHERE a_inicio.ator_id = ?
         AND a_inicio.acao = 'vistoria-iniciada'
-        AND DATE(a_inicio.criado_em) = CURDATE()`,
+        AND DATE(a_inicio.ts) = CURDATE()`,
     [usersId]
   );
 

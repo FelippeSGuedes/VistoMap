@@ -76,6 +76,7 @@ export async function atribuir(input: AtribuirInput): Promise<{ ok: true }> {
 export interface FetchAuditFilters {
   acao?: string;
   alvo_id?: string;
+  ator_id?: number;
   limit?: number;
   offset?: number;
 }
@@ -86,6 +87,7 @@ export async function fetchAudit(
   const params = new URLSearchParams();
   if (filters.acao) params.set("acao", filters.acao);
   if (filters.alvo_id) params.set("alvo_id", filters.alvo_id);
+  if (filters.ator_id != null) params.set("ator_id", String(filters.ator_id));
   if (filters.limit != null) params.set("limit", String(filters.limit));
   if (filters.offset != null) params.set("offset", String(filters.offset));
   const url = `/painel/audit${params.toString() ? `?${params.toString()}` : ""}`;
