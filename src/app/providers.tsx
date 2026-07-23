@@ -11,6 +11,7 @@ import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useOtaUpdate } from "@/hooks/useOtaUpdate";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
+import { OtaUpdateOverlay } from "@/components/feedback/OtaUpdateOverlay";
 
 // BUG HISTÓRICO (2026-07-08): useOtaUpdate existia e estava correto, mas
 // nunca era montado em lugar nenhum — o app JAMAIS checava OTA, daí "OTA não
@@ -105,6 +106,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <TecnicoNotificationsMount />
       <OfflineSyncMount />
       <OfflineIndicator />
+      <OtaUpdateOverlay />
       {children}
     </>
   );

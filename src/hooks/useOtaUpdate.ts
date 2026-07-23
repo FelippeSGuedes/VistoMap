@@ -25,6 +25,7 @@
 
 import { useEffect } from "react";
 import { API_BASE } from "@/services/api";
+import { useOtaStore, OTA_JUST_UPDATED_KEY } from "@/store/ota";
 
 /**
  * {origin}/ota — mesmo host que a API, na raiz (nginx serve /ota como path
@@ -52,12 +53,27 @@ interface BundleInfo {
   version: string;
 }
 
+interface PluginListenerHandle {
+  remove: () => Promise<void>;
+}
+
+interface DownloadEvent {
+  /** 0..100 — progresso real do download do zip. */
+  percent: number;
+  bundle?: BundleInfo;
+}
+
 interface UpdaterPlugin {
   notifyAppReady: () => Promise<unknown>;
   current: () => Promise<{ bundle: BundleInfo; native: string }>;
   download: (opts: { url: string; version: string }) => Promise<BundleInfo>;
   /** Aplica o bundle AGORA — recarrega o WebView imediatamente. */
   set: (opts: { id: string }) => Promise<void>;
+  /** Evento de progresso do download (capgo emite `download`). */
+  addListener?: (
+    event: "download",
+    cb: (e: DownloadEvent) => void
+  ) => Promise<PluginListenerHandle> | PluginListenerHandle;
 }
 
 interface CapacitorBridge {
@@ -72,6 +88,22 @@ function getCapacitor(): CapacitorBridge | null {
 
 export function useOtaUpdate() {
   useEffect(() => {
+    const ota = useOtaStore.getState();
+
+    // Ponte pós-reload: se acabamos de aplicar um bundle (marcador gravado
+    // antes do reload), a PRIMEIRA coisa que o app novo faz é mostrar a tela
+    // "Atualizado ✓" por um instante e sumir — cobre o flash cinza do reload.
+    try {
+      const justUpdated = window.localStorage.getItem(OTA_JUST_UPDATED_KEY);
+      if (justUpdated) {
+        window.localStorage.removeItem(OTA_JUST_UPDATED_KEY);
+        ota.concluido(justUpdated);
+        window.setTimeout(() => useOtaStore.getState().reset(), 1600);
+      }
+    } catch {
+      /* localStorage indisponível — segue sem a ponte */
+    }
+
     const cap = getCapacitor();
     if (!cap?.isNativePlatform?.()) return;
 
@@ -82,6 +114,7 @@ export function useOtaUpdate() {
     }
 
     let cancelled = false;
+    let progressHandle: PluginListenerHandle | null = null;
 
     (async () => {
       // 1. Confirma o bundle atual (evita rollback do capgo).
@@ -102,27 +135,63 @@ export function useOtaUpdate() {
         if (!manifest?.version || !manifest?.url) return;
 
         const cur = await Updater.current();
-        if (cur?.bundle?.version === manifest.version) return; // já está na última
+        const deVersao = cur?.bundle?.version ?? null;
+        if (deVersao === manifest.version) return; // já está na última
 
-        console.log(
-          `[useOtaUpdate] Atualização: ${cur?.bundle?.version ?? "?"} → ${manifest.version}`
-        );
+        console.log(`[useOtaUpdate] Atualização: ${deVersao ?? "?"} → ${manifest.version}`);
+
+        // Abre a tela de atualização e escuta o progresso real do download.
+        useOtaStore.getState().iniciarDownload(deVersao, manifest.version);
+        try {
+          progressHandle = (await Updater.addListener?.("download", (e) => {
+            if (typeof e?.percent === "number") {
+              useOtaStore.getState().setProgresso(e.percent);
+            }
+          })) as PluginListenerHandle | null;
+        } catch {
+          /* sem evento de progresso — a barra usa fallback animado na overlay */
+        }
 
         // 3. Baixa e aplica JÁ — recarrega o WebView nesta mesma abertura.
         const bundle = await Updater.download({
           url: manifest.url,
           version: manifest.version,
         });
-        if (cancelled || !bundle?.id) return;
+        if (cancelled || !bundle?.id) {
+          useOtaStore.getState().reset();
+          return;
+        }
+
+        // Marca "acabei de atualizar" ANTES do reload (a store é apagada no
+        // reload; o localStorage sobrevive e reidrata a tela de "concluído").
+        useOtaStore.getState().aplicando();
+        try {
+          window.localStorage.setItem(OTA_JUST_UPDATED_KEY, manifest.version);
+        } catch {
+          /* segue mesmo sem o marcador */
+        }
+
         await Updater.set({ id: bundle.id });
         console.log(`[useOtaUpdate] Bundle ${manifest.version} aplicado — recarregando.`);
       } catch (err) {
         console.warn("[useOtaUpdate] Checagem OTA falhou (offline?):", err);
+        const st = useOtaStore.getState();
+        if (st.phase === "baixando") {
+          st.erro();
+          window.setTimeout(() => useOtaStore.getState().reset(), 2600);
+        }
+      } finally {
+        try {
+          await progressHandle?.remove();
+        } catch {
+          /* ignora */
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      progressHandle?.remove().catch(() => {});
     };
   }, []);
 }
