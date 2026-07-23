@@ -48,9 +48,12 @@ function computeOtaBase(): string {
 }
 const OTA_BASE = computeOtaBase();
 
+type BundleStatus = "success" | "error" | "pending" | "downloading" | "deleted";
+
 interface BundleInfo {
   id: string;
   version: string;
+  status?: BundleStatus;
 }
 
 interface PluginListenerHandle {
@@ -69,6 +72,10 @@ interface UpdaterPlugin {
   download: (opts: { url: string; version: string }) => Promise<BundleInfo>;
   /** Aplica o bundle AGORA — recarrega o WebView imediatamente. */
   set: (opts: { id: string }) => Promise<void>;
+  /** Lista os bundles já baixados no dispositivo (capgo v5+). */
+  list?: () => Promise<{ bundles: BundleInfo[] }>;
+  /** Remove um bundle baixado (limpeza de versões antigas/quebradas). */
+  delete?: (opts: { id: string }) => Promise<void>;
   /** Evento de progresso do download (capgo emite `download`). */
   addListener?: (
     event: "download",
@@ -142,21 +149,42 @@ export function useOtaUpdate() {
 
         // Abre a tela de atualização e escuta o progresso real do download.
         useOtaStore.getState().iniciarDownload(deVersao, manifest.version);
+
+        // 3a. Reaproveita um bundle DESTA MESMA versão que já esteja baixado
+        //     e íntegro (status success). Evita rebaixar 16 MB a cada abertura
+        //     numa rede ruim — que era o que fazia o app "atualizar várias
+        //     vezes" e às vezes travar sem conseguir puxar. Só re-aplica (set).
+        let bundle: BundleInfo | null = null;
         try {
-          progressHandle = (await Updater.addListener?.("download", (e) => {
-            if (typeof e?.percent === "number") {
-              useOtaStore.getState().setProgresso(e.percent);
-            }
-          })) as PluginListenerHandle | null;
+          const lista = await Updater.list?.();
+          const existente = lista?.bundles?.find(
+            (b) => b.version === manifest.version && b.id && b.status !== "error"
+          );
+          if (existente && (existente.status === "success" || existente.status === "pending")) {
+            bundle = existente;
+            console.log(`[useOtaUpdate] Bundle ${manifest.version} já baixado — reaproveitando.`);
+          }
         } catch {
-          /* sem evento de progresso — a barra usa fallback animado na overlay */
+          /* list() indisponível nesta versão do plugin — segue pro download */
         }
 
-        // 3. Baixa e aplica JÁ — recarrega o WebView nesta mesma abertura.
-        const bundle = await Updater.download({
-          url: manifest.url,
-          version: manifest.version,
-        });
+        // 3b. Se não tinha baixado ainda, baixa com progresso real.
+        if (!bundle) {
+          try {
+            progressHandle = (await Updater.addListener?.("download", (e) => {
+              if (typeof e?.percent === "number") {
+                useOtaStore.getState().setProgresso(e.percent);
+              }
+            })) as PluginListenerHandle | null;
+          } catch {
+            /* sem evento de progresso — a barra usa fallback animado na overlay */
+          }
+          bundle = await Updater.download({
+            url: manifest.url,
+            version: manifest.version,
+          });
+        }
+
         if (cancelled || !bundle?.id) {
           useOtaStore.getState().reset();
           return;
