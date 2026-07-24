@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
@@ -22,6 +22,8 @@ interface FormValues {
 }
 
 const REMEMBER_KEY = "vistomap.login.usuario";
+/** Congela o vídeo de fundo nesse instante — vira um "poster" estático. */
+const VIDEO_FREEZE_AT = 6;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,6 +31,23 @@ export default function LoginPage() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lembrar, setLembrar] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Toca o vídeo de fundo até os 6s e trava nesse frame — vira um "poster"
+  // vivo (deixa de gastar CPU/bateria tocando em loop e não distrai do form).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onTimeUpdate = () => {
+      if (v.currentTime >= VIDEO_FREEZE_AT) {
+        v.pause();
+        v.currentTime = VIDEO_FREEZE_AT;
+        v.removeEventListener("timeupdate", onTimeUpdate);
+      }
+    };
+    v.addEventListener("timeupdate", onTimeUpdate);
+    return () => v.removeEventListener("timeupdate", onTimeUpdate);
+  }, []);
 
   useEffect(() => {
     if (hydrated && session) router.replace("/dashboard");
@@ -76,16 +95,31 @@ export default function LoginPage() {
 
   return (
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden text-brand-ice">
-      {/* Imagem de fundo */}
+      {/* Vídeo de fundo — toca até 6s e congela nesse frame (vira poster estático) */}
+      <video
+        ref={videoRef}
+        src={asset("/login_app.mp4")}
+        autoPlay
+        muted
+        playsInline
+        preload="auto"
+        aria-hidden
+        className="absolute inset-0 z-0 h-full w-full scale-105 select-none object-cover"
+        style={{ filter: "blur(14px)" }}
+        onError={(e) => {
+          // Sem vídeo (rede fraca no cold-start) — cai pra imagem estática antiga.
+          (e.currentTarget as HTMLVideoElement).style.display = "none";
+        }}
+      />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={asset("/imagem_login.png")}
         alt=""
         aria-hidden
-        className="absolute inset-0 z-0 h-full w-full select-none object-cover"
+        className="absolute inset-0 -z-10 h-full w-full select-none object-cover"
         draggable={false}
       />
-      {/* Overlay escuro */}
+      {/* Overlay escuro — por cima do blur, pra manter contraste do formulário */}
       <div
         aria-hidden
         className="absolute inset-0 z-[1]"
