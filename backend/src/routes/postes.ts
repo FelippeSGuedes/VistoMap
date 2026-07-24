@@ -199,9 +199,9 @@ const postesRoutes: FastifyPluginAsync = async (fastify) => {
    *   1) valida JWT
    *   2) busca o poste novo (id) → coordenadas e nomes
    *   3) calcula distância geográfica entre (lat_antiga, lng_antiga) e o poste novo
-   *      (só registrada — NÃO bloqueia mais a troca, ver POSTE_TROCA_RAIO_M)
-   *   4) grava em `mudancas_postes` (audit imutável)
-   *   5) retorna payload pronto para o Next chamar /api/vistorias/:id/finalizar
+   *   4) rejeita se distância > POSTE_TROCA_RAIO_M
+   *   5) grava em `mudancas_postes` (audit imutável)
+   *   6) retorna payload pronto para o Next chamar /api/vistorias/:id/finalizar
    *      (com a descrição da mudança a ser anexada em observaofield)
    */
   fastify.post(
@@ -224,11 +224,14 @@ const postesRoutes: FastifyPluginAsync = async (fastify) => {
         posteNovo.latitudefield
       );
 
-      // Distância fora do raio NÃO bloqueia mais a troca (técnicos em campo
-      // pediram flexibilidade — poste pode ter sido substituído/movido, ou
-      // o técnico só percebe o poste errado depois de já ter se afastado).
-      // Fica só registrada em mudancas_postes pra auditoria.
       const raioMax = env.POSTE_TROCA_RAIO_M;
+      if (distanciaM > raioMax) {
+        return reply.code(422).send({
+          message: `Distância (${distanciaM.toFixed(1)} m) excede o raio máximo de ${raioMax} m.`,
+          distancia_m: Math.round(distanciaM * 10) / 10,
+          raio_max_m: raioMax,
+        });
+      }
 
       const descricao = buildDescricaoMudanca({
         psposteAntigo: data.psposte_antigo ?? null,
