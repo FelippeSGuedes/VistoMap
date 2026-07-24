@@ -127,6 +127,7 @@ class Database:
                 f.plugin_fields_tipollfielddropdowns_id,
                 f.plugin_fields_tipodeantenafielddropdowns_id,
                 f.plugin_fields_ganhodbifielddropdowns_id,
+                f.plugin_fields_equipamentofielddropdowns_id,
 
                 f.plugin_fields_statusvistoriafielddropdowns_id,
                 f.plugin_fields_pendnciafielddropdowns_id
@@ -180,6 +181,7 @@ class Database:
             "plugin_fields_tipollfielddropdowns_id":                 "tipollfield",
             "plugin_fields_tipodeantenafielddropdowns_id":           "tipodeantenafield",
             "plugin_fields_ganhodbifielddropdowns_id":               "ganhodbifield",
+            "plugin_fields_equipamentofielddropdowns_id":            "equipamentofield",
             "plugin_fields_statusvistoriafielddropdowns_id":         "plugin_fields_statusvistoriafielddropdowns_id",
             "plugin_fields_pendnciafielddropdowns_id":               "plugin_fields_pendnciafielddropdowns_id",
         }

@@ -24,6 +24,7 @@ DROPDOWN_MAP: Dict[str, str] = {
     "tipollfield":                 "glpi_plugin_fields_tipollfielddropdowns",  # Vivo
     "tipodeantenafield":           "glpi_plugin_fields_tipodeantenafielddropdowns",
     "ganhodbifield":               "glpi_plugin_fields_ganhodbifielddropdowns",
+    "equipamentofield":            "glpi_plugin_fields_equipamentofielddropdowns",  # DCU / Repetidor — "Modo de Operação"
 }
 
 # ─── Campos booleanos: (valor_verdadeiro, valor_falso) ────────────────────────
@@ -56,6 +57,7 @@ FIELD_TO_KEY: Dict[str, str] = {
     "tipodeantenafield":           "TIPODEANTENA",  # dropdown
     "alturadaantenafield":         "ALTURADAANTENA",
     "ganhodbifield":               "GANHO",         # dropdown
+    "equipamentofield":            "DEVICEMODE",    # dropdown — DCU / Repetidor
     # Booleano
     "aterramentofield":            "ATERRAMENTO",
     "instalartpfield":             "INSTALARTP",    # instalou Transformador de Potencial?
