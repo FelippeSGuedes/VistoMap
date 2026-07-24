@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
@@ -22,8 +22,6 @@ interface FormValues {
 }
 
 const REMEMBER_KEY = "vistomap.login.usuario";
-/** Congela o vídeo de fundo nesse instante — vira um "poster" estático. */
-const VIDEO_FREEZE_AT = 6;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,23 +29,6 @@ export default function LoginPage() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lembrar, setLembrar] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  // Toca o vídeo de fundo até os 6s e trava nesse frame — vira um "poster"
-  // vivo (deixa de gastar CPU/bateria tocando em loop e não distrai do form).
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const onTimeUpdate = () => {
-      if (v.currentTime >= VIDEO_FREEZE_AT) {
-        v.pause();
-        v.currentTime = VIDEO_FREEZE_AT;
-        v.removeEventListener("timeupdate", onTimeUpdate);
-      }
-    };
-    v.addEventListener("timeupdate", onTimeUpdate);
-    return () => v.removeEventListener("timeupdate", onTimeUpdate);
-  }, []);
 
   useEffect(() => {
     if (hydrated && session) router.replace("/dashboard");
@@ -95,31 +76,16 @@ export default function LoginPage() {
 
   return (
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden text-brand-ice">
-      {/* Vídeo de fundo — toca até 6s e congela nesse frame (vira poster estático) */}
-      <video
-        ref={videoRef}
-        src={asset("/login_app.mp4")}
-        autoPlay
-        muted
-        playsInline
-        preload="auto"
-        aria-hidden
-        className="absolute inset-0 z-0 h-full w-full scale-[1.02] select-none object-cover"
-        style={{ filter: "blur(5px)" }}
-        onError={(e) => {
-          // Sem vídeo (rede fraca no cold-start) — cai pra imagem estática antiga.
-          (e.currentTarget as HTMLVideoElement).style.display = "none";
-        }}
-      />
+      {/* Imagem de fundo */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={asset("/imagem_login.png")}
+        src={asset("/banner_app.png")}
         alt=""
         aria-hidden
-        className="absolute inset-0 -z-10 h-full w-full select-none object-cover"
+        className="absolute inset-0 z-0 h-full w-full select-none object-cover"
         draggable={false}
       />
-      {/* Overlay escuro — por cima do blur, pra manter contraste do formulário */}
+      {/* Overlay escuro */}
       <div
         aria-hidden
         className="absolute inset-0 z-[1]"
@@ -242,6 +208,21 @@ export default function LoginPage() {
             )}
           </button>
         </motion.form>
+
+        <footer className="mt-6 flex flex-col items-center gap-1.5 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={asset("/nansen.png")}
+            alt="Nansen"
+            className="h-5 w-auto opacity-80"
+            draggable={false}
+          />
+          <p className="text-[10.5px] leading-relaxed text-white/45">
+            Plataforma VistoMap · Todos os direitos reservados © 2026
+            <br />
+            Seus dados são tratados conforme a Lei Geral de Proteção de Dados (LGPD).
+          </p>
+        </footer>
       </div>
     </main>
   );
