@@ -220,7 +220,8 @@ export default function LoginPage() {
           <p className="text-[10.5px] leading-relaxed text-white/45">
             Plataforma VistoMap · Todos os direitos reservados © 2026
             <br />
-            Seus dados são tratados conforme a Lei Geral de Proteção de Dados (LGPD).
+            Seus dados são tratados em conformidade com a Lei Geral de Proteção de
+            Dados (LGPD – Lei nº 13.709/2018).
           </p>
         </footer>
       </div>
