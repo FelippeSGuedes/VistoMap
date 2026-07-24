@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, Calendar, CheckCircle2, MapPin, RefreshCw, Search,
-  Trash2, User, UserCheck, X, ChevronDown,
+  Trash2, Undo2, User, UserCheck, X, ChevronDown,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
+import { DEVOLUCAO_ITENS, DEVOLUCAO_MOTIVOS, devolucaoPrecisaDeslocamento } from "@/lib/glpi/devolucaoItens";
 
 interface Vistoria {
   id: number;
@@ -30,11 +31,11 @@ interface Tecnico {
 
 const SITUACAO_LABEL: Record<number, string> = {
   0: "Indefinido", 1: "A Vistoriar", 2: "Em Vistoria", 3: "Vistoriado",
-  4: "Ag. Revisita", 5: "Em Revisita", 6: "Revisitado",
+  4: "Ag. Revisita", 5: "Em Revisita", 6: "Revisitado", 8: "Devolvida",
 };
 const SITUACAO_COLOR: Record<number, string> = {
   0: "var(--vm-faint)", 1: "#F59E0B", 2: "#3B82F6", 3: "#00B388",
-  4: "#F97316", 5: "#0EA5E9", 6: "#10B981",
+  4: "#F97316", 5: "#0EA5E9", 6: "#10B981", 8: "#DC2626",
 };
 
 function SituacaoBadge({ id }: { id: number }) {
@@ -68,6 +69,13 @@ export default function CentralVistoriasPage() {
   const [novoTecnico, setNovoTecnico] = useState<number | "">("");
   const [motivo, setMotivo] = useState("");
   const [reatribLoading, setReatribLoading] = useState(false);
+
+  // Devolver
+  const [devolvendo, setDevolvendo] = useState<Vistoria | null>(null);
+  const [devItens, setDevItens] = useState<string[]>([]);
+  const [devMotivo, setDevMotivo] = useState("");
+  const [devMotivoOutro, setDevMotivoOutro] = useState("");
+  const [devLoading, setDevLoading] = useState(false);
 
   const headers = { Authorization: `Bearer ${session?.token}` };
 
@@ -125,6 +133,29 @@ export default function CentralVistoriasPage() {
       await fetchData();
     } catch { /* TODO: toast */ }
     finally { setReatribLoading(false); }
+  }
+
+  function toggleDevItem(key: string) {
+    setDevItens((cur) => (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]));
+  }
+
+  async function handleDevolver() {
+    if (!devolvendo || devItens.length === 0 || !devMotivo) return;
+    if (devMotivo === "Outro" && !devMotivoOutro.trim()) return;
+    setDevLoading(true);
+    try {
+      await api.post(
+        `/painel/central-vistorias/${devolvendo.id}/devolver`,
+        { itens: devItens, motivo: devMotivo, motivoOutro: devMotivoOutro.trim() || undefined },
+        { headers }
+      );
+      setDevolvendo(null);
+      setDevItens([]);
+      setDevMotivo("");
+      setDevMotivoOutro("");
+      await fetchData();
+    } catch { /* TODO: toast */ }
+    finally { setDevLoading(false); }
   }
 
   return (
@@ -235,6 +266,21 @@ export default function CentralVistoriasPage() {
                       >
                         <UserCheck className="h-3.5 w-3.5" />
                         Reatribuir
+                      </button>
+                    )}
+                    {(v.situacao_id === 3 || v.situacao_id === 6) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDevolvendo(v);
+                          setDevItens([]);
+                          setDevMotivo("");
+                          setDevMotivoOutro("");
+                        }}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Devolver
                       </button>
                     )}
                     {v.situacao_id > 1 && (
@@ -379,6 +425,133 @@ export default function CentralVistoriasPage() {
                   <CheckCircle2 className="h-4 w-4" />
                 )}
                 Confirmar reatribuição
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Devolver */}
+      {devolvendo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100">
+                  <Undo2 className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-bold text-gray-900">Devolver para correção</h2>
+                  <p className="text-[11px] text-gray-500">{devolvendo.equipamento}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setDevolvendo(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {devolvendo.tecnico_nome && (
+              <p className="mb-3 text-[11.5px] text-gray-500">
+                Vai voltar pra fila de <strong>{devolvendo.tecnico_nome}</strong> corrigir.
+              </p>
+            )}
+
+            <p className="mb-2 text-[12px] font-semibold text-gray-700">O que está errado? *</p>
+
+            <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-gray-400">
+              Fotos e vídeo
+            </div>
+            <div className="mb-3 grid grid-cols-2 gap-1.5">
+              {DEVOLUCAO_ITENS.filter((i) => i.tipo === "foto").map((i) => (
+                <label
+                  key={i.key}
+                  className="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11.5px] text-gray-700 hover:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={devItens.includes(i.key)}
+                    onChange={() => toggleDevItem(i.key)}
+                    className="h-3.5 w-3.5 rounded accent-amber-600"
+                  />
+                  {i.label}
+                </label>
+              ))}
+            </div>
+
+            <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-gray-400">
+              Campos do formulário
+            </div>
+            <div className="mb-4 grid grid-cols-2 gap-1.5">
+              {DEVOLUCAO_ITENS.filter((i) => i.tipo === "campo").map((i) => (
+                <label
+                  key={i.key}
+                  className="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11.5px] text-gray-700 hover:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={devItens.includes(i.key)}
+                    onChange={() => toggleDevItem(i.key)}
+                    className="h-3.5 w-3.5 rounded accent-amber-600"
+                  />
+                  {i.label}
+                </label>
+              ))}
+            </div>
+
+            <label className="mb-1 block text-[12px] font-semibold text-gray-700">Motivo *</label>
+            <div className="relative mb-3">
+              <select
+                value={devMotivo}
+                onChange={(e) => setDevMotivo(e.target.value)}
+                className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2 pl-3 pr-8 text-[13px] outline-none focus:border-amber-400"
+              >
+                <option value="">Selecione o motivo…</option>
+                {DEVOLUCAO_MOTIVOS.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            </div>
+
+            {devMotivo === "Outro" && (
+              <textarea
+                value={devMotivoOutro}
+                onChange={(e) => setDevMotivoOutro(e.target.value)}
+                placeholder="Descreva o motivo…"
+                rows={2}
+                className="mb-4 w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-[12px] outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-200"
+              />
+            )}
+
+            {devItens.length > 0 && (
+              <p className="mb-4 rounded-xl bg-gray-50 px-3 py-2 text-[11.5px] text-gray-600">
+                {devolucaoPrecisaDeslocamento(devItens)
+                  ? "📍 Vai exigir deslocamento até o equipamento (item de foto/vídeo apontado)."
+                  : "✏️ Correção só de formulário — não exige deslocamento por padrão."}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDevolvendo(null)}
+                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-[13px] font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={
+                  devItens.length === 0 ||
+                  !devMotivo ||
+                  (devMotivo === "Outro" && !devMotivoOutro.trim()) ||
+                  devLoading
+                }
+                onClick={handleDevolver}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-600 py-2.5 text-[13px] font-bold text-white transition hover:bg-amber-700 disabled:opacity-50"
+              >
+                {devLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                Confirmar devolução
               </button>
             </div>
           </div>

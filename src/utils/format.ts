@@ -8,6 +8,7 @@ export const STATUS_LABEL: Record<VistoriaStatus, string> = {
   // Renomeada na UI para refletir a ação operacional, não o status administrativo.
   REPROVADA: "Revisita",
   APROVADA: "Aprovada",
+  DEVOLVIDA: "Devolvida para correção",
 };
 
 export const STATUS_COLOR: Record<VistoriaStatus, string> = {
@@ -16,6 +17,7 @@ export const STATUS_COLOR: Record<VistoriaStatus, string> = {
   FINALIZADA: "#06D6A0",
   REPROVADA: "#F59E0B",
   APROVADA: "#073B4C",
+  DEVOLVIDA: "#DC2626",
 };
 
 export const PRIORITY_LABEL: Record<VistoriaPriority, string> = {

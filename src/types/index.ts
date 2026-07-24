@@ -3,7 +3,8 @@ export type VistoriaStatus =
   | "EM_CAMPO"
   | "FINALIZADA"
   | "REPROVADA"
-  | "APROVADA";
+  | "APROVADA"
+  | "DEVOLVIDA";
 
 export type VistoriaPriority = "BAIXA" | "MEDIA" | "ALTA" | "CRITICA";
 
@@ -253,7 +254,8 @@ export type AdminStatus =
   | "VISTORIADO"
   | "AGUARDANDO_REVISITA"
   | "EM_REVISITA"
-  | "REVISITADO";
+  | "REVISITADO"
+  | "DEVOLVIDA";
 
 export const ADMIN_STATUS_LABEL: Record<AdminStatus, string> = {
   A_VISTORIAR: "A Vistoriar",
@@ -262,6 +264,7 @@ export const ADMIN_STATUS_LABEL: Record<AdminStatus, string> = {
   AGUARDANDO_REVISITA: "Aguardando Revisita",
   EM_REVISITA: "Em Revisita",
   REVISITADO: "Revisitado",
+  DEVOLVIDA: "Devolvida para Correção",
 };
 
 export const ADMIN_STATUS_COLOR: Record<AdminStatus, string> = {
@@ -271,6 +274,7 @@ export const ADMIN_STATUS_COLOR: Record<AdminStatus, string> = {
   AGUARDANDO_REVISITA: "#F97316",  // laranja — pra revisitar
   EM_REVISITA: "#0EA5E9",          // azul claro — em revisita
   REVISITADO: "#10B981",           // verde claro — revisitado
+  DEVOLVIDA: "#DC2626",            // vermelho — precisa correção do técnico
 };
 
 /** Técnico ativo no campo — usado no mapa operacional e na gestão de equipe. */
@@ -339,7 +343,9 @@ export interface AuditEntry {
     | "vistoria-em-vistoria"
     | "override-solicitado"
     | "override-aprovado"
-    | "override-reprovado";
+    | "override-reprovado"
+    | "vistoria-devolvida"
+    | "devolucao-resolvida";
   /** Alvo da ação. */
   alvo?: {
     tipo: "vistoria" | "tecnico" | "revisita" | "sistema";

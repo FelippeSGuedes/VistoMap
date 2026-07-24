@@ -43,6 +43,7 @@ const PIN_ICON: Record<Vistoria["status"], string> = {
   FINALIZADA: `${BASE_PATH}/icons/pin-finalizada.svg`,
   APROVADA:   `${BASE_PATH}/icons/pin-finalizada.svg`,
   REPROVADA:  `${BASE_PATH}/icons/pin-reprovada.svg`,
+  DEVOLVIDA:  `${BASE_PATH}/icons/pin-devolvida.svg`,
 };
 
 // Inject hover style once (avoids JS mouseenter/mouseleave flicker)

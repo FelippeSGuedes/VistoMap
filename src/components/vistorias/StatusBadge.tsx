@@ -8,6 +8,7 @@ const TONE: Record<VistoriaStatus, Parameters<typeof Badge>[0]["tone"]> = {
   FINALIZADA: "emerald",
   REPROVADA: "amber",
   APROVADA: "deep",
+  DEVOLVIDA: "red",
 };
 
 export function StatusBadge({ status }: { status: VistoriaStatus }) {

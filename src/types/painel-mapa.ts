@@ -26,7 +26,8 @@ export type MapaVistoriaStatus =
   | "EM_VISTORIA"
   | "VISTORIADO"
   | "REVISITA"
-  | "REPROVADO";
+  | "REPROVADO"
+  | "DEVOLVIDA";
 
 /**
  * Situação operacional consolidada (alinhada ao dropdown GLPI
@@ -39,7 +40,8 @@ export type SituacaoOperacional =
   | "VISTORIADO"
   | "AGUARDANDO_REVISITA"
   | "EM_REVISITA"
-  | "REVISITADO";
+  | "REVISITADO"
+  | "DEVOLVIDA";
 
 export interface PainelMapaVistoria {
   id: number;

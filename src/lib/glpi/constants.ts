@@ -72,6 +72,8 @@ export const SITUACAO_AGUARDANDO_REVISITA = 4;
 export const SITUACAO_EM_REVISITA = 5;
 export const SITUACAO_REVISITADO = 6;
 export const SITUACAO_EM_DESLOCAMENTO = 7;
+/** 8 = "Devolvida para Correção" — já existe no GLPI (dropdown criado previamente). */
+export const SITUACAO_DEVOLVIDA = 8;
 
 export const SITUACAO_COLUMN =
   "plugin_fields_situaodavistoriafielddropdowns_id";

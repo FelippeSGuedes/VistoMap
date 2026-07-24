@@ -8,6 +8,7 @@ import {
   SITUACAO_A_VISTORIAR,
   SITUACAO_AGUARDANDO_REVISITA,
   SITUACAO_COLUMN,
+  SITUACAO_DEVOLVIDA,
   SITUACAO_EM_REVISITA,
   SITUACAO_EM_VISTORIA,
   SITUACAO_REVISITADO,
@@ -53,6 +54,7 @@ function resolveAdminStatus(
     case 4: return "AGUARDANDO_REVISITA";
     case 5: return "EM_REVISITA";
     case 6: return "REVISITADO";
+    case 8: return "DEVOLVIDA";
   }
   // 2ª prioridade: heurística pelo dropdown (fallback para registros sem o campo)
   const s = (statusName ?? "").trim().toLowerCase();
@@ -1055,6 +1057,7 @@ function resolveSituacaoOperacional(
     case 5: return "EM_REVISITA";
     case 6: return "REVISITADO";
     case 1: return "A_VISTORIAR";
+    case 8: return "DEVOLVIDA";
   }
   // Fallback: deriva de statusvistoria + is_repeat
   const s = (statusName ?? "").trim().toLowerCase();
@@ -1083,8 +1086,10 @@ function resolveStatusAprovacao(
 
 function resolveMapaVistoriaStatus(
   statusName: string | null,
-  isRepeat: boolean
+  isRepeat: boolean,
+  situacaoId?: number | null
 ): PainelMapaVistoria["status"] {
+  if (Number(situacaoId ?? 0) === 8) return "DEVOLVIDA";
   const s = (statusName ?? "").trim().toLowerCase();
   if (isRepeat) return "REVISITA";
   if (s === "reprovada" || s === "reprovado") return "REPROVADO";
@@ -1263,7 +1268,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       municipio: r.municipio,
       latitude: Number(r.latitude),
       longitude: Number(r.longitude),
-      status: resolveMapaVistoriaStatus(r.status_name, isRevisita),
+      status: resolveMapaVistoriaStatus(r.status_name, isRevisita, r.situacao_id),
       is_revisita: isRevisita,
       tecnico_id: r.tecnico_id,
       tecnico_nome: tecnicoNome,
@@ -1331,12 +1336,13 @@ export async function listCentralVistorias(): Promise<CentralVistoria[]> {
      ORDER BY
        -- sequência: A Vistoriar → Em Vistoria → Vistoriado → revisitas
        CASE COALESCE(f.\`${SITUACAO_COLUMN}\`, 0)
-         WHEN 1 THEN 0  -- A Vistoriar
-         WHEN 2 THEN 1  -- Em Vistoria
-         WHEN 3 THEN 2  -- Vistoriado
-         WHEN 4 THEN 3  -- Ag. Revisita
-         WHEN 5 THEN 4  -- Em Revisita
-         WHEN 6 THEN 5  -- Revisitado
+         WHEN 8 THEN 0  -- Devolvida para Correção (mais urgente)
+         WHEN 1 THEN 1  -- A Vistoriar
+         WHEN 2 THEN 2  -- Em Vistoria
+         WHEN 3 THEN 3  -- Vistoriado
+         WHEN 4 THEN 4  -- Ag. Revisita
+         WHEN 5 THEN 5  -- Em Revisita
+         WHEN 6 THEN 6  -- Revisitado
          ELSE 9
        END,
        ne.name ASC`
@@ -1364,6 +1370,29 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
       WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
     [vistoriaId]
   );
+}
+
+/**
+ * Devolve uma vistoria pro técnico corrigir itens específicos (fotos e/ou
+ * campos apontados pelo analista) — diferente de reprovar/revisita: o
+ * técnico só refaz o que foi apontado, o resto do envio permanece.
+ *
+ *   - situaodavistoria = Devolvida para Correção (8)
+ *   - datadavistoriafield / dataenvioconcessionriafield = NULL (aguardando reenvio)
+ *   - statusvistoria e o registro de projeto no aux NÃO são tocados aqui —
+ *     o PDF só é regerado quando o técnico corrigir e reenviar (Fase 2),
+ *     via o mesmo fluxo que já popula o aux no finalizar/route.ts.
+ */
+export async function devolverVistoria(vistoriaId: number): Promise<{ affected: number }> {
+  const r = await execute(
+    `UPDATE \`${TABLE_FIELDS}\`
+        SET \`${SITUACAO_COLUMN}\`   = ?,
+            datadavistoriafield      = NULL,
+            dataenvioconcessionriafield = NULL
+      WHERE items_id = ?`,
+    [SITUACAO_DEVOLVIDA, vistoriaId]
+  );
+  return { affected: r.affectedRows };
 }
 
 /**

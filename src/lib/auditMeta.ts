@@ -15,6 +15,7 @@ import {
   Send,
   ShieldAlert,
   ShieldCheck,
+  Undo2,
   XCircle,
 } from "lucide-react";
 import type { AuditEntry } from "@/types";
@@ -45,6 +46,8 @@ export const ACAO_META: Record<
   "override-solicitado":     { label: "Início fora do raio",      icon: ShieldAlert,  fg: "#C2410C", bg: "var(--vm-orange-tint)", dot: "#F97316" },
   "override-aprovado":       { label: "Override aprovado",        icon: ShieldCheck,  fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "override-reprovado":      { label: "Override reprovado",       icon: XCircle,      fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#EF4444" },
+  "vistoria-devolvida":      { label: "Devolvida para correção",  icon: Undo2,        fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
+  "devolucao-resolvida":     { label: "Devolução resolvida",      icon: ClipboardCheck,fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
 };
 
 export function initials(nome: string) {
