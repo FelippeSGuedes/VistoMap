@@ -108,7 +108,7 @@ export default function LoginPage() {
               Acesso operacional
             </h1>
             <p className="mt-0.5 text-[11px] font-medium text-white/65">
-              Entre com suas credenciais GLPI para continuar
+              Entre com suas credenciais GIOC para continuar
             </p>
           </header>
 
