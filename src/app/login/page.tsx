@@ -104,8 +104,8 @@ export default function LoginPage() {
         playsInline
         preload="auto"
         aria-hidden
-        className="absolute inset-0 z-0 h-full w-full scale-105 select-none object-cover"
-        style={{ filter: "blur(14px)" }}
+        className="absolute inset-0 z-0 h-full w-full scale-[1.02] select-none object-cover"
+        style={{ filter: "blur(5px)" }}
         onError={(e) => {
           // Sem vídeo (rede fraca no cold-start) — cai pra imagem estática antiga.
           (e.currentTarget as HTMLVideoElement).style.display = "none";
