@@ -110,6 +110,7 @@ class Database:
                 f.latitudefield,
                 f.longitudefield,
                 f.alturadopostemfield,
+                f.alturadaantenafield,
                 f.endereofield,
                 f.observaofield,
                 f.aterramentofield,
@@ -124,6 +125,8 @@ class Database:
                 f.plugin_fields_tensovfielddropdowns_id,
                 f.plugin_fields_tipoifielddropdowns_id,
                 f.plugin_fields_tipollfielddropdowns_id,
+                f.plugin_fields_tipodeantenafielddropdowns_id,
+                f.plugin_fields_ganhodbifielddropdowns_id,
 
                 f.plugin_fields_statusvistoriafielddropdowns_id,
                 f.plugin_fields_pendnciafielddropdowns_id
@@ -175,6 +178,8 @@ class Database:
             "plugin_fields_tensovfielddropdowns_id":                 "tensovfield",
             "plugin_fields_tipoifielddropdowns_id":                  "tipoifield",
             "plugin_fields_tipollfielddropdowns_id":                 "tipollfield",
+            "plugin_fields_tipodeantenafielddropdowns_id":           "tipodeantenafield",
+            "plugin_fields_ganhodbifielddropdowns_id":               "ganhodbifield",
             "plugin_fields_statusvistoriafielddropdowns_id":         "plugin_fields_statusvistoriafielddropdowns_id",
             "plugin_fields_pendnciafielddropdowns_id":               "plugin_fields_pendnciafielddropdowns_id",
         }

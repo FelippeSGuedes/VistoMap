@@ -22,6 +22,8 @@ DROPDOWN_MAP: Dict[str, str] = {
     "tensovfield":                 "glpi_plugin_fields_tensovfielddropdowns",
     "tipoifield":                  "glpi_plugin_fields_tipoifielddropdowns",   # Claro
     "tipollfield":                 "glpi_plugin_fields_tipollfielddropdowns",  # Vivo
+    "tipodeantenafield":           "glpi_plugin_fields_tipodeantenafielddropdowns",
+    "ganhodbifield":               "glpi_plugin_fields_ganhodbifielddropdowns",
 }
 
 # ─── Campos booleanos: (valor_verdadeiro, valor_falso) ────────────────────────
@@ -43,13 +45,17 @@ FIELD_TO_KEY: Dict[str, str] = {
     # Dropdowns existentes no GLPI
     "tipodematerialfield":         "MATERIAL",
     # Novos campos (jun/2026)
-    "alturadopostemfield":         "ALTURAPOSTE",   # altura do poste (substitui antena)
+    "alturadopostemfield":         "ALTURAPOSTE",   # altura do poste
     "danfield":                    "RESISTENCIA",   # resistência (daN)
     "rsrpifield":                  "RSRPCLARO",     # RSRP rede Claro
     "rsrpllfield":                 "RSRPVIVO",      # RSRP rede Vivo
     "tensovfield":                 "TENSAOV",       # Tensão (se instalou TP) — dropdown
     "tipoifield":                  "TIPOCLARO",     # Tipo rede Claro — dropdown
     "tipollfield":                 "TIPOVIVO",      # Tipo rede Vivo — dropdown
+    # Equipamento e Antena — existem no GLPI mas nao eram lidos pelo worker
+    "tipodeantenafield":           "TIPODEANTENA",  # dropdown
+    "alturadaantenafield":         "ALTURADAANTENA",
+    "ganhodbifield":               "GANHO",         # dropdown
     # Booleano
     "aterramentofield":            "ATERRAMENTO",
     "instalartpfield":             "INSTALARTP",    # instalou Transformador de Potencial?
