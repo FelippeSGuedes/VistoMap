@@ -152,6 +152,12 @@ class Database:
                 "Erro ao buscar dados do equipamento '%s': %s",
                 equipment_name, exc, exc_info=True,
             )
+            # NAO engolir o erro aqui: se a query falhar (ex.: coluna que nao
+            # existe mais no GLPI), o projeto tem que ser marcado ERRO, nao
+            # gerar um PDF vazio ("N/I" em tudo) e ficar marcado GERADO como
+            # se tivesse dado certo. Foi exatamente isso que aconteceu com
+            # ~28 projetos gerados entre 22-24/07/2026 antes desse fix.
+            raise
 
         return data
 
