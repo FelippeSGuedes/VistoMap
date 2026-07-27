@@ -1379,18 +1379,24 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
  *
  *   - situaodavistoria = Devolvida para Correção (8)
  *   - datadavistoriafield / dataenvioconcessionriafield = NULL (aguardando reenvio)
- *   - statusvistoria e o registro de projeto no aux NÃO são tocados aqui —
- *     o PDF só é regerado quando o técnico corrigir e reenviar (Fase 2),
- *     via o mesmo fluxo que já popula o aux no finalizar/route.ts.
+ *   - statusvistoria volta pra Pendente (1) — o finalizar/route.ts deixa ele em
+ *     "Em análise" (5), e listVistorias() EXCLUI status 3/4/5 da fila do
+ *     técnico (regra "não deve ver vistorias concluídas/aprovadas"). Sem
+ *     resetar aqui, a vistoria devolvida ficava invisível na lista/mapa do
+ *     próprio app do técnico — só aparecia via o modal/banner de devolução.
+ *   - o registro de projeto no aux NÃO é tocado aqui — o PDF só é regerado
+ *     quando o técnico corrigir e reenviar (Fase 2), via o mesmo fluxo que já
+ *     popula o aux no finalizar/route.ts.
  */
 export async function devolverVistoria(vistoriaId: number): Promise<{ affected: number }> {
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET \`${SITUACAO_COLUMN}\`   = ?,
+            plugin_fields_statusvistoriafielddropdowns_id = ?,
             datadavistoriafield      = NULL,
             dataenvioconcessionriafield = NULL
       WHERE items_id = ?`,
-    [SITUACAO_DEVOLVIDA, vistoriaId]
+    [SITUACAO_DEVOLVIDA, STATUS_VISTORIA_PENDENTE, vistoriaId]
   );
   return { affected: r.affectedRows };
 }

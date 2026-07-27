@@ -214,6 +214,18 @@ export function GuidedArrival({
     };
   }, [open]);
 
+  // Vistoria devolvida pra correção → nunca mostra o fluxo normal de chegada
+  // (chamar /iniciar aqui reabriria a vistoria do zero, ignorando os itens
+  // apontados pelo analista). Manda direto pra tela de correção.
+  useEffect(() => {
+    if (!open || !vistoria) return;
+    if (vistoria.status === "DEVOLVIDA") {
+      onClose();
+      router.push(`/vistoria-corrigir?id=${vistoria.id}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, vistoria?.id, vistoria?.status]);
+
   const expedienteBloqueio = expediente?.emAndamento
     ? null
     : janela?.motivo === "fds"

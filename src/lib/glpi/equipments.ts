@@ -4,6 +4,7 @@ import {
   DROPDOWN_COLUMNS,
   DROPDOWN_TABLES,
   ITEMTYPE_NE,
+  SITUACAO_DEVOLVIDA,
   STATE_NAME_TO_STATUS,
   TABLE_AUX,
   TABLE_FIELDS,
@@ -27,6 +28,7 @@ const SELECT_BASE = `
     f.aterramentofield AS aterramento,
     f.plugin_fields_statusvistoriafielddropdowns_id AS status_vistoria_id,
     sv.name AS status_vistoria_name,
+    f.plugin_fields_situaodavistoriafielddropdowns_id AS situacao_id,
     f.plugin_fields_pendnciafielddropdowns_id AS pendencia_id,
     f.datadavistoriafield AS data_vistoria,
     f.materialfield AS tipodematerial,
@@ -80,6 +82,7 @@ interface RawRow {
   aterramento: string | null;
   status_vistoria_id: number | null;
   status_vistoria_name: string | null;
+  situacao_id: number | null;
   pendencia_id: number | null;
   data_vistoria: string | null;
   tipodematerial: string | null;
@@ -101,6 +104,22 @@ function resolveStatus(name: string | null): VistoriaStatus {
   return (mapped as VistoriaStatus | undefined) ?? "PENDENTE";
 }
 
+/**
+ * `status_vistoria_name` vem de um dropdown TOTALMENTE separado da situação
+ * (Pendente/Em campo/Finalizada/Aprovada/Reprovada/Em análise — fluxo de
+ * revisão pós-envio). "Devolvida para Correção" é um valor de SITUAÇÃO
+ * (id 8), não de status — por isso tem prioridade aqui: sem isso, uma
+ * vistoria devolvida aparecia na lista do técnico com o status antigo
+ * ("Em análise"/etc.), sem nenhum indício visual de que precisa de correção.
+ */
+function resolveStatusComSituacao(
+  statusName: string | null,
+  situacaoId: number | null
+): VistoriaStatus {
+  if (situacaoId === SITUACAO_DEVOLVIDA) return "DEVOLVIDA";
+  return resolveStatus(statusName);
+}
+
 function mapRow(r: RawRow) {
   const isRepeat = Number(r.is_repeat ?? 0) === 1;
   return {
@@ -112,7 +131,7 @@ function mapRow(r: RawRow) {
     endereco: r.endereco ?? null,
     latitude: r.latitude == null ? null : Number(r.latitude),
     longitude: r.longitude == null ? null : Number(r.longitude),
-    status: resolveStatus(r.status_vistoria_name),
+    status: resolveStatusComSituacao(r.status_vistoria_name, r.situacao_id),
     isRepeat,
     prioridade: "MEDIA" as const,
     tecnico: { id: "0", nome: "—", email: "" },
