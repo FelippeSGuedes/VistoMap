@@ -187,6 +187,8 @@ export interface DashboardStats {
   concluidas: number;
   /** No GLPI `Reprovada`; na UI é exibida como "Revisitas" (ação operacional). */
   reprovadas: number;
+  /** Vistorias com situação "Devolvida para Correção" (situacao_id 8). */
+  devolucoes: number;
   ultimaSincronizacao: string;
   /** Lista distinta de municípios das vistorias atribuídas — usada no MunicipioField. */
   municipios?: MunicipioOperacional[];
@@ -195,6 +197,7 @@ export interface DashboardStats {
     pendentes: number[];
     concluidas: number[];
     reprovadas: number[];
+    devolucoes: number[];
   };
 }
 

@@ -14,6 +14,7 @@ import {
   Signal,
   TrendingDown,
   TrendingUp,
+  Undo2,
 } from "lucide-react";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -76,7 +77,7 @@ function useCountUp(target: number | null, duration = 700) {
   return count;
 }
 
-type StatKey = "pendentes" | "concluidas" | "reprovadas";
+type StatKey = "pendentes" | "concluidas" | "reprovadas" | "devolucoes";
 
 const STATS: Array<{
   key: StatKey;
@@ -86,10 +87,11 @@ const STATS: Array<{
   pill: string;
   grad: string;
 }> = [
-  { key: "pendentes",  label: "Pendentes",  icon: Activity,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
-  { key: "concluidas", label: "Concluídas", icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500" },
+  { key: "pendentes",  label: "Pendentes",   icon: Activity,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
+  { key: "concluidas", label: "Concluídas",  icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500" },
   // "Reprovada" no GLPI = revisita pendente pelo técnico (ação operacional).
-  { key: "reprovadas", label: "Revisitas",  icon: RotateCw,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
+  { key: "reprovadas",  label: "Revisitas",   icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
+  { key: "devolucoes",  label: "Devoluções",  icon: Undo2,    hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600" },
 ];
 
 /**
@@ -213,7 +215,7 @@ export default function DashboardPage() {
   useEffect(() => {
     let alive = true;
     const ZERO_STATS: DashboardStats = {
-      total: 0, pendentes: 0, concluidas: 0, reprovadas: 0,
+      total: 0, pendentes: 0, concluidas: 0, reprovadas: 0, devolucoes: 0,
       municipios: [], ultimaSincronizacao: new Date().toISOString(),
     };
 
@@ -242,6 +244,7 @@ export default function DashboardPage() {
         const reprovadas = vistorias.filter(
           (v) => v.status === "REPROVADA" || v.isRepeat
         ).length;
+        const devolucoes = vistorias.filter((v) => v.status === "DEVOLVIDA").length;
 
         setStats({
           ...s,
@@ -249,6 +252,7 @@ export default function DashboardPage() {
           pendentes,
           concluidas,
           reprovadas,
+          devolucoes,
           municipios,
           ultimaSincronizacao: new Date().toISOString(),
         });
@@ -565,8 +569,6 @@ export default function DashboardPage() {
               const delta = deltaPct(series);
               const max = Math.max(displayStats?.total ?? 1, 1);
               const pct = value != null ? Math.min(100, (value / max) * 100) : 0;
-              // 3º card (Revisitas) ocupa linha inteira pra destacar
-              const isRevisita = key === "reprovadas";
               return (
                 <motion.div
                   key={key}
@@ -574,14 +576,10 @@ export default function DashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
                   whileHover={{ y: -2, transition: { duration: 0.2 } }}
-                  className={`group relative overflow-hidden rounded-[22px] p-[15px] ${isRevisita ? "col-span-2" : ""}`}
+                  className="group relative overflow-hidden rounded-[22px] p-[15px]"
                   style={{
-                    background: isRevisita
-                      ? "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 60%, #FDE68A 100%)"
-                      : "#fff",
-                    boxShadow: isRevisita
-                      ? "0 1px 3px rgba(245,158,11,0.08), 0 8px 24px rgba(245,158,11,0.18), 0 0 0 1px rgba(245,158,11,0.22)"
-                      : "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07), 0 0 0 1px rgba(6,59,59,0.04)",
+                    background: "#fff",
+                    boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07), 0 0 0 1px rgba(6,59,59,0.04)",
                   }}
                 >
                   {/* glow superior */}
