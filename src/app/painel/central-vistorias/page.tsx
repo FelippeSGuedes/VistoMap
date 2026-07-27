@@ -2,12 +2,43 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, Calendar, CheckCircle2, ClipboardList, MapPin, RefreshCw, Search,
-  Trash2, Undo2, User, UserCheck, X, ChevronDown,
+  AlertCircle, AlertTriangle, ArrowLeft, Box, Calendar, Check, CheckCircle2,
+  ClipboardList, FileText, FileWarning, Gauge, HelpCircle, Home, Image as ImageIcon,
+  MapPin, MapPinOff, Milestone, Navigation, RadioTower, RefreshCw, Ruler, Search,
+  Settings, Signal, Trash2, TrendingUp, Undo2, User, UserCheck, Video, VideoOff,
+  Wifi, Wrench, X, XCircle, Zap, ChevronDown,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
 import { DEVOLUCAO_ITENS, DEVOLUCAO_MOTIVOS, devolucaoPrecisaDeslocamento } from "@/lib/glpi/devolucaoItens";
+
+/* ── Ícones do modal "Devolver" (design premium dark) ────────────────── */
+const FOTO_ICON: Record<string, LucideIcon> = {
+  imagem1: ImageIcon, imagem2: ImageIcon, imagem3: ImageIcon,
+  video360: Video, imagem4: ImageIcon, imagem5: ImageIcon,
+};
+const CAMPO_ICON: Record<string, LucideIcon> = {
+  pspostefield: Milestone, municipiofield: MapPin, endereofield: Home,
+  tipodematerial: Box, alturadopostemfield: Ruler, aterramentofield: Zap,
+  danfield: Gauge, instalartpfield: Wrench, tensovfield: Zap,
+  rsrpifield: Signal, tipoifield: Wifi, rsrpllfield: Signal, tipollfield: Wifi,
+  tipodeantena: RadioTower, ganhodbi: TrendingUp, equipamentofield: Settings,
+  observacao: FileText,
+};
+const MOTIVO_ICON: Record<string, LucideIcon> = {
+  "Foto desfocada ou ilegível": ImageIcon,
+  "Foto não mostra o item exigido": AlertCircle,
+  "Vídeo incompleto ou de má qualidade": VideoOff,
+  "Informação incorreta": XCircle,
+  "Informação incompleta": AlertTriangle,
+  "Print da operadora inválido ou ilegível": FileWarning,
+  "Localização/endereço divergente": MapPinOff,
+  Outro: HelpCircle,
+};
+const DEV_ORANGE = "#FF8A00";
+const DEV_PURPLE = "#8B5CF6";
+const DEV_RED = "#FF4D67";
 
 interface Vistoria {
   id: number;
@@ -117,6 +148,55 @@ function CheckboxRow({
       />
       {label}
     </label>
+  );
+}
+
+/* ── Card de item selecionável do modal "Devolver" (design premium dark) ── */
+function DevCheckCard({
+  label, checked, onToggle, icon: Icon, accent,
+}: { label: string; checked: boolean; onToggle: () => void; icon: LucideIcon; accent: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="group flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+      style={{
+        borderColor: checked ? tint(accent, 0.55) : "rgba(255,255,255,0.08)",
+        background: checked ? tint(accent, 0.12) : "rgba(255,255,255,0.03)",
+        boxShadow: checked ? `0 8px 24px ${tint(accent, 0.18)}` : "none",
+      }}
+    >
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition duration-200 group-hover:scale-105"
+        style={{ background: tint(accent, checked ? 0.22 : 0.14), color: accent }}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium" style={{ color: checked ? "#F4F4F5" : "#D4D4D8" }}>
+        {label}
+      </span>
+      <span
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition duration-200"
+        style={{
+          borderColor: checked ? accent : "rgba(255,255,255,0.18)",
+          background: checked ? accent : "transparent",
+        }}
+      >
+        {checked && <Check className="h-3.5 w-3.5" style={{ color: "#16181D" }} strokeWidth={3} />}
+      </span>
+    </button>
+  );
+}
+
+function DevCard({
+  title, description, children,
+}: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border p-5" style={{ borderColor: "rgba(255,255,255,0.08)", background: "#1B1E24" }}>
+      <h3 className="text-[16px] font-bold" style={{ color: "#F4F4F5" }}>{title}</h3>
+      <p className="mt-1 mb-4 text-[13px]" style={{ color: "#9CA3AF" }}>{description}</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{children}</div>
+    </div>
   );
 }
 
@@ -548,137 +628,173 @@ export default function CentralVistoriasPage() {
         </ModalShell>
       )}
 
-      {/* Modal Devolver */}
+      {/* Modal Devolver — design premium dark (glassmorphism) */}
       {devolvendo && (
-        <ModalShell wide>
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                style={{ background: tint("#D97706", 0.15), color: "#D97706" }}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(11,13,17,0.75)", backdropFilter: "blur(8px)" }}
+        >
+          <div
+            className="relative flex max-h-[90vh] w-full max-w-[720px] flex-col overflow-hidden rounded-[20px] border"
+            style={{
+              background: "rgba(22,24,29,0.97)",
+              borderColor: "rgba(255,255,255,0.08)",
+              boxShadow: "0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.02)",
+            }}
+          >
+            {/* Header */}
+            <div
+              className="flex items-start justify-between gap-4 px-6 pb-5 pt-7 sm:px-8"
+              style={{ background: "linear-gradient(180deg, rgba(22,24,29,1) 65%, rgba(22,24,29,0))" }}
+            >
+              <button
+                type="button"
+                onClick={() => setDevolvendo(null)}
+                aria-label="Voltar"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition duration-200 hover:-translate-y-0.5"
+                style={{
+                  borderColor: tint(DEV_ORANGE, 0.35),
+                  background: tint(DEV_ORANGE, 0.12),
+                  boxShadow: `0 0 20px ${tint(DEV_ORANGE, 0.2)}`,
+                }}
               >
-                <Undo2 className="h-5 w-5" />
+                <ArrowLeft className="h-4.5 w-4.5" style={{ color: DEV_ORANGE }} />
+              </button>
+
+              <div className="min-w-0 flex-1 pt-0.5">
+                <h2 className="text-[24px] font-bold leading-tight sm:text-[34px]" style={{ color: "#F4F4F5" }}>
+                  Devolver para correção
+                </h2>
+                <p className="mt-1.5 text-[13px]" style={{ color: "#9CA3AF" }}>
+                  Vamos enviar a fila de{" "}
+                  <span className="font-semibold" style={{ color: DEV_ORANGE }}>
+                    {devolvendo.tecnico_nome ?? "técnico responsável"}
+                  </span>{" "}
+                  para correção.
+                </p>
               </div>
-              <div>
-                <h2 className="text-[15px] font-bold" style={{ color: "var(--vm-text)" }}>Devolver para correção</h2>
-                <p className="text-[11px]" style={{ color: "var(--vm-muted)" }}>{devolvendo.equipamento}</p>
-              </div>
+
+              <button
+                type="button"
+                onClick={() => setDevolvendo(null)}
+                aria-label="Fechar"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition hover:bg-white/5"
+              >
+                <X className="h-5 w-5" style={{ color: "#9CA3AF" }} />
+              </button>
             </div>
-            <button type="button" onClick={() => setDevolvendo(null)} style={{ color: "var(--vm-faint)" }}>
-              <X className="h-5 w-5" />
-            </button>
-          </div>
 
-          {devolvendo.tecnico_nome && (
-            <p className="mb-3 text-[11.5px]" style={{ color: "var(--vm-muted)" }}>
-              Vai voltar pra fila de <strong style={{ color: "var(--vm-text-soft)" }}>{devolvendo.tecnico_nome}</strong> corrigir.
-            </p>
-          )}
+            {/* Body */}
+            <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-2 sm:px-8">
+              <DevCard title="O QUE ESTÁ ERRADO?" description="Fotos e vídeo que precisam ser refeitos no local do equipamento.">
+                {DEVOLUCAO_ITENS.filter((i) => i.tipo === "foto").map((i) => (
+                  <DevCheckCard
+                    key={i.key}
+                    label={i.label}
+                    checked={devItens.includes(i.key)}
+                    onToggle={() => toggleDevItem(i.key)}
+                    icon={FOTO_ICON[i.key] ?? ImageIcon}
+                    accent={DEV_PURPLE}
+                  />
+                ))}
+              </DevCard>
 
-          <p className="mb-2 text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>O que está errado? *</p>
+              <DevCard title="CAMPOS DO FORMULÁRIO" description="Informações que precisam ser corrigidas — não exige deslocamento por padrão.">
+                {DEVOLUCAO_ITENS.filter((i) => i.tipo === "campo").map((i) => (
+                  <DevCheckCard
+                    key={i.key}
+                    label={i.label}
+                    checked={devItens.includes(i.key)}
+                    onToggle={() => toggleDevItem(i.key)}
+                    icon={CAMPO_ICON[i.key] ?? FileText}
+                    accent={DEV_ORANGE}
+                  />
+                ))}
+              </DevCard>
 
-          <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
-            Fotos e vídeo
-          </div>
-          <div className="mb-3 grid grid-cols-2 gap-1.5">
-            {DEVOLUCAO_ITENS.filter((i) => i.tipo === "foto").map((i) => (
-              <CheckboxRow
-                key={i.key}
-                label={i.label}
-                checked={devItens.includes(i.key)}
-                onToggle={() => toggleDevItem(i.key)}
-                accent="#D97706"
-              />
-            ))}
-          </div>
+              <DevCard title="MOTIVO" description="Selecione um ou mais motivos da devolução.">
+                {DEVOLUCAO_MOTIVOS.map((m) => (
+                  <DevCheckCard
+                    key={m}
+                    label={m}
+                    checked={devMotivos.includes(m)}
+                    onToggle={() => toggleDevMotivo(m)}
+                    icon={MOTIVO_ICON[m] ?? AlertCircle}
+                    accent={DEV_RED}
+                  />
+                ))}
+              </DevCard>
 
-          <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
-            Campos do formulário
-          </div>
-          <div className="mb-4 grid grid-cols-2 gap-1.5">
-            {DEVOLUCAO_ITENS.filter((i) => i.tipo === "campo").map((i) => (
-              <CheckboxRow
-                key={i.key}
-                label={i.label}
-                checked={devItens.includes(i.key)}
-                onToggle={() => toggleDevItem(i.key)}
-                accent="#D97706"
-              />
-            ))}
-          </div>
+              {devMotivos.includes("Outro") && (
+                <textarea
+                  value={devMotivoOutro}
+                  onChange={(e) => setDevMotivoOutro(e.target.value)}
+                  placeholder="Descreva o motivo…"
+                  rows={2}
+                  className="w-full resize-none rounded-xl px-3.5 py-2.5 text-[12.5px] outline-none transition focus:ring-1"
+                  style={{
+                    background: "#1B1E24",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "#F4F4F5",
+                  }}
+                />
+              )}
 
-          <p className="mb-2 text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>
-            Motivo * <span className="font-normal" style={{ color: "var(--vm-faint)" }}>(pode marcar mais de um)</span>
-          </p>
-          <div className="mb-3 grid grid-cols-2 gap-1.5">
-            {DEVOLUCAO_MOTIVOS.map((m) => (
-              <CheckboxRow
-                key={m}
-                label={m}
-                checked={devMotivos.includes(m)}
-                onToggle={() => toggleDevMotivo(m)}
-                accent="#D97706"
-              />
-            ))}
-          </div>
+              {precisaDeslocFlag != null && (
+                precisaDeslocFlag ? (
+                  <p
+                    className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] font-medium"
+                    style={{ border: `1px solid ${tint(DEV_ORANGE, 0.35)}`, background: tint(DEV_ORANGE, 0.1), color: DEV_ORANGE }}
+                  >
+                    <Navigation className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>Vai exigir deslocamento até o equipamento (tem item de foto/vídeo apontado).</span>
+                  </p>
+                ) : (
+                  <p
+                    className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] font-medium"
+                    style={{ border: "1px solid rgba(16,185,129,0.35)", background: "rgba(16,185,129,0.1)", color: "#34D399" }}
+                  >
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>Correção só de formulário — não exige deslocamento por padrão.</span>
+                  </p>
+                )
+              )}
+            </div>
 
-          {devMotivos.includes("Outro") && (
-            <textarea
-              value={devMotivoOutro}
-              onChange={(e) => setDevMotivoOutro(e.target.value)}
-              placeholder="Descreva o motivo…"
-              rows={2}
-              className="mb-4 w-full resize-none rounded-xl px-3 py-2 text-[12px] outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-200"
-              style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
-            />
-          )}
-
-          {precisaDeslocFlag != null && (
-            precisaDeslocFlag ? (
-              <p
-                className="mb-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px] font-medium"
-                style={{ border: `1px solid ${tint("#D97706", 0.4)}`, background: tint("#D97706", 0.13), color: "#D97706" }}
-              >
-                <span>📍</span>
-                <span>Vai exigir deslocamento até o equipamento (tem item de foto/vídeo apontado).</span>
-              </p>
-            ) : (
-              <p
-                className="mb-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px] font-medium"
-                style={{ border: `1px solid ${tint("#059669", 0.4)}`, background: tint("#059669", 0.13), color: "#059669" }}
-              >
-                <span>✏️</span>
-                <span>Correção só de formulário — não exige deslocamento por padrão.</span>
-              </p>
-            )
-          )}
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setDevolvendo(null)}
-              className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold transition hover:brightness-95"
-              style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
+            {/* Footer */}
+            <div
+              className="flex gap-3 px-6 pb-6 pt-4 sm:px-8"
+              style={{ background: "linear-gradient(0deg, rgba(22,24,29,1) 70%, rgba(22,24,29,0))" }}
             >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              disabled={
-                devItens.length === 0 ||
-                devMotivos.length === 0 ||
-                (devMotivos.includes("Outro") && !devMotivoOutro.trim()) ||
-                devLoading
-              }
-              onClick={handleDevolver}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
-              style={{ background: "#D97706" }}
-            >
-              {devLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
-              Confirmar devolução
-            </button>
+              <button
+                type="button"
+                onClick={() => setDevolvendo(null)}
+                className="flex-1 rounded-2xl border py-3.5 text-[13.5px] font-semibold transition duration-200 hover:bg-white/5"
+                style={{ borderColor: "rgba(255,255,255,0.12)", color: "#D4D4D8" }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={
+                  devItens.length === 0 ||
+                  devMotivos.length === 0 ||
+                  (devMotivos.includes("Outro") && !devMotivoOutro.trim()) ||
+                  devLoading
+                }
+                onClick={handleDevolver}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-[13.5px] font-bold text-white transition duration-200 hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-40"
+                style={{
+                  background: `linear-gradient(90deg, ${DEV_ORANGE}, #FF3D81)`,
+                  boxShadow: devLoading ? "none" : "0 10px 28px rgba(255,61,129,0.35)",
+                }}
+              >
+                {devLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                Confirmar devolução
+              </button>
+            </div>
           </div>
-        </ModalShell>
+        </div>
       )}
     </div>
   );

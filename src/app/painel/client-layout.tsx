@@ -23,6 +23,7 @@ import {
   Settings,
   ShieldAlert,
   Sun,
+  Undo2,
   Users,
   Wrench,
 } from "lucide-react";
@@ -51,6 +52,7 @@ const VISTORIAS_GROUP = [
   { href: "/painel/realizadas",          label: "Concluídas",         icon: CheckCircle2 },
   { href: "/painel/revisitas",           label: "Revisitas",          icon: RotateCw },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench },
+  { href: "/painel/devolucoes",          label: "Devoluções",         icon: Undo2 },
 ];
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
