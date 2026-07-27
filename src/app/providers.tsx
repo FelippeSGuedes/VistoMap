@@ -20,8 +20,15 @@ import { DevolucaoBanner } from "@/components/vistorias/DevolucaoBanner";
 // nunca era montado em lugar nenhum — o app JAMAIS checava OTA, daí "OTA não
 // funciona" mesmo com o servidor publicando certo. Se algum dia parecer não
 // estar rodando de novo, confirmar que este mount segue presente aqui.
+//
+// BUG HISTÓRICO (2026-07-27): a checagem/aplicação rodava incondicionalmente,
+// inclusive na tela de login (sem sessão) — o reload do WebView acontecia
+// bem no meio do técnico digitando a senha (tela piscando, input perdido).
+// Agora só dispara com sessão autenticada (pós-login); notifyAppReady()
+// continua rodando sempre, pra não sofrer rollback do capgo por demora.
 function OtaUpdateMount() {
-  useOtaUpdate();
+  const session = useAuthStore((s) => s.session);
+  useOtaUpdate(!!session);
   return null;
 }
 

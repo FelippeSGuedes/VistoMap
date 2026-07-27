@@ -6,19 +6,26 @@
  * Atualiza o bundle web do APK sem reinstalar (OTA), via @capgo/capacitor-updater
  * em modo MANUAL. No-op em browser.
  *
- * Fluxo (no cold-start do app):
- *  1. notifyAppReady() — confirma que o bundle atual carregou. Sem isso o
- *     capgo faz rollback automático (proteção contra bundle quebrado).
- *  2. Busca o manifesto em {origin}/ota/latest.json (silencioso, offline-safe).
- *  3. Se a versão publicada for diferente da ativa, baixa o zip e aplica com
- *     set() — reinicia o WebView JÁ nesta mesma abertura do app (não precisa
- *     fechar/abrir de novo). O hook remonta no bundle novo e confirma com
- *     notifyAppReady() outra vez.
+ * Fluxo:
+ *  1. notifyAppReady() — SEMPRE, no cold-start (mesmo sem sessão). Confirma
+ *     que o bundle atual carregou; sem isso o capgo faz rollback automático
+ *     (proteção contra bundle quebrado) mesmo que o técnico só esteja
+ *     demorando pra digitar a senha na tela de login.
+ *  2. Busca o manifesto, baixa e aplica (`set`) — só com `enabled=true`
+ *     (sessão autenticada). Rodar isso ANTES do login recarregava o WebView
+ *     bem no meio do usuário digitando as credenciais (tela piscando,
+ *     input perdido) — agora só dispara depois que o login já aconteceu.
  *
- * set() em vez de next(): checagem só roda no cold-start (mount deste hook),
- * que já é o momento seguro pra recarregar — o técnico está abrindo o app
- * agora, não no meio de uma vistoria. Aplicar na hora evita o técnico precisar
- * fechar e abrir o app duas vezes pra receber uma atualização.
+ * set() em vez de next(): a checagem roda uma vez só (quando `enabled` vira
+ * true), que já é o momento seguro pra recarregar — o técnico acabou de
+ * abrir/logar no app, não está no meio de uma vistoria. Aplicar na hora evita
+ * precisar fechar e abrir o app duas vezes pra receber uma atualização.
+ *
+ * Trava de loop: se a MESMA versão já foi aplicada 2x nos últimos 10min e o
+ * manifesto continua pedindo ela de novo, é sinal de rollback do capgo (bundle
+ * não passou no health-check) — para de insistir em vez de ficar
+ * baixando/aplicando/recarregando sem parar ("atualizando um milhão de
+ * vezes", tela piscando).
  *
  * Sem rede (zona rural) o fetch falha, é capturado, e o app segue no bundle atual.
  */
@@ -26,6 +33,42 @@
 import { useEffect } from "react";
 import { API_BASE } from "@/services/api";
 import { useOtaStore, OTA_JUST_UPDATED_KEY } from "@/store/ota";
+
+/** Marcador de tentativas de aplicar uma versão — trava de loop (ver acima). */
+const OTA_ATTEMPT_KEY = "vistomap.ota.lastAttempt";
+const OTA_ATTEMPT_MAX = 2;
+const OTA_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
+
+interface OtaAttempt {
+  version: string;
+  count: number;
+  ts: number;
+}
+
+function readAttempt(): OtaAttempt | null {
+  try {
+    const raw = window.localStorage.getItem(OTA_ATTEMPT_KEY);
+    return raw ? (JSON.parse(raw) as OtaAttempt) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeAttempt(a: OtaAttempt) {
+  try {
+    window.localStorage.setItem(OTA_ATTEMPT_KEY, JSON.stringify(a));
+  } catch {
+    /* localStorage indisponível — segue sem persistir a trava */
+  }
+}
+
+function clearAttempt() {
+  try {
+    window.localStorage.removeItem(OTA_ATTEMPT_KEY);
+  } catch {
+    /* ignora */
+  }
+}
 
 /**
  * {origin}/ota — mesmo host que a API, na raiz (nginx serve /ota como path
@@ -93,13 +136,18 @@ function getCapacitor(): CapacitorBridge | null {
   return (window as Window & { Capacitor?: CapacitorBridge }).Capacitor ?? null;
 }
 
-export function useOtaUpdate() {
+/**
+ * @param enabled - só dispara a checagem/download/aplicação com uma sessão
+ * autenticada (pós-login). `notifyAppReady()` roda sempre, independente disso.
+ */
+export function useOtaUpdate(enabled: boolean) {
+  // Efeito 1 — SEMPRE, uma vez no cold-start (mesmo na tela de login):
+  // confirma o bundle atual pro capgo não fazer rollback por timeout, e
+  // mostra a ponte "Atualizado ✓" se acabamos de reiniciar por causa de um
+  // bundle aplicado no ciclo anterior.
   useEffect(() => {
     const ota = useOtaStore.getState();
 
-    // Ponte pós-reload: se acabamos de aplicar um bundle (marcador gravado
-    // antes do reload), a PRIMEIRA coisa que o app novo faz é mostrar a tela
-    // "Atualizado ✓" por um instante e sumir — cobre o flash cinza do reload.
     try {
       const justUpdated = window.localStorage.getItem(OTA_JUST_UPDATED_KEY);
       if (justUpdated) {
@@ -110,6 +158,22 @@ export function useOtaUpdate() {
     } catch {
       /* localStorage indisponível — segue sem a ponte */
     }
+
+    const cap = getCapacitor();
+    if (!cap?.isNativePlatform?.()) return;
+    const Updater = cap.Plugins?.CapacitorUpdater;
+    if (!Updater) return;
+
+    Updater.notifyAppReady().catch((e) => {
+      console.warn("[useOtaUpdate] notifyAppReady falhou:", e);
+    });
+  }, []);
+
+  // Efeito 2 — só com sessão (pós-login): checa manifesto, baixa e aplica.
+  // Antes disso rodava incondicionalmente e recarregava o WebView bem na
+  // tela de login (tela piscando enquanto o técnico digitava a senha).
+  useEffect(() => {
+    if (!enabled) return;
 
     const cap = getCapacitor();
     if (!cap?.isNativePlatform?.()) return;
@@ -124,14 +188,6 @@ export function useOtaUpdate() {
     let progressHandle: PluginListenerHandle | null = null;
 
     (async () => {
-      // 1. Confirma o bundle atual (evita rollback do capgo).
-      try {
-        await Updater.notifyAppReady();
-      } catch (e) {
-        console.warn("[useOtaUpdate] notifyAppReady falhou:", e);
-      }
-
-      // 2. Checa atualização — silencioso e tolerante a offline.
       try {
         const res = await fetch(`${OTA_BASE}/latest.json?ts=${Date.now()}`, {
           cache: "no-store",
@@ -143,7 +199,27 @@ export function useOtaUpdate() {
 
         const cur = await Updater.current();
         const deVersao = cur?.bundle?.version ?? null;
-        if (deVersao === manifest.version) return; // já está na última
+        if (deVersao === manifest.version) {
+          clearAttempt(); // rodando na versão certa — qualquer trava antiga não vale mais.
+          return;
+        }
+
+        // Trava de loop: já tentamos aplicar ESSA versão demais vezes recentemente
+        // e o manifesto continua pedindo ela — provável rollback do capgo (bundle
+        // não passa no health-check). Para de insistir em vez de ficar em loop de
+        // baixar/aplicar/recarregar sem parar.
+        const attempt = readAttempt();
+        if (
+          attempt &&
+          attempt.version === manifest.version &&
+          attempt.count >= OTA_ATTEMPT_MAX &&
+          Date.now() - attempt.ts < OTA_ATTEMPT_WINDOW_MS
+        ) {
+          console.warn(
+            `[useOtaUpdate] Versão ${manifest.version} falhou ${attempt.count}x nos últimos 10min — pausando tentativas.`
+          );
+          return;
+        }
 
         console.log(`[useOtaUpdate] Atualização: ${deVersao ?? "?"} → ${manifest.version}`);
 
@@ -199,6 +275,14 @@ export function useOtaUpdate() {
           /* segue mesmo sem o marcador */
         }
 
+        // Registra a tentativa ANTES do reload — se o capgo rejeitar/reverter
+        // esse bundle, o próximo ciclo já vê o contador e a trava entra em ação.
+        writeAttempt({
+          version: manifest.version,
+          count: attempt?.version === manifest.version ? attempt.count + 1 : 1,
+          ts: Date.now(),
+        });
+
         await Updater.set({ id: bundle.id });
         console.log(`[useOtaUpdate] Bundle ${manifest.version} aplicado — recarregando.`);
       } catch (err) {
@@ -221,5 +305,5 @@ export function useOtaUpdate() {
       cancelled = true;
       progressHandle?.remove().catch(() => {});
     };
-  }, []);
+  }, [enabled]);
 }
