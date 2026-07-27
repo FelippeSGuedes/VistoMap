@@ -28,7 +28,7 @@ import { NavigationOptionsSheet } from "@/components/vistorias/NavigationOptions
 import { SelectField } from "@/components/vistorias/SelectField";
 import { VideoRecorderSheet } from "@/components/vistorias/VideoRecorderSheet";
 import { vistoriasService } from "@/services/vistorias";
-import { api } from "@/services/api";
+import { api, type ApiError } from "@/services/api";
 import {
   useDevolucaoStore,
   type DevolucaoPendente,
@@ -170,8 +170,9 @@ function CorrigirDevolucaoInner() {
       setPendingRequestId(data.requestId);
       setOverrideOpen(false);
       setFase("aguardando-aprovacao");
-    } catch {
-      setErroEnvio("Falha ao enviar a solicitação. Tente de novo.");
+    } catch (err) {
+      const msg = (err as ApiError).response?.data?.message;
+      setErroEnvio(msg ?? "Falha ao enviar a solicitação. Tente de novo.");
     } finally {
       setOverrideLoading(false);
     }
@@ -213,8 +214,9 @@ function CorrigirDevolucaoInner() {
       await vistoriasService.corrigirDevolucao(id, campos, arquivos);
       setFase("concluido");
       window.setTimeout(() => router.push("/vistorias"), 1800);
-    } catch {
-      setErroEnvio("Falha ao enviar a correção. Verifique a conexão e tente de novo.");
+    } catch (err) {
+      const msg = (err as ApiError).response?.data?.message;
+      setErroEnvio(msg ?? "Falha ao enviar a correção. Verifique a conexão e tente de novo.");
       setFase("form");
     }
   }
