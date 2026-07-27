@@ -103,6 +103,7 @@ const SITUACAO_COR: Record<string, string> = {
   AGUARDANDO_REVISITA: "#F59E0B",  // âmbar
   EM_REVISITA:         "#A855F7",  // roxo
   REVISITADO:          "#0EA5E9",  // ciano
+  DEVOLVIDA:           "#DC2626",  // vermelho — devolvida pro técnico corrigir
 };
 const SITUACAO_LABEL: Record<string, string> = {
   A_VISTORIAR:       "A vistoriar",
@@ -111,6 +112,7 @@ const SITUACAO_LABEL: Record<string, string> = {
   AGUARDANDO_REVISITA: "Ag. revisita",
   EM_REVISITA:       "Em revisita",
   REVISITADO:        "Revisitado",
+  DEVOLVIDA:         "Devolvida",
 };
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
@@ -148,7 +150,7 @@ const PIN_RATIO = 4;
 const PIN_SIZE = 30; // tamanho lógico em px
 
 // Conceito "anel/donut flat": anel colorido grosso, miolo branco, glifo na cor.
-function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: number; height: number; data: Uint8Array; pixelRatio: number } {
+function makePinImage(color: string, inner: "dot" | "ring" | "check" | "warn"): { width: number; height: number; data: Uint8Array; pixelRatio: number } {
   const S = PIN_SIZE;
   const px = S * PIN_RATIO;
   const cvs = document.createElement("canvas");
@@ -207,6 +209,18 @@ function makePinImage(color: string, inner: "dot" | "ring" | "check"): { width: 
     ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
+  } else if (inner === "warn") {
+    // exclamação = Devolvida (aguardando correção do técnico)
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 2.8);
+    ctx.lineTo(cx, cy + 0.4);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.9;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy + 2.7, 0.95, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
   }
   // inner === "ring" → miolo branco vazio = A Vistoriar (pendente)
   ctx.restore();
@@ -223,6 +237,7 @@ const PIN_DEFS = [
   { name: "vm-pin-aguardando_revisita", color: "#F59E0B", inner: "ring"  as const },
   { name: "vm-pin-em_revisita",         color: "#A855F7", inner: "dot"   as const },
   { name: "vm-pin-revisitado",          color: "#0EA5E9", inner: "check" as const },
+  { name: "vm-pin-devolvida",           color: "#DC2626", inner: "warn"  as const },
   { name: "vm-pin-default",             color: "var(--vm-text-soft)", inner: "dot"   as const },
 ] as const;
 
@@ -650,6 +665,7 @@ export default function PainelMapaPage() {
             "AGUARDANDO_REVISITA", "vm-pin-aguardando_revisita",
             "EM_REVISITA",         "vm-pin-em_revisita",
             "REVISITADO",          "vm-pin-revisitado",
+            "DEVOLVIDA",           "vm-pin-devolvida",
             "vm-pin-default",
           ],
           "icon-anchor": "center",
@@ -789,7 +805,7 @@ export default function PainelMapaPage() {
   );
 
   const SITUACAO_SORT: Record<string, number> = {
-    A_VISTORIAR: 0, EM_VISTORIA: 1, VISTORIADO: 2,
+    DEVOLVIDA: -1, A_VISTORIAR: 0, EM_VISTORIA: 1, VISTORIADO: 2,
     AGUARDANDO_REVISITA: 3, EM_REVISITA: 4, REVISITADO: 5,
   };
 
@@ -973,6 +989,7 @@ export default function PainelMapaPage() {
                     ["AGUARDANDO_REVISITA", "Ag. revisita", "#F59E0B"],
                     ["EM_REVISITA", "Em revisita", "#A855F7"],
                     ["REVISITADO", "Revisitado", "#38BDF8"],
+                    ["DEVOLVIDA", "Devolvida", "#DC2626"],
                   ] as const
                 ).map(([key, label, cor]) => (
                   <FiltroPill
