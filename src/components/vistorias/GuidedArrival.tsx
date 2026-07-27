@@ -14,6 +14,7 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Clock, LocateFixed, Lock, Navigation, X, XCircle } from "lucide-react";
 import type { Vistoria } from "@/types";
@@ -96,6 +97,7 @@ export function GuidedArrival({
   onClose,
   onStart,
 }: GuidedArrivalProps) {
+  const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,8 +247,22 @@ export function GuidedArrival({
     } catch (err) {
       const apiErr = err as ApiError;
       const data = apiErr.response?.data as
-        | { message?: string; foraDoRaio?: boolean; semGps?: boolean }
+        | {
+            message?: string;
+            foraDoRaio?: boolean;
+            semGps?: boolean;
+            motivo?: string;
+            devolucaoVistoriaId?: number;
+          }
         | undefined;
+      // Devolução pendente de outro dia — obrigatório resolver antes de
+      // iniciar qualquer vistoria nova. Manda direto pra tela de correção
+      // em vez do fluxo normal de erro/override.
+      if (data?.motivo === "devolucao-pendente" && data.devolucaoVistoriaId) {
+        onClose();
+        router.push(`/vistoria-corrigir?id=${data.devolucaoVistoriaId}`);
+        return;
+      }
       setError(data?.message ?? "Erro ao iniciar vistoria");
       if (data?.foraDoRaio || data?.semGps) setOverrideOpen(true);
     } finally {

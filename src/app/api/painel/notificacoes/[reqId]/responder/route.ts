@@ -50,8 +50,11 @@ export async function POST(
 
   await ensureOverrideTable();
 
-  const rows = await query<{ id: number; vistoria_id: number; equipamento: string; tecnico_nome: string; status: string }>(
-    "SELECT id, vistoria_id, equipamento, tecnico_nome, status FROM `glpi_plugin_vistomap_override_requests` WHERE id = ? LIMIT 1",
+  const rows = await query<{
+    id: number; vistoria_id: number; equipamento: string; tecnico_nome: string;
+    status: string; exception_label: string | null;
+  }>(
+    "SELECT id, vistoria_id, equipamento, tecnico_nome, status, exception_label FROM `glpi_plugin_vistomap_override_requests` WHERE id = ? LIMIT 1",
     [reqId]
   );
   if (!rows.length) return NextResponse.json({ message: "Solicitação não encontrada" }, { status: 404 });
@@ -70,8 +73,13 @@ export async function POST(
     [novoStatus, body.acao === "reprovar" ? (body.motivo ?? "").trim() : null, reqId]
   );
 
-  // Aprovação → seta situação Em Vistoria imediatamente
-  if (body.acao === "aprovar") {
+  // "Não posso deslocar agora" (devolução) é um pedido de PRAZO, não de
+  // início fora do raio — aprovar aqui NÃO deve mexer na situação da
+  // vistoria (ela continua Devolvida, só some a cobrança imediata).
+  const isDevolucao = row.exception_label === "DEVOLUCAO_NAO_POSSO_DESLOCAR";
+
+  // Aprovação de início fora do raio → seta situação Em Vistoria imediatamente
+  if (body.acao === "aprovar" && !isDevolucao) {
     const vistoriaId = row.vistoria_id;
     if (vistoriaId > 0) {
       await execute(
@@ -81,13 +89,14 @@ export async function POST(
     }
   }
 
+  const contexto = isDevolucao ? "Adiamento de correção (devolução)" : "Início fora do raio";
   void auditInsert({
     ator: { id: adminId, nome: adminNome, role: "admin" },
     acao: body.acao === "aprovar" ? "override-aprovado" : "override-reprovado",
     alvo: { tipo: "vistoria", id: String(row.vistoria_id), label: row.equipamento },
     descricao: body.acao === "aprovar"
-      ? `Início fora do raio APROVADO para ${row.tecnico_nome} — ${row.equipamento}`
-      : `Início fora do raio REPROVADO para ${row.tecnico_nome} — ${row.equipamento}. Motivo: ${body.motivo}`,
+      ? `${contexto} APROVADO para ${row.tecnico_nome} — ${row.equipamento}`
+      : `${contexto} REPROVADO para ${row.tecnico_nome} — ${row.equipamento}. Motivo: ${body.motivo}`,
   });
 
   return NextResponse.json({ ok: true, status: novoStatus });

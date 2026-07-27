@@ -7,6 +7,7 @@ import { execute } from "@/lib/db";
 import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 import { logError } from "@/lib/observability";
+import { fetchDevolucaoPendente, devolucaoEhDeOutroDia } from "@/lib/glpi/devolucoes";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -103,6 +104,22 @@ export async function POST(
                 : `Fora do horário de expediente (${cfg.inicio}–${cfg.fim}).`;
           return NextResponse.json(
             { message: msg, motivo: gate.motivo },
+            { status: 403 }
+          );
+        }
+
+        // Devolução pendente de um dia ANTERIOR → bloqueia iniciar vistoria
+        // NOVA até resolver. No mesmo dia é só lembrete (não bloqueia) — só
+        // vira obrigatório a partir do primeiro acesso do dia seguinte.
+        const devolucaoPendente = await fetchDevolucaoPendente(userId);
+        if (devolucaoPendente && devolucaoEhDeOutroDia(devolucaoPendente.criadoEm)) {
+          return NextResponse.json(
+            {
+              message: "Você tem uma vistoria devolvida pra correção — resolva antes de iniciar outra.",
+              motivo: "devolucao-pendente",
+              devolucaoId: devolucaoPendente.id,
+              devolucaoVistoriaId: devolucaoPendente.vistoriaId,
+            },
             { status: 403 }
           );
         }

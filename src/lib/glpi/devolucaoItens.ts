@@ -66,6 +66,21 @@ export const DEVOLUCAO_MOTIVOS = [
 
 export type DevolucaoMotivo = (typeof DEVOLUCAO_MOTIVOS)[number];
 
+/**
+ * item de devolução → DropdownKey (glpi/constants.ts) — campos "campo" cujo
+ * valor vem de um dropdown do GLPI (não texto livre). Usado tanto pela tela
+ * de correção do app (pra saber quando renderizar <SelectField>) quanto pela
+ * rota corrigir-devolucao (pra resolver texto → id via resolveDropdowns).
+ */
+export const DEVOLUCAO_DROPDOWN_FIELD: Record<string, string> = {
+  tensovfield: "tensovfield",
+  tipoifield: "tipoifield",
+  tipollfield: "tipollfield",
+  tipodeantena: "tipodeantena",
+  ganhodbi: "ganhodbi",
+  equipamentofield: "equipamento",
+};
+
 /** true se pelo menos um item apontado exige deslocamento até o equipamento. */
 export function devolucaoPrecisaDeslocamento(itens: string[]): boolean {
   const tipos = new Map(DEVOLUCAO_ITENS.map((i) => [i.key, i.tipo]));

@@ -5,6 +5,7 @@ import { devolverVistoria } from "@/lib/glpi/painel";
 import { criarDevolucao } from "@/lib/glpi/devolucoes";
 import { devolucaoPrecisaDeslocamento } from "@/lib/glpi/devolucaoItens";
 import { auditInsert } from "@/lib/glpi/audit";
+import { sendPushTo } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -97,7 +98,14 @@ export async function POST(
     precisaDeslocamento,
   });
 
-  // Fase 2: disparar notificação push pro técnico aqui.
+  if (row.tecnico_id) {
+    void sendPushTo({
+      usersIds: [row.tecnico_id],
+      title: "Vistoria devolvida para correção",
+      body: `${row.equipamento} precisa de correção — ${motivos[0]}${motivos.length > 1 ? ` +${motivos.length - 1}` : ""}`,
+      data: { url: "/app/vistorias", vistoria_id: String(vistoriaId), tipo: "devolucao" },
+    });
+  }
 
   void auditInsert({
     ator: { id: adminId, nome: adminNome, role: "admin" },

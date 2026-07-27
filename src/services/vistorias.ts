@@ -288,6 +288,29 @@ async function queueFinalizar(
   return { ok: true, queued: true } as const;
 }
 
+/**
+ * Reenvia só os itens apontados numa devolução (fotos/campos específicos).
+ * Diferente de finalizarVistoria: chamada direta (sem fila offline) — o
+ * volume é pequeno (poucos itens) e o técnico já está vendo a tela pra
+ * saber na hora se deu certo. TODO Fase futura: escrever local-first igual
+ * finalizarVistoria se isso se mostrar um problema em campo com sinal ruim.
+ */
+export async function corrigirDevolucao(
+  vistoriaId: string | number,
+  campos: Record<string, string>,
+  arquivos: Partial<Record<string, Blob>>
+): Promise<{ ok: true; situacao: number }> {
+  const form = new FormData();
+  form.append("payload", JSON.stringify({ campos }));
+  for (const [campo, blob] of Object.entries(arquivos)) {
+    if (!blob) continue;
+    const filename = campo === "video360" ? "video360.mp4" : `${campo}.png`;
+    form.append(campo, new File([blob], filename, { type: blob.type }));
+  }
+  const { data } = await api.post(`/vistorias/${vistoriaId}/corrigir-devolucao`, form);
+  return data;
+}
+
 export const vistoriasService = {
   fetchDashboardStats,
   fetchVistorias,
@@ -296,4 +319,5 @@ export const vistoriasService = {
   fetchDropdownOptions,
   iniciarVistoria,
   finalizarVistoria,
+  corrigirDevolucao,
 };

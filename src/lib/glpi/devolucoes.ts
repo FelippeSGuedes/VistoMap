@@ -161,6 +161,21 @@ function mapRow(r: DevolucaoRow): Devolucao {
   };
 }
 
+/**
+ * true se `criadoEm` foi num dia de calendário ANTERIOR a hoje (servidor).
+ * Usado pro bloqueio "responder a devolutiva é obrigatório antes de iniciar
+ * nova vistoria no dia seguinte" — no mesmo dia é só lembrete, não bloqueia.
+ */
+export function devolucaoEhDeOutroDia(criadoEm: string): boolean {
+  const d = new Date(criadoEm.includes("T") ? criadoEm : criadoEm.replace(" ", "T") + "Z");
+  const hoje = new Date();
+  return (
+    d.getFullYear() !== hoje.getFullYear() ||
+    d.getMonth() !== hoje.getMonth() ||
+    d.getDate() !== hoje.getDate()
+  );
+}
+
 /** Devolução PENDENTE mais recente de um técnico (gate diário do app). */
 export async function fetchDevolucaoPendente(tecnicoId: number): Promise<Devolucao | null> {
   await ensureDevolucoesTable();
@@ -170,6 +185,21 @@ export async function fetchDevolucaoPendente(tecnicoId: number): Promise<Devoluc
       ORDER BY criado_em DESC
       LIMIT 1`,
     [tecnicoId]
+  );
+  return rows[0] ? mapRow(rows[0]) : null;
+}
+
+/** Devolução PENDENTE de uma vistoria específica (rota de correção). */
+export async function fetchDevolucaoPendentePorVistoria(
+  vistoriaId: number
+): Promise<Devolucao | null> {
+  await ensureDevolucoesTable();
+  const rows = await query<DevolucaoRow>(
+    `SELECT * FROM \`${TABLE}\`
+      WHERE vistoria_id = ? AND status = 'PENDENTE'
+      ORDER BY criado_em DESC
+      LIMIT 1`,
+    [vistoriaId]
   );
   return rows[0] ? mapRow(rows[0]) : null;
 }

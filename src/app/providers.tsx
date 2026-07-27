@@ -10,8 +10,11 @@ import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useOtaUpdate } from "@/hooks/useOtaUpdate";
+import { useDevolucaoWatcher } from "@/hooks/useDevolucaoWatcher";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
 import { OtaUpdateOverlay } from "@/components/feedback/OtaUpdateOverlay";
+import { DevolucaoModal } from "@/components/vistorias/DevolucaoModal";
+import { DevolucaoBanner } from "@/components/vistorias/DevolucaoBanner";
 
 // BUG HISTÓRICO (2026-07-08): useOtaUpdate existia e estava correto, mas
 // nunca era montado em lugar nenhum — o app JAMAIS checava OTA, daí "OTA não
@@ -35,6 +38,22 @@ function PushRegistrationMount() {
 function OfflineSyncMount() {
   useOfflineSync();
   return null;
+}
+
+/** Ativo só pro técnico (fora do /painel) — mesma regra do TecnicoNotificationsMount. */
+function DevolucaoMount() {
+  const session = useAuthStore((s) => s.session);
+  const pathname = usePathname();
+  const isPainel = pathname?.startsWith("/painel") ?? false;
+  const enabled = !!session && session.role === "tecnico" && !isPainel;
+  useDevolucaoWatcher(enabled);
+  if (!enabled) return null;
+  return (
+    <>
+      <DevolucaoBanner />
+      <DevolucaoModal />
+    </>
+  );
 }
 
 /**
@@ -105,6 +124,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <PushRegistrationMount />
       <TecnicoNotificationsMount />
       <OfflineSyncMount />
+      <DevolucaoMount />
       <OfflineIndicator />
       <OtaUpdateOverlay />
       {children}
