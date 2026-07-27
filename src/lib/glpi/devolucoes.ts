@@ -7,7 +7,7 @@ import { execute, query } from "@/lib/db";
  *
  * Tabela própria do VistoMap (não é GLPI Fields) — só a situação da
  * vistoria (SITUACAO_DEVOLVIDA=8) é que muda no lado GLPI; o restante do
- * ciclo (itens apontados, motivo, quem resolveu) vive aqui.
+ * ciclo (itens apontados, motivos, quem resolveu) vive aqui.
  */
 
 const TABLE = "glpi_plugin_vistomap_devolucoes";
@@ -26,7 +26,7 @@ export async function ensureDevolucoesTable(): Promise<void> {
       analista_id          INT             NOT NULL,
       analista_nome        VARCHAR(255)    NOT NULL,
       itens_json           JSON            NOT NULL,
-      motivo               VARCHAR(120)    NOT NULL,
+      motivos_json         JSON            NOT NULL,
       motivo_outro         TEXT            NULL,
       precisa_deslocamento TINYINT(1)      NOT NULL DEFAULT 0,
       status               ENUM('PENDENTE','RESOLVIDA') NOT NULL DEFAULT 'PENDENTE',
@@ -39,6 +39,26 @@ export async function ensureDevolucoesTable(): Promise<void> {
       KEY idx_criado   (criado_em)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Migração defensiva: se a tabela já existia de uma versão anterior
+  // (coluna única `motivo`, sem `motivos_json`), adiciona a coluna nova
+  // sem mexer na antiga — evita perder dado de quem já tiver testado.
+  const cols = await query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM information_schema.columns
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [TABLE]
+  );
+  const names = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!names.has("motivos_json")) {
+    await execute(`ALTER TABLE \`${TABLE}\` ADD COLUMN motivos_json JSON NULL AFTER itens_json`);
+    if (names.has("motivo")) {
+      // Migra o valor único antigo pra um array de 1 item, best-effort.
+      await execute(
+        `UPDATE \`${TABLE}\` SET motivos_json = JSON_ARRAY(motivo) WHERE motivos_json IS NULL`
+      );
+    }
+  }
+
   ensured = true;
 }
 
@@ -50,7 +70,7 @@ export interface CriarDevolucaoInput {
   analistaId: number;
   analistaNome: string;
   itens: string[];
-  motivo: string;
+  motivos: string[];
   motivoOutro?: string | null;
   precisaDeslocamento: boolean;
 }
@@ -60,7 +80,7 @@ export async function criarDevolucao(input: CriarDevolucaoInput): Promise<number
   const { insertId } = await execute(
     `INSERT INTO \`${TABLE}\`
        (vistoria_id, equipamento, tecnico_id, tecnico_nome, analista_id, analista_nome,
-        itens_json, motivo, motivo_outro, precisa_deslocamento, status)
+        itens_json, motivos_json, motivo_outro, precisa_deslocamento, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE')`,
     [
       input.vistoriaId,
@@ -70,7 +90,7 @@ export async function criarDevolucao(input: CriarDevolucaoInput): Promise<number
       input.analistaId,
       input.analistaNome,
       JSON.stringify(input.itens),
-      input.motivo,
+      JSON.stringify(input.motivos),
       input.motivoOutro ?? null,
       input.precisaDeslocamento ? 1 : 0,
     ]
@@ -87,7 +107,7 @@ export interface DevolucaoRow {
   analista_id: number;
   analista_nome: string;
   itens_json: string;
-  motivo: string;
+  motivos_json: string | null;
   motivo_outro: string | null;
   precisa_deslocamento: number;
   status: "PENDENTE" | "RESOLVIDA";
@@ -104,7 +124,7 @@ export interface Devolucao {
   analistaId: number;
   analistaNome: string;
   itens: string[];
-  motivo: string;
+  motivos: string[];
   motivoOutro: string | null;
   precisaDeslocamento: boolean;
   status: "PENDENTE" | "RESOLVIDA";
@@ -112,13 +132,17 @@ export interface Devolucao {
   resolvidoEm: string | null;
 }
 
-function mapRow(r: DevolucaoRow): Devolucao {
-  let itens: string[] = [];
+function parseJsonArray(raw: string | null): string[] {
+  if (!raw) return [];
   try {
-    itens = JSON.parse(r.itens_json);
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
   } catch {
-    itens = [];
+    return [];
   }
+}
+
+function mapRow(r: DevolucaoRow): Devolucao {
   return {
     id: r.id,
     vistoriaId: r.vistoria_id,
@@ -127,8 +151,8 @@ function mapRow(r: DevolucaoRow): Devolucao {
     tecnicoNome: r.tecnico_nome,
     analistaId: r.analista_id,
     analistaNome: r.analista_nome,
-    itens,
-    motivo: r.motivo,
+    itens: parseJsonArray(r.itens_json),
+    motivos: parseJsonArray(r.motivos_json),
     motivoOutro: r.motivo_outro,
     precisaDeslocamento: !!r.precisa_deslocamento,
     status: r.status,
@@ -215,7 +239,11 @@ export async function fetchDevolucoesStats(
 
   for (const d of itens) {
     if (d.status === "PENDENTE") pendentes++;
-    motivoCount.set(d.motivo, (motivoCount.get(d.motivo) ?? 0) + 1);
+    // Uma devolução com N motivos conta 1x pra CADA motivo no rank
+    // (o rank mede "quantas vezes esse motivo apareceu", não devoluções).
+    for (const motivo of d.motivos) {
+      motivoCount.set(motivo, (motivoCount.get(motivo) ?? 0) + 1);
+    }
     if (d.tecnicoId != null) {
       const cur = tecnicoCount.get(d.tecnicoId) ?? { nome: d.tecnicoNome ?? "—", total: 0 };
       cur.total += 1;

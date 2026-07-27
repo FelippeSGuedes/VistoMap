@@ -73,7 +73,7 @@ export default function CentralVistoriasPage() {
   // Devolver
   const [devolvendo, setDevolvendo] = useState<Vistoria | null>(null);
   const [devItens, setDevItens] = useState<string[]>([]);
-  const [devMotivo, setDevMotivo] = useState("");
+  const [devMotivos, setDevMotivos] = useState<string[]>([]);
   const [devMotivoOutro, setDevMotivoOutro] = useState("");
   const [devLoading, setDevLoading] = useState(false);
 
@@ -139,19 +139,23 @@ export default function CentralVistoriasPage() {
     setDevItens((cur) => (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]));
   }
 
+  function toggleDevMotivo(m: string) {
+    setDevMotivos((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
+  }
+
   async function handleDevolver() {
-    if (!devolvendo || devItens.length === 0 || !devMotivo) return;
-    if (devMotivo === "Outro" && !devMotivoOutro.trim()) return;
+    if (!devolvendo || devItens.length === 0 || devMotivos.length === 0) return;
+    if (devMotivos.includes("Outro") && !devMotivoOutro.trim()) return;
     setDevLoading(true);
     try {
       await api.post(
         `/painel/central-vistorias/${devolvendo.id}/devolver`,
-        { itens: devItens, motivo: devMotivo, motivoOutro: devMotivoOutro.trim() || undefined },
+        { itens: devItens, motivos: devMotivos, motivoOutro: devMotivoOutro.trim() || undefined },
         { headers }
       );
       setDevolvendo(null);
       setDevItens([]);
-      setDevMotivo("");
+      setDevMotivos([]);
       setDevMotivoOutro("");
       await fetchData();
     } catch { /* TODO: toast */ }
@@ -274,7 +278,7 @@ export default function CentralVistoriasPage() {
                         onClick={() => {
                           setDevolvendo(v);
                           setDevItens([]);
-                          setDevMotivo("");
+                          setDevMotivos([]);
                           setDevMotivoOutro("");
                         }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100"
@@ -498,22 +502,27 @@ export default function CentralVistoriasPage() {
               ))}
             </div>
 
-            <label className="mb-1 block text-[12px] font-semibold text-gray-700">Motivo *</label>
-            <div className="relative mb-3">
-              <select
-                value={devMotivo}
-                onChange={(e) => setDevMotivo(e.target.value)}
-                className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2 pl-3 pr-8 text-[13px] outline-none focus:border-amber-400"
-              >
-                <option value="">Selecione o motivo…</option>
-                {DEVOLUCAO_MOTIVOS.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <p className="mb-2 text-[12px] font-semibold text-gray-700">
+              Motivo * <span className="font-normal text-gray-400">(pode marcar mais de um)</span>
+            </p>
+            <div className="mb-3 grid grid-cols-2 gap-1.5">
+              {DEVOLUCAO_MOTIVOS.map((m) => (
+                <label
+                  key={m}
+                  className="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11.5px] text-gray-700 hover:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={devMotivos.includes(m)}
+                    onChange={() => toggleDevMotivo(m)}
+                    className="h-3.5 w-3.5 rounded accent-amber-600"
+                  />
+                  {m}
+                </label>
+              ))}
             </div>
 
-            {devMotivo === "Outro" && (
+            {devMotivos.includes("Outro") && (
               <textarea
                 value={devMotivoOutro}
                 onChange={(e) => setDevMotivoOutro(e.target.value)}
@@ -524,11 +533,17 @@ export default function CentralVistoriasPage() {
             )}
 
             {devItens.length > 0 && (
-              <p className="mb-4 rounded-xl bg-gray-50 px-3 py-2 text-[11.5px] text-gray-600">
-                {devolucaoPrecisaDeslocamento(devItens)
-                  ? "📍 Vai exigir deslocamento até o equipamento (item de foto/vídeo apontado)."
-                  : "✏️ Correção só de formulário — não exige deslocamento por padrão."}
-              </p>
+              devolucaoPrecisaDeslocamento(devItens) ? (
+                <p className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] font-medium text-amber-700">
+                  <span>📍</span>
+                  <span>Vai exigir deslocamento até o equipamento (tem item de foto/vídeo apontado).</span>
+                </p>
+              ) : (
+                <p className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11.5px] font-medium text-emerald-700">
+                  <span>✏️</span>
+                  <span>Correção só de formulário — não exige deslocamento por padrão.</span>
+                </p>
+              )
             )}
 
             <div className="flex gap-2">
@@ -543,8 +558,8 @@ export default function CentralVistoriasPage() {
                 type="button"
                 disabled={
                   devItens.length === 0 ||
-                  !devMotivo ||
-                  (devMotivo === "Outro" && !devMotivoOutro.trim()) ||
+                  devMotivos.length === 0 ||
+                  (devMotivos.includes("Outro") && !devMotivoOutro.trim()) ||
                   devLoading
                 }
                 onClick={handleDevolver}

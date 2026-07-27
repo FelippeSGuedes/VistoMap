@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 
 interface DevolverBody {
   itens?: string[];
-  motivo?: string;
+  motivos?: string[];
   motivoOutro?: string;
 }
 
@@ -56,16 +56,16 @@ export async function POST(
   }
 
   const itens = Array.isArray(body.itens) ? body.itens.filter((i) => typeof i === "string" && i.trim()) : [];
-  const motivo = (body.motivo ?? "").trim();
+  const motivos = Array.isArray(body.motivos) ? body.motivos.filter((m) => typeof m === "string" && m.trim()) : [];
   const motivoOutro = (body.motivoOutro ?? "").trim() || null;
 
   if (itens.length === 0) {
     return NextResponse.json({ message: "Selecione ao menos um item errado" }, { status: 400 });
   }
-  if (!motivo) {
-    return NextResponse.json({ message: "Informe o motivo da devolução" }, { status: 400 });
+  if (motivos.length === 0) {
+    return NextResponse.json({ message: "Selecione ao menos um motivo" }, { status: 400 });
   }
-  if (motivo === "Outro" && !motivoOutro) {
+  if (motivos.includes("Outro") && !motivoOutro) {
     return NextResponse.json({ message: "Descreva o motivo em \"Outro\"" }, { status: 400 });
   }
 
@@ -92,7 +92,7 @@ export async function POST(
     analistaId: adminId,
     analistaNome: adminNome,
     itens,
-    motivo,
+    motivos,
     motivoOutro,
     precisaDeslocamento,
   });
@@ -103,7 +103,7 @@ export async function POST(
     ator: { id: adminId, nome: adminNome, role: "admin" },
     acao: "vistoria-devolvida",
     alvo: { tipo: "vistoria", id: String(vistoriaId), label: row.equipamento },
-    descricao: `Devolvida para correção — ${itens.length} item(ns): ${motivo}`,
+    descricao: `Devolvida para correção — ${itens.length} item(ns): ${motivos.join(", ")}`,
   });
 
   return NextResponse.json({ ok: true, devolucaoId, precisaDeslocamento });

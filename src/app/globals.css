@@ -216,6 +216,11 @@ select {
 }
 
 .dark {
+  /* Sem isso, o navegador renderiza <select>/<option>/checkbox nativos com o
+     esquema de cores do SO (geralmente claro) mesmo com o resto da página
+     escuro — texto escuro sobre fundo escuro no dropdown do <select>,
+     praticamente ilegível. */
+  color-scheme: dark;
   --vm-shell:        #0D1117;
   --vm-surface:      #151B24;
   --vm-card:         #1A212C;
