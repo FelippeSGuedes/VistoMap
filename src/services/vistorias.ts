@@ -307,7 +307,14 @@ export async function corrigirDevolucao(
     const filename = campo === "video360" ? "video360.mp4" : `${campo}.png`;
     form.append(campo, new File([blob], filename, { type: blob.type }));
   }
-  const { data } = await api.post(`/vistorias/${vistoriaId}/corrigir-devolucao`, form);
+  // A instância `api` seta Content-Type: application/json por padrão — se
+  // deixar passar, o axios NÃO troca pelo multipart/form-data com boundary
+  // automático do FormData (o header explícito vence), e o servidor rejeita
+  // com "Content-Type was not multipart/form-data". Undefined aqui remove o
+  // header e deixa o browser calcular o boundary certo sozinho.
+  const { data } = await api.post(`/vistorias/${vistoriaId}/corrigir-devolucao`, form, {
+    headers: { "Content-Type": undefined },
+  });
   return data;
 }
 

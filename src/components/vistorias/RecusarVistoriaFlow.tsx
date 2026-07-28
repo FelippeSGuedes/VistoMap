@@ -131,9 +131,13 @@ export function RecusarVistoriaFlow({
       const form = new FormData();
       form.append("payload", JSON.stringify({ motivo, respostas, justificativa }));
       if (foto) form.append("foto", foto, foto.name || "recusa.jpg");
+      // Content-Type: undefined remove o default json da instância `api` e
+      // deixa o browser calcular o boundary do multipart/form-data sozinho
+      // (mesmo bug/fix do corrigirDevolucao em services/vistorias.ts).
       const { data } = await api.post<{ ok: true; recusaId: number }>(
         `/vistorias/${vistoriaId}/recusar`,
-        form
+        form,
+        { headers: { "Content-Type": undefined } }
       );
       setRecusaId(data.recusaId);
       setFase("aguardando");
