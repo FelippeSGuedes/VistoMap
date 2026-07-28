@@ -29,6 +29,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
+import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import type { VistoriaRealizada, VistoriaFile } from "@/services/painel";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
@@ -849,6 +850,7 @@ export default function RealizadasPage() {
   const [q,            setQ]            = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | "VISTORIADO" | "REVISITADO">("");
   const [filterPDF,    setFilterPDF]    = useState<"" | "GERADO" | "PENDENTE" | "ERRO">("");
+  const [dateRange,    setDateRange]    = useState<DateRange>({ de: null, ate: null });
 
   useEffect(() => {
     let alive = true;
@@ -880,8 +882,9 @@ export default function RealizadasPage() {
     }
     if (filterStatus) r = r.filter(i => i.status === filterStatus);
     if (filterPDF)    r = r.filter(i => i.projectStatus === filterPDF);
+    if (dateRange.de || dateRange.ate) r = r.filter(i => dentroDoRange(i.dataVistoria, dateRange));
     return r;
-  }, [items, q, filterStatus, filterPDF]);
+  }, [items, q, filterStatus, filterPDF, dateRange]);
 
   const stats = useMemo(() => ({
     total:      items.length,
@@ -1019,8 +1022,10 @@ export default function RealizadasPage() {
           ))}
         </div>
 
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+
         {/* result count */}
-        {!loading && (q || filterStatus || filterPDF) && (
+        {!loading && (q || filterStatus || filterPDF || dateRange.de || dateRange.ate) && (
           <span className="ml-auto text-[11px] text-[var(--vm-faint)]">
             {filtered.length} resultado{filtered.length !== 1 ? "s" : ""}
           </span>
@@ -1048,9 +1053,9 @@ export default function RealizadasPage() {
           <p className="mt-1 text-[12px] text-[var(--vm-faint)]">
             Ajuste os filtros para ver mais resultados
           </p>
-          {(q || filterStatus || filterPDF) && (
+          {(q || filterStatus || filterPDF || dateRange.de || dateRange.ate) && (
             <button
-              onClick={() => { setQ(""); setFilterStatus(""); setFilterPDF(""); }}
+              onClick={() => { setQ(""); setFilterStatus(""); setFilterPDF(""); setDateRange({ de: null, ate: null }); }}
               className="mt-4 rounded-lg bg-[var(--vm-teal-tint)] px-4 py-2 text-[12px] font-semibold text-[#059669] transition hover:bg-[var(--vm-green-100)]"
             >
               Limpar filtros

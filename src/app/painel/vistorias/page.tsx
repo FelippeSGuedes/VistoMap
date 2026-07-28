@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { painelService, type FilaItem } from "@/services/painel";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
+import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import { VistoriaMetricsBadge } from "@/components/painel/VistoriaMetricsBadge";
 import type { TecnicoAtivo } from "@/types";
 
@@ -931,6 +932,7 @@ export default function FilaVistoriasPage() {
   const [filtroTecnico, setFiltroTecnico] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [filtroAtrib, setFiltroAtrib] = useState<FiltroAtrib>("todos");
+  const [dateRange, setDateRange] = useState<DateRange>({ de: null, ate: null });
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
 
   // Detalhe (drawer de município) — guarda o NOME para sobreviver a reloads
@@ -978,6 +980,7 @@ export default function FilaVistoriasPage() {
       if (filtroTipo === "nova" && i.isRepeat) return false;
       if (filtroTipo === "revisita" && !i.isRepeat) return false;
       if (filtroAtrib === "sem" && i.tecnico) return false;
+      if (!dentroDoRange(i.dataVistoria, dateRange)) return false;
       if (!q) return true;
       return (
         i.equipamento.toLowerCase().includes(q) ||
@@ -986,7 +989,7 @@ export default function FilaVistoriasPage() {
         (i.endereco ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, query, filtroMunicipio, filtroTecnico, filtroTipo, filtroAtrib]);
+  }, [items, query, filtroMunicipio, filtroTecnico, filtroTipo, filtroAtrib, dateRange]);
 
   // Grupos por município
   const grupos = useMemo<GrupoMunicipio[]>(() => {
@@ -1043,7 +1046,9 @@ export default function FilaVistoriasPage() {
     filtroMunicipio ||
     filtroTecnico ||
     filtroTipo !== "todos" ||
-    filtroAtrib !== "todos"
+    filtroAtrib !== "todos" ||
+    dateRange.de ||
+    dateRange.ate
   );
 
   // Seleção
@@ -1232,6 +1237,7 @@ export default function FilaVistoriasPage() {
             </button>
           )}
         </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
         <button
           type="button"
           onClick={() => setMostrarFiltros(!mostrarFiltros)}
@@ -1360,6 +1366,7 @@ export default function FilaVistoriasPage() {
                     setFiltroTecnico("");
                     setFiltroTipo("todos");
                     setFiltroAtrib("todos");
+                    setDateRange({ de: null, ate: null });
                   }}
                   className="ml-auto flex h-8 items-center gap-1 rounded-xl px-2.5 text-[11px] font-medium transition hover:bg-black/5"
                   style={{ color: C.faint }}

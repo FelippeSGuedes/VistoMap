@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
+import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import { classificarMotivoClient } from "@/utils/motivos-client";
 import type {
   RevisitaPendente,
@@ -287,6 +288,7 @@ export default function RevisitasPage() {
   const [lista, setLista] = useState<RevisitaPendente[]>([]);
   const [tecnicos, setTecnicos] = useState<TecnicoAtivo[]>([]);
   const [query, setQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>({ de: null, ate: null });
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [atribuirOpen, setAtribuirOpen] = useState<RevisitaPendente | null>(
     null
@@ -312,15 +314,17 @@ export default function RevisitasPage() {
 
   const filtrada = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return lista;
-    return lista.filter(
-      (r) =>
+    return lista.filter((r) => {
+      if (!dentroDoRange(r.reprovadoEm, dateRange)) return false;
+      if (!q) return true;
+      return (
         r.equipamento.toLowerCase().includes(q) ||
         r.municipio.toLowerCase().includes(q) ||
         r.motivoReprovacao.toLowerCase().includes(q) ||
         r.glpiId.toLowerCase().includes(q)
-    );
-  }, [lista, query]);
+      );
+    });
+  }, [lista, query, dateRange]);
 
   const toggleAll = () => {
     if (selecionados.size === filtrada.length) setSelecionados(new Set());
@@ -463,6 +467,7 @@ export default function RevisitasPage() {
             <X className="h-3.5 w-3.5" />
           </button>
         )}
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
         <span
           className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-bold uppercase tracking-[0.1em]"
           style={{ background: "var(--vm-orange-tint)", color: "#C2410C" }}
