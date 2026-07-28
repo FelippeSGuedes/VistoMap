@@ -597,6 +597,8 @@ export interface AtualizarCamposInput {
   alturadaantenafield?: string;
   aterramentofield?: string;
   observaofield?: string;
+  latitudefield?: string;
+  longitudefield?: string;
 }
 
 const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
@@ -605,6 +607,8 @@ const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "alturadaantenafield",
   "aterramentofield",
   "observaofield",
+  "latitudefield",
+  "longitudefield",
 ]);
 
 export async function atualizarCamposVistoria(

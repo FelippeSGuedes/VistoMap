@@ -32,16 +32,38 @@ import {
   MapPin,
   MapPinned,
   Navigation,
+  RadioTower,
   RefreshCw,
   Route,
   Search,
   Target,
+  User,
   UserCheck,
   Users,
   Wifi,
   WifiOff,
   X,
 } from "lucide-react";
+
+function tint(hex: string, alpha: number) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/* ─── painel de seleção do mapa — paleta fixa (enterprise dark) ──────────── */
+const PANEL = {
+  bg: "#1C222B",
+  border: "#2D3642",
+  card: "#1C222B",
+  cardAlt: "rgba(255,255,255,0.03)",
+  text: "#FFFFFF",
+  textSoft: "#A5ADB8",
+  blue: "#2563EB",
+  amber: "#F4B400",
+  success: "#22C55E",
+  danger: "#EF4444",
+} as const;
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** Mesmo raio do backend (POSTE_TROCA_RAIO_M) — consistência com o app técnico. */
@@ -882,14 +904,30 @@ export default function PainelMapaPage() {
     setCorrectedPos(null);
   }, []);
 
+  const [savingGps, setSavingGps] = useState(false);
   const saveGpsCorrection = useCallback(async () => {
-    if (!selectedVistoria || !correctedPos) return;
-    // TODO: implementar endpoint PATCH /api/painel/vistorias/[id]/corrigir-gps
-    // que atualiza latitudefield/longitudefield na tabela glpi_plugin_fields_*
-    // await api.patch(`/painel/vistorias/${selectedVistoria.id}/corrigir-gps`, correctedPos);
-    alert(`Posição salva (scaffold):\n${correctedPos.lat.toFixed(6)}, ${correctedPos.lng.toFixed(6)}`);
-    exitGpsEditMode();
-  }, [selectedVistoria, correctedPos, exitGpsEditMode]);
+    if (!selectedVistoria || !correctedPos || !session?.token) return;
+    setSavingGps(true);
+    try {
+      await api.patch(
+        `/painel/vistoria/${selectedVistoria.id}`,
+        {
+          campos: {
+            latitudefield: correctedPos.lat.toFixed(6),
+            longitudefield: correctedPos.lng.toFixed(6),
+          },
+          regenerar_pdf: true,
+        },
+        { headers: { Authorization: `Bearer ${session.token}` } }
+      );
+      exitGpsEditMode();
+      await fetchMapa();
+    } catch {
+      alert("Falha ao salvar a correção de GPS. Tente de novo.");
+    } finally {
+      setSavingGps(false);
+    }
+  }, [selectedVistoria, correctedPos, session?.token, exitGpsEditMode, fetchMapa]);
 
   /* ── derived ────────────────────────────────────────────────────────────── */
 
@@ -1276,15 +1314,17 @@ export default function PainelMapaPage() {
               <button
                 type="button"
                 onClick={saveGpsCorrection}
-                className="rounded-lg px-3 py-1.5 text-[11px] font-bold transition"
+                disabled={savingGps}
+                className="rounded-lg px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-60"
                 style={{ background: "rgba(245,158,11,0.20)", color: "#FDE68A", border: "1px solid rgba(245,158,11,0.30)" }}
               >
-                Confirmar
+                {savingGps ? "Salvando…" : "Confirmar"}
               </button>
               <button
                 type="button"
                 onClick={exitGpsEditMode}
-                className="flex h-6 w-6 items-center justify-center rounded-lg"
+                disabled={savingGps}
+                className="flex h-6 w-6 items-center justify-center rounded-lg disabled:opacity-60"
                 style={{ color: "#92400E" }}
               >
                 <X className="h-3.5 w-3.5" />
@@ -1437,192 +1477,210 @@ export default function PainelMapaPage() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
-            className="absolute bottom-4 right-4 z-10 w-[300px]"
-            style={GLASS}
+            className="absolute bottom-4 right-4 z-10 w-[336px] overflow-hidden"
+            style={{
+              background: PANEL.bg,
+              border: `1px solid ${PANEL.border}`,
+              borderRadius: 16,
+              boxShadow: "0 20px 48px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3)",
+              backdropFilter: "blur(6px)",
+            }}
           >
-            <div className="p-3">
+            <div className="p-4">
               {/* Header */}
-              <div className="mb-3 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[14px] font-semibold leading-tight" style={{ color: "var(--vm-text)" }}>
-                    {selectedVistoria.equipamento}
-                  </p>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <MapPin className="h-3 w-3 shrink-0" style={{ color: "var(--vm-faint)" }} />
-                    <span className="text-[11px]" style={{ color: "var(--vm-muted)" }}>
-                      {selectedVistoria.municipio ?? "—"}
+              <div className="mb-4 flex items-start gap-3">
+                <span
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+                  style={{ background: "rgba(37,99,235,0.14)", border: `1px solid ${PANEL.border}` }}
+                >
+                  <RadioTower className="h-4.5 w-4.5" style={{ color: PANEL.blue }} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="truncate text-[16px] font-bold leading-tight" style={{ color: PANEL.text }}>
+                      {selectedVistoria.equipamento}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVistoria(null)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition hover:bg-white/5"
+                      style={{ color: PANEL.textSoft }}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <MapPin className="h-3 w-3 shrink-0" style={{ color: PANEL.textSoft }} />
+                      <span className="truncate text-[11.5px]" style={{ color: PANEL.textSoft }}>
+                        {selectedVistoria.municipio ?? "—"}
+                      </span>
+                    </div>
+                    <span
+                      className="shrink-0 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-wide"
+                      style={{
+                        background: tint(SITUACAO_COR[selectedVistoria.situacao] ?? "#475569", 0.16),
+                        color: SITUACAO_COR[selectedVistoria.situacao] ?? "#475569",
+                      }}
+                    >
+                      {SITUACAO_LABEL[selectedVistoria.situacao]}
                     </span>
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <span
-                    className="rounded-full px-2 py-[3px] text-[9px] font-bold uppercase"
-                    style={{
-                      background: `${SITUACAO_COR[selectedVistoria.situacao] ?? "#475569"}20`,
-                      color: SITUACAO_COR[selectedVistoria.situacao] ?? "#475569",
-                    }}
-                  >
-                    {SITUACAO_LABEL[selectedVistoria.situacao]}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedVistoria(null)}
-                    className="flex h-6 w-6 items-center justify-center rounded-lg"
-                    style={{ color: "var(--vm-faint)" }}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
                 </div>
               </div>
 
               {/* Técnico */}
               <div
-                className="mb-2 flex items-center gap-2 rounded-xl p-2"
-                style={{ background: "var(--vm-fill)", border: "1px solid rgba(0,0,0,0.06)" }}
+                className="mb-2.5 flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+                style={{ background: PANEL.cardAlt, border: `1px solid ${PANEL.border}` }}
               >
                 <span
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
-                  style={{ background: selectedVistoria.tecnico_nome ? "linear-gradient(135deg,#00C896,#008E74)" : "rgba(255,255,255,0.06)" }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                  style={{
+                    background: selectedVistoria.tecnico_nome ? tint(PANEL.blue, 0.18) : "rgba(255,255,255,0.06)",
+                    color: selectedVistoria.tecnico_nome ? "#93C5FD" : PANEL.textSoft,
+                  }}
                 >
                   {selectedVistoria.tecnico_nome ? initials(selectedVistoria.tecnico_nome) : "—"}
                 </span>
-                <div>
-                  <p className="text-[9px]" style={{ color: "var(--vm-faint)" }}>Técnico atribuído</p>
-                  <p className="text-[11px] font-semibold" style={{ color: selectedVistoria.tecnico_nome ? "var(--vm-text)" : "var(--vm-faint)" }}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] font-semibold" style={{ color: selectedVistoria.tecnico_nome ? PANEL.text : PANEL.textSoft }}>
                     {selectedVistoria.tecnico_nome ?? "Sem atribuição"}
                   </p>
+                  <p className="text-[9.5px] uppercase tracking-wide" style={{ color: PANEL.textSoft }}>Técnico atribuído</p>
                 </div>
+                <User className="h-3.5 w-3.5 shrink-0" style={{ color: PANEL.textSoft }} />
               </div>
 
               {/* Coordenadas GPS */}
               <div
-                className="mb-3 rounded-xl p-2"
-                style={{ background: "var(--vm-fill)", border: "1px solid rgba(0,0,0,0.06)" }}
+                className="mb-3 rounded-xl px-3 py-2.5"
+                style={{ background: PANEL.cardAlt, border: `1px solid ${PANEL.border}` }}
               >
                 <div className="mb-1.5 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <Target className="h-3 w-3" style={{ color: "#00B388" }} />
-                    <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--vm-muted)" }}>
+                    <Target className="h-3 w-3" style={{ color: PANEL.success }} />
+                    <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: PANEL.textSoft }}>
                       Coordenadas GPS
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => navigator.clipboard.writeText(`${selectedVistoria.latitude},${selectedVistoria.longitude}`)}
-                    className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-[9px] font-semibold transition"
-                    style={{ color: "var(--vm-faint)", background: "var(--vm-fill-2)" }}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-[9.5px] font-semibold transition hover:bg-white/5"
+                    style={{ color: PANEL.textSoft, border: `1px solid ${PANEL.border}` }}
                   >
                     <Copy className="h-2.5 w-2.5" />
                     Copiar
                   </button>
                 </div>
-                <p className="font-mono text-[11px]" style={{ color: "var(--vm-text-soft)" }}>
+                <p className="font-mono text-[12px]" style={{ color: PANEL.text }}>
                   {selectedVistoria.latitude.toFixed(6)}, {selectedVistoria.longitude.toFixed(6)}
                 </p>
               </div>
 
-              {/* Ações */}
-              <div className="flex flex-col gap-1.5">
-                <div className="flex gap-1.5">
+              {/* Ações primárias */}
+              <div className="mb-1.5 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `https://www.google.com/maps/search/?api=1&query=${selectedVistoria.latitude},${selectedVistoria.longitude}`;
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  }}
+                  className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold text-white transition hover:brightness-110"
+                  style={{ background: PANEL.blue, borderRadius: 12 }}
+                >
+                  <Navigation className="h-3.5 w-3.5" />
+                  Navegar
+                </button>
+                {!gpsEditMode && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const url = `https://www.google.com/maps/search/?api=1&query=${selectedVistoria.latitude},${selectedVistoria.longitude}`;
-                      window.open(url, "_blank", "noopener,noreferrer");
-                    }}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
-                    style={{ background: "rgba(96,165,250,0.12)", color: "#93C5FD", border: "1px solid rgba(96,165,250,0.20)" }}
+                    onClick={() => enterGpsEditMode(selectedVistoria)}
+                    className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold transition hover:brightness-110"
+                    style={{ background: PANEL.amber, color: "#1C222B", borderRadius: 12 }}
                   >
-                    <Navigation className="h-3 w-3" />
-                    Navegar
+                    <Target className="h-3.5 w-3.5" />
+                    Corrigir GPS
                   </button>
-                  {!gpsEditMode && (
-                    <button
-                      type="button"
-                      onClick={() => enterGpsEditMode(selectedVistoria)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
-                      style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", border: "1px solid rgba(245,158,11,0.20)" }}
-                    >
-                      <Target className="h-3 w-3" />
-                      Corrigir GPS
-                    </button>
-                  )}
-                </div>
-                {/* Atribuir/Reatribuir — não aparece para vistorias concluídas */}
-                {selectedVistoria.situacao !== "VISTORIADO" && selectedVistoria.situacao !== "REVISITADO" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAtribuirVistoria(selectedVistoria);
-                      setAtribuirTecId("");
-                      setAtribuirMotivo("");
-                    }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
-                    style={{ background: "rgba(59,130,246,0.10)", color: "#60A5FA", border: "1px solid rgba(59,130,246,0.20)" }}
-                  >
-                    <UserCheck className="h-3 w-3" />
-                    {selectedVistoria.tecnico_nome ? "Reatribuir técnico" : "Atribuir técnico"}
-                  </button>
-                )}
-
-                {/* Postes próximos / Ver detalhes / Street View */}
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleTogglePostesProximos(selectedVistoria)}
-                    disabled={postesProximosLoading}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition disabled:opacity-60"
-                    style={{
-                      background: postesProximosAtivo ? "rgba(139,92,246,0.18)" : "rgba(139,92,246,0.10)",
-                      color: "#A78BFA",
-                      border: `1px solid ${postesProximosAtivo ? "rgba(139,92,246,0.45)" : "rgba(139,92,246,0.20)"}`,
-                    }}
-                  >
-                    <MapPinned className="h-3 w-3" />
-                    {postesProximosLoading ? "Buscando…" : postesProximosAtivo ? `Postes (${postesProximos.length})` : "Postes próximos"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDetalheVistoria(selectedVistoria)}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
-                    style={{ background: "rgba(148,163,184,0.12)", color: "var(--vm-text-soft)", border: "1px solid rgba(148,163,184,0.22)" }}
-                  >
-                    <Info className="h-3 w-3" />
-                    Ver detalhes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStreetViewVistoria(selectedVistoria)}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
-                    style={{ background: "rgba(66,133,244,0.12)", color: "#8AB4F8", border: "1px solid rgba(66,133,244,0.22)" }}
-                  >
-                    <Camera className="h-3 w-3" />
-                    Street View
-                  </button>
-                </div>
-
-                {postesProximosAtivo && postesProximos.length > 0 && (
-                  <div className="max-h-[140px] space-y-1 overflow-y-auto rounded-xl p-1.5" style={{ background: "var(--vm-fill)" }}>
-                    {postesProximos.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: "var(--vm-fill-2)" }}>
-                        <span className="truncate text-[10.5px] font-medium" style={{ color: "var(--vm-text-soft)" }}>
-                          PSPOSTE {p.pspostefield}
-                        </span>
-                        {p.distancia_m != null && (
-                          <span className="shrink-0 text-[9.5px] font-bold" style={{ color: "#A78BFA" }}>
-                            {Math.round(p.distancia_m)} m
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {postesProximosAtivo && !postesProximosLoading && postesProximos.length === 0 && (
-                  <p className="text-center text-[10.5px]" style={{ color: "var(--vm-faint)" }}>
-                    Nenhum poste num raio de {POSTES_PROXIMOS_RAIO_M} m.
-                  </p>
                 )}
               </div>
+
+              {/* Ação secundária — Atribuir/Reatribuir (não aparece para vistorias concluídas) */}
+              {selectedVistoria.situacao !== "VISTORIADO" && selectedVistoria.situacao !== "REVISITADO" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAtribuirVistoria(selectedVistoria);
+                    setAtribuirTecId("");
+                    setAtribuirMotivo("");
+                  }}
+                  className="mb-3 flex w-full items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold transition hover:brightness-125"
+                  style={{ background: "rgba(255,255,255,0.06)", color: PANEL.text, borderRadius: 12, border: `1px solid ${PANEL.border}` }}
+                >
+                  <UserCheck className="h-3.5 w-3.5" />
+                  {selectedVistoria.tecnico_nome ? "Reatribuir técnico" : "Atribuir técnico"}
+                </button>
+              )}
+
+              {/* Quick actions */}
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleTogglePostesProximos(selectedVistoria)}
+                  disabled={postesProximosLoading}
+                  className="flex flex-col items-center justify-center gap-1 rounded-xl py-2.5 text-center transition hover:brightness-125 disabled:opacity-60"
+                  style={{
+                    background: postesProximosAtivo ? "rgba(255,255,255,0.07)" : PANEL.cardAlt,
+                    border: `1px solid ${postesProximosAtivo ? "#3D4753" : PANEL.border}`,
+                  }}
+                >
+                  <MapPinned className="h-4 w-4" style={{ color: PANEL.textSoft }} />
+                  <span className="text-[9.5px] font-semibold leading-tight" style={{ color: PANEL.textSoft }}>
+                    {postesProximosLoading ? "Buscando…" : postesProximosAtivo ? `Postes (${postesProximos.length})` : "Postes próximos"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetalheVistoria(selectedVistoria)}
+                  className="flex flex-col items-center justify-center gap-1 rounded-xl py-2.5 text-center transition hover:brightness-125"
+                  style={{ background: PANEL.cardAlt, border: `1px solid ${PANEL.border}` }}
+                >
+                  <Info className="h-4 w-4" style={{ color: PANEL.textSoft }} />
+                  <span className="text-[9.5px] font-semibold leading-tight" style={{ color: PANEL.textSoft }}>Ver detalhes</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStreetViewVistoria(selectedVistoria)}
+                  className="flex flex-col items-center justify-center gap-1 rounded-xl py-2.5 text-center transition hover:brightness-125"
+                  style={{ background: PANEL.cardAlt, border: `1px solid ${PANEL.border}` }}
+                >
+                  <Camera className="h-4 w-4" style={{ color: PANEL.textSoft }} />
+                  <span className="text-[9.5px] font-semibold leading-tight" style={{ color: PANEL.textSoft }}>Street View</span>
+                </button>
+              </div>
+
+              {postesProximosAtivo && postesProximos.length > 0 && (
+                <div className="mt-2 max-h-[140px] space-y-1 overflow-y-auto rounded-xl p-1.5" style={{ background: PANEL.cardAlt, border: `1px solid ${PANEL.border}` }}>
+                  {postesProximos.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+                      <span className="truncate text-[10.5px] font-medium" style={{ color: PANEL.textSoft }}>
+                        PSPOSTE {p.pspostefield}
+                      </span>
+                      {p.distancia_m != null && (
+                        <span className="shrink-0 text-[9.5px] font-bold" style={{ color: "#A78BFA" }}>
+                          {Math.round(p.distancia_m)} m
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {postesProximosAtivo && !postesProximosLoading && postesProximos.length === 0 && (
+                <p className="mt-2 text-center text-[10.5px]" style={{ color: PANEL.textSoft }}>
+                  Nenhum poste num raio de {POSTES_PROXIMOS_RAIO_M} m.
+                </p>
+              )}
             </div>
           </motion.div>
         )}
