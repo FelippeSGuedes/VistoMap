@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { atualizarCamposVistoria, type AtualizarCamposInput } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
 import { getActorFromRequest } from "@/lib/auth-request";
+import { verifySessionJwt } from "@/lib/jwt";
+import { getVistoria } from "@/lib/glpi/equipments";
 import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +19,29 @@ function parseId(raw: string): number | null {
   const cleaned = raw.replace(/^NE-/, "");
   const n = Number(cleaned);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Admin: GET /api/painel/vistoria/[id] — todos os campos do equipamento (view "ver detalhes"). */
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
+  try {
+    const claims = await verifySessionJwt(token);
+    if (claims.role !== "admin") return NextResponse.json({ message: "Acesso negado" }, { status: 403 });
+  } catch {
+    return NextResponse.json({ message: "Token inválido" }, { status: 401 });
+  }
+
+  const id = parseId(params.id);
+  if (id == null) return NextResponse.json({ message: "ID inválido" }, { status: 400 });
+
+  try {
+    const vistoria = await getVistoria(id);
+    if (!vistoria) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
+    return NextResponse.json({ vistoria });
+  } catch (err) {
+    return NextResponse.json({ message: "Falha ao buscar equipamento", error: String(err) }, { status: 500 });
+  }
 }
 
 export async function PATCH(

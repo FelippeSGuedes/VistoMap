@@ -6,24 +6,31 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useAuthStore } from "@/store/auth";
 import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
+import { fetchPostesProximos } from "@/services/postes";
+import type { Poste } from "@/types";
 import type {
   PainelMapaResponse,
   PainelMapaTecnico,
   PainelMapaVistoria,
   SituacaoOperacional,
 } from "@/types/painel-mapa";
+import { VistoriaDetalheModal } from "@/components/painel/VistoriaDetalheModal";
+import { StreetViewModal } from "@/components/painel/StreetViewModal";
 import {
   Activity,
   Box,
+  Camera,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
   Clock,
   Copy,
   Globe,
+  Info,
   Layers,
   Map as MapIcon,
   MapPin,
+  MapPinned,
   Navigation,
   RefreshCw,
   Route,
@@ -36,6 +43,11 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+/** Mesmo raio do backend (POSTE_TROCA_RAIO_M) — consistência com o app técnico. */
+const POSTES_PROXIMOS_RAIO_M = 100;
+const POSTES_PROX_SRC = "vm-postes-prox-src";
+const POSTES_PROX_LAYER = "vm-postes-prox-layer";
 
 /* ─── constantes ──────────────────────────────────────────────────────────── */
 
@@ -423,8 +435,27 @@ export default function PainelMapaPage() {
 
   // Seleção
   const [selectedTec, setSelectedTec] = useState<PainelMapaTecnico | null>(null);
-  const [selectedVistoria, setSelectedVistoria] = useState<PainelMapaVistoria | null>(null);
+  const [selectedVistoria, setSelectedVistoriaRaw] = useState<PainelMapaVistoria | null>(null);
   const [trailUsersId, setTrailUsersId] = useState<number | null>(null);
+
+  // Postes próximos / detalhe completo / Street View — a partir do pino selecionado
+  const [postesProximos, setPostesProximos] = useState<Poste[]>([]);
+  const [postesProximosLoading, setPostesProximosLoading] = useState(false);
+  const [postesProximosAtivo, setPostesProximosAtivo] = useState(false);
+  const [detalheVistoria, setDetalheVistoria] = useState<PainelMapaVistoria | null>(null);
+  const [streetViewVistoria, setStreetViewVistoria] = useState<PainelMapaVistoria | null>(null);
+
+  // Troca/fecha a vistoria selecionada → limpa a camada de postes próximos
+  // (senão os pontos roxos de uma seleção anterior ficavam "grudados" no mapa).
+  const setSelectedVistoria = useCallback((v: PainelMapaVistoria | null) => {
+    setSelectedVistoriaRaw(v);
+    setPostesProximosAtivo(false);
+    setPostesProximos([]);
+    const map = mapRef.current;
+    if (map?.getSource(POSTES_PROX_SRC)) {
+      (map.getSource(POSTES_PROX_SRC) as GeoJSONSource).setData({ type: "FeatureCollection", features: [] });
+    }
+  }, []);
 
   // Hover card do técnico
   const [hoveredTec, setHoveredTec] = useState<PainelMapaTecnico | null>(null);
@@ -698,6 +729,59 @@ export default function PainelMapaPage() {
       });
       map.on("mouseenter", VISTORIAS_POINTS, () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", VISTORIAS_POINTS, () => { map.getCanvas().style.cursor = ""; });
+    }
+  }
+
+  /** Camada temporária dos postes próximos (círculos roxos) — some ao trocar/fechar a seleção. */
+  function ensurePostesProximosLayer(map: mapboxgl.Map) {
+    if (map.getSource(POSTES_PROX_SRC)) return;
+    map.addSource(POSTES_PROX_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({
+      id: POSTES_PROX_LAYER,
+      type: "circle",
+      source: POSTES_PROX_SRC,
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 4, 18, 9],
+        "circle-color": "#8B5CF6",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+        "circle-opacity": 0.9,
+      },
+    });
+  }
+
+  function setPostesProximosGeoJSON(postes: Poste[]) {
+    const map = mapRef.current;
+    if (!map) return;
+    ensurePostesProximosLayer(map);
+    const geojson = {
+      type: "FeatureCollection" as const,
+      features: postes.map((p) => ({
+        type: "Feature" as const,
+        properties: { id: p.id, psposte: p.pspostefield },
+        geometry: { type: "Point" as const, coordinates: [p.longitudefield, p.latitudefield] },
+      })),
+    };
+    (map.getSource(POSTES_PROX_SRC) as GeoJSONSource | undefined)?.setData(geojson);
+  }
+
+  async function handleTogglePostesProximos(v: PainelMapaVistoria) {
+    if (postesProximosAtivo) {
+      setPostesProximosAtivo(false);
+      setPostesProximos([]);
+      setPostesProximosGeoJSON([]);
+      return;
+    }
+    setPostesProximosAtivo(true);
+    setPostesProximosLoading(true);
+    try {
+      const res = await fetchPostesProximos({ lat: v.latitude, lng: v.longitude, raio: POSTES_PROXIMOS_RAIO_M, limit: 30 });
+      setPostesProximos(res.items);
+      setPostesProximosGeoJSON(res.items);
+    } catch {
+      setPostesProximos([]);
+    } finally {
+      setPostesProximosLoading(false);
     }
   }
 
@@ -1480,11 +1564,83 @@ export default function PainelMapaPage() {
                     {selectedVistoria.tecnico_nome ? "Reatribuir técnico" : "Atribuir técnico"}
                   </button>
                 )}
+
+                {/* Postes próximos / Ver detalhes / Street View */}
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePostesProximos(selectedVistoria)}
+                    disabled={postesProximosLoading}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition disabled:opacity-60"
+                    style={{
+                      background: postesProximosAtivo ? "rgba(139,92,246,0.18)" : "rgba(139,92,246,0.10)",
+                      color: "#A78BFA",
+                      border: `1px solid ${postesProximosAtivo ? "rgba(139,92,246,0.45)" : "rgba(139,92,246,0.20)"}`,
+                    }}
+                  >
+                    <MapPinned className="h-3 w-3" />
+                    {postesProximosLoading ? "Buscando…" : postesProximosAtivo ? `Postes (${postesProximos.length})` : "Postes próximos"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDetalheVistoria(selectedVistoria)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
+                    style={{ background: "rgba(148,163,184,0.12)", color: "var(--vm-text-soft)", border: "1px solid rgba(148,163,184,0.22)" }}
+                  >
+                    <Info className="h-3 w-3" />
+                    Ver detalhes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStreetViewVistoria(selectedVistoria)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition"
+                    style={{ background: "rgba(66,133,244,0.12)", color: "#8AB4F8", border: "1px solid rgba(66,133,244,0.22)" }}
+                  >
+                    <Camera className="h-3 w-3" />
+                    Street View
+                  </button>
+                </div>
+
+                {postesProximosAtivo && postesProximos.length > 0 && (
+                  <div className="max-h-[140px] space-y-1 overflow-y-auto rounded-xl p-1.5" style={{ background: "var(--vm-fill)" }}>
+                    {postesProximos.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: "var(--vm-fill-2)" }}>
+                        <span className="truncate text-[10.5px] font-medium" style={{ color: "var(--vm-text-soft)" }}>
+                          PSPOSTE {p.pspostefield}
+                        </span>
+                        {p.distancia_m != null && (
+                          <span className="shrink-0 text-[9.5px] font-bold" style={{ color: "#A78BFA" }}>
+                            {Math.round(p.distancia_m)} m
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {postesProximosAtivo && !postesProximosLoading && postesProximos.length === 0 && (
+                  <p className="text-center text-[10.5px]" style={{ color: "var(--vm-faint)" }}>
+                    Nenhum poste num raio de {POSTES_PROXIMOS_RAIO_M} m.
+                  </p>
+                )}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <VistoriaDetalheModal
+        open={!!detalheVistoria}
+        vistoriaId={detalheVistoria?.id ?? null}
+        equipamentoLabel={detalheVistoria?.equipamento}
+        onClose={() => setDetalheVistoria(null)}
+      />
+      <StreetViewModal
+        open={!!streetViewVistoria}
+        lat={streetViewVistoria?.latitude ?? 0}
+        lng={streetViewVistoria?.longitude ?? 0}
+        label={streetViewVistoria?.equipamento}
+        onClose={() => setStreetViewVistoria(null)}
+      />
       {/* ── MODAL ATRIBUIR TÉCNICO ───────────────────────────────────────── */}
       {atribuirVistoria && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
