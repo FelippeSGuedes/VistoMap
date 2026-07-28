@@ -12,6 +12,7 @@
 
 export const RECUSA_MOTIVOS = [
   { key: "SEM_POSTES", label: "Sem postes na redondeza (100m)" },
+  { key: "ALTERNATIVAS_INACESSIVEIS", label: "Alternativas também inacessíveis" },
   { key: "PROPRIEDADE_PRIVADA", label: "Propriedade privada sem acesso" },
   { key: "RECUSA_MORADOR", label: "Recusa do morador/responsável" },
   { key: "RISCO_SEGURANCA", label: "Risco de segurança no local" },
@@ -39,6 +40,21 @@ export interface RecusaPergunta {
 
 export const RECUSA_PERGUNTAS: Record<RecusaMotivo, RecusaPergunta[]> = {
   SEM_POSTES: [],
+  ALTERNATIVAS_INACESSIVEIS: [
+    {
+      key: "impedimento",
+      pergunta: "O que impede as alternativas encontradas?",
+      tipo: "opcoes",
+      opcoes: [
+        "Vegetação/mato bloqueando todas",
+        "Sem acesso seguro pra fotografar",
+        "Estrutura das alternativas também ruim",
+        "Outro",
+      ],
+      obrigatoria: true,
+    },
+    { key: "detalhe", pergunta: "Detalhe adicional (opcional)", tipo: "texto", obrigatoria: false },
+  ],
   PROPRIEDADE_PRIVADA: [
     {
       key: "contato",
