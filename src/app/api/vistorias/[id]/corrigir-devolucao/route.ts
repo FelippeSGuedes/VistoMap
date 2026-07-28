@@ -8,6 +8,7 @@ import {
   SITUACAO_REVISITADO,
   SITUACAO_VISTORIADO,
   SITUACAO_COLUMN,
+  STATUS_VISTORIA_EM_ANALISE,
   type DropdownKey,
 } from "@/lib/glpi/constants";
 import { query, execute } from "@/lib/db";
@@ -153,15 +154,21 @@ export async function POST(
     if (Object.keys(updateInput).length > 0 || Object.keys(dropdownIds).length > 0) {
       await updateVistoriaFields(id, { ...updateInput, dropdowns: dropdownIds });
     }
-    // Situação + datas sempre voltam, mesmo se a devolução era só de fotos
-    // (nenhum campo de formulário no updateInput acima).
+    // Situação + status + datas sempre voltam, mesmo se a devolução era só
+    // de fotos (nenhum campo de formulário no updateInput acima). O status
+    // (plugin_fields_statusvistoriafielddropdowns_id) também precisa voltar
+    // pra "Em análise" aqui — devolverVistoria() deixa ele em Pendente(1)
+    // pra vistoria sair do bloqueio de fila do técnico, e sem resetar de
+    // volta aqui a vistoria corrigida ficava mostrando "Pendente" pro
+    // analista mesmo já reenviada, igual uma vistoria nunca feita.
     await execute(
       `UPDATE glpi_plugin_fields_networkequipmentdispositivosderedes
           SET \`${SITUACAO_COLUMN}\` = ?,
+              plugin_fields_statusvistoriafielddropdowns_id = ?,
               datadavistoriafield = ?,
               dataenvioconcessionriafield = ?
         WHERE items_id = ?`,
-      [situacaoFinal, agora, agora, id]
+      [situacaoFinal, STATUS_VISTORIA_EM_ANALISE, agora, agora, id]
     );
 
     // Fotos/vídeo apontados — só salva o que veio no FormData.
