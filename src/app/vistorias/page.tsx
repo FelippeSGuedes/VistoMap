@@ -353,6 +353,7 @@ function VistoriasPageInner() {
           setSelected(null);
           setExecutingId(v.id);
         }}
+        onDataChanged={fetchAll}
       />
 
       <VistoriaExecucaoSheet

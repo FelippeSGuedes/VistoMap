@@ -16,14 +16,21 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Clock, LocateFixed, Lock, Navigation, X, XCircle } from "lucide-react";
+import { Ban, Check, Clock, LocateFixed, Lock, Navigation, Wrench, X, XCircle } from "lucide-react";
 import type { Vistoria } from "@/types";
 import type { ApiError } from "@/services/api";
 import { api } from "@/services/api";
 import { useExpedienteStore } from "@/store/expediente";
 import { navegarVistoria, vistoriasService } from "@/services/vistorias";
 import { useOfflinePrep } from "@/hooks/useOfflinePrep";
+import { usePostesProximos } from "@/hooks/usePostesProximos";
 import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
+import { RecusarVistoriaFlow } from "./RecusarVistoriaFlow";
+import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
+import type { RecusaMotivo } from "@/lib/glpi/recusaMotivos";
+
+/** Raio (m) usado pro gate automático de "Recusar vistoria" — mesmo raio de troca de poste. */
+const GATE_RAIO_M = 100;
 
 const BLUE_M = 50; // entra no modo "aproximando" (azul + seta)
 const GREEN_M = 4; // chegou (verde + check)
@@ -86,6 +93,8 @@ interface GuidedArrivalProps {
   userPosition: { lat: number; lng: number } | null;
   onClose: () => void;
   onStart: (vistoria: Vistoria) => void;
+  /** Recarrega a lista — chamado após troca de poste ou recusa aprovada. */
+  onDataChanged?: () => void;
 }
 
 type ApprovalPhase = "idle" | "aguardando" | "aprovado" | "reprovado";
@@ -96,6 +105,7 @@ export function GuidedArrival({
   userPosition,
   onClose,
   onStart,
+  onDataChanged,
 }: GuidedArrivalProps) {
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
@@ -114,6 +124,17 @@ export function GuidedArrival({
   useEffect(() => { onStartRef.current = onStart; }, [onStart]);
   const expediente = useExpedienteStore((s) => s.expediente);
   const janela = useExpedienteStore((s) => s.janela);
+
+  // Gate automático de "Recusar vistoria": busca postes num raio de 100m
+  // assim que o técnico chega no local — 0 resultados libera "Recusar"
+  // direto (motivo SEM_POSTES); 1+ resultados só libera "Trocar de poste"
+  // (o "Recusar" fica escondido atrás do "nenhum poste é acessível" lá
+  // dentro do MudarPosteFlow). Decide sozinho, sem depender do técnico
+  // "achar" que não tem alternativa — evita recusa por preguiça.
+  const posteGate = usePostesProximos();
+  const [mudarPosteOpen, setMudarPosteOpen] = useState(false);
+  const [recusarOpen, setRecusarOpen] = useState(false);
+  const [recusarMotivoFixo, setRecusarMotivoFixo] = useState<RecusaMotivo | undefined>(undefined);
 
   // Zona rural / pouco sinal (equipamento "Repetidor"): baixa os postes da
   // região antes de liberar a rota, pra troca de poste funcionar offline.
@@ -154,6 +175,15 @@ export function GuidedArrival({
       : distancia > GREEN_M
       ? "azul"
       : "verde";
+
+  // Dispara o gate assim que chega no "verde" — uma vez só por abertura.
+  useEffect(() => {
+    if (!open || fase !== "verde" || !vistoria || posteGate.fetched || posteGate.loading) return;
+    const origin = userPosition ?? (hasCoord ? { lat: vistoria.latitude, lng: vistoria.longitude } : null);
+    if (!origin) return;
+    void posteGate.fetch({ lat: origin.lat, lng: origin.lng, raio: GATE_RAIO_M, limit: 5 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fase, vistoria?.id]);
 
   const heading = useHeading(open && fase === "azul");
   const bearing = useMemo(() => {
@@ -202,7 +232,12 @@ export function GuidedArrival({
       setPendingRequestId(null);
       setReprovacaoMotivo("");
       if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
+      posteGate.reset();
+      setMudarPosteOpen(false);
+      setRecusarOpen(false);
+      setRecusarMotivoFixo(undefined);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -513,14 +548,41 @@ export function GuidedArrival({
             )}
 
             {approvalPhase === "idle" && !concluida && hasCoord && fase === "verde" && (
-              <button
-                type="button"
-                onClick={() => iniciar()}
-                disabled={starting}
-                className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-white text-[16px] font-bold text-emerald-700 shadow-lg disabled:opacity-70"
-              >
-                {starting ? "Iniciando…" : "Iniciar Vistoria"}
-              </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => iniciar()}
+                  disabled={starting}
+                  className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-white text-[16px] font-bold text-emerald-700 shadow-lg disabled:opacity-70"
+                >
+                  {starting ? "Iniciando…" : "Iniciar Vistoria"}
+                </button>
+
+                {/* Gate automático: 0 postes em 100m → recusar direto. 1+ → só oferece trocar de poste. */}
+                {posteGate.fetched && posteGate.items.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecusarMotivoFixo("SEM_POSTES");
+                      setRecusarOpen(true);
+                    }}
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600/90 text-[14px] font-bold text-white backdrop-blur"
+                  >
+                    <Ban className="h-4 w-4" />
+                    Recusar vistoria
+                  </button>
+                )}
+                {posteGate.fetched && posteGate.items.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMudarPosteOpen(true)}
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white/15 text-[14px] font-bold text-white backdrop-blur"
+                  >
+                    <Wrench className="h-4 w-4" />
+                    Poste bloqueado? Trocar de poste
+                  </button>
+                )}
+              </div>
             )}
 
             {approvalPhase === "idle" && !concluida && hasCoord && fase !== "verde" && !overrideOpen && (
@@ -593,6 +655,38 @@ export function GuidedArrival({
             lat={vistoria.latitude}
             lng={vistoria.longitude}
             label={vistoria.equipamento}
+          />
+
+          <MudarPosteFlow
+            open={mudarPosteOpen}
+            onClose={() => setMudarPosteOpen(false)}
+            vistoriaId={vistoria.id}
+            psposteAntigo={vistoria.fields?.pspostefield ?? ""}
+            municipioAntigo={vistoria.cidade}
+            latAtual={vistoria.latitude}
+            lngAtual={vistoria.longitude}
+            onApplied={() => {
+              setMudarPosteOpen(false);
+              onDataChanged?.();
+              onClose();
+            }}
+            onNenhumAcessivel={() => {
+              setRecusarMotivoFixo(undefined);
+              setRecusarOpen(true);
+            }}
+          />
+
+          <RecusarVistoriaFlow
+            open={recusarOpen}
+            vistoriaId={vistoria.id}
+            equipamento={vistoria.equipamento}
+            motivoFixo={recusarMotivoFixo}
+            onClose={() => setRecusarOpen(false)}
+            onAprovada={() => {
+              setRecusarOpen(false);
+              onDataChanged?.();
+              onClose();
+            }}
           />
         </motion.div>
       )}

@@ -348,7 +348,10 @@ export interface AuditEntry {
     | "override-aprovado"
     | "override-reprovado"
     | "vistoria-devolvida"
-    | "devolucao-resolvida";
+    | "devolucao-resolvida"
+    | "recusa-solicitada"
+    | "recusa-aprovada"
+    | "recusa-reprovada";
   /** Alvo da ação. */
   alvo?: {
     tipo: "vistoria" | "tecnico" | "revisita" | "sistema";

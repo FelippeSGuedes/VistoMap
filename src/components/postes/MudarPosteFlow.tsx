@@ -44,6 +44,8 @@ interface MudarPosteFlowProps {
   latAtual: number;
   lngAtual: number;
   onApplied: (response: MudancaPosteResponse) => void;
+  /** Escape hatch: nenhum poste da lista é acessível → abre o fluxo de Recusar Vistoria. */
+  onNenhumAcessivel?: () => void;
 }
 
 const MOTIVO_DESC: Record<MotivoMudanca, string> = {
@@ -65,6 +67,7 @@ export function MudarPosteFlow({
   latAtual,
   lngAtual,
   onApplied,
+  onNenhumAcessivel,
 }: MudarPosteFlowProps) {
   const [step, setStep] = useState<Step>("motivo");
   const [motivo, setMotivo] = useState<MotivoMudanca | null>(null);
@@ -243,6 +246,14 @@ export function MudarPosteFlow({
               onPickerNext={() => setStep("confirmar")}
               onConfirm={handleConfirmar}
               onCancel={onClose}
+              onNenhumAcessivel={
+                onNenhumAcessivel
+                  ? () => {
+                      onClose();
+                      onNenhumAcessivel();
+                    }
+                  : undefined
+              }
             />
           </motion.div>
         </motion.div>
@@ -650,6 +661,7 @@ function FlowFooter({
   onPickerNext,
   onConfirm,
   onCancel,
+  onNenhumAcessivel,
 }: {
   step: Step;
   motivoValid: boolean;
@@ -658,55 +670,68 @@ function FlowFooter({
   onPickerNext: () => void;
   onConfirm: () => void;
   onCancel: () => void;
+  onNenhumAcessivel?: () => void;
 }) {
   return (
     <footer className="sticky bottom-0 z-10 border-t border-brand-steel/60 bg-white/95 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur-xl md:rounded-b-3xl">
-      <div className="mx-auto flex w-full max-w-xl items-center gap-2">
-        {step === "motivo" && (
-          <Button
-            fullWidth
-            size="lg"
-            disabled={!motivoValid}
-            rightIcon={<ChevronRight className="h-4 w-4" />}
-            onClick={onMotivoNext}
-          >
-            Continuar
-          </Button>
-        )}
-
-        {step === "picker" && (
-          <>
-            <Button variant="outline" size="lg" onClick={onCancel}>
-              Cancelar
-            </Button>
-            <div className="flex-1 text-center text-[11px] font-medium text-ink-muted">
-              {hasPosteNovo
-                ? "Confirme tocando no card acima"
-                : "Toque num poste no mapa ou na lista"}
-            </div>
-          </>
-        )}
-
-        {step === "confirmar" && (
-          <>
-            <Button variant="outline" size="lg" onClick={onCancel}>
-              Cancelar
-            </Button>
+      <div className="mx-auto flex w-full max-w-xl flex-col gap-2">
+        <div className="flex items-center gap-2">
+          {step === "motivo" && (
             <Button
               fullWidth
               size="lg"
-              leftIcon={<Check className="h-4 w-4" />}
-              onClick={onConfirm}
+              disabled={!motivoValid}
+              rightIcon={<ChevronRight className="h-4 w-4" />}
+              onClick={onMotivoNext}
             >
-              Confirmar Mudança
+              Continuar
             </Button>
-          </>
-        )}
+          )}
 
-        {step === "saving" && (
-          <Button fullWidth size="lg" loading disabled>
-            Registrando…
-          </Button>
+          {step === "picker" && (
+            <>
+              <Button variant="outline" size="lg" onClick={onCancel}>
+                Cancelar
+              </Button>
+              <div className="flex-1 text-center text-[11px] font-medium text-ink-muted">
+                {hasPosteNovo
+                  ? "Confirme tocando no card acima"
+                  : "Toque num poste no mapa ou na lista"}
+              </div>
+            </>
+          )}
+
+          {step === "confirmar" && (
+            <>
+              <Button variant="outline" size="lg" onClick={onCancel}>
+                Cancelar
+              </Button>
+              <Button
+                fullWidth
+                size="lg"
+                leftIcon={<Check className="h-4 w-4" />}
+                onClick={onConfirm}
+              >
+                Confirmar Mudança
+              </Button>
+            </>
+          )}
+
+          {step === "saving" && (
+            <Button fullWidth size="lg" loading disabled>
+              Registrando…
+            </Button>
+          )}
+        </div>
+
+        {step === "picker" && onNenhumAcessivel && (
+          <button
+            type="button"
+            onClick={onNenhumAcessivel}
+            className="w-full text-center text-[11.5px] font-semibold text-red-600 underline-offset-2 hover:underline"
+          >
+            Nenhum poste aqui é acessível — recusar vistoria
+          </button>
         )}
       </div>
     </footer>

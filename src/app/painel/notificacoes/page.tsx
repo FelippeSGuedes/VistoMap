@@ -34,7 +34,7 @@ function StatusBadge({ status }: { status: OverrideRequest["status"] }) {
 
 interface CardProps {
   req: OverrideRequest;
-  onReply: (id: number, acao: "aprovar" | "reprovar", motivo?: string) => Promise<void>;
+  onReply: (req: OverrideRequest, acao: "aprovar" | "reprovar", motivo?: string) => Promise<void>;
 }
 
 function RequestCard({ req, onReply }: CardProps) {
@@ -47,7 +47,7 @@ function RequestCard({ req, onReply }: CardProps) {
     if (acao === "reprovar" && !motivo.trim()) return;
     setLoading(true);
     try {
-      await onReply(req.id, acao, motivo.trim() || undefined);
+      await onReply(req, acao, motivo.trim() || undefined);
     } finally {
       setLoading(false);
     }
@@ -78,6 +78,11 @@ function RequestCard({ req, onReply }: CardProps) {
             {req.distancia_m != null && (
               <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
                 {req.distancia_m} m
+              </span>
+            )}
+            {req.tipo === "recusa" && (
+              <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                Recusa · {req.exception_label}
               </span>
             )}
           </div>
@@ -190,12 +195,12 @@ export default function NotificacoesPage() {
     setNotifPerm(result);
   };
 
-  const handleReply = async (id: number, acao: "aprovar" | "reprovar", motivo?: string) => {
-    await api.post(
-      `/painel/notificacoes/${id}/responder`,
-      { acao, motivo },
-      { headers: { Authorization: `Bearer ${session?.token}` } }
-    );
+  const handleReply = async (req: OverrideRequest, acao: "aprovar" | "reprovar", motivo?: string) => {
+    const path =
+      req.tipo === "recusa"
+        ? `/painel/notificacoes/recusas/${req.id}/responder`
+        : `/painel/notificacoes/${req.id}/responder`;
+    await api.post(path, { acao, motivo }, { headers: { Authorization: `Bearer ${session?.token}` } });
     await fetch();
   };
 
@@ -209,7 +214,7 @@ export default function NotificacoesPage() {
         <div>
           <h1 className="text-[20px] font-bold text-gray-900">Notificações</h1>
           <p className="text-[13px] text-gray-500">
-            Solicitações de início fora do local que precisam de aprovação.
+            Início fora do local e recusas de vistoria que precisam de aprovação.
           </p>
         </div>
         {pendentes > 0 && (
@@ -270,7 +275,7 @@ export default function NotificacoesPage() {
             Aguardando resposta · {pendentesLista.length}
           </p>
           {pendentesLista.map((r) => (
-            <RequestCard key={r.id} req={r} onReply={handleReply} />
+            <RequestCard key={`${r.tipo}-${r.id}`} req={r} onReply={handleReply} />
           ))}
         </div>
       )}
@@ -282,7 +287,7 @@ export default function NotificacoesPage() {
             Histórico recente · {historico.length}
           </p>
           {historico.map((r) => (
-            <RequestCard key={r.id} req={r} onReply={handleReply} />
+            <RequestCard key={`${r.tipo}-${r.id}`} req={r} onReply={handleReply} />
           ))}
         </div>
       )}
