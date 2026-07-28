@@ -111,7 +111,9 @@ export function MudarPosteFlow({
       const lat = fresh?.lat ?? (hasStoredCoords ? latAtual : null);
       const lng = fresh?.lng ?? (hasStoredCoords ? lngAtual : null);
       if (!lat || !lng) return; // sem GPS e sem coords armazenadas — mostra lista vazia
-      await postes.fetch({ lat, lng, raio: 500, limit: 80 });
+      // Mesmo raio do backend (POSTE_TROCA_RAIO_M) — sem isso a lista mostrava
+      // postes até 500m que o servidor rejeitava na confirmação (raio real é 100m).
+      await postes.fetch({ lat, lng, raio: 100, limit: 80 });
     };
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -543,7 +545,7 @@ function PickerStep({
         open={panelOpen}
         loading={loading}
         origin={centerOnVistoria}
-        raio={500}
+        raio={100}
         items={postes}
         selectedId={selectedId}
         onSelect={handlePick}
