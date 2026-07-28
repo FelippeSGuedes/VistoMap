@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/auth";
 import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import { fetchPostesProximos } from "@/services/postes";
+import { asset } from "@/utils/asset";
 import type { Poste } from "@/types";
 import type {
   PainelMapaResponse,
@@ -758,18 +759,34 @@ export default function PainelMapaPage() {
   function ensurePostesProximosLayer(map: mapboxgl.Map) {
     if (map.getSource(POSTES_PROX_SRC)) return;
     map.addSource(POSTES_PROX_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-    map.addLayer({
-      id: POSTES_PROX_LAYER,
-      type: "circle",
-      source: POSTES_PROX_SRC,
-      paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 4, 18, 9],
-        "circle-color": "#8B5CF6",
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
-        "circle-opacity": 0.9,
-      },
-    });
+
+    // Mesmo ícone real do poste (posteico.png) usado no mapa do app técnico
+    // (MapView.tsx) — antes aqui era bolinha roxa genérica, sem padronização.
+    const addLayer = () => {
+      if (map.getLayer(POSTES_PROX_LAYER)) return;
+      map.addLayer({
+        id: POSTES_PROX_LAYER,
+        type: "symbol",
+        source: POSTES_PROX_SRC,
+        layout: {
+          "icon-image": "poste-ico",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 0.16, 14, 0.28, 18, 0.46],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+      });
+    };
+
+    if (map.hasImage("poste-ico")) {
+      addLayer();
+    } else {
+      map.loadImage(asset("/posteico.png"), (err, img) => {
+        if (!err && img && !map.hasImage("poste-ico")) {
+          map.addImage("poste-ico", img, { pixelRatio: 2 });
+        }
+        addLayer();
+      });
+    }
   }
 
   function setPostesProximosGeoJSON(postes: Poste[]) {
