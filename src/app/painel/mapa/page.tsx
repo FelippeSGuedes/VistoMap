@@ -1206,8 +1206,8 @@ export default function PainelMapaPage() {
                           </>}
                         </div>
                       </button>
-                      {/* atribuição direta — não faz sentido para vistorias concluídas */}
-                      {v.situacao !== "VISTORIADO" && v.situacao !== "REVISITADO" && (
+                      {/* atribuição direta — não faz sentido para vistorias concluídas; leitura não age */}
+                      {session?.role !== "leitura" && v.situacao !== "VISTORIADO" && v.situacao !== "REVISITADO" && (
                         <button
                           type="button"
                           onClick={() => {
@@ -1610,7 +1610,7 @@ export default function PainelMapaPage() {
                   <Navigation className="h-3.5 w-3.5" />
                   Navegar
                 </button>
-                {!gpsEditMode && (
+                {!gpsEditMode && session?.role !== "leitura" && (
                   <button
                     type="button"
                     onClick={() => enterGpsEditMode(selectedVistoria)}
@@ -1623,8 +1623,8 @@ export default function PainelMapaPage() {
                 )}
               </div>
 
-              {/* Ação secundária — Atribuir/Reatribuir (não aparece para vistorias concluídas) */}
-              {selectedVistoria.situacao !== "VISTORIADO" && selectedVistoria.situacao !== "REVISITADO" && (
+              {/* Ação secundária — Atribuir/Reatribuir (não aparece para vistorias concluídas; leitura não age) */}
+              {session?.role !== "leitura" && selectedVistoria.situacao !== "VISTORIADO" && selectedVistoria.situacao !== "REVISITADO" && (
                 <button
                   type="button"
                   onClick={() => {

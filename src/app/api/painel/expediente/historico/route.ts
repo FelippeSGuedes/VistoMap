@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySessionJwt } from "@/lib/jwt";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { expedienteHistorico } from "@/lib/expediente";
 
 export const dynamic = "force-dynamic";
@@ -14,17 +14,8 @@ export const runtime = "nodejs";
  * cada expediente começou/terminou, sem depender do que o técnico "disse".
  */
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return NextResponse.json({ message: "Nao autorizado" }, { status: 401 });
-  try {
-    const claims = await verifySessionJwt(token);
-    if (claims.role !== "admin") {
-      return NextResponse.json({ message: "Acesso restrito" }, { status: 403 });
-    }
-  } catch {
-    return NextResponse.json({ message: "Token invalido" }, { status: 401 });
-  }
+  const auth = await requirePainelRole(req, "moderador");
+  if (!auth.ok) return auth.response;
 
   const usersId = Number(req.nextUrl.searchParams.get("users_id"));
   if (!usersId || Number.isNaN(usersId)) {

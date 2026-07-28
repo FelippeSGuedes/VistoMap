@@ -225,17 +225,19 @@ export default function RejeitadasPage() {
                         />
                       </a>
                     )}
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => { setReatrib(r); setNovoTecnico(""); setMotivoReatrib(""); }}
-                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-95"
-                        style={{ border: `1px solid ${tint("#3B82F6", 0.35)}`, background: tint("#3B82F6", 0.12), color: "#3B82F6" }}
-                      >
-                        <UserCheck className="h-3.5 w-3.5" />
-                        Reatribuir e reabrir
-                      </button>
-                    </div>
+                    {session?.role !== "leitura" && (
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => { setReatrib(r); setNovoTecnico(""); setMotivoReatrib(""); }}
+                          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-95"
+                          style={{ border: `1px solid ${tint("#3B82F6", 0.35)}`, background: tint("#3B82F6", 0.12), color: "#3B82F6" }}
+                        >
+                          <UserCheck className="h-3.5 w-3.5" />
+                          Reatribuir e reabrir
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

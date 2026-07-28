@@ -466,7 +466,8 @@ export default function CentralVistoriasPage() {
                         Devolver
                       </button>
                     )}
-                    {v.situacao_id > 1 && (
+                    {/* Cancelar é admin-only — moderador tem o resto do escopo do admin aqui. */}
+                    {session?.role === "admin" && v.situacao_id > 1 && (
                       <button
                         type="button"
                         onClick={() => { setCancelando(v); setCancelConfirm(""); }}

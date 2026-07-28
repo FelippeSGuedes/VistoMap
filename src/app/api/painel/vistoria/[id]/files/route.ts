@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { sanitizeFolderName } from "@/lib/sanitize";
 import { query } from "@/lib/db";
+import { requirePainelRole } from "@/lib/painel-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,9 +26,12 @@ function parseId(raw: string): number | null {
  * Em dev local sem Caddy, retorna apenas os paths absolutos (preview falha).
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requirePainelRole(req, "leitura");
+  if (!auth.ok) return auth.response;
+
   const id = parseId(params.id);
   if (id == null) {
     return NextResponse.json({ message: "ID inválido" }, { status: 400 });

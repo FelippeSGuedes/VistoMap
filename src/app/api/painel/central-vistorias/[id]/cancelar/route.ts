@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { verifySessionJwt } from "@/lib/jwt";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
 import { cancelarVistoria } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
@@ -18,19 +18,10 @@ export async function POST(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
-
-  let adminNome = "Administrador";
-  let adminId = 0;
-  try {
-    const claims = await verifySessionJwt(token);
-    if (claims.role !== "admin") return NextResponse.json({ message: "Acesso negado" }, { status: 403 });
-    adminNome = claims.email ?? "Administrador";
-    adminId = Number(claims.sub) || 0;
-  } catch {
-    return NextResponse.json({ message: "Token inválido" }, { status: 401 });
-  }
+  const auth = await requirePainelRole(request, "admin");
+  if (!auth.ok) return auth.response;
+  const adminNome = auth.claims.email ?? "Administrador";
+  const adminId = Number(auth.claims.sub) || 0;
 
   const vistoriaId = Number(params.id);
   if (!vistoriaId || !Number.isFinite(vistoriaId)) {

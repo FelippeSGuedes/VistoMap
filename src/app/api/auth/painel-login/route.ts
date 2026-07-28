@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import { getJwtExpiresAtMs, signSessionJwt } from "@/lib/jwt";
-import type { AuthSession, Tecnico } from "@/types";
+import type { AuthSession, SessionRole, Tecnico } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -74,22 +74,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verifica se pertence ao grupo VistoMap-Administradores
-    const groupRows = await query<{ cnt: number }>(
+    // Papel resolvido pelos grupos GLPI, em ordem de prioridade — um usuário
+    // pode estar em mais de um grupo (ex.: migração), o mais privilegiado vence.
+    const groupRows = await query<{ name: string }>(
       `
-        SELECT COUNT(*) AS cnt
+        SELECT g.name
           FROM glpi_groups_users gu
           INNER JOIN glpi_groups g ON g.id = gu.groups_id
          WHERE gu.users_id = ?
-           AND g.name = 'VistoMap-Administradores'
-         LIMIT 1
+           AND g.name IN ('VistoMap-Administradores', 'VistoMap-Moderador', 'VistoMap - Leitura')
       `,
       [user.id]
     );
+    const groupNames = new Set(groupRows.map((r) => r.name));
+    const role: SessionRole | null = groupNames.has("VistoMap-Administradores")
+      ? "admin"
+      : groupNames.has("VistoMap-Moderador")
+      ? "moderador"
+      : groupNames.has("VistoMap - Leitura")
+      ? "leitura"
+      : null;
 
-    if (!groupRows[0]?.cnt) {
+    if (!role) {
       return NextResponse.json(
-        { message: "Acesso negado. Esta conta não pertence ao grupo de administradores." },
+        { message: "Acesso negado. Esta conta não pertence a nenhum grupo de acesso do painel." },
         { status: 403 }
       );
     }
@@ -105,14 +113,14 @@ export async function POST(req: NextRequest) {
       sub: tecnico.id,
       email,
       tecnicoId: tecnico.id,
-      role: "admin",
+      role,
     });
 
     const session: AuthSession = {
       token,
       tecnico,
       expiresAt: getJwtExpiresAtMs(),
-      role: "admin",
+      role,
     };
 
     return NextResponse.json(session);

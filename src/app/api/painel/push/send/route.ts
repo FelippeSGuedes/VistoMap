@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySessionJwt } from "@/lib/jwt";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -25,20 +25,8 @@ interface PushTokenRow {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = req.headers.get("authorization") ?? "";
-  const tokenAuth = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!tokenAuth) {
-    return NextResponse.json({ message: "Nao autorizado" }, { status: 401 });
-  }
-
-  try {
-    const claims = await verifySessionJwt(tokenAuth);
-    if (claims.role !== "admin") {
-      return NextResponse.json({ message: "Acesso restrito" }, { status: 403 });
-    }
-  } catch {
-    return NextResponse.json({ message: "Token invalido" }, { status: 401 });
-  }
+  const auth = await requirePainelRole(req, "admin");
+  if (!auth.ok) return auth.response;
 
   let body: {
     users_id?: number | number[];

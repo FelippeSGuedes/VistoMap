@@ -30,34 +30,68 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
+import type { SessionRole } from "@/types";
+
+// Escopo de acesso por papel — admin vê tudo; moderador é admin menos
+// Cancelar (botão, não rota) e Status; leitura só as telas de visualização
+// combinadas com o usuário (ver PAGE_ROLES abaixo para o guard de rota).
+const ALL_ROLES: SessionRole[] = ["admin", "moderador", "leitura"];
+const ADMIN_MOD: SessionRole[] = ["admin", "moderador"];
+const ADMIN_ONLY: SessionRole[] = ["admin"];
 
 // Items simples do nav (sem grupo)
 const TOP_NAV = [
-  { href: "/painel",                label: "Operação",        icon: LayoutDashboard, exact: true },
-  { href: "/painel/mapa",           label: "Mapa Tempo Real", icon: MapIcon },
-  { href: "/painel/notificacoes",   label: "Notificações",    icon: Bell },
+  { href: "/painel",                label: "Operação",        icon: LayoutDashboard, exact: true, roles: ALL_ROLES },
+  { href: "/painel/mapa",           label: "Mapa Tempo Real", icon: MapIcon,                       roles: ALL_ROLES },
+  { href: "/painel/notificacoes",   label: "Notificações",    icon: Bell,                          roles: ADMIN_MOD },
 ];
 
 const BOTTOM_NAV = [
-  { href: "/painel/tecnicos",       label: "Técnicos",      icon: Users },
-  { href: "/painel/auditoria",      label: "Auditoria",     icon: ShieldAlert },
-  { href: "/painel/historico",      label: "Histórico",     icon: History },
-  { href: "/painel/status",         label: "Status",        icon: HeartPulse },
-  { href: "/painel/configuracoes",  label: "Configurações", icon: Settings },
+  { href: "/painel/tecnicos",       label: "Técnicos",      icon: Users,       roles: ADMIN_MOD },
+  { href: "/painel/auditoria",      label: "Auditoria",     icon: ShieldAlert, roles: ALL_ROLES },
+  { href: "/painel/historico",      label: "Histórico",     icon: History,     roles: ALL_ROLES },
+  { href: "/painel/status",         label: "Status",        icon: HeartPulse,  roles: ADMIN_ONLY },
+  { href: "/painel/configuracoes",  label: "Configurações", icon: Settings,    roles: ADMIN_MOD },
 ];
 
 // Sub-itens do grupo "Vistorias"
 const VISTORIAS_GROUP = [
-  { href: "/painel/vistorias",           label: "Pendentes",          icon: ClipboardList },
-  { href: "/painel/andamento",           label: "Em Andamento",       icon: Activity },
-  { href: "/painel/realizadas",          label: "Concluídas",         icon: CheckCircle2 },
-  { href: "/painel/revisitas",           label: "Revisitas",          icon: RotateCw },
-  { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench },
-  { href: "/painel/devolucoes",          label: "Devoluções",         icon: Undo2 },
-  { href: "/painel/rejeitadas",          label: "Vistorias Rejeitadas", icon: Ban },
+  { href: "/painel/vistorias",           label: "Pendentes",            icon: ClipboardList, roles: ADMIN_MOD },
+  { href: "/painel/andamento",           label: "Em Andamento",         icon: Activity,       roles: ALL_ROLES },
+  { href: "/painel/realizadas",          label: "Concluídas",           icon: CheckCircle2,   roles: ALL_ROLES },
+  { href: "/painel/revisitas",           label: "Revisitas",            icon: RotateCw,       roles: ALL_ROLES },
+  { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },
+  { href: "/painel/devolucoes",          label: "Devoluções",           icon: Undo2,          roles: ALL_ROLES },
+  { href: "/painel/rejeitadas",          label: "Vistorias Rejeitadas", icon: Ban,            roles: ALL_ROLES },
 ];
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
+
+// Mapa completo rota → papéis permitidos, usado pelo guard de navegação.
+// Inclui rotas fora do menu (detalhe de técnico, página de teste interna).
+const PAGE_ROLES: Array<{ href: string; roles: SessionRole[] }> = [
+  ...TOP_NAV,
+  ...BOTTOM_NAV,
+  ...VISTORIAS_GROUP,
+  { href: "/painel/teste", roles: ADMIN_ONLY },
+];
+
+function rolesForPath(pathname: string): SessionRole[] | null {
+  // Match exato primeiro, senão o prefixo mais específico (ex.: /painel/tecnicos/123 → /painel/tecnicos).
+  const exact = PAGE_ROLES.find((p) => p.href === pathname);
+  if (exact) return exact.roles;
+  const prefix = PAGE_ROLES
+    .filter((p) => p.href !== "/painel" && pathname.startsWith(p.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  return prefix ? prefix.roles : null;
+}
+
+const ROLE_LABEL: Record<SessionRole, string> = {
+  admin: "Administrador",
+  moderador: "Moderador",
+  leitura: "Leitura",
+  tecnico: "Técnico",
+};
 
 // Largura abaixo da qual a sidebar recolhe automaticamente
 const AUTO_COLLAPSE_BP = 1100;
@@ -226,19 +260,37 @@ export default function PainelClientLayout({ children }: { children: React.React
     setCollapsed(next);
   };
 
+  const isPainelRole = (r?: SessionRole): r is SessionRole =>
+    r === "admin" || r === "moderador" || r === "leitura";
+
   useEffect(() => {
     if (!hydrated) return;
-    if (!session || session.role !== "admin") router.replace("/painel/login");
-  }, [hydrated, session, router]);
+    if (!session || !isPainelRole(session.role)) {
+      router.replace("/painel/login");
+      return;
+    }
+    // Acesso à tela atual não permitido pro papel — manda pro dashboard,
+    // que todo papel enxerga. Cobre navegação direta por URL/back-forward.
+    const allowed = rolesForPath(pathname);
+    if (allowed && !allowed.includes(session.role)) {
+      router.replace("/painel");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, session, pathname, router]);
 
   if (pathname === "/painel/login") return <>{children}</>;
   if (!hydrated) return null;
-  if (!session || session.role !== "admin") return null;
+  if (!session || !isPainelRole(session.role)) return null;
+  const currentAllowed = rolesForPath(pathname);
+  if (currentAllowed && !currentAllowed.includes(session.role)) return null;
 
   const T = isDark ? DARK : LIGHT;
   const isMapaPage = pathname === "/painel/mapa";
   const nome = session.tecnico.nome;
   const vistoriasActive = VISTORIAS_HREFS.has(pathname);
+  const topNav = TOP_NAV.filter((i) => i.roles.includes(session.role));
+  const bottomNav = BOTTOM_NAV.filter((i) => i.roles.includes(session.role));
+  const vistoriasGroup = VISTORIAS_GROUP.filter((i) => i.roles.includes(session.role));
 
   return (
     <div
@@ -333,7 +385,7 @@ export default function PainelClientLayout({ children }: { children: React.React
           )}
           <ul className="space-y-[2px]">
             {/* Itens do topo */}
-            {TOP_NAV.map(({ href, label, icon, exact }) => (
+            {topNav.map(({ href, label, icon, exact }) => (
               <NavItem
                 key={href}
                 href={href}
@@ -347,7 +399,7 @@ export default function PainelClientLayout({ children }: { children: React.React
             ))}
 
             {/* ── GRUPO: VISTORIAS ───────────────────────────────── */}
-            {collapsed ? (
+            {vistoriasGroup.length === 0 ? null : collapsed ? (
               <li>
                 <button
                   type="button"
@@ -404,7 +456,7 @@ export default function PainelClientLayout({ children }: { children: React.React
 
                 {vistoriasOpen && (
                   <ul className="mt-0.5 space-y-[2px]">
-                    {VISTORIAS_GROUP.map(({ href, label, icon }) => (
+                    {vistoriasGroup.map(({ href, label, icon }) => (
                       <NavItem
                         key={href}
                         href={href}
@@ -426,7 +478,7 @@ export default function PainelClientLayout({ children }: { children: React.React
             </li>
 
             {/* Itens do rodapé */}
-            {BOTTOM_NAV.map(({ href, label, icon }) => (
+            {bottomNav.map(({ href, label, icon }) => (
               <NavItem
                 key={href}
                 href={href}
@@ -477,7 +529,7 @@ export default function PainelClientLayout({ children }: { children: React.React
                   {nome.split(/[\s._-]+/)[0]}
                 </div>
                 <div className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#00B388" }}>
-                  Administrador
+                  {ROLE_LABEL[session.role]}
                 </div>
               </div>
               <button

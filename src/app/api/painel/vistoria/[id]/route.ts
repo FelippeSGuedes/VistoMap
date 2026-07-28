@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { atualizarCamposVistoria, type AtualizarCamposInput } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
 import { getActorFromRequest } from "@/lib/auth-request";
-import { verifySessionJwt } from "@/lib/jwt";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { getVistoria } from "@/lib/glpi/equipments";
 import { query } from "@/lib/db";
 
@@ -23,14 +23,8 @@ function parseId(raw: string): number | null {
 
 /** Admin: GET /api/painel/vistoria/[id] — todos os campos do equipamento (view "ver detalhes"). */
 export async function GET(req: Request, { params }: { params: { id: string } }) {
-  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
-  try {
-    const claims = await verifySessionJwt(token);
-    if (claims.role !== "admin") return NextResponse.json({ message: "Acesso negado" }, { status: 403 });
-  } catch {
-    return NextResponse.json({ message: "Token inválido" }, { status: 401 });
-  }
+  const auth = await requirePainelRole(req, "leitura");
+  if (!auth.ok) return auth.response;
 
   const id = parseId(params.id);
   if (id == null) return NextResponse.json({ message: "ID inválido" }, { status: 400 });
@@ -48,6 +42,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requirePainelRole(req, "moderador");
+  if (!auth.ok) return auth.response;
+
   const id = parseId(params.id);
   if (id == null) {
     return NextResponse.json({ message: "ID inválido" }, { status: 400 });

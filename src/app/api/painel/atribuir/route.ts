@@ -3,6 +3,7 @@ import { atribuirVistoria, desvincularVistoria } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
 import type { AuditEntry } from "@/types";
 import { getActorFromRequest } from "@/lib/auth-request";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
 import { sendPushTo } from "@/lib/push";
 
@@ -17,6 +18,9 @@ interface AtribuirPayload {
 }
 
 export async function POST(req: Request) {
+  const auth = await requirePainelRole(req, "moderador");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = (await req.json()) as AtribuirPayload;
     const vId = Number(String(body.vistoria_id).replace(/^NE-|^rev-/, ""));

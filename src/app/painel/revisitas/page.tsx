@@ -30,6 +30,7 @@ import {
   Zap,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
+import { useAuthStore } from "@/store/auth";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import { classificarMotivoClient } from "@/utils/motivos-client";
@@ -70,6 +71,7 @@ function RevisitaCard({
   onRegerar,
   onAprovar,
   submitting,
+  podeAgir,
 }: {
   r: RevisitaPendente;
   onAtribuir: () => void;
@@ -77,6 +79,7 @@ function RevisitaCard({
   onRegerar: () => void;
   onAprovar: () => void;
   submitting: boolean;
+  podeAgir: boolean;
 }) {
   const pri = PRIORIDADE_CONFIG[r.prioridade];
   const isCritica = r.prioridade === "CRITICA" || r.prioridade === "ALTA";
@@ -161,7 +164,7 @@ function RevisitaCard({
                 {r.tecnicoAtribuido.nome.split(" ")[0]}
               </span>
             </div>
-          ) : (
+          ) : podeAgir ? (
             <button
               type="button"
               onClick={onAtribuir}
@@ -175,7 +178,7 @@ function RevisitaCard({
               </span>
               <span className="text-[9.5px] font-medium" style={{ color: "var(--vm-faint)" }}>Atribuir</span>
             </button>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -235,56 +238,60 @@ function RevisitaCard({
         )}
       </div>
 
-      {/* AÇÕES */}
-      <div
-        className="flex items-center gap-1.5 border-t px-4 py-2.5 pl-6"
-        style={{ borderColor: "var(--vm-border-soft)" }}
-      >
-        <button
-          type="button"
-          onClick={onEditar}
-          className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
-          style={{ background: "var(--vm-indigo-tint)", color: "#4338CA", border: "1px solid rgba(99,102,241,0.2)" }}
+      {/* AÇÕES — leitura só visualiza, sem botões de ação */}
+      {podeAgir && (
+        <div
+          className="flex items-center gap-1.5 border-t px-4 py-2.5 pl-6"
+          style={{ borderColor: "var(--vm-border-soft)" }}
         >
-          <Wrench className="h-3 w-3" strokeWidth={2.2} />
-          Corrigir Campos
-        </button>
-        <button
-          type="button"
-          onClick={onAtribuir}
-          className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
-          style={{ background: "var(--vm-accent-tint)", color: "#00875F", border: "1px solid rgba(0,179,136,0.2)" }}
-        >
-          <UserPlus className="h-3 w-3" strokeWidth={2.2} />
-          {r.tecnicoAtribuido ? "Reatribuir" : "Atribuir Revisita"}
-        </button>
-        <button
-          type="button"
-          onClick={onRegerar}
-          disabled={submitting}
-          className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--vm-teal-tint)", color: "#0F766E", border: "1px solid rgba(15,118,110,0.18)" }}
-        >
-          <RefreshCcw className={`h-3 w-3 ${submitting ? "animate-spin" : ""}`} strokeWidth={2.2} />
-          Regenerar Projeto
-        </button>
-        <button
-          type="button"
-          onClick={onAprovar}
-          disabled={submitting}
-          className="ml-auto flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
-          style={{ background: "linear-gradient(135deg,#00C99B,#00875F)", color: "#fff", border: "1px solid rgba(0,135,95,0.45)" }}
-        >
-          <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
-          Aprovar Revisita
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={onEditar}
+            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
+            style={{ background: "var(--vm-indigo-tint)", color: "#4338CA", border: "1px solid rgba(99,102,241,0.2)" }}
+          >
+            <Wrench className="h-3 w-3" strokeWidth={2.2} />
+            Corrigir Campos
+          </button>
+          <button
+            type="button"
+            onClick={onAtribuir}
+            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
+            style={{ background: "var(--vm-accent-tint)", color: "#00875F", border: "1px solid rgba(0,179,136,0.2)" }}
+          >
+            <UserPlus className="h-3 w-3" strokeWidth={2.2} />
+            {r.tecnicoAtribuido ? "Reatribuir" : "Atribuir Revisita"}
+          </button>
+          <button
+            type="button"
+            onClick={onRegerar}
+            disabled={submitting}
+            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
+            style={{ background: "var(--vm-teal-tint)", color: "#0F766E", border: "1px solid rgba(15,118,110,0.18)" }}
+          >
+            <RefreshCcw className={`h-3 w-3 ${submitting ? "animate-spin" : ""}`} strokeWidth={2.2} />
+            Regenerar Projeto
+          </button>
+          <button
+            type="button"
+            onClick={onAprovar}
+            disabled={submitting}
+            className="ml-auto flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
+            style={{ background: "linear-gradient(135deg,#00C99B,#00875F)", color: "#fff", border: "1px solid rgba(0,135,95,0.45)" }}
+          >
+            <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
+            Aprovar Revisita
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 }
 
 /* ─── Página ───────────────────────────────────────────────────────── */
 export default function RevisitasPage() {
+  const { session } = useAuthStore();
+  const podeAgir = session?.role !== "leitura";
   const [lista, setLista] = useState<RevisitaPendente[]>([]);
   const [tecnicos, setTecnicos] = useState<TecnicoAtivo[]>([]);
   const [query, setQuery] = useState("");
@@ -505,6 +512,7 @@ export default function RevisitasPage() {
                 onRegerar={() => handleRegerarPdf(r)}
                 onAprovar={() => handleAprovar(r)}
                 submitting={submitting === r.id}
+                podeAgir={podeAgir}
               />
             ))}
           </div>

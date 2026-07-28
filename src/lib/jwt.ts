@@ -25,14 +25,19 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
-/** Papéis operacionais — derivados dos grupos GLPI no momento do login. */
-export type SessionRole = "admin" | "tecnico";
+/**
+ * Papéis operacionais — derivados dos grupos GLPI no momento do login.
+ * admin = VistoMap-Administradores. moderador = VistoMap-Moderador (tudo
+ * igual ao admin, exceto Cancelar vistoria e a tela de Status). leitura =
+ * "VistoMap - Leitura" (só visualização, zero ação, escopo restrito de
+ * telas). tecnico = VistoMap-Tecnicos (app técnico, sem acesso ao /painel).
+ */
+export type SessionRole = "admin" | "moderador" | "leitura" | "tecnico";
 
 export interface SessionClaims extends JWTPayload {
   sub: string;
   email?: string;
   tecnicoId?: string;
-  /** admin = grupo VistoMap-Administradores. tecnico = VistoMap-Tecnicos. */
   role?: SessionRole;
 }
 

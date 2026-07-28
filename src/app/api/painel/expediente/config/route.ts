@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifySessionJwt } from "@/lib/jwt";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { getExpedienteConfig, setExpedienteConfig } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
 
@@ -11,17 +11,8 @@ export const runtime = "nodejs";
  * Retorna a janela de rastreio automático (início, fim, fim de semana).
  */
 export async function GET(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return NextResponse.json({ message: "Nao autorizado" }, { status: 401 });
-  try {
-    const claims = await verifySessionJwt(token);
-    if (claims.role !== "admin") {
-      return NextResponse.json({ message: "Acesso restrito" }, { status: 403 });
-    }
-  } catch {
-    return NextResponse.json({ message: "Token invalido" }, { status: 401 });
-  }
+  const auth = await requirePainelRole(req, "moderador");
+  if (!auth.ok) return auth.response;
   const config = await getExpedienteConfig();
   return NextResponse.json({ config });
 }
@@ -38,21 +29,10 @@ interface Body {
  * Atualiza a janela de rastreio automático. Registra em auditoria.
  */
 export async function PUT(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return NextResponse.json({ message: "Nao autorizado" }, { status: 401 });
-  let userId = 0;
-  let userNome = "Administrador";
-  try {
-    const claims = await verifySessionJwt(token);
-    if (claims.role !== "admin") {
-      return NextResponse.json({ message: "Acesso restrito" }, { status: 403 });
-    }
-    userId = Number(claims.sub) || 0;
-    userNome = claims.email ?? "Administrador";
-  } catch {
-    return NextResponse.json({ message: "Token invalido" }, { status: 401 });
-  }
+  const auth = await requirePainelRole(req, "moderador");
+  if (!auth.ok) return auth.response;
+  const userId = Number(auth.claims.sub) || 0;
+  const userNome = auth.claims.email ?? "Administrador";
   let body: Body;
   try {
     body = (await req.json()) as Body;

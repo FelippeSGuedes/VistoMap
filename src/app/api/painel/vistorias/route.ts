@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { fetchFilaVistorias, type FilaFilters } from "@/lib/glpi/painel";
 import { logError } from "@/lib/observability";
+import { requirePainelRole } from "@/lib/painel-auth";
 import type { AdminStatus } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  const auth = await requirePainelRole(req, "moderador");
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const filters: FilaFilters = {

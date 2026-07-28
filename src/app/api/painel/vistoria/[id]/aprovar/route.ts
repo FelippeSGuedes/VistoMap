@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { aprovarVistoria } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
 import { getActorFromRequest } from "@/lib/auth-request";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,9 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requirePainelRole(req, "moderador");
+  if (!auth.ok) return auth.response;
+
   const id = parseId(params.id);
   if (id == null) {
     return NextResponse.json({ message: "ID inválido" }, { status: 400 });

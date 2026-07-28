@@ -201,14 +201,18 @@ export interface DashboardStats {
   };
 }
 
-/** Papel operacional — admin acessa /painel, tecnico acessa /app (raiz). */
-export type SessionRole = "admin" | "tecnico";
+/**
+ * Papel operacional — admin/moderador/leitura acessam /painel, tecnico
+ * acessa /app (raiz). moderador e leitura são variações restritas do
+ * admin (ver src/lib/jwt.ts para o detalhe de cada escopo).
+ */
+export type SessionRole = "admin" | "moderador" | "leitura" | "tecnico";
 
 export interface AuthSession {
   token: string;
   tecnico: Tecnico;
   expiresAt: number;
-  /** Derivado dos grupos GLPI: VistoMap-Administradores → admin, VistoMap-Tecnicos → tecnico. */
+  /** Derivado dos grupos GLPI: VistoMap-Administradores → admin, VistoMap-Moderador → moderador, "VistoMap - Leitura" → leitura, VistoMap-Tecnicos → tecnico. */
   role: SessionRole;
 }
 

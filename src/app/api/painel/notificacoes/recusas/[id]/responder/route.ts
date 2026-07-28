@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifySessionJwt } from "@/lib/jwt";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS } from "@/lib/glpi/constants";
 import { fetchRecusaPorId, resolverRecusa } from "@/lib/glpi/recusas";
@@ -22,19 +22,10 @@ interface ResponderBody {
  * motivo da reprovação — ele vê e pode tentar de novo (ou escalar).
  */
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
-
-  let adminNome = "Administrador";
-  let adminId = 0;
-  try {
-    const claims = await verifySessionJwt(token);
-    if (claims.role !== "admin") return NextResponse.json({ message: "Acesso negado" }, { status: 403 });
-    adminNome = claims.email ?? "Administrador";
-    adminId = Number(claims.sub) || 0;
-  } catch {
-    return NextResponse.json({ message: "Token inválido" }, { status: 401 });
-  }
+  const auth = await requirePainelRole(request, "moderador");
+  if (!auth.ok) return auth.response;
+  const adminNome = auth.claims.email ?? "Administrador";
+  const adminId = Number(auth.claims.sub) || 0;
 
   const recusaId = Number(params.id);
   if (!recusaId || !Number.isFinite(recusaId)) {

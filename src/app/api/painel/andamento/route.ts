@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { requirePainelRole } from "@/lib/painel-auth";
 import { TABLE_FIELDS, TABLE_NE, TABLE_USERS, SITUACAO_COLUMN } from "@/lib/glpi/constants";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,10 @@ function situacaoLabel(id: number): VistoriaAndamento["situacao"] {
   return "Em Vistoria";
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requirePainelRole(req, "leitura");
+  if (!auth.ok) return auth.response;
+
   try {
     const rows = await query<RawRow>(
       `

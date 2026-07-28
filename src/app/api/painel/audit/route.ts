@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { fetchAudit } from "@/lib/glpi/audit";
+import { requirePainelRole } from "@/lib/painel-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  const auth = await requirePainelRole(req, "leitura");
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const limit = Number(searchParams.get("limit") ?? 100);
