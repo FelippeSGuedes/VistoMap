@@ -16,6 +16,10 @@ COPY . .
 # Passe via `--build-arg NEXT_PUBLIC_MAPBOX_TOKEN=...`
 ARG NEXT_PUBLIC_MAPBOX_TOKEN
 ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
+# Maps Embed API — Street View embutido em /painel/mapa. Opcional: sem a
+# chave, o botão de Street View cai pro link externo do Google Maps.
+ARG NEXT_PUBLIC_GOOGLE_MAPS_KEY=
+ENV NEXT_PUBLIC_GOOGLE_MAPS_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_KEY
 # Em produção: deixe vazio para que o frontend bata em /api da mesma origem.
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL

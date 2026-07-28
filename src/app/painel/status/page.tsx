@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  RadioTower,
   RefreshCw,
   XCircle,
 } from "lucide-react";
@@ -42,6 +43,18 @@ const SOURCE_LABEL: Record<ErrorLogEntry["source"], string> = {
   worker: "Worker",
   glpi: "GLPI",
 };
+
+/** Extrai o id do equipamento/vistoria do contexto (JSON livre), se houver. */
+function equipamentoIdDoContexto(contexto: string | null): string | null {
+  if (!contexto) return null;
+  try {
+    const obj = JSON.parse(contexto) as Record<string, unknown>;
+    const id = obj.id ?? obj.vistoriaId ?? obj.vistoria_id;
+    return id != null ? String(id) : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function StatusPage() {
   const { session } = useAuthStore();
@@ -199,23 +212,32 @@ export default function StatusPage() {
               </p>
             ) : (
               <div className="max-h-[420px] space-y-1.5 overflow-y-auto">
-                {status.erros.recentes.map((e) => (
-                  <div
-                    key={e.id}
-                    className="rounded-xl bg-[var(--vm-fill)] px-3 py-2.5"
-                  >
-                    <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                      <span className="rounded-md bg-white px-1.5 py-0.5 font-semibold text-gray-600">
-                        {SOURCE_LABEL[e.source]}
-                      </span>
-                      {e.rota && <span className="truncate font-mono">{e.rota}</span>}
-                      <span className="ml-auto shrink-0">{formatHora(e.ts)}</span>
+                {status.erros.recentes.map((e) => {
+                  const equipId = equipamentoIdDoContexto(e.contexto);
+                  return (
+                    <div
+                      key={e.id}
+                      className="rounded-xl bg-[var(--vm-fill)] px-3 py-2.5"
+                    >
+                      <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                        <span className="rounded-md bg-white px-1.5 py-0.5 font-semibold text-gray-600">
+                          {SOURCE_LABEL[e.source]}
+                        </span>
+                        {e.rota && <span className="truncate font-mono">{e.rota}</span>}
+                        {equipId && (
+                          <span className="flex shrink-0 items-center gap-1 rounded-md bg-white px-1.5 py-0.5 font-mono text-gray-600">
+                            <RadioTower className="h-2.5 w-2.5" />
+                            #{equipId}
+                          </span>
+                        )}
+                        <span className="ml-auto shrink-0">{formatHora(e.ts)}</span>
+                      </div>
+                      <p className="mt-1 truncate text-[12.5px] text-gray-800" title={e.mensagem}>
+                        {e.mensagem}
+                      </p>
                     </div>
-                    <p className="mt-1 truncate text-[12.5px] text-gray-800" title={e.mensagem}>
-                      {e.mensagem}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

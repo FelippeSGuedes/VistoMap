@@ -37,8 +37,9 @@ async function blobToBuffer(file: File): Promise<Buffer> {
  * Sinaliza que a vistoria é impossível de fazer (propriedade privada,
  * risco, poste removido, sem alternativa nas redondezas, etc.) e pede
  * aprovação do analista. Enquanto PENDENTE, o técnico é desvinculado
- * (users_id_vistoriadorafield = NULL) — some da fila dele até o analista
- * decidir. Aprovada, some de circulação de vez; reprovada, a rota de
+ * (users_id_vistoriadorafield = 0 — convenção GLPI, a coluna é NOT NULL)
+ * — some da fila dele até o analista decidir. Aprovada, some de
+ * circulação de vez; reprovada, a rota de
  * responder (painel) reatribui de volta pro mesmo técnico.
  *
  * multipart/form-data: `payload` (JSON) + `foto` opcional. A foto vai pra
@@ -103,9 +104,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
 
     // Some da fila do técnico até o analista decidir — mesma lógica de
-    // "desvincula pra não travar o técnico olhando pra ela".
+    // "desvincula pra não travar o técnico olhando pra ela". A coluna é
+    // NOT NULL DEFAULT 0 (convenção GLPI pra FK "sem valor") — 0, nunca NULL.
     await execute(
-      `UPDATE \`${TABLE_FIELDS}\` SET users_id_vistoriadorafield = NULL WHERE items_id = ?`,
+      `UPDATE \`${TABLE_FIELDS}\` SET users_id_vistoriadorafield = 0 WHERE items_id = ?`,
       [id]
     );
 

@@ -13,6 +13,7 @@ import { painelService } from "@/services/painel";
 import {
   Activity,
   Filter,
+  RadioTower,
   RefreshCcw,
   Search,
   Sparkles,
@@ -35,12 +36,23 @@ const TIPO_FILTROS: Array<{ id: AuditEntry["acao"] | "todos"; label: string }> =
   { id: "dados-editados",      label: "Edições" },
 ];
 
+/**
+ * O backend devolve o timestamp cru do MySQL ("2026-07-28 14:09:52", sem
+ * timezone) — o valor é UTC, mas `new Date(iso)` nesse formato (espaço em
+ * vez de "T") é interpretado como HORÁRIO LOCAL do navegador pela maioria
+ * dos browsers, deslocando todo horário exibido (era isso que deixava as
+ * horas da timeline erradas). Mesmo fix usado em devolucoes/notificações.
+ */
+function parseUTC(iso: string): Date {
+  return new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
+}
+
 function fmtHora(iso: string) {
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return parseUTC(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function fmtDia(iso: string) {
-  const d = new Date(iso);
+  const d = parseUTC(iso);
   const hoje = new Date();
   const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1);
   if (d.toDateString() === hoje.toDateString()) return "Hoje";
@@ -49,7 +61,7 @@ function fmtDia(iso: string) {
 }
 
 function relativo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
+  const diff = Date.now() - parseUTC(iso).getTime();
   const m = Math.round(diff / 60_000);
   if (m < 1) return "agora";
   if (m < 60) return `há ${m}min`;
@@ -86,7 +98,7 @@ function EventoItem({ entry, isLast }: { entry: AuditEntry; isLast: boolean }) {
           <Icon className="h-4 w-4" style={{ color: cfg.fg }} strokeWidth={2} />
         </div>
         {/* Dot pulsante para eventos recentes (< 2 min) */}
-        {Date.now() - new Date(entry.timestamp).getTime() < 120_000 && (
+        {Date.now() - parseUTC(entry.timestamp).getTime() < 120_000 && (
           <span
             className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center"
           >
@@ -120,7 +132,10 @@ function EventoItem({ entry, isLast }: { entry: AuditEntry; isLast: boolean }) {
         {(entry.alvo || entry.descricao) && (
           <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: "var(--vm-text-soft)" }}>
             {entry.alvo && (
-              <span className="font-medium" style={{ color: "var(--vm-ink)" }}>
+              <span className="inline-flex items-center gap-1 font-medium" style={{ color: "var(--vm-ink)" }}>
+                {entry.alvo.tipo === "vistoria" && (
+                  <RadioTower className="h-3 w-3 shrink-0" style={{ color: "var(--vm-faint)" }} />
+                )}
                 {entry.alvo.label}
               </span>
             )}
@@ -203,7 +218,7 @@ export default function AuditoriaPage() {
   const grouped = useMemo(() => {
     const map = new Map<string, { label: string; entries: AuditEntry[] }>();
     for (const e of lista) {
-      const d = new Date(e.timestamp);
+      const d = parseUTC(e.timestamp);
       const key = d.toDateString();
       if (!map.has(key)) map.set(key, { label: fmtDia(e.timestamp), entries: [] });
       map.get(key)!.entries.push(e);
@@ -214,7 +229,7 @@ export default function AuditoriaPage() {
   // KPIs do período filtrado
   const kpis = useMemo(() => {
     const hoje = lista.filter(
-      (e) => Date.now() - new Date(e.timestamp).getTime() < 86_400_000
+      (e) => Date.now() - parseUTC(e.timestamp).getTime() < 86_400_000
     );
     return {
       total: lista.length,

@@ -54,6 +54,7 @@ services:
       network: host
       args:
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
+        NEXT_PUBLIC_GOOGLE_MAPS_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
         NEXT_PUBLIC_BASE_PATH: /painel
         NEXT_PUBLIC_USE_BASE_PATH: "false"
         BUILD_VARIANT: painel
