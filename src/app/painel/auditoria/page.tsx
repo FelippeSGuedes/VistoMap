@@ -227,15 +227,24 @@ export default function AuditoriaPage() {
   }, [lista]);
 
   // KPIs do período filtrado
+  //
+  // BUG HISTÓRICO: "hoje" contava TODOS os eventos de auditoria (atribuição +
+  // em-deslocamento + iniciada + finalizada + devolução + override...) numa
+  // janela rolante de 24h — uma ÚNICA vistoria já gera 3-4 linhas no log, daí
+  // números tipo "99 hoje" que não batiam com nada (não era "99 vistorias",
+  // era "99 eventos" de um punhado de vistorias). Agora conta especificamente
+  // "vistoria-finalizada" por DIA CALENDÁRIO (mesmo bucket usado no
+  // agrupamento da timeline), não por evento genérico nem por janela rolante.
   const kpis = useMemo(() => {
-    const hoje = lista.filter(
-      (e) => Date.now() - parseUTC(e.timestamp).getTime() < 86_400_000
-    );
+    const hojeStr = new Date().toDateString();
+    const ontemStr = new Date(Date.now() - 86_400_000).toDateString();
+    const finalizadas = lista.filter((e) => e.acao === "vistoria-finalizada");
     return {
       total: lista.length,
-      hoje: hoje.length,
+      vistoriasHoje: finalizadas.filter((e) => parseUTC(e.timestamp).toDateString() === hojeStr).length,
+      vistoriasOntem: finalizadas.filter((e) => parseUTC(e.timestamp).toDateString() === ontemStr).length,
       atribuicoes: lista.filter((e) => e.acao === "vistoria-atribuida" || e.acao === "revisita-atribuida").length,
-      reprovacoes: lista.filter((e) => e.acao === "vistoria-reprovada").length,
+      reprovacoes: lista.filter((e) => e.acao === "vistoria-reprovada" || e.acao === "recusa-reprovada").length,
     };
   }, [lista]);
 
@@ -259,8 +268,13 @@ export default function AuditoriaPage() {
         {/* KPIs */}
         <div className="flex shrink-0 items-center gap-5">
           <div className="flex flex-col items-end">
-            <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "var(--vm-ink)" }}>{kpis.hoje}</span>
-            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>hoje</span>
+            <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "var(--vm-ink)" }}>{kpis.vistoriasHoje}</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>vistorias hoje</span>
+          </div>
+          <div className="h-10 w-px" style={{ background: "var(--vm-border)" }} />
+          <div className="flex flex-col items-end">
+            <span className="text-[22px] font-semibold tabular-nums tracking-tight" style={{ color: "var(--vm-ink)" }}>{kpis.vistoriasOntem}</span>
+            <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>vistorias ontem</span>
           </div>
           <div className="h-10 w-px" style={{ background: "var(--vm-border)" }} />
           <div className="flex flex-col items-end">
