@@ -29,6 +29,7 @@ export async function ensureRecusasTable(): Promise<void> {
       motivo            VARCHAR(64)     NOT NULL,
       respostas_json    JSON            NULL,
       justificativa     TEXT            NOT NULL,
+      foto_path         VARCHAR(255)    NULL,
       status            ENUM('PENDENTE','APROVADO','REPROVADO') NOT NULL DEFAULT 'PENDENTE',
       motivo_reprovacao TEXT            NULL,
       criado_em         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +40,19 @@ export async function ensureRecusasTable(): Promise<void> {
       KEY idx_tecnico  (tecnico_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Migração defensiva: tabela pode já existir de antes do upload de foto
+  // (Fase 1 saiu sem essa coluna).
+  const cols = await query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM information_schema.columns
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [TABLE]
+  );
+  const names = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!names.has("foto_path")) {
+    await execute(`ALTER TABLE \`${TABLE}\` ADD COLUMN foto_path VARCHAR(255) NULL AFTER justificativa`);
+  }
+
   ensured = true;
 }
 
@@ -50,14 +64,15 @@ export interface CriarRecusaInput {
   motivo: string;
   respostas: Record<string, string>;
   justificativa: string;
+  fotoPath?: string | null;
 }
 
 export async function criarRecusa(input: CriarRecusaInput): Promise<number> {
   await ensureRecusasTable();
   const { insertId } = await execute(
     `INSERT INTO \`${TABLE}\`
-       (vistoria_id, equipamento, tecnico_id, tecnico_nome, motivo, respostas_json, justificativa, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDENTE')`,
+       (vistoria_id, equipamento, tecnico_id, tecnico_nome, motivo, respostas_json, justificativa, foto_path, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE')`,
     [
       input.vistoriaId,
       input.equipamento,
@@ -66,6 +81,7 @@ export async function criarRecusa(input: CriarRecusaInput): Promise<number> {
       input.motivo,
       JSON.stringify(input.respostas),
       input.justificativa,
+      input.fotoPath ?? null,
     ]
   );
   return insertId;
@@ -80,6 +96,7 @@ export interface RecusaRow {
   motivo: string;
   respostas_json: string | null;
   justificativa: string;
+  foto_path: string | null;
   status: "PENDENTE" | "APROVADO" | "REPROVADO";
   motivo_reprovacao: string | null;
   criado_em: string;
@@ -95,6 +112,7 @@ export interface Recusa {
   motivo: string;
   respostas: Record<string, string>;
   justificativa: string;
+  fotoPath: string | null;
   status: "PENDENTE" | "APROVADO" | "REPROVADO";
   motivoReprovacao: string | null;
   criadoEm: string;
@@ -117,6 +135,7 @@ function mapRow(r: RecusaRow): Recusa {
     motivo: r.motivo,
     respostas,
     justificativa: r.justificativa,
+    fotoPath: r.foto_path,
     status: r.status,
     motivoReprovacao: r.motivo_reprovacao,
     criadoEm: r.criado_em,

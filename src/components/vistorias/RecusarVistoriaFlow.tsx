@@ -17,7 +17,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronRight, Clock, Send, X, XCircle } from "lucide-react";
+import { AlertTriangle, Camera, Check, ChevronRight, Clock, Send, Trash2, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { api, type ApiError } from "@/services/api";
 import { cn } from "@/utils/cn";
@@ -57,6 +57,8 @@ export function RecusarVistoriaFlow({
   const [recusaId, setRecusaId] = useState<number | null>(null);
   const [motivoReprovacao, setMotivoReprovacao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [foto, setFoto] = useState<File | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -67,7 +69,20 @@ export function RecusarVistoriaFlow({
     setRecusaId(null);
     setMotivoReprovacao("");
     setErro(null);
+    setFoto(null);
+    setFotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
   }, [open, motivoFixo]);
+
+  function handleFotoChange(file: File | null) {
+    setFotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+    setFoto(file);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -113,9 +128,12 @@ export function RecusarVistoriaFlow({
     setFase("enviando");
     setErro(null);
     try {
+      const form = new FormData();
+      form.append("payload", JSON.stringify({ motivo, respostas, justificativa }));
+      if (foto) form.append("foto", foto, foto.name || "recusa.jpg");
       const { data } = await api.post<{ ok: true; recusaId: number }>(
         `/vistorias/${vistoriaId}/recusar`,
-        { motivo, respostas, justificativa }
+        form
       );
       setRecusaId(data.recusaId);
       setFase("aguardando");
@@ -261,6 +279,38 @@ export function RecusarVistoriaFlow({
                   <p className="text-[11px] font-bold uppercase tracking-wide text-white/60">Justificativa gerada</p>
                   <p className="mt-1.5 text-[14px] leading-relaxed">{justificativa}</p>
                 </div>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-[13px] font-medium">
+                    Foto de evidência <span className="text-white/50">(opcional)</span>
+                  </p>
+                  {fotoPreview ? (
+                    <div className="relative overflow-hidden rounded-2xl border border-white/15">
+                      <img src={fotoPreview} alt="Evidência" className="h-40 w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleFotoChange(null)}
+                        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur"
+                        aria-label="Remover foto"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex h-24 w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-white/25 bg-white/5 text-white/60 transition hover:bg-white/10">
+                      <Camera className="h-5 w-5" />
+                      <span className="text-[12px] font-medium">Tirar ou escolher foto</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => handleFotoChange(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  )}
+                </div>
+
                 {erro && (
                   <p className="mt-3 rounded-xl bg-black/25 px-3 py-2 text-[13px] font-medium text-amber-200">
                     {erro}

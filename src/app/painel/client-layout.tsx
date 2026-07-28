@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  Ban,
   Bell,
   CheckCircle2,
   ChevronDown,
@@ -53,6 +54,7 @@ const VISTORIAS_GROUP = [
   { href: "/painel/revisitas",           label: "Revisitas",          icon: RotateCw },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench },
   { href: "/painel/devolucoes",          label: "Devoluções",         icon: Undo2 },
+  { href: "/painel/rejeitadas",          label: "Vistorias Rejeitadas", icon: Ban },
 ];
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));

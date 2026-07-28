@@ -1041,14 +1041,19 @@ interface MapaVistoriaRow {
   tecnico_realname: string | null;
   tecnico_username: string | null;
   data_vistoria: string | null;
+  rejeitada: number;
 }
 
 function resolveSituacaoOperacional(
   situacaoId: number | null,
   statusName: string | null,
   isRepeat: boolean,
-  hasTecnico: boolean
+  hasTecnico: boolean,
+  rejeitada?: boolean
 ): import("@/types/painel-mapa").SituacaoOperacional {
+  // Recusa aprovada vence qualquer situação/status — a vistoria está fora
+  // de circulação, o que sobrou nesses campos é só o estado de antes.
+  if (rejeitada) return "REJEITADA";
   // 1ª prioridade: campo nativo situaodavistoriafield (1..6)
   switch (Number(situacaoId ?? 0)) {
     case 2: return "EM_VISTORIA";
@@ -1087,8 +1092,10 @@ function resolveStatusAprovacao(
 function resolveMapaVistoriaStatus(
   statusName: string | null,
   isRepeat: boolean,
-  situacaoId?: number | null
+  situacaoId?: number | null,
+  rejeitada?: boolean
 ): PainelMapaVistoria["status"] {
+  if (rejeitada) return "REJEITADA";
   if (Number(situacaoId ?? 0) === 8) return "DEVOLVIDA";
   const s = (statusName ?? "").trim().toLowerCase();
   if (isRepeat) return "REVISITA";
@@ -1208,7 +1215,8 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         u.firstname AS tecnico_firstname,
         u.realname AS tecnico_realname,
         u.name AS tecnico_username,
-        f.datadavistoriafield AS data_vistoria
+        f.datadavistoriafield AS data_vistoria,
+        (rec.id IS NOT NULL) AS rejeitada
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
       LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -1217,6 +1225,8 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       LEFT JOIN \`${TABLE_USERS}\` u
         ON u.id = f.users_id_vistoriadorafield
+      LEFT JOIN \`glpi_plugin_vistomap_recusas\` rec
+        ON rec.vistoria_id = ne.id AND rec.status = 'APROVADO'
       WHERE ne.is_deleted = 0
         AND f.latitudefield IS NOT NULL AND f.longitudefield IS NOT NULL
         AND TRIM(f.latitudefield) <> '' AND TRIM(f.longitudefield) <> ''
@@ -1268,7 +1278,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       municipio: r.municipio,
       latitude: Number(r.latitude),
       longitude: Number(r.longitude),
-      status: resolveMapaVistoriaStatus(r.status_name, isRevisita, r.situacao_id),
+      status: resolveMapaVistoriaStatus(r.status_name, isRevisita, r.situacao_id, !!r.rejeitada),
       is_revisita: isRevisita,
       tecnico_id: r.tecnico_id,
       tecnico_nome: tecnicoNome,
@@ -1277,7 +1287,8 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         r.situacao_id,
         r.status_name,
         isRevisita,
-        hasTecnico
+        hasTecnico,
+        !!r.rejeitada
       ),
       status_aprovacao: resolveStatusAprovacao(r.status_name),
       data_vistoria: r.data_vistoria,
