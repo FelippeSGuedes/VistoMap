@@ -582,6 +582,20 @@ export function GuidedArrival({
                     Poste bloqueado? Trocar de poste
                   </button>
                 )}
+
+                {/* Sempre visível, mesmo com vários postes por perto — cobre motivo
+                    de recusa que não tem nada a ver com posição de poste (propriedade
+                    privada, morador recusou, risco de segurança, etc.). */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecusarMotivoFixo(undefined);
+                    setRecusarOpen(true);
+                  }}
+                  className="w-full py-1.5 text-center text-[12.5px] font-semibold text-white/70 underline-offset-2 hover:underline"
+                >
+                  Tenho um problema com essa vistoria
+                </button>
               </div>
             )}
 
