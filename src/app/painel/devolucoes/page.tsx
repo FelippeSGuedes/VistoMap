@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
+import { DevolucaoDetalheModal } from "@/components/painel/DevolucaoDetalheModal";
 
 interface Devolucao {
   id: number;
@@ -99,6 +100,7 @@ export default function DevolucoesPage() {
   const [recentes, setRecentes] = useState<Devolucao[]>([]);
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState<Periodo>("30");
+  const [detalheDevolucao, setDetalheDevolucao] = useState<Devolucao | null>(null);
 
   const headers = { Authorization: `Bearer ${session?.token}` };
 
@@ -271,7 +273,12 @@ export default function DevolucoesPage() {
         ) : (
           <ul className="divide-y" style={{ borderColor: "var(--vm-border-soft)" }}>
             {recentes.map((d) => (
-              <li key={d.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+              <li key={d.id} className="py-3 first:pt-0 last:pb-0">
+              <button
+                type="button"
+                onClick={() => setDetalheDevolucao(d)}
+                className="flex w-full items-center gap-3 text-left transition hover:brightness-95"
+              >
                 <span
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                   style={{ background: tint(d.status === "PENDENTE" ? "#DC2626" : "#059669", 0.14), color: d.status === "PENDENTE" ? "#DC2626" : "#059669" }}
@@ -297,11 +304,14 @@ export default function DevolucoesPage() {
                 </div>
                 <span className="shrink-0 text-[10.5px]" style={{ color: "var(--vm-faint)" }}>{relativo(d.criadoEm)}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint)" }} />
+              </button>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <DevolucaoDetalheModal devolucao={detalheDevolucao} onClose={() => setDetalheDevolucao(null)} />
     </div>
   );
 }
