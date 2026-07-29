@@ -631,7 +631,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
             .setHTML(
               `<div style="font-family:ui-sans-serif;padding:8px 12px;min-width:130px">
                 <div style="font-size:12px;font-weight:700;color:var(--vm-text);margin-bottom:3px">${name || "—"}</div>
-                <div style="font-size:11px;color:var(--vm-text-soft)">${total > 0 ? `${total} vistorias · ${pctStr}%` : "Sem atividade"}</div>
+                <div style="font-size:11px;color:var(--vm-text-soft)">${total > 0 ? `${total} concluídas · ${pctStr}%` : "Sem vistorias concluídas"}</div>
               </div>`,
             )
             .addTo(map);
@@ -1358,7 +1358,9 @@ export default function PainelOverviewPage() {
   );
   const taxaAprov    = historico?.taxas.aprovacaoPct ?? 0;
   const taxaRevisita = historico?.taxas.revisitaPct  ?? 0;
-  const topMunis     = (historico?.topMunicipios  ?? []).slice(0, 8);
+  // Só entra no ranking quem já tem pelo menos 1 vistoria concluída —
+  // município com puro backlog intocado não é "top" de nada ainda.
+  const topMunis     = (historico?.topMunicipios ?? []).filter((m) => m.concluidas >= 1).slice(0, 8);
   const topTecs      = (historico?.rankingTecnicos ?? []).slice(0, 5);
   const mapaTeam     = mapaRealtime?.tecnicos ?? [];
 
@@ -1662,7 +1664,10 @@ export default function PainelOverviewPage() {
         {/* Widget 02 — Padrão Diário: SP fill heatmap */}
         {historico ? (
           <HeatmapMapWidget
-            topMunicipios={historico.topMunicipios}
+            // O fill do mapa é "atividade concluída", não "tem algo atribuído
+            // lá" — senão município com só backlog intocado aparecia colorido
+            // como se já tivesse sido vistoriado.
+            topMunicipios={historico.topMunicipios.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
             totais={historico.totais}
             mediaSemanal={historico.medias.semanalVistorias}
           />

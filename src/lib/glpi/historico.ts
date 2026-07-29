@@ -199,7 +199,8 @@ export async function fetchHistoricoAnalytics(
        WHERE f.municipiofield IS NOT NULL
          AND TRIM(f.municipiofield) <> ''
        GROUP BY TRIM(f.municipiofield)
-       ORDER BY total DESC
+      HAVING concluidas >= 1
+       ORDER BY concluidas DESC
        LIMIT 10
     `
   );
