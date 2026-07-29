@@ -395,6 +395,10 @@ export interface PainelStats {
   municipiosAtivos: number;
   tecnicosAtivos: number;
   pdfsGerados: number;
+  /** Vistorias devolvidas para correção (situação 8), aguardando o técnico. */
+  devolvidas?: number;
+  /** Vistorias com recusa aprovada — fora de circulação. */
+  rejeitadas?: number;
   /** Vistorias atribuídas (saíram do backlog) nas últimas 24h — do audit log. */
   atribuidas24h?: number;
   /** Vistorias finalizadas nas últimas 24h — do audit log. */

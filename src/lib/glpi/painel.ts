@@ -174,6 +174,30 @@ export async function fetchPainelStats(): Promise<PainelStats> {
   );
   const pdfsGerados = pdfRow?.total ?? 0;
 
+  // Devolvidas (situação 8) e rejeitadas (recusa aprovada) — não caem no
+  // GROUP BY de status acima (que não olha situacao_id), então contamos à
+  // parte pra alimentar o gráfico de distribuição do pipeline.
+  const [devolRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(*) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE f.\`${SITUACAO_COLUMN}\` = ?
+    `,
+    [SITUACAO_DEVOLVIDA]
+  );
+  const devolvidas = devolRow?.total ?? 0;
+
+  let rejeitadas = 0;
+  try {
+    const [rejRow] = await query<{ total: number }>(
+      `SELECT COUNT(*) AS total FROM \`glpi_plugin_vistomap_recusas\` WHERE status = 'APROVADO'`
+    );
+    rejeitadas = rejRow?.total ?? 0;
+  } catch {
+    /* tabela de recusas pode não existir em dev — mantém 0 */
+  }
+
   // Atividade das últimas 24h a partir do audit log (dado real, com ts).
   // atribuidas24h = quantas SAÍRAM do backlog; finalizadas24h = throughput.
   let atribuidas24h = 0;
@@ -208,6 +232,8 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     municipiosAtivos,
     tecnicosAtivos,
     pdfsGerados,
+    devolvidas,
+    rejeitadas,
     atribuidas24h,
     finalizadas24h,
     ultimaSincronizacao: new Date().toISOString(),

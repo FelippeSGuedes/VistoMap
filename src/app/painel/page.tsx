@@ -10,17 +10,20 @@ import {
   Activity,
   ArrowRight,
   ArrowUp,
+  Ban,
   Building2,
   CheckCircle2,
   ClipboardList,
   Clock,
   FileText,
+  Layers,
   Map as MapIcon,
   RotateCw,
   Search,
   ShieldAlert,
   Sparkles,
   TrendingUp,
+  Undo2,
   UserPlus,
   Users,
   Zap,
@@ -451,6 +454,98 @@ function MiniDonut({
       </div>
       <p className="mt-1.5 text-center text-[10px] text-[var(--vm-faint)]">{caption}</p>
     </div>
+  );
+}
+
+/* ── PipelineWidget (self-contained) ───────────────────────────────────────
+   Distribuição de TODAS as vistorias por estado operacional: barra empilhada
+   + legenda com contagem e %. Traz Devoluções e Rejeições, que não apareciam
+   em nenhum gráfico do dashboard. Cada item leva pra sua tela. */
+function PipelineWidget({ stats }: { stats: PainelStats | null }) {
+  const segs = useMemo(() => {
+    const s = stats;
+    const concluidas = (s?.vistoriadas ?? 0) + (s?.revisitadas ?? 0);
+    const revisitas = (s?.aguardandoRevisita ?? 0) + (s?.emRevisita ?? 0);
+    const base = [
+      { key: "pendentes",  label: "Pendentes",   value: s?.pendentes ?? 0,  color: "#F59E0B", icon: ClipboardList, href: "/painel/vistorias" },
+      { key: "emVistoria", label: "Em vistoria", value: s?.emVistoria ?? 0,  color: "#3B82F6", icon: Activity,      href: "/painel/andamento" },
+      { key: "concluidas", label: "Concluídas",  value: concluidas,          color: "#10B981", icon: CheckCircle2,  href: "/painel/realizadas" },
+      { key: "revisitas",  label: "Revisitas",   value: revisitas,           color: "#A855F7", icon: RotateCw,      href: "/painel/revisitas" },
+      { key: "devolucoes", label: "Devoluções",  value: s?.devolvidas ?? 0,  color: "#DC2626", icon: Undo2,         href: "/painel/devolucoes" },
+      { key: "rejeicoes",  label: "Rejeições",   value: s?.rejeitadas ?? 0,  color: "#6B7280", icon: Ban,           href: "/painel/rejeitadas" },
+    ];
+    const total = base.reduce((a, b) => a + b.value, 0);
+    return { total, items: base.map((b) => ({ ...b, pct: total > 0 ? (b.value / total) * 100 : 0 })) };
+  }, [stats]);
+
+  const loading = !stats;
+
+  return (
+    <Card>
+      <div style={{ height: 3, background: "linear-gradient(90deg,#F59E0B,#3B82F6,#10B981,#A855F7,#DC2626,#6B7280)", flexShrink: 0 }} />
+      <div className="flex items-center justify-between px-5 pt-4 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.18)" }}>
+            <Layers className="h-3.5 w-3.5 text-[#6366F1]" strokeWidth={2} />
+          </div>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Distribuição das Vistorias</span>
+            <span className="text-[9.5px] text-[var(--vm-faint)]">todo o pipeline por estado operacional</span>
+          </div>
+        </div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[22px] font-bold tabular-nums text-[var(--vm-text)]">{loading ? "—" : <CountUp value={segs.total} />}</span>
+          <span className="text-[10px] text-[var(--vm-faint)]">total</span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="px-5 pb-5"><Skeleton h={120} /></div>
+      ) : segs.total === 0 ? (
+        <div className="px-5 pb-8 pt-4 text-center text-[12px] text-[var(--vm-faint)]">Sem vistorias no sistema.</div>
+      ) : (
+        <div className="px-5 pb-5">
+          {/* barra empilhada */}
+          <div className="flex h-8 w-full gap-[3px] overflow-hidden rounded-xl" style={{ background: "var(--vm-tile-2)" }}>
+            {segs.items.filter((s) => s.value > 0).map((s, i) => (
+              <motion.div
+                key={s.key}
+                initial={{ width: 0 }}
+                animate={{ width: `${s.pct}%` }}
+                transition={{ duration: 0.9, delay: 0.05 * i, ease: [0.22, 0.7, 0.2, 1] }}
+                title={`${s.label}: ${s.value} (${s.pct.toFixed(1)}%)`}
+                style={{ background: s.color, minWidth: 3 }}
+              />
+            ))}
+          </div>
+
+          {/* legenda */}
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-6">
+            {segs.items.map((s) => {
+              const Icon = s.icon;
+              return (
+                <Link
+                  key={s.key}
+                  href={s.href}
+                  className="flex items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-[var(--vm-tile)]"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${s.color}18` }}>
+                    <Icon className="h-3.5 w-3.5" style={{ color: s.color }} strokeWidth={2} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-[15px] font-bold tabular-nums text-[var(--vm-text)]">{s.value}</span>
+                      <span className="text-[10px] font-semibold tabular-nums" style={{ color: s.color }}>{s.pct.toFixed(0)}%</span>
+                    </div>
+                    <span className="block truncate text-[10.5px] text-[var(--vm-faint)]">{s.label}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -1893,6 +1988,11 @@ export default function PainelOverviewPage() {
 
         {/* Widget 07 — Revisitas: SP map + problem areas */}
         <RevisitasMapWidget revisitas={revisitas} />
+      </div>
+
+      {/* ════════════ LINHA 3: Distribuição do pipeline ════════════ */}
+      <div className="vm-rise" style={{ animationDelay: "0.22s" }}>
+        <PipelineWidget stats={stats} />
       </div>
 
       {/* ════════════ RODAPÉ — barra de status NOC ════════════ */}
