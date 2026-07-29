@@ -1558,7 +1558,7 @@ export default function PainelOverviewPage() {
                         {k.raw != null ? <CountUp value={k.raw} /> : "—"}
                       </div>
                       <div style={{ fontSize: "0.78rem", marginBottom: 10, color: "rgba(255,255,255,0.4)" }}>
-                        {k.sub} · {barPct}% do total
+                        {k.sub}
                       </div>
                       <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
                         <div style={{ height: "100%", borderRadius: 999, background: color, width: `${barPct}%`, transition: "width 1s ease" }} />
