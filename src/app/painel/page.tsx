@@ -1519,19 +1519,25 @@ export default function PainelOverviewPage() {
                   { k: kpis[3], color: "#f59e0b" },
                 ]).map(({ k, color }, i) => {
                   const Icon = k.icon;
-                  // % real do pipeline (Backlog+Em vistoria+Concluídas+Revisitas
-                  // somam 100%) — antes comparava cada card com o MAIOR dos 4,
-                  // então o maior sempre batia 100% mesmo sem significar
-                  // "completo". Sem dado histórico confiável ainda pra "vs
-                  // ontem" (precisaria de snapshot diário), por isso a
-                  // sub-label mostra o significado do número em vez de um
-                  // delta inventado.
-                  const totalPipeline =
-                    (kpis[0].raw ?? 0) + (kpis[1].raw ?? 0) + (kpis[2].raw ?? 0) + (kpis[3].raw ?? 0);
-                  const barPct =
-                    k.raw != null && totalPipeline > 0
-                      ? Math.round((k.raw / totalPipeline) * 100)
-                      : 0;
+                  // Chip de contexto por card — dado real (audit 24h / campo).
+                  // active = colorido; senão fica neutro (sem inventar tendência).
+                  const atrib24 = stats?.atribuidas24h ?? 0;
+                  const fin24 = stats?.finalizadas24h ?? 0;
+                  const semTec = stats?.aguardandoRevisita ?? 0;
+                  let chip: { icon: React.ReactNode; text: string; active: boolean };
+                  if (i === 0) {
+                    chip = atrib24 > 0
+                      ? { icon: <ArrowUp style={{ width: 11, height: 11, transform: "rotate(180deg)" }} strokeWidth={2.6} />, text: `${atrib24} atribuída${atrib24 !== 1 ? "s" : ""} · 24h`, active: true }
+                      : { icon: <Clock style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "sem movimentação · 24h", active: false };
+                  } else if (i === 1) {
+                    chip = { icon: <Users style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, active: emCampo > 0 };
+                  } else if (i === 2) {
+                    chip = fin24 > 0
+                      ? { icon: <ArrowUp style={{ width: 11, height: 11 }} strokeWidth={2.6} />, text: `${fin24} finalizada${fin24 !== 1 ? "s" : ""} · 24h`, active: true }
+                      : { icon: <CheckCircle2 style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "aguardando aprovação", active: false };
+                  } else {
+                    chip = { icon: <Clock style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: `${semTec} sem técnico`, active: semTec > 0 };
+                  }
                   return (
                     <motion.div
                       key={k.label}
@@ -1539,29 +1545,49 @@ export default function PainelOverviewPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.12 + i * 0.07, duration: 0.35 }}
                       whileHover={{ scale: 1.02 }}
-                      onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.borderColor = "rgba(255,255,255,0.2)"; t.style.background = "rgba(255,255,255,0.07)"; }}
+                      onMouseEnter={(e) => { const t = e.currentTarget as HTMLElement; t.style.borderColor = `${color}55`; t.style.background = "rgba(255,255,255,0.06)"; }}
                       onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.borderColor = "rgba(255,255,255,0.08)"; t.style.background = "rgba(255,255,255,0.04)"; }}
                       style={{
+                        position: "relative",
                         background: "rgba(255,255,255,0.04)",
                         border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 12,
-                        padding: 18,
+                        borderRadius: 14,
+                        padding: 16,
                         backdropFilter: "blur(8px)",
                         cursor: k.href ? "pointer" : "default",
+                        overflow: "hidden",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                        <span style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.15em", color }}>{k.label.toUpperCase()}</span>
-                        <Icon style={{ width: 13, height: 13, color, opacity: 0.75 }} />
+                      {/* faixa de cor lateral sutil */}
+                      <div style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: 999, background: color, opacity: 0.9 }} />
+                      {/* header: ícone tint + label */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 8, background: `${color}22`, border: `1px solid ${color}33` }}>
+                          <Icon style={{ width: 13, height: 13, color }} strokeWidth={2} />
+                        </span>
+                        <span style={{ fontSize: "0.66rem", fontWeight: 700, letterSpacing: "0.14em", color: "rgba(255,255,255,0.55)" }}>{k.label.toUpperCase()}</span>
                       </div>
-                      <div style={{ fontSize: "3.2rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: 4 }}>
+                      {/* número */}
+                      <div style={{ fontSize: "2.9rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: 12, letterSpacing: "-0.02em" }}>
                         {k.raw != null ? <CountUp value={k.raw} /> : "—"}
                       </div>
-                      <div style={{ fontSize: "0.78rem", marginBottom: 10, color: "rgba(255,255,255,0.4)" }}>
-                        {k.sub}
-                      </div>
-                      <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                        <div style={{ height: "100%", borderRadius: 999, background: color, width: `${barPct}%`, transition: "width 1s ease" }} />
+                      {/* chip de contexto */}
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          padding: "3px 9px",
+                          borderRadius: 999,
+                          fontSize: "0.7rem",
+                          fontWeight: 600,
+                          background: chip.active ? `${color}1A` : "rgba(255,255,255,0.05)",
+                          color: chip.active ? color : "rgba(255,255,255,0.5)",
+                          border: `1px solid ${chip.active ? `${color}2E` : "rgba(255,255,255,0.07)"}`,
+                        }}
+                      >
+                        {chip.icon}
+                        {chip.text}
                       </div>
                     </motion.div>
                   );

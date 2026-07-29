@@ -174,6 +174,29 @@ export async function fetchPainelStats(): Promise<PainelStats> {
   );
   const pdfsGerados = pdfRow?.total ?? 0;
 
+  // Atividade das últimas 24h a partir do audit log (dado real, com ts).
+  // atribuidas24h = quantas SAÍRAM do backlog; finalizadas24h = throughput.
+  let atribuidas24h = 0;
+  let finalizadas24h = 0;
+  try {
+    const rows24h = await query<{ acao: string; total: number }>(
+      `
+        SELECT acao, COUNT(DISTINCT alvo_id) AS total
+          FROM \`glpi_plugin_vistomap_audit\`
+         WHERE acao IN ('vistoria-atribuida', 'vistoria-finalizada')
+           AND alvo_tipo = 'vistoria'
+           AND ts >= NOW() - INTERVAL 24 HOUR
+         GROUP BY acao
+      `
+    );
+    for (const r of rows24h) {
+      if (r.acao === "vistoria-atribuida") atribuidas24h = Number(r.total) || 0;
+      if (r.acao === "vistoria-finalizada") finalizadas24h = Number(r.total) || 0;
+    }
+  } catch {
+    /* tabela de audit pode não existir em dev — mantém 0 */
+  }
+
   return {
     pendentes,
     emVistoria,
@@ -185,6 +208,8 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     municipiosAtivos,
     tecnicosAtivos,
     pdfsGerados,
+    atribuidas24h,
+    finalizadas24h,
     ultimaSincronizacao: new Date().toISOString(),
   };
 }

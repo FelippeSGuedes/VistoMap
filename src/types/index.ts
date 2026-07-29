@@ -395,6 +395,10 @@ export interface PainelStats {
   municipiosAtivos: number;
   tecnicosAtivos: number;
   pdfsGerados: number;
+  /** Vistorias atribuídas (saíram do backlog) nas últimas 24h — do audit log. */
+  atribuidas24h?: number;
+  /** Vistorias finalizadas nas últimas 24h — do audit log. */
+  finalizadas24h?: number;
   ultimaSincronizacao: string;
   /** Série diária dos últimos 14 dias por status (sparkline). */
   trend14d?: {
