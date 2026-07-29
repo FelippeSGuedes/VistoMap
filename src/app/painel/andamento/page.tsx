@@ -14,6 +14,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import type { VistoriaAndamento } from "@/app/api/painel/andamento/route";
+import { useAuthStore } from "@/store/auth";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -93,6 +94,7 @@ function Skeleton() {
 }
 
 export default function AndamentoPage() {
+  const { session } = useAuthStore();
   const [items, setItems] = useState<VistoriaAndamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -103,8 +105,12 @@ export default function AndamentoPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
+    if (!session?.token) return;
     try {
-      const res = await fetch("/painel/api/painel/andamento", { cache: "no-store" });
+      const res = await fetch("/painel/api/painel/andamento", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data: VistoriaAndamento[] = await res.json();
       setItems(data);
@@ -115,7 +121,7 @@ export default function AndamentoPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [session?.token]);
 
   useEffect(() => {
     void load();
