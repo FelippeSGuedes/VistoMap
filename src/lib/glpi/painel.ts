@@ -1065,7 +1065,7 @@ function resolveSituacaoOperacional(
     case 4: return "AGUARDANDO_REVISITA";
     case 5: return "EM_REVISITA";
     case 6: return "REVISITADO";
-    case 1: return "A_VISTORIAR";
+    case 1: return hasTecnico ? "ATRIBUIDO" : "A_VISTORIAR";
     case 8: return "DEVOLVIDA";
   }
   // Fallback: deriva de statusvistoria + is_repeat

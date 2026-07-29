@@ -37,6 +37,8 @@ export type MapaVistoriaStatus =
  */
 export type SituacaoOperacional =
   | "A_VISTORIAR"
+  /** Sub-estado de A_VISTORIAR: já tem técnico, mas ele ainda não iniciou a vistoria. */
+  | "ATRIBUIDO"
   | "EM_VISTORIA"
   | "VISTORIADO"
   | "AGUARDANDO_REVISITA"

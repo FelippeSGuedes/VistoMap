@@ -132,7 +132,8 @@ function add3DBuildings(map: mapboxgl.Map) {
 }
 
 const SITUACAO_COR: Record<string, string> = {
-  A_VISTORIAR:         "#F97316",  // laranja
+  A_VISTORIAR:         "#F97316",  // laranja — pendente, sem técnico
+  ATRIBUIDO:           "#EC4899",  // rosa — já tem técnico, aguardando ele iniciar
   EM_VISTORIA:         "#3B82F6",  // azul
   VISTORIADO:          "#00B388",  // verde
   AGUARDANDO_REVISITA: "#F59E0B",  // âmbar
@@ -143,6 +144,7 @@ const SITUACAO_COR: Record<string, string> = {
 };
 const SITUACAO_LABEL: Record<string, string> = {
   A_VISTORIAR:       "A vistoriar",
+  ATRIBUIDO:         "Atribuído",
   EM_VISTORIA:       "Em vistoria",
   VISTORIADO:        "Vistoriado",
   AGUARDANDO_REVISITA: "Ag. revisita",
@@ -279,6 +281,7 @@ function makePinImage(color: string, inner: "dot" | "ring" | "check" | "warn" | 
 // Pins por SITUAÇÃO operacional (não por status de aprovação).
 const PIN_DEFS = [
   { name: "vm-pin-a_vistoriar",         color: "#F97316", inner: "ring"  as const },
+  { name: "vm-pin-atribuido",           color: "#EC4899", inner: "dot"   as const },
   { name: "vm-pin-em_vistoria",         color: "#3B82F6", inner: "dot"   as const },
   { name: "vm-pin-vistoriado",          color: "#00B388", inner: "check" as const },
   { name: "vm-pin-aguardando_revisita", color: "#F59E0B", inner: "ring"  as const },
@@ -447,6 +450,7 @@ export default function PainelMapaPage() {
   const cursorRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const editMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const lastDataRef = useRef<PainelMapaResponse | null>(null);
+  const vistoriasFiltradasRef = useRef<PainelMapaVistoria[]>([]);
 
   const [data, setData] = useState<PainelMapaResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -657,8 +661,7 @@ export default function PainelMapaPage() {
       if (prev !== "3d") {
         map.setStyle(target3d);
         map.once("style.load", () => {
-          const d = lastDataRef.current;
-          if (d) ensureVistoriaLayers(map, d.vistorias);
+          if (lastDataRef.current) ensureVistoriaLayers(map, vistoriasFiltradasRef.current);
           if (trailUsersId) fetchTrail(trailUsersId);
           add3DBuildings(map);
         });
@@ -676,8 +679,7 @@ export default function PainelMapaPage() {
     map.setStyle(targetStyle);
     map.once("style.load", () => {
       // Re-adiciona layers de vistorias perdidos com a troca de estilo
-      const d = lastDataRef.current;
-      if (d) ensureVistoriaLayers(map, d.vistorias);
+      if (lastDataRef.current) ensureVistoriaLayers(map, vistoriasFiltradasRef.current);
       // Re-adiciona trail se houver
       if (trailUsersId) fetchTrail(trailUsersId);
     });
@@ -727,6 +729,7 @@ export default function PainelMapaPage() {
           "icon-image": [
             "match", ["get", "situacao"],
             "A_VISTORIAR",         "vm-pin-a_vistoriar",
+            "ATRIBUIDO",           "vm-pin-atribuido",
             "EM_VISTORIA",         "vm-pin-em_vistoria",
             "VISTORIADO",          "vm-pin-vistoriado",
             "AGUARDANDO_REVISITA", "vm-pin-aguardando_revisita",
@@ -826,6 +829,36 @@ export default function PainelMapaPage() {
 
   /* ── sync markers + layers ──────────────────────────────────────────────── */
 
+  // Pins do mapa mostram só o que bate com os filtros de situação/busca da
+  // lista lateral — antes disso o mapa sempre renderizava TUDO independente
+  // do filtro selecionado, só a lista lateral respeitava.
+  const SITUACAO_SORT: Record<string, number> = {
+    DEVOLVIDA: -1, A_VISTORIAR: 0, ATRIBUIDO: 1, EM_VISTORIA: 2, VISTORIADO: 3,
+    AGUARDANDO_REVISITA: 4, EM_REVISITA: 5, REVISITADO: 6, REJEITADA: 7,
+  };
+
+  const vistoriasFiltradas = useMemo(() => {
+    const all = data?.vistorias ?? [];
+    const q = buscaVis.trim().toLowerCase();
+    return all
+      .filter((v) => {
+        if (filtroSit !== "todas" && v.situacao !== filtroSit) return false;
+        if (!q) return true;
+        return (
+          v.equipamento.toLowerCase().includes(q) ||
+          (v.municipio ?? "").toLowerCase().includes(q) ||
+          (v.tecnico_nome ?? "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (SITUACAO_SORT[a.situacao] ?? 9) - (SITUACAO_SORT[b.situacao] ?? 9));
+  }, [data, filtroSit, buscaVis]);
+
+  // Espelha em ref pra reaproveitar em callbacks de troca de estilo do mapa
+  // (satellite/dark/3d), que rodam fora do ciclo normal de render.
+  useEffect(() => {
+    vistoriasFiltradasRef.current = vistoriasFiltradas;
+  }, [vistoriasFiltradas]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !data) return;
@@ -879,13 +912,13 @@ export default function PainelMapaPage() {
 
     const sync = () => {
       syncTechMarkers();
-      ensureVistoriaLayers(map, data.vistorias);
+      ensureVistoriaLayers(map, vistoriasFiltradas);
     };
 
     if (map.loaded()) sync();
     else map.once("load", sync);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, filtroTec]);
+  }, [data, filtroTec, vistoriasFiltradas]);
 
   /* ── GPS correção ───────────────────────────────────────────────────────── */
 
@@ -957,26 +990,6 @@ export default function PainelMapaPage() {
     [data]
   );
 
-  const SITUACAO_SORT: Record<string, number> = {
-    DEVOLVIDA: -1, A_VISTORIAR: 0, EM_VISTORIA: 1, VISTORIADO: 2,
-    AGUARDANDO_REVISITA: 3, EM_REVISITA: 4, REVISITADO: 5, REJEITADA: 6,
-  };
-
-  const vistoriasFiltradas = useMemo(() => {
-    const all = data?.vistorias ?? [];
-    const q = buscaVis.trim().toLowerCase();
-    return all
-      .filter((v) => {
-        if (filtroSit !== "todas" && v.situacao !== filtroSit) return false;
-        if (!q) return true;
-        return (
-          v.equipamento.toLowerCase().includes(q) ||
-          (v.municipio ?? "").toLowerCase().includes(q) ||
-          (v.tecnico_nome ?? "").toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => (SITUACAO_SORT[a.situacao] ?? 9) - (SITUACAO_SORT[b.situacao] ?? 9));
-  }, [data, filtroSit, buscaVis]);
 
   const contagemSit = useMemo(() => {
     const acc: Record<string, number> = {};
@@ -1137,6 +1150,7 @@ export default function PainelMapaPage() {
                 {(
                   [
                     ["A_VISTORIAR", "A vistoriar", "#F97316"],
+                    ["ATRIBUIDO", "Atribuído", "#EC4899"],
                     ["EM_VISTORIA", "Em vistoria", "#3B82F6"],
                     ["VISTORIADO", "Vistoriado", "#00B388"],
                     ["AGUARDANDO_REVISITA", "Ag. revisita", "#F59E0B"],

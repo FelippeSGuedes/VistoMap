@@ -95,7 +95,10 @@ interface GrupoMunicipio {
 }
 
 type FiltroTipo = "todos" | "nova" | "revisita";
-type FiltroAtrib = "todos" | "sem";
+/** "atribuido" só se aplica dentro do bucket A_VISTORIAR — já tem técnico,
+ *  aguardando ele iniciar (mesmo conceito do pin rosa "Atribuído" do mapa). */
+type FiltroAtrib = "todos" | "sem" | "atribuido";
+const COR_ATRIBUIDO = "#EC4899";
 
 const CHUNK = 25;
 
@@ -980,6 +983,7 @@ export default function FilaVistoriasPage() {
       if (filtroTipo === "nova" && i.isRepeat) return false;
       if (filtroTipo === "revisita" && !i.isRepeat) return false;
       if (filtroAtrib === "sem" && i.tecnico) return false;
+      if (filtroAtrib === "atribuido" && !(i.status === "A_VISTORIAR" && i.tecnico)) return false;
       if (!dentroDoRange(i.dataVistoria, dateRange)) return false;
       if (!q) return true;
       return (
@@ -990,6 +994,25 @@ export default function FilaVistoriasPage() {
       );
     });
   }, [items, query, filtroMunicipio, filtroTecnico, filtroTipo, filtroAtrib, dateRange]);
+
+  // Contadores das pílulas de tipo/atribuição — sobre o total (não sobre
+  // `filtrados`), mesmo padrão do Mapa Tempo Real pras pílulas de situação.
+  const contagemTipo = useMemo(
+    () => ({
+      todos: items.length,
+      nova: items.filter((i) => !i.isRepeat).length,
+      revisita: items.filter((i) => i.isRepeat).length,
+    }),
+    [items]
+  );
+  const contagemAtrib = useMemo(
+    () => ({
+      todos: items.length,
+      sem: items.filter((i) => !i.tecnico).length,
+      atribuido: items.filter((i) => i.status === "A_VISTORIAR" && i.tecnico).length,
+    }),
+    [items]
+  );
 
   // Grupos por município
   const grupos = useMemo<GrupoMunicipio[]>(() => {
@@ -1331,32 +1354,58 @@ export default function FilaVistoriasPage() {
                     key={v}
                     type="button"
                     onClick={() => setFiltroTipo(v)}
-                    className="h-8 px-3 text-[11px] font-semibold transition"
+                    className="flex h-8 items-center gap-1 px-3 text-[11px] font-semibold transition"
                     style={{
                       background: filtroTipo === v ? "rgba(0,179,136,0.1)" : "transparent",
                       color: filtroTipo === v ? C.brandDeep : "var(--vm-muted-b)",
                     }}
                   >
                     {v === "todos" ? "Todos" : v === "nova" ? "Novas" : "Revisitas"}
+                    <span
+                      className="rounded-full px-1.5 text-[9.5px] font-bold tabular-nums"
+                      style={{
+                        background: filtroTipo === v ? "rgba(0,179,136,0.16)" : "var(--vm-fill-2)",
+                        color: filtroTipo === v ? C.brandDeep : "var(--vm-faint)",
+                      }}
+                    >
+                      {contagemTipo[v]}
+                    </span>
                   </button>
                 ))}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setFiltroAtrib(filtroAtrib === "sem" ? "todos" : "sem")}
-                className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11px] font-semibold transition"
-                style={{
-                  background: filtroAtrib === "sem" ? "rgba(0,179,136,0.08)" : "var(--vm-tile)",
-                  border:
-                    filtroAtrib === "sem"
-                      ? `1px solid ${C.brandLine}`
-                      : "1px solid var(--vm-border)",
-                  color: filtroAtrib === "sem" ? C.brandDeep : "var(--vm-muted-b)",
-                }}
+              <div
+                className="flex overflow-hidden rounded-xl"
+                style={{ border: "1px solid var(--vm-border)" }}
               >
-                Somente a atribuir
-              </button>
+                {(["todos", "sem", "atribuido"] as FiltroAtrib[]).map((v) => {
+                  const active = filtroAtrib === v;
+                  const cor = v === "atribuido" ? COR_ATRIBUIDO : C.brandDeep;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setFiltroAtrib(v)}
+                      className="flex h-8 items-center gap-1 px-3 text-[11px] font-semibold transition"
+                      style={{
+                        background: active ? `${cor}1A` : "transparent",
+                        color: active ? cor : "var(--vm-muted-b)",
+                      }}
+                    >
+                      {v === "todos" ? "Todos" : v === "sem" ? "A atribuir" : "Atribuído"}
+                      <span
+                        className="rounded-full px-1.5 text-[9.5px] font-bold tabular-nums"
+                        style={{
+                          background: active ? `${cor}29` : "var(--vm-fill-2)",
+                          color: active ? cor : "var(--vm-faint)",
+                        }}
+                      >
+                        {contagemAtrib[v]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
               {temFiltros && (
                 <button
