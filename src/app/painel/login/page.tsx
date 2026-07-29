@@ -28,7 +28,9 @@ export default function PainelLoginPage() {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (session?.role === "admin") router.replace("/painel");
+    if (session?.role === "admin" || session?.role === "moderador" || session?.role === "leitura") {
+      router.replace("/painel");
+    }
   }, [hydrated, session, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,7 +40,7 @@ export default function PainelLoginPage() {
     setLoading(true);
     try {
       const result = await authService.loginAdmin({ login, senha });
-      if (result.role !== "admin") {
+      if (result.role !== "admin" && result.role !== "moderador" && result.role !== "leitura") {
         setError("Esta conta não tem acesso ao painel. Use o app do técnico em /login.");
         setLoading(false);
         return;
