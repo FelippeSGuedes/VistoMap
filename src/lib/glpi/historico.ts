@@ -47,7 +47,10 @@ export interface HistoricoAnalytics {
   }>;
   topMunicipios: Array<{
     municipio: string;
+    /** Total de vistorias do município, qualquer situação, sem recorte de data. */
     total: number;
+    /** Quantas dessas já foram finalizadas (datadavistoriafield preenchida). */
+    concluidas: number;
   }>;
   rankingTecnicos: Array<{
     id: number;
@@ -179,20 +182,26 @@ export async function fetchHistoricoAnalytics(
   const revisitasFinalizadas = Number(agg?.revisitas_finalizadas ?? 0);
   const pdfsGerados = Number(agg?.pdfs ?? 0);
 
-  /* ── Top municípios ─────────────────────────────────────────── */
-  const muniRows = await query<{ municipio: string; total: number }>(
+  /* ── Top municípios ─────────────────────────────────────────────────────
+     `total` = TODAS as vistorias do município (qualquer situação, sem
+     recorte de data) — o tamanho real da frente de trabalho. `concluidas` =
+     quantas dessas já têm data de vistoria preenchida (finalizada). O
+     percentual exibido no painel é concluidas/total — progresso real, não
+     "fatia dentre os 10 maiores" (que sempre somava 100% e enganava,
+     mostrando o maior município como se estivesse "100% completo"). */
+  const muniRows = await query<{ municipio: string; total: number; concluidas: number }>(
     `
-      SELECT TRIM(f.municipiofield) AS municipio, COUNT(*) AS total
+      SELECT TRIM(f.municipiofield) AS municipio,
+             COUNT(*) AS total,
+             SUM(CASE WHEN f.datadavistoriafield IS NOT NULL THEN 1 ELSE 0 END) AS concluidas
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
        WHERE f.municipiofield IS NOT NULL
          AND TRIM(f.municipiofield) <> ''
-         AND DATE(f.datadavistoriafield) >= ?
        GROUP BY TRIM(f.municipiofield)
        ORDER BY total DESC
        LIMIT 10
-    `,
-    [inicio]
+    `
   );
 
   /* ── Ranking técnicos ──────────────────────────────────────── */
@@ -386,6 +395,7 @@ export async function fetchHistoricoAnalytics(
     topMunicipios: muniRows.map((r) => ({
       municipio: r.municipio,
       total: Number(r.total) || 0,
+      concluidas: Number(r.concluidas) || 0,
     })),
     rankingTecnicos,
     kmOperacional: Math.round(kmTotal * 10) / 10,

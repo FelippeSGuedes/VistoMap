@@ -186,7 +186,7 @@ export interface HistoricoAnalytics {
     aprovadas: number;
     reprovadas: number;
   }>;
-  topMunicipios: Array<{ municipio: string; total: number }>;
+  topMunicipios: Array<{ municipio: string; total: number; concluidas: number }>;
   rankingTecnicos: Array<{
     id: number;
     nome: string;

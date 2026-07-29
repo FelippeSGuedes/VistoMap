@@ -882,7 +882,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
    ══════════════════════════════════════════════════════════════════════════ */
 
 interface MunicipiosMapWidgetProps {
-  topMunicipios: Array<{ municipio: string; total: number }>;
+  topMunicipios: Array<{ municipio: string; total: number; concluidas: number }>;
   tecnicos: TecnicoAtivo[];
 }
 
@@ -1045,7 +1045,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Municípios</span>
-            <span className="text-[9.5px] text-[var(--vm-faint)]">30 dias{totalGlobal > 0 ? ` · ${totalGlobal} vistorias` : ""}</span>
+            <span className="text-[9.5px] text-[var(--vm-faint)]">progresso por município{totalGlobal > 0 ? ` · ${totalGlobal} vistorias` : ""}</span>
           </div>
         </div>
         <span
@@ -1059,7 +1059,10 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
       <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" />
       <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
         {topMunicipios.slice(0, 5).map((m, i) => {
-          const pct = totalGlobal > 0 ? (m.total / totalGlobal) * 100 : 0;
+          // % real de progresso do município (concluídas / total do município),
+          // não a fatia dele dentre os top 10 — isso fazia o maior município
+          // sempre bater 100%, mesmo sem estar nem perto de completo.
+          const pct = m.total > 0 ? (m.concluidas / m.total) * 100 : 0;
           const rankBg =
             i === 0 ? "linear-gradient(135deg,#F59E0B,#D97706)"
             : i === 1 ? "linear-gradient(135deg,#94A3B8,#64748B)"
@@ -1104,7 +1107,7 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
                   <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="text-[9.5px] text-[var(--vm-faint)]">{pct.toFixed(0)}%</span>
-                    <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.total}</span>
+                    <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.concluidas}/{m.total}</span>
                   </div>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
@@ -1508,14 +1511,25 @@ export default function PainelOverviewPage() {
             <div style={{ width: 460, padding: 16, display: "flex", alignItems: "center", position: "relative", zIndex: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
                 {([
-                  { k: kpis[0], color: "#00ff88",  delta: { up: true,  pct: "12%" } as { up: boolean; pct: string } | null },
-                  { k: kpis[1], color: "#4A9EFF",  delta: null                                                              },
-                  { k: kpis[2], color: "#00ff88",  delta: { up: true,  pct: "20%" } as { up: boolean; pct: string } | null },
-                  { k: kpis[3], color: "#f59e0b",  delta: null                                                              },
-                ]).map(({ k, color, delta }, i) => {
+                  { k: kpis[0], color: "#00ff88" },
+                  { k: kpis[1], color: "#4A9EFF" },
+                  { k: kpis[2], color: "#00ff88" },
+                  { k: kpis[3], color: "#f59e0b" },
+                ]).map(({ k, color }, i) => {
                   const Icon = k.icon;
-                  const maxVal = Math.max(kpis[0].raw ?? 0, kpis[1].raw ?? 0, kpis[2].raw ?? 0, kpis[3].raw ?? 0, 1);
-                  const barPct = k.raw != null ? Math.min(Math.round((k.raw / maxVal) * 100), 100) : 0;
+                  // % real do pipeline (Backlog+Em vistoria+Concluídas+Revisitas
+                  // somam 100%) — antes comparava cada card com o MAIOR dos 4,
+                  // então o maior sempre batia 100% mesmo sem significar
+                  // "completo". Sem dado histórico confiável ainda pra "vs
+                  // ontem" (precisaria de snapshot diário), por isso a
+                  // sub-label mostra o significado do número em vez de um
+                  // delta inventado.
+                  const totalPipeline =
+                    (kpis[0].raw ?? 0) + (kpis[1].raw ?? 0) + (kpis[2].raw ?? 0) + (kpis[3].raw ?? 0);
+                  const barPct =
+                    k.raw != null && totalPipeline > 0
+                      ? Math.round((k.raw / totalPipeline) * 100)
+                      : 0;
                   return (
                     <motion.div
                       key={k.label}
@@ -1541,8 +1555,8 @@ export default function PainelOverviewPage() {
                       <div style={{ fontSize: "3.2rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: 4 }}>
                         {k.raw != null ? <CountUp value={k.raw} /> : "—"}
                       </div>
-                      <div style={{ fontSize: "0.78rem", marginBottom: 10, color: delta ? (delta.up ? "#00ff88" : "#f59e0b") : "rgba(255,255,255,0.35)" }}>
-                        {delta ? `${delta.up ? "↑" : "↓"} ${delta.pct} vs ontem` : "sem alteração"}
+                      <div style={{ fontSize: "0.78rem", marginBottom: 10, color: "rgba(255,255,255,0.4)" }}>
+                        {k.sub} · {barPct}% do total
                       </div>
                       <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
                         <div style={{ height: "100%", borderRadius: 999, background: color, width: `${barPct}%`, transition: "width 1s ease" }} />
@@ -1720,9 +1734,22 @@ export default function PainelOverviewPage() {
                       </div>
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[34px]">
-                      <span className="rounded-full bg-emerald-50 px-1.5 py-[2px] text-[9px] font-semibold text-emerald-700">
-                        {aprovPct}% aprov.
-                      </span>
+                      {/* Amostra pequena (< 3 vistorias) distorce %: 1/1 mostraria
+                          "100% aprov." lado a lado com técnicos de 40+ vistorias,
+                          como se fossem comparáveis. Mostra a contagem crua. */}
+                      {t.total >= 3 ? (
+                        <span className="rounded-full bg-emerald-50 px-1.5 py-[2px] text-[9px] font-semibold text-emerald-700">
+                          {aprovPct}% aprov.
+                        </span>
+                      ) : (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "var(--vm-tile-2)", color: "var(--vm-faint)" }}
+                          title="Amostra pequena demais pra calcular percentual"
+                        >
+                          {t.aprovadas}/{t.total} aprov.
+                        </span>
+                      )}
                       {t.cidades > 0 && (
                         <span className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
                           {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
