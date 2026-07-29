@@ -17,8 +17,8 @@ export async function ensureOverrideTable(): Promise<void> {
       \`motivo_reprovacao\` text         DEFAULT NULL,
       \`distancia_m\`       int(11)      DEFAULT NULL,
       \`exception_label\`   varchar(100) DEFAULT NULL,
-      \`created_at\`        datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      \`updated_at\`        datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      \`created_at\`        timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\`        timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (\`id\`),
       KEY \`idx_status\`   (\`status\`),
       KEY \`idx_vistoria\` (\`vistoria_id\`)

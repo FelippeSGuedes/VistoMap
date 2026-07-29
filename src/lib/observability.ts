@@ -21,7 +21,7 @@ export async function ensureErrorLogTable(): Promise<void> {
     `
       CREATE TABLE IF NOT EXISTS \`${TABLE_LOG}\` (
         id       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-        ts       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        ts       timestamp       NOT NULL DEFAULT CURRENT_TIMESTAMP,
         source   VARCHAR(16)     NOT NULL,
         level    VARCHAR(16)     NOT NULL DEFAULT 'error',
         rota     VARCHAR(128)    NULL,

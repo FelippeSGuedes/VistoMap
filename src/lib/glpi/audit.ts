@@ -21,7 +21,7 @@ export async function ensureAuditTable(): Promise<void> {
     `
       CREATE TABLE IF NOT EXISTS \`${TABLE_AUDIT}\` (
         id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-        ts           DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        ts           timestamp       NOT NULL DEFAULT CURRENT_TIMESTAMP,
         ator_id      INT             NOT NULL,
         ator_nome    VARCHAR(255)    NOT NULL,
         ator_role    VARCHAR(16)     NOT NULL,
