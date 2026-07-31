@@ -16,15 +16,26 @@ import {
   BellOff,
   CheckCircle2,
   Clock,
+  Mail,
   RefreshCw,
   Save,
   Settings,
   ShieldCheck,
+  UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
 import type { UsuarioPainel } from "@/app/api/painel/usuarios/route";
+
+type TipoColaborador = "tecnico" | "administrador" | "moderador" | "leitura";
+const TIPO_LABEL: Record<TipoColaborador, string> = {
+  tecnico: "Técnico",
+  administrador: "Administrador",
+  moderador: "Moderador",
+  leitura: "Leitura",
+};
 
 interface ExpedienteConfig {
   inicio: string;
@@ -248,6 +259,7 @@ function UsuariosCard({ isAdmin }: { isAdmin: boolean }) {
   const [tecnicos, setTecnicos] = useState<UsuarioPainel[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [novoOpen, setNovoOpen] = useState(false);
 
   const headers = { Authorization: `Bearer ${session?.token}` };
 
@@ -316,14 +328,26 @@ function UsuariosCard({ isAdmin }: { isAdmin: boolean }) {
             )
           )}
         </div>
-        <button
-          type="button"
-          onClick={carregar}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100"
-          title="Atualizar"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setNovoOpen(true)}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-[#00B388] px-3 text-[12px] font-semibold text-white transition hover:bg-[#00875F]"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Novo colaborador
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={carregar}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100"
+            title="Atualizar"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {sub === "analistas" && (
@@ -421,6 +445,200 @@ function UsuariosCard({ isAdmin }: { isAdmin: boolean }) {
           })}
         </ul>
       )}
+
+      {novoOpen && (
+        <NovoColaboradorModal
+          onClose={() => setNovoOpen(false)}
+          onCriado={() => { setNovoOpen(false); carregar(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Modal: novo colaborador ─────────────────────────────────────────── */
+
+function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCriado: () => void }) {
+  const { session } = useAuthStore();
+  const headers = { Authorization: `Bearer ${session?.token}` };
+
+  const [nome, setNome] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameTocado, setUsernameTocado] = useState(false);
+  const [email, setEmail] = useState("");
+  const [matricula, setMatricula] = useState("");
+  const [tipo, setTipo] = useState<TipoColaborador>("tecnico");
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState<{ username: string; emailEnviado: boolean } | null>(null);
+
+  // Auto-sugere o login pelo prefixo do e-mail, até o admin editar o campo.
+  function onEmail(v: string) {
+    setEmail(v);
+    if (!usernameTocado) {
+      const prefixo = v.split("@")[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, "") ?? "";
+      setUsername(prefixo);
+    }
+  }
+
+  const senhaPreview = matricula.trim() ? `Nsn#${matricula.trim()}2026` : "Nsn#…2026";
+
+  async function submit() {
+    setErro(null);
+    setSaving(true);
+    try {
+      const r = await api.post<{ username: string; emailEnviado: boolean }>(
+        "/painel/usuarios/criar",
+        { nome, username, email, matricula, tipo },
+        { headers }
+      );
+      setOk({ username: r.data.username, emailEnviado: r.data.emailEnviado });
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Falha ao criar a conta.";
+      setErro(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6"
+        style={{ border: "1px solid var(--vm-border)", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "var(--vm-accent-tint)", color: "#00875F" }}>
+              <UserPlus className="h-5 w-5" />
+            </span>
+            <h2 className="text-[16px] font-bold text-gray-900">Novo colaborador</h2>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {ok ? (
+          <div className="space-y-4 py-2 text-center">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            </span>
+            <div>
+              <p className="text-[14px] font-bold text-gray-900">Conta criada!</p>
+              <p className="mt-1 text-[12.5px] text-gray-500">
+                Login <b>{ok.username}</b> · senha <b>Nsn#{matricula.trim()}2026</b>
+              </p>
+            </div>
+            <div
+              className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12.5px] ${ok.emailEnviado ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+            >
+              <Mail className="h-4 w-4 shrink-0" />
+              {ok.emailEnviado
+                ? "E-mail com as credenciais enviado."
+                : "Conta criada, mas o e-mail NÃO foi enviado — passe as credenciais manualmente."}
+            </div>
+            <button
+              type="button"
+              onClick={onCriado}
+              className="w-full rounded-xl bg-[#00B388] py-2.5 text-[13px] font-bold text-white transition hover:bg-[#00875F]"
+            >
+              Concluir
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <Campo label="Nome completo" value={nome} onChange={setNome} placeholder="João da Silva" />
+            <Campo
+              label="E-mail"
+              value={email}
+              onChange={onEmail}
+              placeholder="joao.silva@nansen.com.br"
+              type="email"
+            />
+            <Campo
+              label="Usuário (login)"
+              value={username}
+              onChange={(v) => { setUsername(v.toLowerCase()); setUsernameTocado(true); }}
+              placeholder="joao.silva"
+            />
+            <div>
+              <Campo label="Matrícula" value={matricula} onChange={setMatricula} placeholder="4521" />
+              <p className="mt-1 text-[11px] text-gray-400">Senha gerada: <b className="font-mono text-gray-600">{senhaPreview}</b></p>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Tipo de acesso</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["tecnico", "administrador", "moderador", "leitura"] as TipoColaborador[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTipo(t)}
+                    className="rounded-xl border px-3 py-2 text-[12.5px] font-semibold transition"
+                    style={{
+                      background: tipo === t ? "var(--vm-accent-tint)" : "#fff",
+                      borderColor: tipo === t ? "#00B388" : "var(--vm-border)",
+                      color: tipo === t ? "#00875F" : "var(--vm-muted)",
+                    }}
+                  >
+                    {TIPO_LABEL[t]}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400">
+                {tipo === "tecnico" ? "Acesso ao app de campo." : "Acesso ao painel."}
+              </p>
+            </div>
+
+            {erro && (
+              <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-[12.5px] text-red-700">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {erro}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={submit}
+              disabled={saving || !nome || !username || !email || !matricula}
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[#00B388] py-3 text-[13px] font-bold text-white transition hover:bg-[#00875F] disabled:opacity-40"
+            >
+              {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              Criar conta e enviar e-mail
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Campo({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13.5px] text-gray-800 outline-none focus:border-[#00B388] focus:ring-1 focus:ring-[#00B388]"
+      />
     </div>
   );
 }

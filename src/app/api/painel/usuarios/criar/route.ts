@@ -1,0 +1,124 @@
+import { NextResponse } from "next/server";
+import { requirePainelRole } from "@/lib/painel-auth";
+import { auditInsert } from "@/lib/glpi/audit";
+import { sendMailComAssinatura } from "@/lib/email";
+import {
+  criarUsuarioGlpi,
+  usernameExiste,
+  emailExiste,
+  TIPO_CFG,
+  type TipoColaborador,
+} from "@/lib/glpi/criarUsuario";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const TIPOS: TipoColaborador[] = ["tecnico", "administrador", "moderador", "leitura"];
+const URL_APP = "https://vistomap.nansen.com.br/app";
+const URL_PAINEL = "https://vistomap.nansen.com.br/painel/login";
+
+interface Body {
+  nome?: string;
+  username?: string;
+  email?: string;
+  matricula?: string;
+  tipo?: TipoColaborador;
+}
+
+function emailValido(e: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}
+
+export async function POST(req: Request) {
+  const auth = await requirePainelRole(req, "admin");
+  if (!auth.ok) return auth.response;
+
+  let body: Body;
+  try {
+    body = (await req.json()) as Body;
+  } catch {
+    return NextResponse.json({ message: "JSON inválido" }, { status: 400 });
+  }
+
+  const nome = (body.nome ?? "").trim();
+  const username = (body.username ?? "").trim().toLowerCase();
+  const email = (body.email ?? "").trim();
+  const matricula = (body.matricula ?? "").trim();
+  const tipo = body.tipo;
+
+  // Validação
+  if (!nome) return NextResponse.json({ message: "Nome é obrigatório" }, { status: 400 });
+  if (!username || !/^[a-z0-9._-]+$/.test(username)) {
+    return NextResponse.json({ message: "Usuário inválido (use letras, números, . _ -)" }, { status: 400 });
+  }
+  if (!emailValido(email)) return NextResponse.json({ message: "E-mail inválido" }, { status: 400 });
+  if (!matricula || !/^[A-Za-z0-9]+$/.test(matricula)) {
+    return NextResponse.json({ message: "Matrícula é obrigatória (letras/números, sem espaço)" }, { status: 400 });
+  }
+  if (!tipo || !TIPOS.includes(tipo)) {
+    return NextResponse.json({ message: "Tipo de acesso inválido" }, { status: 400 });
+  }
+
+  // Unicidade
+  if (await usernameExiste(username)) {
+    return NextResponse.json({ message: "Já existe um usuário com esse login." }, { status: 409 });
+  }
+  if (await emailExiste(email)) {
+    return NextResponse.json({ message: "Já existe uma conta com esse e-mail." }, { status: 409 });
+  }
+
+  // Cria
+  let result;
+  try {
+    result = await criarUsuarioGlpi({ username, nome, email, matricula, tipo });
+  } catch (err) {
+    return NextResponse.json(
+      { message: "Falha ao criar a conta no GLPI", error: String(err) },
+      { status: 500 }
+    );
+  }
+
+  // E-mail de boas-vindas com as credenciais + assinatura
+  const cfg = TIPO_CFG[tipo];
+  const url = cfg.destino === "app" ? URL_APP : URL_PAINEL;
+  const ondeAcessar =
+    cfg.destino === "app"
+      ? `no aplicativo <b>VistoMap</b> (Android) ou em <a href="${url}">${url}</a>`
+      : `no painel em <a href="${url}">${url}</a>`;
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2937;line-height:1.55">
+      <p>Olá <b>${nome}</b>,</p>
+      <p>Sua conta de acesso ao <b>VistoMap · GIOC</b> foi criada. Seguem suas credenciais:</p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        <tr><td style="padding:4px 14px 4px 0;color:#6b7280">Usuário</td><td style="padding:4px 0"><b>${result.username}</b></td></tr>
+        <tr><td style="padding:4px 14px 4px 0;color:#6b7280">Senha</td><td style="padding:4px 0"><b>${result.senha}</b></td></tr>
+        <tr><td style="padding:4px 14px 4px 0;color:#6b7280">Perfil</td><td style="padding:4px 0">${cfg.label}</td></tr>
+      </table>
+      <p>Acesse ${ondeAcessar} usando o usuário e a senha acima.</p>
+      <p style="color:#6b7280;font-size:12.5px">Este é um e-mail automático, por favor não responda.</p>
+    </div>
+  `;
+
+  const mail = await sendMailComAssinatura({
+    to: email,
+    subject: "Suas credenciais de acesso — VistoMap · GIOC",
+    html,
+  });
+
+  // Auditoria
+  void auditInsert({
+    ator: { id: Number(auth.claims.sub) || 0, nome: auth.claims.email ?? "Administrador", role: "admin" },
+    acao: "dados-editados",
+    alvo: { tipo: "sistema", id: `novo-usuario-${result.userId}`, label: nome },
+    descricao: `Conta criada (${cfg.label}) para ${nome} — login ${result.username}. E-mail ${mail.ok ? "enviado" : "NÃO enviado"}.`,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    userId: result.userId,
+    username: result.username,
+    emailEnviado: mail.ok,
+    emailErro: mail.ok ? undefined : mail.error,
+  });
+}
