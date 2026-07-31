@@ -35,27 +35,34 @@ export default function PainelWebPush() {
 
     const authHeader = { Authorization: `Bearer ${session.token}` };
 
+    const log = (...args: unknown[]) => console.warn("[vm-webpush]", ...args);
+
     // 1. Este usuário deve receber?
     let status: { enabled: boolean; configured: boolean };
     try {
       const r = await fetch(`${base}/api/painel/push/status`, { headers: authHeader, cache: "no-store" });
-      if (!r.ok) return;
+      if (!r.ok) return log("status HTTP", r.status);
       status = await r.json();
-    } catch {
-      return;
+    } catch (e) {
+      return log("status falhou", e);
     }
-    if (!status.enabled || !status.configured) return;
-    if (Notification.permission === "denied") return;
+    if (!status.enabled) return log("desabilitado pro usuario (admin nao ligou o flag)");
+    if (!status.configured) return log("servidor sem VAPID configurado");
 
     // 2. Permissão do navegador (default → pede; precisa de gesto em alguns browsers).
+    log("permissao atual:", Notification.permission);
+    if (Notification.permission === "denied") {
+      return log("BLOQUEADO — o navegador negou notificacoes pra este site. Libere no cadeado da barra de endereco.");
+    }
     if (Notification.permission === "default") {
       let perm: NotificationPermission;
       try {
         perm = await Notification.requestPermission();
-      } catch {
-        return;
+      } catch (e) {
+        return log("requestPermission lancou", e);
       }
-      if (perm !== "granted") return;
+      log("resultado do pedido:", perm);
+      if (perm !== "granted") return log("permissao NAO concedida:", perm);
     }
 
     // 3. Registra o SW (escopo /painel/ via header Service-Worker-Allowed).
@@ -63,8 +70,9 @@ export default function PainelWebPush() {
     try {
       reg = await navigator.serviceWorker.register(`${base}/api/painel/push-sw`, { scope: `${base}/` });
       await navigator.serviceWorker.ready;
-    } catch {
-      return;
+      log("service worker OK, escopo", reg.scope);
+    } catch (e) {
+      return log("registro do service worker FALHOU", e);
     }
 
     // 4. Já inscrito? senão pega a chave VAPID e inscreve.
@@ -72,25 +80,29 @@ export default function PainelWebPush() {
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {
         const vr = await fetch(`${base}/api/painel/push/vapid`, { headers: authHeader, cache: "no-store" });
-        if (!vr.ok) return;
+        if (!vr.ok) return log("vapid HTTP", vr.status);
         const { publicKey } = (await vr.json()) as { publicKey: string };
-        if (!publicKey) return;
+        if (!publicKey) return log("vapid sem publicKey");
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
         });
+        log("subscribe OK");
+      } else {
+        log("ja tinha subscription");
       }
 
       // 5. Manda a inscrição pro servidor (idempotente por endpoint).
       const json = sub.toJSON();
-      await fetch(`${base}/api/painel/push/subscribe`, {
+      const pr = await fetch(`${base}/api/painel/push/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
       });
-      doneRef.current = true;
-    } catch {
-      /* falha de inscrição — ignora, tenta de novo no próximo load */
+      log("POST subscribe →", pr.status);
+      doneRef.current = pr.ok;
+    } catch (e) {
+      log("subscribe/POST FALHOU", e);
     }
   }, [session?.token, base]);
 
