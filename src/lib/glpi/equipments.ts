@@ -127,7 +127,9 @@ function mapRow(r: RawRow) {
     glpiId: `NE-${r.id}`,
     equipamento: r.name,
     cidade: r.municipio ?? "",
-    estado: null,
+    // Operação é toda no estado de São Paulo — o GLPI não guarda UF, então
+    // é um padrão fixo (não vem de campo, não muda).
+    estado: "São Paulo",
     endereco: r.endereco ?? null,
     latitude: r.latitude == null ? null : Number(r.latitude),
     longitude: r.longitude == null ? null : Number(r.longitude),
