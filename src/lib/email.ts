@@ -4,35 +4,32 @@ import { promises as fs } from "node:fs";
 import nodemailer from "nodemailer";
 
 /**
- * Envio de e-mail via SMTP (Office 365) — reaproveita a conta
- * comunicacao.ami@nansen.com.br. Config no env do container:
- *   SMTP_HOST, SMTP_PORT, SMTP_SENDER, SMTP_PASSWORD
- *
- * A assinatura (public/assinatura.png) é anexada inline (cid) no rodapé.
+ * Envio de e-mail via SMTP (Office 365) — conta comunicacao.ami@nansen.com.br.
+ * Config no env do container: SMTP_HOST, SMTP_PORT, SMTP_SENDER, SMTP_PASSWORD.
  */
 
-interface SendMailInput {
-  to: string;
-  subject: string;
-  /** Corpo HTML (a assinatura é adicionada automaticamente no rodapé). */
-  html: string;
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  cid: string;
 }
 
-let cachedSigPath: string | null = null;
+export interface SendMailInput {
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: MailAttachment[];
+}
 
-async function findAssinatura(): Promise<Buffer | null> {
-  // No standalone build o public fica em ./public relativo ao cwd (/app).
-  const candidates = cachedSigPath
-    ? [cachedSigPath]
-    : [
-        path.join(process.cwd(), "public", "assinatura.png"),
-        path.join(process.cwd(), "assinatura.png"),
-      ];
-  for (const p of candidates) {
+/** Lê um asset de public/ (funciona no standalone build, cwd=/app). */
+export async function lerAssetPublic(nome: string): Promise<Buffer | null> {
+  const candidatos = [
+    path.join(process.cwd(), "public", nome),
+    path.join(process.cwd(), nome),
+  ];
+  for (const p of candidatos) {
     try {
-      const buf = await fs.readFile(p);
-      cachedSigPath = p;
-      return buf;
+      return await fs.readFile(p);
     } catch {
       /* tenta o próximo */
     }
@@ -40,7 +37,7 @@ async function findAssinatura(): Promise<Buffer | null> {
   return null;
 }
 
-export async function sendMailComAssinatura(
+export async function sendMail(
   input: SendMailInput
 ): Promise<{ ok: boolean; error?: string }> {
   const host = process.env.SMTP_HOST;
@@ -54,26 +51,17 @@ export async function sendMailComAssinatura(
   const transporter = nodemailer.createTransport({
     host,
     port,
-    secure: port === 465, // 587 = STARTTLS (secure=false); 465 = TLS direto
+    secure: port === 465, // 587 = STARTTLS
     auth: { user, pass },
   });
 
-  const sig = await findAssinatura();
-  const attachments = sig
-    ? [{ filename: "assinatura.png", content: sig, cid: "assinatura-vistomap" }]
-    : [];
-
-  const html = sig
-    ? `${input.html}<br><br><img src="cid:assinatura-vistomap" alt="Assinatura" style="max-width:540px;height:auto" />`
-    : input.html;
-
   try {
     await transporter.sendMail({
-      from: user,
+      from: `"Sistemas GIOC" <${user}>`,
       to: input.to,
       subject: input.subject,
-      html,
-      attachments,
+      html: input.html,
+      attachments: input.attachments,
     });
     return { ok: true };
   } catch (e) {

@@ -15,6 +15,7 @@ import {
   Bell,
   BellOff,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Mail,
   RefreshCw,
@@ -463,6 +464,7 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
   const headers = { Authorization: `Bearer ${session?.token}` };
 
   const [nome, setNome] = useState("");
+  const [sobrenome, setSobrenome] = useState("");
   const [username, setUsername] = useState("");
   const [usernameTocado, setUsernameTocado] = useState(false);
   const [email, setEmail] = useState("");
@@ -472,14 +474,13 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<{ username: string; emailEnviado: boolean } | null>(null);
 
-  // Auto-sugere o login pelo prefixo do e-mail, até o admin editar o campo.
-  function onEmail(v: string) {
-    setEmail(v);
-    if (!usernameTocado) {
-      const prefixo = v.split("@")[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, "") ?? "";
-      setUsername(prefixo);
-    }
-  }
+  // Login padrão nome.sobrenome (sem acento), até o admin editar manualmente.
+  const slug = (s: string) =>
+    s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const usernameAuto = [slug(nome.split(/\s+/)[0] ?? ""), slug(sobrenome.split(/\s+/).pop() ?? "")]
+    .filter(Boolean)
+    .join(".");
+  const usernameFinal = usernameTocado ? username : usernameAuto;
 
   const senhaPreview = matricula.trim() ? `Nsn#${matricula.trim()}2026` : "Nsn#…2026";
 
@@ -489,7 +490,7 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
     try {
       const r = await api.post<{ username: string; emailEnviado: boolean }>(
         "/painel/usuarios/criar",
-        { nome, username, email, matricula, tipo },
+        { nome, sobrenome, username: usernameFinal, email, matricula, tipo },
         { headers }
       );
       setOk({ username: r.data.username, emailEnviado: r.data.emailEnviado });
@@ -550,46 +551,47 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
           </div>
         ) : (
           <div className="space-y-3">
-            <Campo label="Nome completo" value={nome} onChange={setNome} placeholder="João da Silva" />
+            <div className="grid grid-cols-2 gap-3">
+              <Campo label="Nome" value={nome} onChange={setNome} placeholder="João" />
+              <Campo label="Sobrenome" value={sobrenome} onChange={setSobrenome} placeholder="Silva" />
+            </div>
             <Campo
               label="E-mail"
               value={email}
-              onChange={onEmail}
+              onChange={setEmail}
               placeholder="joao.silva@nansen.com.br"
               type="email"
             />
-            <Campo
-              label="Usuário (login)"
-              value={username}
-              onChange={(v) => { setUsername(v.toLowerCase()); setUsernameTocado(true); }}
-              placeholder="joao.silva"
-            />
+            <div>
+              <Campo
+                label="Usuário (login)"
+                value={usernameFinal}
+                onChange={(v) => { setUsername(v.toLowerCase()); setUsernameTocado(true); }}
+                placeholder="joao.silva"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">Gerado como <b>nome.sobrenome</b> — dá pra editar.</p>
+            </div>
             <div>
               <Campo label="Matrícula" value={matricula} onChange={setMatricula} placeholder="4521" />
               <p className="mt-1 text-[11px] text-gray-400">Senha gerada: <b className="font-mono text-gray-600">{senhaPreview}</b></p>
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Tipo de acesso</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(["tecnico", "administrador", "moderador", "leitura"] as TipoColaborador[]).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTipo(t)}
-                    className="rounded-xl border px-3 py-2 text-[12.5px] font-semibold transition"
-                    style={{
-                      background: tipo === t ? "var(--vm-accent-tint)" : "#fff",
-                      borderColor: tipo === t ? "#00B388" : "var(--vm-border)",
-                      color: tipo === t ? "#00875F" : "var(--vm-muted)",
-                    }}
-                  >
-                    {TIPO_LABEL[t]}
-                  </button>
-                ))}
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Perfil de acesso</label>
+              <div className="relative">
+                <select
+                  value={tipo}
+                  onChange={(e) => setTipo(e.target.value as TipoColaborador)}
+                  className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 pr-9 text-[13.5px] font-medium text-gray-800 outline-none focus:border-[#00B388] focus:ring-1 focus:ring-[#00B388]"
+                >
+                  {(["tecnico", "administrador", "moderador", "leitura"] as TipoColaborador[]).map((t) => (
+                    <option key={t} value={t}>{TIPO_LABEL[t]}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               </div>
               <p className="mt-1 text-[11px] text-gray-400">
-                {tipo === "tecnico" ? "Acesso ao app de campo." : "Acesso ao painel."}
+                {tipo === "tecnico" ? "Acesso ao app de campo (VistoMap-Técnicos)." : "Acesso ao painel administrativo."}
               </p>
             </div>
 
@@ -603,7 +605,7 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
             <button
               type="button"
               onClick={submit}
-              disabled={saving || !nome || !username || !email || !matricula}
+              disabled={saving || !nome || !sobrenome || !usernameFinal || !email || !matricula}
               className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[#00B388] py-3 text-[13px] font-bold text-white transition hover:bg-[#00875F] disabled:opacity-40"
             >
               {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}

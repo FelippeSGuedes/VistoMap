@@ -53,9 +53,26 @@ export async function emailExiste(email: string): Promise<boolean> {
   return (rows[0]?.n ?? 0) > 0;
 }
 
+/** Normaliza um nome pra compor o login: sem acento, minúsculo, só a-z0-9. */
+export function slugNome(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+/** Login padrão: nome.sobrenome (primeiro nome + primeiro sobrenome). */
+export function montarUsername(nome: string, sobrenome: string): string {
+  const n = slugNome(nome.trim().split(/\s+/)[0] ?? "");
+  const s = slugNome(sobrenome.trim().split(/\s+/).pop() ?? "");
+  return [n, s].filter(Boolean).join(".");
+}
+
 export interface CriarUsuarioInput {
   username: string;
-  nome: string; // nome completo
+  nome: string;       // primeiro nome (firstname)
+  sobrenome: string;  // sobrenome (realname)
   email: string;
   matricula: string;
   tipo: TipoColaborador;
@@ -78,9 +95,8 @@ export async function criarUsuarioGlpi(
   const senha = montarSenha(matricula);
   const senhaHash = await hashSenhaGlpi(senha);
 
-  const partes = input.nome.trim().split(/\s+/);
-  const firstname = partes[0] ?? "";
-  const realname = partes.slice(1).join(" ") || firstname;
+  const firstname = input.nome.trim();
+  const realname = input.sobrenome.trim();
 
   // 1. Usuário
   const { insertId: userId } = await execute(
