@@ -107,6 +107,10 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
+    // Pacotes server-only com require/import dinâmico — o tracing do
+    // standalone não os inclui sozinho, então precisam ser externos pra
+    // irem pro node_modules do build (senão o require em runtime falha).
+    serverComponentsExternalPackages: ["nodemailer", "web-push", "firebase-admin"],
     // Aumenta o limite de body para Server Actions e route handlers.
     serverActions: {
       bodySizeLimit: "100mb",
