@@ -17,6 +17,7 @@ import {
 } from "@/lib/glpi/constants";
 import { query } from "@/lib/db";
 import { auditInsert } from "@/lib/glpi/audit";
+import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
 
@@ -214,6 +215,7 @@ export async function POST(
         alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento ?? `NE-${id}` },
         descricao: `Vistoria finalizada em campo`,
       });
+      void sendPainelWebPush({ acao: "vistoria-finalizada", equipamento: vistoria.equipamento ?? `NE-${id}`, tecnico: actor.nome, vistoriaId: id });
     }
 
     return NextResponse.json({

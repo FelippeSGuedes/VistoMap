@@ -4,6 +4,7 @@ import { getVistoria } from "@/lib/glpi/equipments";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS } from "@/lib/glpi/constants";
 import { criarRecusa, fetchRecusaPendentePorVistoria } from "@/lib/glpi/recusas";
+import { sendPainelWebPush } from "@/lib/webpush";
 import { saveEquipmentFiles } from "@/lib/glpi/uploads";
 import { auditInsert } from "@/lib/glpi/audit";
 import { logError } from "@/lib/observability";
@@ -117,6 +118,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento },
       descricao: justificativa,
     });
+    void sendPainelWebPush({ acao: "recusa-solicitada", equipamento: vistoria.equipamento, tecnico: actor.nome, vistoriaId: id });
 
     return NextResponse.json({ ok: true, recusaId });
   } catch (error) {

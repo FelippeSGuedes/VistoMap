@@ -32,6 +32,7 @@ import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
 import type { SessionRole } from "@/types";
 import PainelAlertas from "@/components/painel/PainelAlertas";
+import PainelWebPush from "@/components/painel/PainelWebPush";
 
 // Escopo de acesso por papel — admin vê tudo; moderador é admin menos
 // Cancelar (botão, não rota) e Status; leitura só as telas de visualização
@@ -300,6 +301,8 @@ export default function PainelClientLayout({ children }: { children: React.React
     >
       {/* Alertas em tempo real (toast + som) — recusas, exceções, concluídas, devoluções */}
       <PainelAlertas />
+      {/* Web push — registra o navegador do analista habilitado pelo admin */}
+      <PainelWebPush />
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside

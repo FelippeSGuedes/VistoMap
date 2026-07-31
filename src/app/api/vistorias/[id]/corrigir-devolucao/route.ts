@@ -13,6 +13,7 @@ import {
 } from "@/lib/glpi/constants";
 import { query, execute } from "@/lib/db";
 import { auditInsert } from "@/lib/glpi/audit";
+import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
 import { fetchDevolucaoPendentePorVistoria, resolverDevolucao } from "@/lib/glpi/devolucoes";
@@ -200,6 +201,7 @@ export async function POST(
       alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento },
       descricao: `Devolução corrigida e reenviada — ${devolucao.itens.length} item(ns).`,
     });
+    void sendPainelWebPush({ acao: "devolucao-resolvida", equipamento: vistoria.equipamento, tecnico: actor.nome, vistoriaId: id });
 
     return NextResponse.json({ ok: true, vistoria_id: id, situacao: situacaoFinal });
   } catch (error) {

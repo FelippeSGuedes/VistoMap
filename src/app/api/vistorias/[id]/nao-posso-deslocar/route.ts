@@ -4,6 +4,7 @@ import { getActorFromRequest } from "@/lib/auth-request";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 import { execute } from "@/lib/db";
 import { auditInsert } from "@/lib/glpi/audit";
+import { sendPainelWebPush } from "@/lib/webpush";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -61,6 +62,7 @@ export async function POST(
     alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento },
     descricao: `Não pode se deslocar agora pra corrigir devolução — justificativa: ${justificativa}`,
   });
+  void sendPainelWebPush({ acao: "override-solicitado", equipamento: vistoria.equipamento, tecnico: actor.nome, vistoriaId: id });
 
   return NextResponse.json({ pending: true, requestId: insertId }, { status: 202 });
 }

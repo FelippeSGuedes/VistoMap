@@ -3,6 +3,7 @@ import { getVistoria } from "@/lib/glpi/equipments";
 import { verifySessionJwt } from "@/lib/jwt";
 import { ensureExpedienteAuto } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
+import { sendPainelWebPush } from "@/lib/webpush";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
@@ -227,6 +228,7 @@ export async function POST(
         alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento ?? `NE-${id}` },
         descricao: `Solicitação de início fora do local enviada. ${exceptionLabel} — ${motivoTexto}`,
       });
+      void sendPainelWebPush({ acao: "override-solicitado", equipamento: vistoria.equipamento ?? `NE-${id}`, tecnico: actorNome, vistoriaId: id });
       return NextResponse.json({ pending: true, requestId: insertId }, { status: 202 });
     }
 
