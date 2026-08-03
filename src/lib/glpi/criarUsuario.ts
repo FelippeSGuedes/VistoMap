@@ -9,22 +9,30 @@ import { execute, query } from "@/lib/db";
  * glpi_groups_users). A role do VistoMap vem do GRUPO.
  */
 
-export type TipoColaborador = "tecnico" | "administrador" | "moderador" | "leitura";
+/** Acesso ao VistoMap — vira o grupo GLPI (ou nenhum). "nenhum" = só GLPI. */
+export type AcessoPainel = "tecnico" | "administrador" | "moderador" | "leitura" | "nenhum";
 
-export interface TipoCfg {
+export interface AcessoCfg {
   label: string;
-  grupoId: number;   // grupo GLPI que define a role no VistoMap
-  profileId: number; // perfil GLPI (pra conta ser válida/logável no GLPI)
-  /** Onde a pessoa acessa (vai no e-mail). */
-  destino: "app" | "painel";
+  grupoId: number | null; // grupo VistoMap; null = sem acesso ao painel/app
+  destino: "app" | "painel" | "glpi";
 }
 
-export const TIPO_CFG: Record<TipoColaborador, TipoCfg> = {
-  tecnico:       { label: "Técnico",       grupoId: 1, profileId: 12, destino: "app" },
-  administrador: { label: "Administrador", grupoId: 2, profileId: 11, destino: "painel" },
-  moderador:     { label: "Moderador",     grupoId: 6, profileId: 11, destino: "painel" },
-  leitura:       { label: "Leitura",       grupoId: 3, profileId: 10, destino: "painel" },
+export const ACESSO_CFG: Record<AcessoPainel, AcessoCfg> = {
+  tecnico:       { label: "Técnico (app de campo)",   grupoId: 1,    destino: "app" },
+  administrador: { label: "Administrador (painel)",   grupoId: 2,    destino: "painel" },
+  moderador:     { label: "Moderador (painel)",       grupoId: 6,    destino: "painel" },
+  leitura:       { label: "Leitura (painel)",         grupoId: 3,    destino: "painel" },
+  nenhum:        { label: "Nenhum (somente GLPI)",    grupoId: null, destino: "glpi" },
 };
+
+/** Perfis GLPI disponíveis (pra dropdown). */
+export async function listarPerfisGlpi(): Promise<Array<{ id: number; nome: string }>> {
+  const rows = await query<{ id: number; name: string }>(
+    `SELECT id, name FROM glpi_profiles ORDER BY name`
+  );
+  return rows.map((r) => ({ id: r.id, nome: r.name.trim() }));
+}
 
 /** Senha padrão: Nsn#<matricula>2026. */
 export function montarSenha(matricula: string): string {
@@ -75,20 +83,21 @@ export interface CriarUsuarioInput {
   sobrenome: string;  // sobrenome (realname)
   email: string;
   matricula: string;
-  tipo: TipoColaborador;
+  profileId: number;  // perfil GLPI escolhido
+  acesso: AcessoPainel; // grupo VistoMap (ou nenhum)
 }
 
 export interface CriarUsuarioResult {
   userId: number;
   username: string;
   senha: string; // texto puro (pro e-mail)
-  tipo: TipoColaborador;
+  acesso: AcessoPainel;
 }
 
 export async function criarUsuarioGlpi(
   input: CriarUsuarioInput
 ): Promise<CriarUsuarioResult> {
-  const cfg = TIPO_CFG[input.tipo];
+  const cfg = ACESSO_CFG[input.acesso];
   const username = input.username.trim();
   const email = input.email.trim();
   const matricula = input.matricula.trim();
@@ -115,19 +124,21 @@ export async function criarUsuarioGlpi(
     [userId, email]
   );
 
-  // 3. Perfil + entidade (conta válida no GLPI)
+  // 3. Perfil + entidade (conta válida no GLPI) — perfil escolhido no form.
   await execute(
     `INSERT INTO glpi_profiles_users
        (users_id, profiles_id, entities_id, is_recursive, is_dynamic, is_default_profile)
      VALUES (?, ?, 0, 1, 0, 1)`,
-    [userId, cfg.profileId]
+    [userId, input.profileId]
   );
 
-  // 4. Grupo (role no VistoMap)
-  await execute(
-    `INSERT INTO glpi_groups_users (users_id, groups_id) VALUES (?, ?)`,
-    [userId, cfg.grupoId]
-  );
+  // 4. Grupo VistoMap (role no app/painel) — só quando há acesso.
+  if (cfg.grupoId != null) {
+    await execute(
+      `INSERT INTO glpi_groups_users (users_id, groups_id) VALUES (?, ?)`,
+      [userId, cfg.grupoId]
+    );
+  }
 
-  return { userId, username, senha, tipo: input.tipo };
+  return { userId, username, senha, acesso: input.acesso };
 }

@@ -8,16 +8,17 @@ import {
   usernameExiste,
   emailExiste,
   montarUsername,
-  TIPO_CFG,
-  type TipoColaborador,
+  ACESSO_CFG,
+  type AcessoPainel,
 } from "@/lib/glpi/criarUsuario";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const TIPOS: TipoColaborador[] = ["tecnico", "administrador", "moderador", "leitura"];
+const ACESSOS: AcessoPainel[] = ["tecnico", "administrador", "moderador", "leitura", "nenhum"];
 const URL_APP = "https://vistomap.nansen.com.br/app";
 const URL_PAINEL = "https://vistomap.nansen.com.br/painel/login";
+const URL_GLPI = "https://gioc.nansen.com.br";
 
 interface Body {
   nome?: string;
@@ -25,7 +26,8 @@ interface Body {
   username?: string;
   email?: string;
   matricula?: string;
-  tipo?: TipoColaborador;
+  profileId?: number;
+  acesso?: AcessoPainel;
 }
 
 function emailValido(e: string): boolean {
@@ -47,7 +49,8 @@ export async function POST(req: Request) {
   const sobrenome = (body.sobrenome ?? "").trim();
   const email = (body.email ?? "").trim();
   const matricula = (body.matricula ?? "").trim();
-  const tipo = body.tipo;
+  const acesso = body.acesso;
+  const profileId = Number(body.profileId);
   // Login: usa o informado, senão monta nome.sobrenome.
   const username =
     (body.username ?? "").trim().toLowerCase() || montarUsername(nome, sobrenome);
@@ -62,8 +65,11 @@ export async function POST(req: Request) {
   if (!matricula || !/^[A-Za-z0-9]+$/.test(matricula)) {
     return NextResponse.json({ message: "Matrícula é obrigatória (letras/números, sem espaço)" }, { status: 400 });
   }
-  if (!tipo || !TIPOS.includes(tipo)) {
-    return NextResponse.json({ message: "Tipo de acesso inválido" }, { status: 400 });
+  if (!profileId || !Number.isFinite(profileId)) {
+    return NextResponse.json({ message: "Selecione um perfil do GLPI" }, { status: 400 });
+  }
+  if (!acesso || !ACESSOS.includes(acesso)) {
+    return NextResponse.json({ message: "Acesso inválido" }, { status: 400 });
   }
 
   // Unicidade
@@ -77,7 +83,7 @@ export async function POST(req: Request) {
   // Cria
   let result;
   try {
-    result = await criarUsuarioGlpi({ username, nome, sobrenome, email, matricula, tipo });
+    result = await criarUsuarioGlpi({ username, nome, sobrenome, email, matricula, profileId, acesso });
   } catch (err) {
     return NextResponse.json(
       { message: "Falha ao criar a conta no GLPI", error: String(err) },
@@ -86,8 +92,8 @@ export async function POST(req: Request) {
   }
 
   // E-mail de boas-vindas premium (template corporativo GIOC)
-  const cfg = TIPO_CFG[tipo];
-  const url = cfg.destino === "app" ? URL_APP : URL_PAINEL;
+  const cfg = ACESSO_CFG[acesso];
+  const url = cfg.destino === "app" ? URL_APP : cfg.destino === "glpi" ? URL_GLPI : URL_PAINEL;
   const { html, attachments } = await montarEmailBoasVindas({
     primeiroNome: nome,
     login: result.username,

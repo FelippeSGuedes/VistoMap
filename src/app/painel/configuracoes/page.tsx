@@ -30,13 +30,9 @@ import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
 import type { UsuarioPainel } from "@/app/api/painel/usuarios/route";
 
-type TipoColaborador = "tecnico" | "administrador" | "moderador" | "leitura";
-const TIPO_LABEL: Record<TipoColaborador, string> = {
-  tecnico: "Técnico",
-  administrador: "Administrador",
-  moderador: "Moderador",
-  leitura: "Leitura",
-};
+type AcessoPainel = "tecnico" | "administrador" | "moderador" | "leitura" | "nenhum";
+interface PerfilGlpi { id: number; nome: string }
+interface OpcaoAcesso { key: AcessoPainel; label: string }
 
 interface ExpedienteConfig {
   inicio: string;
@@ -469,10 +465,25 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
   const [usernameTocado, setUsernameTocado] = useState(false);
   const [email, setEmail] = useState("");
   const [matricula, setMatricula] = useState("");
-  const [tipo, setTipo] = useState<TipoColaborador>("tecnico");
+  const [acesso, setAcesso] = useState<AcessoPainel>("tecnico");
+  const [profileId, setProfileId] = useState<number | "">("");
+  const [perfis, setPerfis] = useState<PerfilGlpi[]>([]);
+  const [acessos, setAcessos] = useState<OpcaoAcesso[]>([]);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<{ username: string; emailEnviado: boolean } | null>(null);
+
+  // Carrega perfis do GLPI + opções de acesso.
+  useEffect(() => {
+    api
+      .get<{ perfis: PerfilGlpi[]; acessos: OpcaoAcesso[] }>("/painel/usuarios/opcoes", { headers })
+      .then((r) => {
+        setPerfis(r.data.perfis);
+        setAcessos(r.data.acessos);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Login padrão nome.sobrenome (sem acento), até o admin editar manualmente.
   const slug = (s: string) =>
@@ -490,7 +501,7 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
     try {
       const r = await api.post<{ username: string; emailEnviado: boolean }>(
         "/painel/usuarios/criar",
-        { nome, sobrenome, username: usernameFinal, email, matricula, tipo },
+        { nome, sobrenome, username: usernameFinal, email, matricula, acesso, profileId },
         { headers }
       );
       setOk({ username: r.data.username, emailEnviado: r.data.emailEnviado });
@@ -576,24 +587,42 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
               <p className="mt-1 text-[11px] text-gray-400">Senha gerada: <b className="font-mono text-gray-600">{senhaPreview}</b></p>
             </div>
 
-            <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Perfil de acesso</label>
-              <div className="relative">
-                <select
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value as TipoColaborador)}
-                  className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 pr-9 text-[13.5px] font-medium text-gray-800 outline-none focus:border-[#00B388] focus:ring-1 focus:ring-[#00B388]"
-                >
-                  {(["tecnico", "administrador", "moderador", "leitura"] as TipoColaborador[]).map((t) => (
-                    <option key={t} value={t}>{TIPO_LABEL[t]}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Perfil (GLPI)</label>
+                <div className="relative">
+                  <select
+                    value={profileId}
+                    onChange={(e) => setProfileId(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 pr-9 text-[13px] font-medium text-gray-800 outline-none focus:border-[#00B388] focus:ring-1 focus:ring-[#00B388]"
+                  >
+                    <option value="">Selecione…</option>
+                    {perfis.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nome}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                </div>
               </div>
-              <p className="mt-1 text-[11px] text-gray-400">
-                {tipo === "tecnico" ? "Acesso ao app de campo (VistoMap-Técnicos)." : "Acesso ao painel administrativo."}
-              </p>
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Acesso VistoMap</label>
+                <div className="relative">
+                  <select
+                    value={acesso}
+                    onChange={(e) => setAcesso(e.target.value as AcessoPainel)}
+                    className="w-full appearance-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 pr-9 text-[13px] font-medium text-gray-800 outline-none focus:border-[#00B388] focus:ring-1 focus:ring-[#00B388]"
+                  >
+                    {acessos.map((a) => (
+                      <option key={a.key} value={a.key}>{a.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
             </div>
+            <p className="text-[11px] text-gray-400">
+              O <b>Perfil</b> é o papel dentro do GLPI. O <b>Acesso VistoMap</b> define o grupo (app/painel) — escolha <b>Nenhum</b> para conta só de GLPI.
+            </p>
 
             {erro && (
               <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-[12.5px] text-red-700">
@@ -605,7 +634,7 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
             <button
               type="button"
               onClick={submit}
-              disabled={saving || !nome || !sobrenome || !usernameFinal || !email || !matricula}
+              disabled={saving || !nome || !sobrenome || !usernameFinal || !email || !matricula || !profileId}
               className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[#00B388] py-3 text-[13px] font-bold text-white transition hover:bg-[#00875F] disabled:opacity-40"
             >
               {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}

@@ -43,10 +43,10 @@ export async function montarEmailBoasVindas(
     ? `<img src="cid:gioc-header" width="700" alt="Sistema GIOC" style="display:block;width:100%;max-width:700px;height:auto;border:0;border-radius:20px 20px 0 0" />`
     : "";
   const imgCarta = carta
-    ? `<img src="cid:gioc-carta" width="240" alt="" style="display:block;width:240px;max-width:100%;height:auto;border:0" />`
+    ? `<img src="cid:gioc-carta" width="300" alt="" style="display:block;width:300px;max-width:100%;height:auto;border:0" />`
     : "";
   const imgCard = card
-    ? `<img src="cid:gioc-card" width="360" alt="Nansen · Sistemas GIOC" style="display:block;width:360px;max-width:100%;height:auto;border:0;margin:0 auto" />`
+    ? `<img src="cid:gioc-card" width="500" alt="Nansen · Sistemas GIOC" style="display:block;width:500px;max-width:100%;height:auto;border:0;margin:0 auto" />`
     : "";
 
   const html = `<!doctype html>
@@ -99,7 +99,7 @@ export async function montarEmailBoasVindas(
                       Utilize as credenciais abaixo para realizar seu primeiro acesso.
                     </p>
                   </td>
-                  <td class="col-stack carta-td" width="250" valign="top" align="right" style="vertical-align:top;width:250px;">
+                  <td class="col-stack carta-td" width="310" valign="top" align="right" style="vertical-align:top;width:310px;">
                     ${imgCarta}
                   </td>
                 </tr>
@@ -158,19 +158,10 @@ export async function montarEmailBoasVindas(
 
         <!-- Barra azul-marinho inferior -->
         <tr><td style="background:${AZUL_ESCURO};border-radius:0 0 20px 20px;padding:20px 28px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-            <td class="col-stack" valign="middle" style="font-family:'Segoe UI',Arial,sans-serif;font-size:11.5px;line-height:1.6;color:rgba(255,255,255,0.72);">
-              🛡️&nbsp; Este é um e-mail automático. Não responda esta mensagem.<br />
-              © Nansen • Todos os direitos reservados.
-            </td>
-            <td class="col-stack" valign="middle" align="right" style="font-family:'Segoe UI',Arial,sans-serif;font-size:11.5px;color:#ffffff;white-space:nowrap;">
-              <a href="https://www.linkedin.com/company/nansen" style="color:#ffffff;text-decoration:none;opacity:.9;">LinkedIn</a>
-              &nbsp;&nbsp;·&nbsp;&nbsp;
-              <a href="https://www.instagram.com/nansen" style="color:#ffffff;text-decoration:none;opacity:.9;">Instagram</a>
-              &nbsp;&nbsp;·&nbsp;&nbsp;
-              <a href="https://www.youtube.com/@nansen" style="color:#ffffff;text-decoration:none;opacity:.9;">YouTube</a>
-            </td>
-          </tr></table>
+          <div style="font-family:'Segoe UI',Arial,sans-serif;font-size:11.5px;line-height:1.6;color:rgba(255,255,255,0.72);">
+            🛡️&nbsp; Este é um e-mail automático. Não responda esta mensagem.<br />
+            © Nansen • Todos os direitos reservados.
+          </div>
         </td></tr>
 
       </table>
