@@ -28,6 +28,7 @@ interface Body {
   matricula?: string;
   profileId?: number;
   acesso?: AcessoPainel;
+  forcarTroca?: boolean;
 }
 
 function emailValido(e: string): boolean {
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
   // Cria
   let result;
   try {
-    result = await criarUsuarioGlpi({ username, nome, sobrenome, email, matricula, profileId, acesso });
+    result = await criarUsuarioGlpi({ username, nome, sobrenome, email, matricula, profileId, acesso, forcarTroca: !!body.forcarTroca });
   } catch (err) {
     return NextResponse.json(
       { message: "Falha ao criar a conta no GLPI", error: String(err) },

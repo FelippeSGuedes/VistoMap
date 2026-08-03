@@ -85,6 +85,9 @@ export interface CriarUsuarioInput {
   matricula: string;
   profileId: number;  // perfil GLPI escolhido
   acesso: AcessoPainel; // grupo VistoMap (ou nenhum)
+  /** Força troca de senha no 1º login (backdate do password_last_update —
+   *  só tem efeito com a expiração de senha do GLPI ligada). */
+  forcarTroca?: boolean;
 }
 
 export interface CriarUsuarioResult {
@@ -107,13 +110,20 @@ export async function criarUsuarioGlpi(
   const firstname = input.nome.trim();
   const realname = input.sobrenome.trim();
 
+  // Força troca: coloca password_last_update logo ALÉM da expiração (90d) —
+  // 91 dias atrás. Assim o GLPI marca como expirada (obriga trocar no 1º
+  // login) mas fica DENTRO da janela de 5 dias antes do bloqueio automático
+  // (password_expiration_lock_delay=5), evitando travar a conta antes do
+  // acesso. Sem forçar: NOW(). Literal controlado (não é input do usuário).
+  const pluExpr = input.forcarTroca ? "(NOW() - INTERVAL 91 DAY)" : "NOW()";
+
   // 1. Usuário
   const { insertId: userId } = await execute(
     `INSERT INTO glpi_users
        (name, password, realname, firstname, registration_number,
         is_active, is_deleted, authtype, auths_id, entities_id,
         date_creation, date_mod, password_last_update)
-     VALUES (?, ?, ?, ?, ?, 1, 0, 1, 0, 0, NOW(), NOW(), NOW())`,
+     VALUES (?, ?, ?, ?, ?, 1, 0, 1, 0, 0, NOW(), NOW(), ${pluExpr})`,
     [username, senhaHash, realname, firstname, matricula]
   );
 

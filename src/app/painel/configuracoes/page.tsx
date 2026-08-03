@@ -467,6 +467,7 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
   const [matricula, setMatricula] = useState("");
   const [acesso, setAcesso] = useState<AcessoPainel>("tecnico");
   const [profileId, setProfileId] = useState<number | "">("");
+  const [forcarTroca, setForcarTroca] = useState(false);
   const [perfis, setPerfis] = useState<PerfilGlpi[]>([]);
   const [acessos, setAcessos] = useState<OpcaoAcesso[]>([]);
   const [saving, setSaving] = useState(false);
@@ -501,7 +502,7 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
     try {
       const r = await api.post<{ username: string; emailEnviado: boolean }>(
         "/painel/usuarios/criar",
-        { nome, sobrenome, username: usernameFinal, email, matricula, acesso, profileId },
+        { nome, sobrenome, username: usernameFinal, email, matricula, acesso, profileId, forcarTroca },
         { headers }
       );
       setOk({ username: r.data.username, emailEnviado: r.data.emailEnviado });
@@ -623,6 +624,19 @@ function NovoColaboradorModal({ onClose, onCriado }: { onClose: () => void; onCr
             <p className="text-[11px] text-gray-400">
               O <b>Perfil</b> é o papel dentro do GLPI. O <b>Acesso VistoMap</b> define o grupo (app/painel) — escolha <b>Nenhum</b> para conta só de GLPI.
             </p>
+
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-[var(--vm-fill)] px-3.5 py-3">
+              <input
+                type="checkbox"
+                checked={forcarTroca}
+                onChange={(e) => setForcarTroca(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[#00B388]"
+              />
+              <div>
+                <p className="text-[12.5px] font-semibold text-gray-800">Forçar troca de senha no 1º login</p>
+                <p className="text-[11px] leading-snug text-gray-500">A pessoa entra com a senha padrão e o GLPI obriga a definir uma nova na hora. Recomendado (a senha padrão é previsível).</p>
+              </div>
+            </label>
 
             {erro && (
               <div className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-[12.5px] text-red-700">
