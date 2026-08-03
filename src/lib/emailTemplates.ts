@@ -46,7 +46,7 @@ export async function montarEmailBoasVindas(
     ? `<img src="cid:gioc-carta" width="300" alt="" style="display:block;width:300px;max-width:100%;height:auto;border:0" />`
     : "";
   const imgCard = card
-    ? `<img src="cid:gioc-card" width="500" alt="Nansen · Sistemas GIOC" style="display:block;width:500px;max-width:100%;height:auto;border:0;margin:0 auto" />`
+    ? `<img src="cid:gioc-card" width="700" alt="Nansen · Sistemas GIOC" style="display:block;width:100%;max-width:700px;height:auto;border:0" />`
     : "";
 
   const html = `<!doctype html>
@@ -150,8 +150,8 @@ export async function montarEmailBoasVindas(
 
             </td></tr>
 
-            <!-- Rodapé institucional (card.png) -->
-            <tr><td style="padding:34px 44px 40px 44px;">${imgCard}</td></tr>
+            <!-- Rodapé institucional (card.png) — full width, igual ao header -->
+            <tr><td style="padding:30px 0 0 0;line-height:0;">${imgCard}</td></tr>
           </table>
 
         </td></tr>
