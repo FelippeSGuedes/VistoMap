@@ -30,15 +30,21 @@ function getSecret(): Uint8Array {
  * admin = VistoMap-Administradores. moderador = VistoMap-Moderador (tudo
  * igual ao admin, exceto Cancelar vistoria e a tela de Status). leitura =
  * "VistoMap - Leitura" (só visualização, zero ação, escopo restrito de
- * telas). tecnico = VistoMap-Tecnicos (app técnico, sem acesso ao /painel).
+ * telas). tecnico = VistoMap-Tecnicos (app técnico, módulo Vistoria).
+ * instalador = VistoMap-Instalação (app técnico, módulo Instalação).
  */
-export type SessionRole = "admin" | "moderador" | "leitura" | "tecnico";
+export type SessionRole = "admin" | "moderador" | "leitura" | "tecnico" | "instalador";
+
+/** Módulos do app de campo — um usuário pode ter acesso aos dois. */
+export type Modulo = "vistoria" | "instalacao";
 
 export interface SessionClaims extends JWTPayload {
   sub: string;
   email?: string;
   tecnicoId?: string;
   role?: SessionRole;
+  /** Módulos que o usuário tem acesso, pelos grupos GLPI (app técnico). */
+  modulos?: Modulo[];
 }
 
 export async function signSessionJwt(
@@ -47,6 +53,7 @@ export async function signSessionJwt(
     email?: string;
     tecnicoId?: string;
     role?: SessionRole;
+    modulos?: Modulo[];
   },
   expiresIn: string = EXPIRES_IN
 ): Promise<string> {
@@ -54,6 +61,7 @@ export async function signSessionJwt(
     email: claims.email,
     tecnicoId: claims.tecnicoId,
     role: claims.role ?? "tecnico",
+    modulos: claims.modulos,
   })
     .setProtectedHeader({ alg: ALG })
     .setSubject(claims.sub)

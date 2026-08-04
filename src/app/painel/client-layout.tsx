@@ -69,12 +69,20 @@ const VISTORIAS_GROUP = [
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
 
+// Sub-itens do grupo "Instalações" — módulo novo, fila própria (não é a
+// mesma tela/tabela de Vistorias Rejeitadas).
+const INSTALACOES_GROUP = [
+  { href: "/painel/instalacoes/rejeitadas", label: "Rejeitadas", icon: Ban, roles: ALL_ROLES },
+];
+const INSTALACOES_HREFS = new Set(INSTALACOES_GROUP.map((i) => i.href));
+
 // Mapa completo rota → papéis permitidos, usado pelo guard de navegação.
 // Inclui rotas fora do menu (detalhe de técnico, página de teste interna).
 const PAGE_ROLES: Array<{ href: string; roles: SessionRole[] }> = [
   ...TOP_NAV,
   ...BOTTOM_NAV,
   ...VISTORIAS_GROUP,
+  ...INSTALACOES_GROUP,
   { href: "/painel/teste", roles: ADMIN_ONLY },
 ];
 
@@ -93,6 +101,7 @@ const ROLE_LABEL: Record<SessionRole, string> = {
   moderador: "Moderador",
   leitura: "Leitura",
   tecnico: "Técnico",
+  instalador: "Instalador",
 };
 
 // Largura abaixo da qual a sidebar recolhe automaticamente
@@ -199,6 +208,7 @@ export default function PainelClientLayout({ children }: { children: React.React
 
   const [isDark, setIsDark] = useState(false);
   const [vistoriasOpen, setVistoriasOpen] = useState(false);
+  const [instalacoesOpen, setInstalacoesOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [pendentesCount, setPendentesCount] = useState(0);
   const prefRef = useRef(false); // preferência manual do usuário (expandido/recolhido)
@@ -221,6 +231,10 @@ export default function PainelClientLayout({ children }: { children: React.React
   // Abre o grupo automaticamente quando está numa rota de vistorias
   useEffect(() => {
     if (VISTORIAS_HREFS.has(pathname)) setVistoriasOpen(true);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (INSTALACOES_HREFS.has(pathname)) setInstalacoesOpen(true);
   }, [pathname]);
 
   // Polling do badge de notificações pendentes
@@ -290,9 +304,11 @@ export default function PainelClientLayout({ children }: { children: React.React
   const isMapaPage = pathname === "/painel/mapa";
   const nome = session.tecnico.nome;
   const vistoriasActive = VISTORIAS_HREFS.has(pathname);
+  const instalacoesActive = INSTALACOES_HREFS.has(pathname);
   const topNav = TOP_NAV.filter((i) => i.roles.includes(session.role));
   const bottomNav = BOTTOM_NAV.filter((i) => i.roles.includes(session.role));
   const vistoriasGroup = VISTORIAS_GROUP.filter((i) => i.roles.includes(session.role));
+  const instalacoesGroup = INSTALACOES_GROUP.filter((i) => i.roles.includes(session.role));
 
   return (
     <div
@@ -463,6 +479,80 @@ export default function PainelClientLayout({ children }: { children: React.React
                 {vistoriasOpen && (
                   <ul className="mt-0.5 space-y-[2px]">
                     {vistoriasGroup.map(({ href, label, icon }) => (
+                      <NavItem
+                        key={href}
+                        href={href}
+                        label={label}
+                        icon={icon}
+                        pathname={pathname}
+                        T={T}
+                        indent
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )}
+
+            {/* ── GRUPO: INSTALAÇÕES ─────────────────────────────── */}
+            {instalacoesGroup.length === 0 ? null : collapsed ? (
+              <li>
+                <button
+                  type="button"
+                  title="Instalações"
+                  onClick={() => { toggleCollapse(); setInstalacoesOpen(true); }}
+                  className="relative flex w-full items-center justify-center rounded-lg py-[9px] transition-colors duration-100"
+                  style={{
+                    background: instalacoesActive ? T.navActive : "transparent",
+                    color: instalacoesActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {instalacoesActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                    />
+                  )}
+                  <Wrench
+                    className="h-[15px] w-[15px]"
+                    strokeWidth={instalacoesActive ? 2.3 : 1.8}
+                    style={{ color: instalacoesActive ? "#00B388" : T.navInactive }}
+                  />
+                </button>
+              </li>
+            ) : (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setInstalacoesOpen((v) => !v)}
+                  className="relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
+                  style={{
+                    background: instalacoesActive ? T.navActive : "transparent",
+                    color: instalacoesActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {instalacoesActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                    />
+                  )}
+                  <Wrench
+                    className="h-[15px] w-[15px] shrink-0"
+                    strokeWidth={instalacoesActive ? 2.3 : 1.8}
+                    style={{ color: instalacoesActive ? "#00B388" : T.navInactive }}
+                  />
+                  <span className="flex-1 truncate text-left">Instalações</span>
+                  {instalacoesOpen ? (
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                  )}
+                </button>
+
+                {instalacoesOpen && (
+                  <ul className="mt-0.5 space-y-[2px]">
+                    {instalacoesGroup.map(({ href, label, icon }) => (
                       <NavItem
                         key={href}
                         href={href}

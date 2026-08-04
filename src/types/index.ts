@@ -8,6 +8,71 @@ export type VistoriaStatus =
 
 export type VistoriaPriority = "BAIXA" | "MEDIA" | "ALTA" | "CRITICA";
 
+/**
+ * Módulo de Instalação — tipos client-side espelhando o JSON devolvido por
+ * GET /api/instalacoes e /api/instalacoes/[id] (server: lib/glpi/instalacoes.ts).
+ * Contexto é tudo que já veio da vistoria (leitura); checklist/instalador/
+ * validadorCpfl são os campos novos e exclusivos da instalação.
+ */
+export interface InstalacaoContexto {
+  municipio: string;
+  estado: string;
+  psPoste: string;
+  alturaPoste: string;
+  endereco: string;
+  observacao: string;
+  aterramento: boolean | null;
+  material: string;
+  formato: string;
+  alimentacao: string;
+  tensao: string;
+  localInstalacao: string;
+  dan: string;
+  chave: boolean | null;
+  redePrimaria: boolean | null;
+  redeSecundaria: boolean | null;
+  religador: boolean | null;
+  transformador: boolean | null;
+  instalarTp: boolean | null;
+}
+
+/** Espelha InstalacaoChecklistKey de lib/glpi/constants.ts (server-only) — não importa de lá pro client bundle. */
+export type InstalacaoChecklistKey =
+  | "cintaInstalada"
+  | "equipamentoFixado"
+  | "cabeamentoOrganizado"
+  | "alimentacaoValidada"
+  | "equipamentoEnergizado"
+  | "registroFotografico";
+
+export interface InstalacaoChecklist {
+  cintaInstalada: boolean | null;
+  equipamentoFixado: boolean | null;
+  cabeamentoOrganizado: boolean | null;
+  alimentacaoValidada: boolean | null;
+  equipamentoEnergizado: boolean | null;
+  registroFotografico: boolean | null;
+  tensaoIdentificadaId: number | null;
+  tensaoIdentificada: string | null;
+}
+
+export interface Instalacao {
+  id: string;
+  glpiId: string;
+  equipamento: string;
+  tipoEquipamento: string | null;
+  statusGeralId: number | null;
+  statusGeralNome: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  contexto: InstalacaoContexto;
+  empresa: string | null;
+  instalador: { id: number; nome: string } | null;
+  dataInstalacao: string | null;
+  checklist: InstalacaoChecklist;
+  validadorCpfl: { id: number; nome: string; statusId: number | null; status: string | null } | null;
+}
+
 export interface Tecnico {
   id: string;
   nome: string;
@@ -202,18 +267,24 @@ export interface DashboardStats {
 }
 
 /**
- * Papel operacional — admin/moderador/leitura acessam /painel, tecnico
- * acessa /app (raiz). moderador e leitura são variações restritas do
- * admin (ver src/lib/jwt.ts para o detalhe de cada escopo).
+ * Papel operacional — admin/moderador/leitura acessam /painel, tecnico e
+ * instalador acessam o app de campo (raiz). moderador e leitura são
+ * variações restritas do admin (ver src/lib/jwt.ts para o detalhe de cada
+ * escopo).
  */
-export type SessionRole = "admin" | "moderador" | "leitura" | "tecnico";
+export type SessionRole = "admin" | "moderador" | "leitura" | "tecnico" | "instalador";
+
+/** Módulos do app de campo — derivados dos grupos GLPI, um usuário pode ter os dois. */
+export type Modulo = "vistoria" | "instalacao";
 
 export interface AuthSession {
   token: string;
   tecnico: Tecnico;
   expiresAt: number;
-  /** Derivado dos grupos GLPI: VistoMap-Administradores → admin, VistoMap-Moderador → moderador, "VistoMap - Leitura" → leitura, VistoMap-Tecnicos → tecnico. */
+  /** Derivado dos grupos GLPI: VistoMap-Administradores → admin, VistoMap-Moderador → moderador, "VistoMap - Leitura" → leitura, VistoMap-Tecnicos → tecnico, VistoMap-Instalação → instalador. */
   role: SessionRole;
+  /** Só presente na sessão do app de campo (login/painel-login não usam). */
+  modulos?: Modulo[];
 }
 
 /** Snapshot de uma sincronização — usado no filtro do dashboard. */
@@ -355,10 +426,17 @@ export interface AuditEntry {
     | "devolucao-resolvida"
     | "recusa-solicitada"
     | "recusa-aprovada"
-    | "recusa-reprovada";
+    | "recusa-reprovada"
+    | "instalacao-assumida"
+    | "instalacao-finalizada"
+    | "instalacao-rejeitada"
+    | "instalacao-aprovada"
+    | "instalacao-reprovada"
+    | "instalacao-rejeicao-escalada"
+    | "instalacao-rejeicao-descartada";
   /** Alvo da ação. */
   alvo?: {
-    tipo: "vistoria" | "tecnico" | "revisita" | "sistema";
+    tipo: "vistoria" | "tecnico" | "revisita" | "sistema" | "instalacao";
     id: string;
     label: string;
   };

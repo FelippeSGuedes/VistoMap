@@ -45,7 +45,7 @@ export async function ensureAuditTable(): Promise<void> {
 export interface AuditInsertInput {
   ator: { id: number | string; nome: string; role: SessionRole };
   acao: AuditEntry["acao"];
-  alvo?: { tipo: "vistoria" | "tecnico" | "revisita" | "sistema"; id: string | number; label: string };
+  alvo?: { tipo: "vistoria" | "tecnico" | "revisita" | "sistema" | "instalacao"; id: string | number; label: string };
   descricao?: string;
   diff?: Array<{ campo: string; antes?: string; depois?: string }>;
 }

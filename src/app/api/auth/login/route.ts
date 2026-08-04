@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import { getJwtExpiresAtMs, signSessionJwt } from "@/lib/jwt";
 import { logError } from "@/lib/observability";
-import type { AuthSession, Tecnico } from "@/types";
+import type { AuthSession, Modulo, Tecnico } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -89,6 +89,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Gate de grupo: só quem está num dos grupos GLPI do app de campo entra.
+    // Faltava essa checagem — qualquer usuário GLPI ativo com senha válida
+    // conseguia logar no app, independente de grupo. Um usuário pode estar
+    // nos dois grupos (vistoria + instalação) — o cliente decide o que fazer
+    // com a lista de módulos (abre direto ou pergunta qual).
+    const groupRows = await query<{ name: string }>(
+      `
+        SELECT g.name
+          FROM glpi_groups_users gu
+          INNER JOIN glpi_groups g ON g.id = gu.groups_id
+         WHERE gu.users_id = ?
+           AND g.name IN ('VistoMap-Tecnicos', 'VistoMap-Técnicos', 'VistoMap-Instalação')
+      `,
+      [user.id]
+    );
+    const groupNames = new Set(groupRows.map((r) => r.name));
+    const modulos: Modulo[] = [];
+    if (groupNames.has("VistoMap-Tecnicos") || groupNames.has("VistoMap-Técnicos")) {
+      modulos.push("vistoria");
+    }
+    if (groupNames.has("VistoMap-Instalação")) {
+      modulos.push("instalacao");
+    }
+    if (modulos.length === 0) {
+      return NextResponse.json(
+        { message: "Acesso negado. Esta conta não pertence a nenhum grupo do VistoMap (Vistoria ou Instalação)." },
+        { status: 403 }
+      );
+    }
+
     const email = user.email ?? `${user.name}@gioc.local`;
     const tecnico: Tecnico = {
       id: String(user.id),
@@ -96,13 +126,18 @@ export async function POST(req: NextRequest) {
       email,
     };
 
+    // role: quando só tem um módulo, reflete ele direto (tecnico/instalador).
+    // Com os dois, o cliente pergunta qual abrir — role fica como o primeiro
+    // só pra auditoria/log ter um valor sensato; quem manda é `modulos`.
+    const role = modulos.includes("vistoria") ? "tecnico" : "instalador";
+
     // JWT real (HS256) com o mesmo JWT_SECRET do Fastify postes-api.
     // Sessão de 30 dias — app de campo num aparelho pessoal do técnico, não
     // faz sentido pedir login de novo no meio do turno (8h < turno de 10h30).
     // Continua revalidando o token em cada chamada; deslogar continua
     // disponível manualmente em Perfil.
     const token = await signSessionJwt(
-      { sub: tecnico.id, email: tecnico.email, tecnicoId: tecnico.id },
+      { sub: tecnico.id, email: tecnico.email, tecnicoId: tecnico.id, role, modulos },
       "30d"
     );
 
@@ -110,7 +145,8 @@ export async function POST(req: NextRequest) {
       token,
       tecnico,
       expiresAt: getJwtExpiresAtMs(24 * 30),
-      role: "tecnico",
+      role,
+      modulos,
     };
 
     return NextResponse.json(session);

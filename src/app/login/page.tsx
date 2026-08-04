@@ -10,11 +10,14 @@ import {
   EyeOff,
   Loader2,
   Lock,
+  MapPinned,
+  Wrench,
   User,
 } from "lucide-react";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
+import type { AuthSession, Modulo } from "@/types";
 
 interface FormValues {
   login: string;
@@ -23,16 +26,40 @@ interface FormValues {
 
 const REMEMBER_KEY = "vistomap.login.usuario";
 
+/** Pra onde cada módulo leva depois do login. */
+const MODULO_HOME: Record<Modulo, string> = {
+  vistoria: "/dashboard",
+  instalacao: "/instalacao",
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const { setSession, hydrated, session } = useAuthStore();
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lembrar, setLembrar] = useState(false);
+  // Sessão recém-autenticada com os dois módulos — aguardando escolha.
+  const [escolhaPendente, setEscolhaPendente] = useState<AuthSession | null>(null);
 
+  // Só roda na hidratação inicial (sessão já existente de antes, reabriu o
+  // app) — depende só de `hydrated` de propósito, pra não disparar de novo
+  // (e brigar com o redirect explícito da escolha de módulo) quando o login
+  // desta página chama setSession.
   useEffect(() => {
-    if (hydrated && session) router.replace("/dashboard");
-  }, [hydrated, session, router]);
+    if (!hydrated || !session) return;
+    // Com os dois módulos, não guardamos qual foi usado da última vez (não
+    // precisa lembrar), então uma sessão pré-existente cai em Vistoria.
+    const modulo: Modulo = session.modulos?.includes("instalacao") && !session.modulos?.includes("vistoria")
+      ? "instalacao"
+      : "vistoria";
+    router.replace(MODULO_HOME[modulo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
+  function entrarNoModulo(next: AuthSession, modulo: Modulo) {
+    setSession(next);
+    router.replace(MODULO_HOME[modulo]);
+  }
 
   const {
     register,
@@ -63,8 +90,13 @@ export default function LoginPage() {
       } else {
         window.localStorage.removeItem(REMEMBER_KEY);
       }
-      setSession(next);
-      router.replace("/dashboard");
+      const modulos = next.modulos ?? ["vistoria"];
+      if (modulos.length > 1) {
+        // Tem acesso aos dois módulos — pergunta qual, não decide sozinho.
+        setEscolhaPendente(next);
+        return;
+      }
+      entrarNoModulo(next, modulos[0]);
     } catch (err) {
       setError(
         (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -96,6 +128,61 @@ export default function LoginPage() {
       />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-end px-4 pb-[max(env(safe-area-inset-bottom),10dvh)] md:min-h-[100dvh] md:justify-center md:py-16">
+        {escolhaPendente ? (
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 0.7, 0.2, 1] }}
+            className="flex flex-col"
+          >
+            <header className="text-center">
+              <h1 className="text-[15px] font-semibold tracking-tight text-white">
+                Qual módulo você vai usar?
+              </h1>
+              <p className="mt-0.5 text-[11px] font-medium text-white/65">
+                Sua conta tem acesso aos dois — escolha pra continuar
+              </p>
+            </header>
+
+            <div className="mt-4 flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => entrarNoModulo(escolhaPendente, "vistoria")}
+                className="flex items-center gap-3 rounded-[9px] border border-white/12 bg-white/[0.04] px-4 py-3.5 text-left transition hover:border-brand-emerald/60 hover:bg-white/[0.07] active:scale-[0.985]"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-emerald/15 text-brand-emerald">
+                  <MapPinned className="h-[18px] w-[18px]" />
+                </span>
+                <span className="flex flex-col">
+                  <span className="text-[14px] font-bold text-white">Vistoria</span>
+                  <span className="text-[11.5px] text-white/55">Vistoriar postes em campo</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => entrarNoModulo(escolhaPendente, "instalacao")}
+                className="flex items-center gap-3 rounded-[9px] border border-white/12 bg-white/[0.04] px-4 py-3.5 text-left transition hover:border-brand-emerald/60 hover:bg-white/[0.07] active:scale-[0.985]"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-emerald/15 text-brand-emerald">
+                  <Wrench className="h-[18px] w-[18px]" />
+                </span>
+                <span className="flex flex-col">
+                  <span className="text-[14px] font-bold text-white">Instalação</span>
+                  <span className="text-[11.5px] text-white/55">Instalar equipamentos liberados</span>
+                </span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setEscolhaPendente(null)}
+              className="mt-4 self-center text-[12px] font-medium text-white/55 underline-offset-2 hover:text-white/80 hover:underline"
+            >
+              Voltar
+            </button>
+          </motion.div>
+        ) : (
         <motion.form
           onSubmit={handleSubmit(onSubmit)}
           initial={{ opacity: 0, y: 14 }}
@@ -208,6 +295,7 @@ export default function LoginPage() {
             )}
           </button>
         </motion.form>
+        )}
 
         <footer className="mt-6 flex flex-col items-center gap-1.5 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}

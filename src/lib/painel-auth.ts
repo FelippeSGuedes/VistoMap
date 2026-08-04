@@ -5,12 +5,13 @@ import { verifySessionJwt, type SessionClaims, type SessionRole } from "@/lib/jw
 export type PainelRole = "leitura" | "moderador" | "admin";
 
 /**
- * Ordem de acesso do /painel: leitura < moderador < admin. tecnico fica
- * abaixo de leitura de propósito — o app técnico nunca deve enxergar
- * rotas do painel, mesmo as só-leitura.
+ * Ordem de acesso do /painel: leitura < moderador < admin. tecnico e
+ * instalador ficam abaixo de leitura de propósito — o app de campo nunca
+ * deve enxergar rotas do painel, mesmo as só-leitura.
  */
 const ROLE_RANK: Record<SessionRole, number> = {
   tecnico: -1,
+  instalador: -1,
   leitura: 0,
   moderador: 1,
   admin: 2,

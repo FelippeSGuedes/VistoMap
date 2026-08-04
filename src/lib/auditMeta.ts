@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Undo2,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import type { AuditEntry } from "@/types";
@@ -52,6 +53,13 @@ export const ACAO_META: Record<
   "recusa-solicitada":       { label: "Recusa solicitada",        icon: Ban,          fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
   "recusa-aprovada":         { label: "Recusa aprovada",          icon: ShieldCheck,  fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
   "recusa-reprovada":        { label: "Recusa reprovada",         icon: XCircle,      fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
+  "instalacao-assumida":     { label: "Instalação assumida",      icon: Wrench,       fg: "#2563EB", bg: "#EFF6FF", dot: "#3B82F6" },
+  "instalacao-finalizada":   { label: "Instalação finalizada",    icon: ClipboardCheck,fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
+  "instalacao-rejeitada":    { label: "Instalação rejeitada",     icon: Ban,          fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
+  "instalacao-aprovada":     { label: "Instalação aprovada (CPFL)",icon: ShieldCheck, fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
+  "instalacao-reprovada":    { label: "Instalação reprovada (CPFL)",icon: XCircle,    fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#EF4444" },
+  "instalacao-rejeicao-escalada":   { label: "Rejeição escalada p/ vistoria", icon: Undo2, fg: "#B45309", bg: "var(--vm-orange-tint)", dot: "#F97316" },
+  "instalacao-rejeicao-descartada": { label: "Rejeição descartada",          icon: RotateCw, fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
 };
 
 export function initials(nome: string) {

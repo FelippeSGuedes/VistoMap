@@ -95,6 +95,49 @@ export const TABLE_STATUS_VISTORIA =
  * Mapeamos para FINALIZADA para que a ordem saia da fila de pendentes
  * imediatamente após o envio.
  */
+/**
+ * Status geral do poste — campo NATIVO do GLPI (`glpi_states`, fora do
+ * plugin), separado do fluxo de situação/status da vistoria. Sequência:
+ * vistoria em processo → aguardando vistoria → aprovado libera pra
+ * instalação → instalador assume → instalado.
+ */
+export const STATE_EM_PROCESSO_VISTORIA = 1;
+export const STATE_AGUARDANDO_VISTORIA = 2;
+export const STATE_LIBERADO_INSTALACAO = 3;
+export const STATE_EM_INSTALACAO = 4;
+export const STATE_INSTALADO = 5;
+/** Instalador rejeitou — fica aqui até o analista decidir (escalar pra vistoria ou não). */
+export const STATE_INSTALACAO_REJEITADA = 6;
+
+/** Checklist de instalação — colunas sim/não em TABLE_FIELDS (yesno: 1/0). */
+export const INSTALACAO_CHECKLIST_COLUMNS = {
+  cintaInstalada: "cintacorretamenteinstaladafield",
+  equipamentoFixado: "equipamentofixadoadequadamentefield",
+  cabeamentoOrganizado: "cabeamentoorganizadofield",
+  alimentacaoValidada: "alimentaovalidadafield",
+  equipamentoEnergizado: "equipamentoenergizadofield",
+  registroFotografico: "registrofotogrficocompletofield",
+} as const;
+export type InstalacaoChecklistKey = keyof typeof INSTALACAO_CHECKLIST_COLUMNS;
+
+/** Tensão identificada — dropdown 127V/220V. */
+export const INSTALACAO_TENSAO_COLUMN = "plugin_fields_tensoidentificadafielddropdowns_id";
+export const TABLE_TENSAO_IDENTIFICADA = "glpi_plugin_fields_tensoidentificadafielddropdowns";
+
+/** Instalador — FK pra glpi_users, preenchida pelo app ao assumir o poste. */
+export const INSTALACAO_INSTALADOR_COLUMN = "users_id_instaladorfield";
+
+/** Empresa terceirizada — já existia no schema, nunca populado até agora. */
+export const INSTALACAO_EMPRESA_COLUMN = "plugin_fields_empresafielddropdowns_id";
+export const TABLE_EMPRESA = "glpi_plugin_fields_empresafielddropdowns";
+
+/** Validador CPFL — nome + aprovado/rejeitado, já existiam, nunca usados. */
+export const VALIDADOR_CPFL_STATUS_COLUMN = "plugin_fields_validaocpflfielddropdowns_id";
+export const VALIDADOR_CPFL_USER_COLUMN = "users_id_validadorcpflfield";
+export const TABLE_VALIDACAO_CPFL = "glpi_plugin_fields_validaocpflfielddropdowns";
+export const VALIDACAO_CPFL_APROVADO = 1;
+export const VALIDACAO_CPFL_REJEITADO = 2;
+
 export const STATE_NAME_TO_STATUS: Record<string, string> = {
   Pendente: "PENDENTE",
   pendente: "PENDENTE",
