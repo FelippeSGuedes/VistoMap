@@ -9,6 +9,21 @@ export type VistoriaStatus =
 export type VistoriaPriority = "BAIXA" | "MEDIA" | "ALTA" | "CRITICA";
 
 /**
+ * Evento do feed de alertas do painel (PainelAlertas.tsx). Vive aqui (não em
+ * src/app/api/painel/alertas/route.ts) porque o build do app técnico
+ * esconde `src/app/api` inteiro — um import de tipo apontando pra lá quebra
+ * o build mobile mesmo esse componente nunca rodando no app de campo.
+ */
+export interface AlertaEvento {
+  id: number;
+  ts: string;
+  acao: string;
+  vistoriaId: string;
+  equipamento: string;
+  tecnico: string;
+}
+
+/**
  * Módulo de Instalação — tipos client-side espelhando o JSON devolvido por
  * GET /api/instalacoes e /api/instalacoes/[id] (server: lib/glpi/instalacoes.ts).
  * Contexto é tudo que já veio da vistoria (leitura); checklist/instalador/

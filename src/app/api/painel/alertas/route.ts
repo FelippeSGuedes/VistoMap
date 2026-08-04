@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
+import type { AlertaEvento } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,15 +19,6 @@ const ACOES = [
   "vistoria-finalizada",
   "devolucao-resolvida",
 ] as const;
-
-export interface AlertaEvento {
-  id: number;
-  ts: string;
-  acao: (typeof ACOES)[number] | string;
-  vistoriaId: string;
-  equipamento: string;
-  tecnico: string;
-}
 
 export async function GET(req: Request) {
   const auth = await requirePainelRole(req, "leitura");

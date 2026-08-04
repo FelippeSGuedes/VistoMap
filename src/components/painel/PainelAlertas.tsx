@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Ban, CheckCircle2, ShieldAlert, Undo2, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
-import type { AlertaEvento } from "@/app/api/painel/alertas/route";
+import type { AlertaEvento } from "@/types";
 
 const POLL_MS = 12_000;
 const TOAST_TTL_MS = 8_000;
