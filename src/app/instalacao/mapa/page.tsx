@@ -40,6 +40,7 @@ function InstalacaoMapaInner() {
   const [view, setView] = useState<"map" | "list">(searchParams.get("view") === "list" ? "list" : "map");
   const [navTarget, setNavTarget] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const { position } = useGeolocation(true, true);
+  const municipioFiltro = searchParams.get("municipio");
 
   useEffect(() => {
     if (hydrated && !session) router.replace("/login");
@@ -48,6 +49,11 @@ function InstalacaoMapaInner() {
   useEffect(() => {
     if (session) void fetchAll();
   }, [session, fetchAll]);
+
+  const itemsFiltrados = useMemo(() => {
+    if (!municipioFiltro) return items;
+    return items.filter((i) => i.contexto.municipio.toLowerCase() === municipioFiltro.toLowerCase());
+  }, [items, municipioFiltro]);
 
   const selected = useMemo(() => items.find((i) => i.id === selectedId) ?? null, [items, selectedId]);
   const meuUserId = Number(session?.tecnico.id ?? 0);
@@ -64,7 +70,17 @@ function InstalacaoMapaInner() {
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <h1 className="flex-1 text-[14.5px] font-bold text-ink">Instalações liberadas</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="truncate text-[14.5px] font-bold text-ink">Instalações liberadas</h1>
+          {municipioFiltro && (
+            <button
+              onClick={() => router.replace("/instalacao/mapa")}
+              className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-brand-emerald/12 px-2 py-0.5 text-[10.5px] font-semibold text-brand-emerald"
+            >
+              {municipioFiltro} <span className="text-brand-emerald/70">✕</span>
+            </button>
+          )}
+        </div>
         <button
           onClick={() => void fetchAll()}
           className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:bg-brand-steel/40"
@@ -77,7 +93,7 @@ function InstalacaoMapaInner() {
       <div className="relative flex-1 overflow-hidden pb-20">
         {view === "map" ? (
           <InstalacaoMapView
-            instalacoes={items}
+            instalacoes={itemsFiltrados}
             userPosition={position}
             selectedId={selectedId}
             onSelect={setSelected}
@@ -85,13 +101,13 @@ function InstalacaoMapaInner() {
           />
         ) : (
           <div className="h-full space-y-2.5 overflow-y-auto p-4 pb-28">
-            {items.length === 0 && !loading && (
+            {itemsFiltrados.length === 0 && !loading && (
               <div className="flex flex-col items-center gap-2 py-16 text-center text-ink-muted">
                 <Inbox className="h-8 w-8" />
                 <p className="text-[13px] font-medium">Nenhuma instalação disponível agora.</p>
               </div>
             )}
-            {items.map((item) => {
+            {itemsFiltrados.map((item) => {
               const ehMinha = item.instalador?.id === meuUserId;
               return (
                 <motion.div

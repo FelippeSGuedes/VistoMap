@@ -19,6 +19,16 @@ export async function fetchInstalacao(id: string): Promise<Instalacao> {
   return data;
 }
 
+export interface InstalacaoStats {
+  instaladas30d: number;
+  rejeitadasPendentes: number;
+}
+
+export async function fetchInstalacaoStats(): Promise<InstalacaoStats> {
+  const { data } = await api.get<InstalacaoStats>("/instalacoes/stats");
+  return data;
+}
+
 export async function assumirInstalacao(id: string): Promise<{ ok: true; instalacao: Instalacao }> {
   const { data } = await api.post(`/instalacoes/${id}/assumir`);
   return data;
@@ -77,6 +87,7 @@ export async function rejeitarInstalacao(
 export const instalacoesService = {
   fetchInstalacoes,
   fetchInstalacao,
+  fetchInstalacaoStats,
   assumirInstalacao,
   finalizarInstalacao,
   rejeitarInstalacao,

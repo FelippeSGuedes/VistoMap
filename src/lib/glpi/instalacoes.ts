@@ -313,3 +313,18 @@ export async function finalizarInstalacao(
   const result = await execute(sql, params);
   return result.affectedRows;
 }
+
+/** Quantos postes o instalador já instalou (INSTALADO), nos últimos 30 dias. */
+export async function countInstaladasPorMim(instaladorId: number): Promise<number> {
+  const rows = await query<{ cpt: number }>(
+    `SELECT COUNT(*) AS cpt
+       FROM \`${TABLE_FIELDS}\` f
+       INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id
+      WHERE ne.is_deleted = 0
+        AND ne.states_id = ?
+        AND f.${INSTALACAO_INSTALADOR_COLUMN} = ?
+        AND f.datadeinstalaofield >= DATE_SUB(NOW(), INTERVAL 30 DAY)`,
+    [STATE_INSTALADO, instaladorId]
+  );
+  return Number(rows[0]?.cpt ?? 0);
+}
