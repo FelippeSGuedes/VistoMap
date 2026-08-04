@@ -199,6 +199,15 @@ export default function DashboardPage() {
   const heroParallax = useTransform(scrollY, [0, 200], [0, -30]);
 
   useEffect(() => { if (hydrated && !session) router.replace("/login"); }, [hydrated, session, router]);
+  // Sessão só de instalador (sem módulo de vistoria) não deve ver esta tela
+  // — manda pra home dele. Não afeta ninguém com módulo vistoria (a imensa
+  // maioria); só existe pra não deixar um instalador cair aqui via deep
+  // link / botão voltar do navegador.
+  useEffect(() => {
+    if (hydrated && session?.modulos && !session.modulos.includes("vistoria") && session.modulos.includes("instalacao")) {
+      router.replace("/instalacao");
+    }
+  }, [hydrated, session, router]);
   useEffect(() => { setSaudacao(greeting()); }, []);
 
   useEffect(() => {

@@ -34,7 +34,7 @@ const MODULO_HOME: Record<Modulo, string> = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setSession, hydrated, session } = useAuthStore();
+  const { setSession, hydrated, session, logout } = useAuthStore();
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lembrar, setLembrar] = useState(false);
@@ -47,9 +47,17 @@ export default function LoginPage() {
   // desta página chama setSession.
   useEffect(() => {
     if (!hydrated || !session) return;
+    // Sessão de ANTES do módulo de Instalação existir não tem `modulos` —
+    // não dá pra confiar nela pra decidir o destino (cairia sempre em
+    // Vistoria, mesmo pra quem virou instalador depois). Desloga e deixa
+    // cair no formulário: login de novo já busca o grupo atual certinho.
+    if (!session.modulos || session.modulos.length === 0) {
+      logout();
+      return;
+    }
     // Com os dois módulos, não guardamos qual foi usado da última vez (não
     // precisa lembrar), então uma sessão pré-existente cai em Vistoria.
-    const modulo: Modulo = session.modulos?.includes("instalacao") && !session.modulos?.includes("vistoria")
+    const modulo: Modulo = session.modulos.includes("instalacao") && !session.modulos.includes("vistoria")
       ? "instalacao"
       : "vistoria";
     router.replace(MODULO_HOME[modulo]);
