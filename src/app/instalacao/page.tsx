@@ -258,7 +258,17 @@ export default function InstalacaoHomePage() {
           transition={{ duration: 0.52, ease: [0.22, 0.7, 0.2, 1] }}
           className="relative overflow-hidden p-6"
           style={{
-            height: 252,
+            // Altura fixa (252px) cortava demais em telas mais largas: o
+            // card ficava bem mais largo que alto (chegando a 2.25:1 numa
+            // tela de 600px), bem longe da proporção real da foto
+            // (banner_instalação.png é 1535x1024 ≈ 1.5:1) — daí o
+            // object-fit:cover precisava cortar muito mais que o esperado
+            // pra cobrir a largura toda, dando a sensação de foto "muito
+            // maior"/zoom apertado. Usando aspect-ratio quase igual ao da
+            // foto, o corte fica mínimo em qualquer largura de tela e a
+            // imagem cobre o card inteiro sem sobra.
+            aspectRatio: "1535 / 1024",
+            maxHeight: 300,
             borderRadius: 28,
             background: "linear-gradient(135deg, #021818 0%, #031E1E 35%, #052E2E 65%, #073838 100%)",
             boxShadow:
@@ -273,7 +283,7 @@ export default function InstalacaoHomePage() {
             aria-hidden="true"
             className="absolute inset-0 h-full w-full"
             style={{
-              objectFit: "contain",
+              objectFit: "cover",
               objectPosition: "center",
               filter: "brightness(1.08) contrast(1.04) saturate(0.88)",
               zIndex: 0,
