@@ -205,11 +205,7 @@ export default function InstalacaoHomePage() {
     <div
       className="relative flex min-h-[100dvh] flex-col"
       style={{
-        // Cor de base trocada de #F7F9FB (clara) pro mesmo escuro do
-        // gradiente do hero — a fundo_tudo.png agora é escura, então a cor
-        // por trás (usada só enquanto a imagem carrega ou se falhar) tem
-        // que combinar com ela, senão pisca claro antes de escurecer.
-        background: `#021818 url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_tudo.png) no-repeat top center / cover`,
+        background: `#F7F9FB url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_tudo.png) no-repeat top center / cover`,
       }}
     >
       {/* HEADER */}
@@ -440,20 +436,18 @@ export default function InstalacaoHomePage() {
                 boxShadow: "0 6px 24px rgba(6,59,59,0.28), 0 1px 0 rgba(255,255,255,0.06) inset",
               }}
             >
-              {/* Imagem em screen blend por cima do fundo escuro sólido: os
-                  tons claros do png (é uma textura quase branca) clareiam o
-                  card ficando visíveis de verdade, sem nunca escurecer nada
-                  — o texto branco continua legível em 100% da área, ao
-                  contrário do wash escuro em cima da imagem (versão
-                  anterior), que precisava ficar quase opaco pra não
-                  estourar o contraste e por isso escondia a imagem. */}
+              {/* screen blend a 60% lavava o card quase inteiro (a png é
+                  quase toda branca, não só as linhas finas) e o texto
+                  sumia. Sem blend mode, só opacidade baixa e fixa: dá pra
+                  prever exatamente o quanto clareia (aqui, pouco) e o
+                  contraste do texto branco nunca fica em risco. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png`}
                 alt=""
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 h-full w-full"
-                style={{ objectFit: "cover", objectPosition: "center", mixBlendMode: "screen", opacity: 0.6 }}
+                style={{ objectFit: "cover", objectPosition: "center", opacity: 0.14 }}
               />
               <div className="relative z-10 flex items-center justify-between gap-3 p-4">
                 <div className="flex items-center gap-3.5">
