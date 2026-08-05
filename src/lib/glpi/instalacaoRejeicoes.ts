@@ -108,6 +108,15 @@ export async function listInstalacaoRejeicoes(
   );
 }
 
+/** Só a contagem — evita puxar justificativa/fotos à toa em pontos que só precisam do número (ex.: dashboard, polled a cada 20s). */
+export async function countInstalacaoRejeicoesPendentes(): Promise<number> {
+  await ensureInstalacaoRejeicoesTable();
+  const rows = await query<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM \`${TABLE}\` WHERE status = 'PENDENTE'`
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function fetchInstalacaoRejeicaoPendentePorItem(itemsId: number): Promise<InstalacaoRejeicaoRow | null> {
   await ensureInstalacaoRejeicoesTable();
   const rows = await query<InstalacaoRejeicaoRow>(
