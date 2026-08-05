@@ -345,15 +345,8 @@ export default function InstalacaoHomePage() {
         <InstalacaoMunicipioField municipios={municipios} loading={!carregado} />
 
         {/* STATS GRID — Resumo operacional */}
-        <section
-          className="rounded-[24px] p-3"
-          style={{
-            background: `linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.75) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png)`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-        >
-          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#7A8896" }}>
+        <section>
+          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
             Resumo operacional
           </p>
           <div className="grid grid-cols-2 gap-2.5">
@@ -424,18 +417,8 @@ export default function InstalacaoHomePage() {
         </section>
 
         {/* QUICK ACTIONS */}
-        <motion.section
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.38, ease: [0.22, 0.7, 0.2, 1] }}
-          className="rounded-[24px] p-3"
-          style={{
-            background: `linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.75) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mapa_operacional.png)`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-        >
-          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#7A8896" }}>
+        <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38, ease: [0.22, 0.7, 0.2, 1] }}>
+          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
             Acesso rápido
           </p>
 
@@ -443,7 +426,9 @@ export default function InstalacaoHomePage() {
             <div
               className="flex items-center justify-between gap-3 rounded-[22px] p-4 transition active:scale-[0.98]"
               style={{
-                background: "linear-gradient(135deg,#042828 0%,#063B3B 45%,#0A5252 100%)",
+                backgroundImage: `linear-gradient(135deg,rgba(4,40,40,0.94) 0%,rgba(6,59,59,0.94) 45%,rgba(10,82,82,0.94) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png)`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
                 boxShadow: "0 6px 24px rgba(6,59,59,0.28), 0 1px 0 rgba(255,255,255,0.06) inset",
               }}
             >
@@ -468,7 +453,14 @@ export default function InstalacaoHomePage() {
           <Link href="/instalacao/mapa?view=list" className="mt-2.5 block">
             <div
               className="flex items-center gap-3.5 rounded-[22px] p-4 transition active:scale-[0.98]"
-              style={{ background: "#fff", boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07)", border: "1px solid rgba(6,59,59,0.055)" }}
+              style={{
+                backgroundColor: "#fff",
+                backgroundImage: `url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/minsta.png)`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07)",
+                border: "1px solid rgba(6,59,59,0.055)",
+              }}
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-[12px]" style={{ background: "#EEF2FF" }}>
                 <ClipboardList className="h-[18px] w-[18px]" style={{ color: "#6366F1" }} strokeWidth={1.8} />

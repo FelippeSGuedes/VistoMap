@@ -60,7 +60,7 @@ export function InstalacaoMunicipioField({ municipios, loading = false }: Instal
         {imgOk ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/minsta.png`}
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/municipio.png`}
             alt=""
             className="absolute inset-0 h-full w-full"
             style={{
