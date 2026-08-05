@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relatório Técnico Fotográfico de Instalação {{NAME}}</title>
+  <link rel="stylesheet" href="style_instalacao.css">
+</head>
+<body>
+{%- macro unit(v, u, sep='') -%}
+{{- v -}}{%- if v and v != 'N/I' and u|lower not in v|lower -%}{{- sep -}}{{- u -}}{%- endif -%}
+{%- endmacro -%}
+  <!-- ============================================================= -->
+  <!-- PÁGINA 1 — Dados da instalação                                 -->
+  <!-- ============================================================= -->
+  <main class="sheet">
+    <div class="classification">Uso Público CPFL</div>
+
+    <header class="document-header" aria-label="Cabeçalho do relatório">
+      <img class="brand-logo brand-logo-cpfl" src="assets/logo-cpfl.png" alt="CPFL Energia">
+      <img class="brand-logo brand-logo-nansen" src="assets/logo-nansen.png" alt="Nansen">
+    </header>
+
+    <h1 class="document-title">Relatório Técnico Fotográfico de Instalação — {{NAME}}</h1>
+
+    <table class="installation-table" aria-label="Relatório Técnico Fotográfico de Instalação">
+      <colgroup>
+        <col class="col-1">
+        <col class="col-2">
+        <col class="col-3">
+        <col class="col-4">
+        <col class="col-5">
+        <col class="col-6">
+        <col class="col-7">
+      </colgroup>
+      <tbody>
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Relatório Técnico Fotográfico de Instalação</td>
+        </tr>
+        <tr class="row-min row-46">
+          <td colspan="7">Data da elaboração: {{DATE}}</td>
+        </tr>
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">ID do Dispositivo de Rede</td>
+        </tr>
+        <tr class="row-min row-97">
+          <td colspan="3">ID do dispositivo: {{NAME}}</td>
+          <td colspan="4">PS: {{PSPOSTE}}</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td colspan="7">Endereço: {{ENDERECO}}</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td colspan="7">Município: {{MUNICIPIO}}</td>
+        </tr>
+
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Equipamento Instalado</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="3">Tipo de equipamento: {{EQUIPAMENTO}}</td>
+          <td colspan="2">Formato: {{FORMATO}}</td>
+          <td colspan="2">Alimentação: {{ALIMENTACAO}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="7">Local de instalação: {{LOCALINSTALACAO}}</td>
+        </tr>
+
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Estrutura Vertical (Poste)</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="2">Material / Tipo da Estrutura: {{MATERIAL}}</td>
+          <td colspan="2" class="align-middle">Altura: {{ unit(ALTURAPOSTE, 'm') }}</td>
+          <td colspan="2" class="align-middle">Resistência: {{ unit(DAN, 'daN', ' ') }}</td>
+          <td class="align-middle">Aterramento: {{ATERRAMENTO}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="2">Chave: {{CHAVE}}</td>
+          <td colspan="2">Rede primária: {{REDEPRIMARIA}}</td>
+          <td colspan="2">Rede secundária: {{REDESECUNDARIA}}</td>
+          <td>Religador: {{RELIGADOR}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="4">Transformador: {{TRANSFORMADOR}}</td>
+          <td colspan="3">Instalação de TP: {{INSTALARTP}}{% if INSTALARTP == 'Sim' %} &nbsp;&nbsp;|&nbsp;&nbsp; Tensão: {{TENSAOCONTEXTO}}{% endif %}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="7">Tensão identificada em campo: {{TENSAOIDENTIFICADA}}</td>
+        </tr>
+
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Checklist de Instalação</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="4">Cinta corretamente instalada: {{CHECKLIST_CINTA}}</td>
+          <td colspan="3">Equipamento fixado adequadamente: {{CHECKLIST_FIXACAO}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="4">Cabeamento organizado: {{CHECKLIST_CABEAMENTO}}</td>
+          <td colspan="3">Alimentação validada: {{CHECKLIST_ALIMENTACAO}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="4">Equipamento energizado: {{CHECKLIST_ENERGIZADO}}</td>
+          <td colspan="3">Registro fotográfico completo: {{CHECKLIST_REGISTRO}}</td>
+        </tr>
+
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Instalador e Validação CPFL</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="3">Instalador: {{INSTALADOR}}</td>
+          <td colspan="2">Empresa: {{EMPRESA}}</td>
+          <td colspan="2">Data da instalação: {{DATAINSTALACAO}}</td>
+        </tr>
+        <tr class="row-min row-25">
+          <td colspan="4">Validador CPFL: {{VALIDADORNOME}}</td>
+          <td colspan="3">Status da validação: {{VALIDADORSTATUS}}</td>
+        </tr>
+
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Observações</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td colspan="7" class="text-justify">{{OBSERVACAO}}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <img class="page-marker" src="assets/footer-marker.png" alt="" aria-hidden="true">
+  </main>
+
+  <!-- ============================================================= -->
+  <!-- PÁGINA 2 — Registro fotográfico (7 fotos fixas)                -->
+  <!-- ============================================================= -->
+  <section class="gallery-sheet">
+    <div class="classification">Uso Público CPFL</div>
+
+    <header class="document-header" aria-label="Cabeçalho do registro fotográfico">
+      <img class="brand-logo brand-logo-cpfl" src="assets/logo-cpfl.png" alt="CPFL Energia">
+      <img class="brand-logo brand-logo-nansen" src="assets/logo-nansen.png" alt="Nansen">
+    </header>
+
+    <h1 class="document-title">Registro Fotográfico — {{NAME}}</h1>
+
+    <table class="gallery-table" aria-label="Registro fotográfico da instalação">
+      <colgroup>
+        <col class="gcol">
+        <col class="gcol">
+      </colgroup>
+      <tbody>
+        <tr>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{FOTO1}}" alt="Chegada e inspeção">
+              </div>
+              <figcaption class="card-cap">1. Chegada e inspeção</figcaption>
+            </figure>
+          </td>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{FOTO2}}" alt="Preparação do material">
+              </div>
+              <figcaption class="card-cap">2. Preparação do material</figcaption>
+            </figure>
+          </td>
+        </tr>
+        <tr>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{FOTO3}}" alt="Fixação da cinta">
+              </div>
+              <figcaption class="card-cap">3. Fixação da cinta</figcaption>
+            </figure>
+          </td>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{FOTO4}}" alt="Fixação do Access Point">
+              </div>
+              <figcaption class="card-cap">4. Fixação do Access Point</figcaption>
+            </figure>
+          </td>
+        </tr>
+        <tr>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{FOTO5}}" alt="Teste de tensão">
+              </div>
+              <figcaption class="card-cap">5. Teste de tensão</figcaption>
+            </figure>
+          </td>
+          <td class="gcell">
+            <figure class="card">
+              <div class="card-img">
+                <img class="card-photo" src="{{FOTO6}}" alt="Vista frontal">
+              </div>
+              <figcaption class="card-cap">6. Vista frontal</figcaption>
+            </figure>
+          </td>
+        </tr>
+        <tr>
+          <td class="gcell" colspan="2">
+            <figure class="card card-wide">
+              <div class="card-img card-img-wide">
+                <img class="card-photo" src="{{FOTO7}}" alt="Vista geral final">
+              </div>
+              <figcaption class="card-cap">7. Vista geral final</figcaption>
+            </figure>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <img class="page-marker" src="assets/footer-marker.png" alt="" aria-hidden="true">
+  </section>
+</body>
+</html>
