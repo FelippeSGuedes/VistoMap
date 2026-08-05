@@ -426,7 +426,11 @@ export default function InstalacaoHomePage() {
             <div
               className="flex items-center justify-between gap-3 rounded-[22px] p-4 transition active:scale-[0.98]"
               style={{
-                backgroundImage: `linear-gradient(135deg,rgba(4,40,40,0.94) 0%,rgba(6,59,59,0.94) 45%,rgba(10,82,82,0.94) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png)`,
+                // Wash escuro forte só na esquerda (onde tem texto), some
+                // até a direita — a foto fica visível de verdade em vez de
+                // some debaixo de um overlay quase opaco (era 94% antes,
+                // a imagem clara ficava invisível).
+                backgroundImage: `linear-gradient(90deg, rgba(4,32,32,0.94) 0%, rgba(5,48,48,0.85) 45%, rgba(6,59,59,0.55) 75%, rgba(6,59,59,0.35) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png)`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 boxShadow: "0 6px 24px rgba(6,59,59,0.28), 0 1px 0 rgba(255,255,255,0.06) inset",
