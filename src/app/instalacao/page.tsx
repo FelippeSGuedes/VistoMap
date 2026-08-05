@@ -205,7 +205,11 @@ export default function InstalacaoHomePage() {
     <div
       className="relative flex min-h-[100dvh] flex-col"
       style={{
-        background: `#F7F9FB url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_tudo.png) no-repeat top center / cover`,
+        // Cor de base trocada de #F7F9FB (clara) pro mesmo escuro do
+        // gradiente do hero — a fundo_tudo.png agora é escura, então a cor
+        // por trás (usada só enquanto a imagem carrega ou se falhar) tem
+        // que combinar com ela, senão pisca claro antes de escurecer.
+        background: `#021818 url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_tudo.png) no-repeat top center / cover`,
       }}
     >
       {/* HEADER */}
