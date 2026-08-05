@@ -161,7 +161,7 @@ export default function PerfilPage() {
         </button>
       </motion.header>
 
-      <main className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-5 px-4 pb-32 pt-4">
+      <main className="mx-auto flex w-full max-w-[600px] flex-1 flex-col gap-5 px-4 pb-32 pt-4">
         {/* HERO PERFIL — avatar + nome + cargo */}
         <motion.section
           initial={{ opacity: 0, y: 14 }}

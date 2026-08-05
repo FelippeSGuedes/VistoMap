@@ -191,7 +191,7 @@ export default function HistoricoPage() {
         </span>
       </motion.header>
 
-      <main className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-5 px-4 pb-32 pt-4">
+      <main className="mx-auto flex w-full max-w-[600px] flex-1 flex-col gap-5 px-4 pb-32 pt-4">
         {/* PERÍODO */}
         <section>
           <div className="mb-2 flex items-center justify-between px-1">

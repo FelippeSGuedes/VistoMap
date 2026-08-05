@@ -388,7 +388,7 @@ export default function DashboardPage() {
 
       {/* SCROLL CONTENT */}
       <main
-        className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-5 overflow-y-auto px-4 pb-32 pt-5"
+        className="mx-auto flex w-full max-w-[600px] flex-1 flex-col gap-5 overflow-y-auto px-4 pb-32 pt-5"
         style={{ scrollbarWidth: "none" }}
       >
 
