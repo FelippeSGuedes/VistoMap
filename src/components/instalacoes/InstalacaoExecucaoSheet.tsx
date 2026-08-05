@@ -194,7 +194,7 @@ export function InstalacaoExecucaoSheet({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 60, opacity: 0 }}
               transition={{ duration: 0.3, ease: [0.22, 0.7, 0.2, 1] }}
-              className="flex max-h-[94dvh] w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl bg-brand-ice sm:rounded-3xl"
+              className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-brand-ice sm:max-w-[480px] sm:rounded-3xl"
             >
               <header className="flex items-center gap-3 border-b border-brand-steel/50 bg-white px-4 py-3.5">
                 <button

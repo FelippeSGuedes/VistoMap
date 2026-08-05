@@ -100,7 +100,7 @@ export function RejeitarInstalacaoModal({ open, equipamento, onClose, onEnviar }
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 40, opacity: 0 }}
             transition={{ duration: 0.28, ease: [0.22, 0.7, 0.2, 1] }}
-            className="flex max-h-[92dvh] w-full max-w-[440px] flex-col overflow-hidden rounded-t-3xl bg-white sm:rounded-3xl"
+            className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white sm:max-w-[440px] sm:rounded-3xl"
           >
             <header className="flex items-center justify-between border-b border-brand-steel/60 px-5 py-4">
               <div>

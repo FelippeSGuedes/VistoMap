@@ -250,7 +250,7 @@ export default function InstalacaoHomePage() {
       </motion.header>
 
       {/* SCROLL CONTENT */}
-      <main className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-5 overflow-y-auto px-4 pb-32 pt-5">
+      <main className="mx-auto flex w-full max-w-[600px] flex-1 flex-col gap-5 overflow-y-auto px-4 pb-32 pt-5">
         {/* HERO CARD */}
         <motion.div
           initial={{ opacity: 0, y: 18 }}
