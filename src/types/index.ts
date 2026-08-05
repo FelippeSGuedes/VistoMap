@@ -255,6 +255,17 @@ export interface CaptureBundle {
   video360?: Blob | null;
 }
 
+/** As 7 fotos fixas do Relatório Técnico Fotográfico de Instalação. */
+export interface InstalacaoCaptureBundle {
+  foto1?: Blob | null;
+  foto2?: Blob | null;
+  foto3?: Blob | null;
+  foto4?: Blob | null;
+  foto5?: Blob | null;
+  foto6?: Blob | null;
+  foto7?: Blob | null;
+}
+
 /** Município ativo na rota operacional do técnico, com contagem de vistorias. */
 export interface MunicipioOperacional {
   nome: string;
