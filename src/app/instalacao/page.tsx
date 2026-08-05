@@ -266,13 +266,9 @@ export default function InstalacaoHomePage() {
               "0 0 0 1px rgba(0,200,150,0.08), 0 12px 32px rgba(2,18,18,0.22), 0 4px 10px rgba(2,18,18,0.12)",
           }}
         >
-          {/* Foto de fundo — mesmo arquivo do hero da vistoria (banner.png):
-              técnico Nansen instalando equipamento no poste, sem nenhum
-              texto/rótulo de "vistoria" embutido na imagem — cabe igual
-              aqui, tema de instalação até combina mais. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner.png`}
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner_instalação.png`}
             alt=""
             aria-hidden="true"
             className="absolute inset-0 h-full w-full"
