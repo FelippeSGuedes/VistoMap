@@ -273,8 +273,8 @@ export default function InstalacaoHomePage() {
             aria-hidden="true"
             className="absolute inset-0 h-full w-full"
             style={{
-              objectFit: "cover",
-              objectPosition: "center top",
+              objectFit: "contain",
+              objectPosition: "center",
               filter: "brightness(1.08) contrast(1.04) saturate(0.88)",
               zIndex: 0,
             }}
@@ -420,33 +420,44 @@ export default function InstalacaoHomePage() {
 
           <Link href="/instalacao/mapa" className="block">
             <div
-              className="flex items-center justify-between gap-3 rounded-[22px] p-4 transition active:scale-[0.98]"
+              className="relative overflow-hidden rounded-[22px] transition active:scale-[0.98]"
               style={{
-                // Wash escuro forte só na esquerda (onde tem texto), some
-                // até a direita — a foto fica visível de verdade em vez de
-                // some debaixo de um overlay quase opaco (era 94% antes,
-                // a imagem clara ficava invisível).
-                backgroundImage: `linear-gradient(90deg, rgba(4,32,32,0.94) 0%, rgba(5,48,48,0.85) 45%, rgba(6,59,59,0.55) 75%, rgba(6,59,59,0.35) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png)`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
+                background: "linear-gradient(135deg, #042F2E 0%, #054640 55%, #064E4A 100%)",
                 boxShadow: "0 6px 24px rgba(6,59,59,0.28), 0 1px 0 rgba(255,255,255,0.06) inset",
               }}
             >
-              <div className="flex items-center gap-3.5">
-                <span
-                  className="flex h-11 w-11 items-center justify-center rounded-[14px]"
-                  style={{ background: "rgba(0,179,136,0.16)", border: "1px solid rgba(0,179,136,0.25)" }}
-                >
-                  <MapIcon className="h-5 w-5" style={{ color: "#5EFFD9" }} strokeWidth={1.8} />
-                </span>
-                <div>
-                  <p className="text-[15px] font-semibold tracking-[-0.2px] text-white">Mapa operacional</p>
-                  <p className="text-[11.5px]" style={{ color: "rgba(255,255,255,0.42)" }}>
-                    Postes liberados em tempo real
-                  </p>
+              {/* Imagem em screen blend por cima do fundo escuro sólido: os
+                  tons claros do png (é uma textura quase branca) clareiam o
+                  card ficando visíveis de verdade, sem nunca escurecer nada
+                  — o texto branco continua legível em 100% da área, ao
+                  contrário do wash escuro em cima da imagem (versão
+                  anterior), que precisava ficar quase opaco pra não
+                  estourar o contraste e por isso escondia a imagem. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png`}
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 h-full w-full"
+                style={{ objectFit: "cover", objectPosition: "center", mixBlendMode: "screen", opacity: 0.6 }}
+              />
+              <div className="relative z-10 flex items-center justify-between gap-3 p-4">
+                <div className="flex items-center gap-3.5">
+                  <span
+                    className="flex h-11 w-11 items-center justify-center rounded-[14px]"
+                    style={{ background: "rgba(0,179,136,0.16)", border: "1px solid rgba(0,179,136,0.25)" }}
+                  >
+                    <MapIcon className="h-5 w-5" style={{ color: "#5EFFD9" }} strokeWidth={1.8} />
+                  </span>
+                  <div>
+                    <p className="text-[15px] font-semibold tracking-[-0.2px] text-white">Mapa operacional</p>
+                    <p className="text-[11.5px]" style={{ color: "rgba(255,255,255,0.42)" }}>
+                      Postes liberados em tempo real
+                    </p>
+                  </div>
                 </div>
+                <ArrowUpRight className="h-5 w-5 shrink-0" style={{ color: "rgba(255,255,255,0.3)" }} strokeWidth={1.8} />
               </div>
-              <ArrowUpRight className="h-5 w-5 shrink-0" style={{ color: "rgba(255,255,255,0.3)" }} strokeWidth={1.8} />
             </div>
           </Link>
 
