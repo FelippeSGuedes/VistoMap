@@ -127,11 +127,11 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 
 type StatKey = "disponiveis" | "andamento" | "instaladas" | "rejeitadas";
 
-const STAT_META: Record<StatKey, { label: string; icon: typeof Activity; hex: string; pill: string; grad: string }> = {
-  disponiveis: { label: "Disponíveis", icon: Wrench, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
-  andamento: { label: "Em Andamento", icon: Activity, hex: "#2563EB", pill: "#EFF6FF", grad: "from-blue-500 to-indigo-500" },
-  instaladas: { label: "Instaladas (30d)", icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500" },
-  rejeitadas: { label: "Rejeitadas", icon: Ban, hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600" },
+const STAT_META: Record<StatKey, { label: string; icon: typeof Activity; hex: string; pill: string; grad: string; bg: string }> = {
+  disponiveis: { label: "Disponíveis", icon: Wrench, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_disponivel.png" },
+  andamento: { label: "Em Andamento", icon: Activity, hex: "#2563EB", pill: "#EFF6FF", grad: "from-blue-500 to-indigo-500", bg: "card_andamento.png" },
+  instaladas: { label: "Instaladas (30d)", icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500", bg: "card_instalado.png" },
+  rejeitadas: { label: "Rejeitadas", icon: Ban, hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600", bg: "card_rejeitado.png" },
 };
 
 export default function InstalacaoHomePage() {
@@ -202,7 +202,12 @@ export default function InstalacaoHomePage() {
   const firstName = firstNameOf(nome);
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col" style={{ background: "#F7F9FB" }}>
+    <div
+      className="relative flex min-h-[100dvh] flex-col"
+      style={{
+        background: `#F7F9FB url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_tudo.png) no-repeat top center / cover`,
+      }}
+    >
       {/* HEADER */}
       <motion.header
         initial={{ opacity: 0 }}
@@ -340,8 +345,15 @@ export default function InstalacaoHomePage() {
         <InstalacaoMunicipioField municipios={municipios} loading={!carregado} />
 
         {/* STATS GRID — Resumo operacional */}
-        <section>
-          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
+        <section
+          className="rounded-[24px] p-3"
+          style={{
+            background: `linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.75) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png)`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        >
+          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#7A8896" }}>
             Resumo operacional
           </p>
           <div className="grid grid-cols-2 gap-2.5">
@@ -360,7 +372,13 @@ export default function InstalacaoHomePage() {
                   transition={{ delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
                   whileHover={{ y: -2, transition: { duration: 0.2 } }}
                   className="group relative overflow-hidden rounded-[22px] p-[15px]"
-                  style={{ background: "#fff", boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07), 0 0 0 1px rgba(6,59,59,0.04)" }}
+                  style={{
+                    backgroundColor: "#fff",
+                    backgroundImage: `url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/${meta.bg})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07), 0 0 0 1px rgba(6,59,59,0.04)",
+                  }}
                 >
                   <div
                     className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-[24px] transition-opacity group-hover:opacity-100"
@@ -406,8 +424,18 @@ export default function InstalacaoHomePage() {
         </section>
 
         {/* QUICK ACTIONS */}
-        <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38, ease: [0.22, 0.7, 0.2, 1] }}>
-          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.38, ease: [0.22, 0.7, 0.2, 1] }}
+          className="rounded-[24px] p-3"
+          style={{
+            background: `linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.75) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mapa_operacional.png)`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        >
+          <p className="mb-3 px-0.5 text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#7A8896" }}>
             Acesso rápido
           </p>
 

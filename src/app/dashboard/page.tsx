@@ -185,7 +185,7 @@ const ACTIONS = [
 export default function DashboardPage() {
   const router = useRouter();
   const openVistorias = useVistoriasAccessGuard();
-  const { hydrated, session } = useAuthStore();
+  const { hydrated, session, logout } = useAuthStore();
   const [stats, setStats]     = useState<DashboardStats | null>(null);
   const [online, setOnline]   = useState(true);
   // Calculado só no client: no export estático, new Date().getHours() no
@@ -200,14 +200,21 @@ export default function DashboardPage() {
 
   useEffect(() => { if (hydrated && !session) router.replace("/login"); }, [hydrated, session, router]);
   // Sessão só de instalador (sem módulo de vistoria) não deve ver esta tela
-  // — manda pra home dele. Não afeta ninguém com módulo vistoria (a imensa
-  // maioria); só existe pra não deixar um instalador cair aqui via deep
-  // link / botão voltar do navegador.
+  // — manda pra home dele. Sessão sem `modulos` (de antes desse campo
+  // existir) desloga e força novo login, mesma lógica de src/app/page.tsx
+  // e /login — evita ficar preso aqui pra sempre com dado desatualizado.
+  // Não afeta ninguém com módulo vistoria (a imensa maioria).
   useEffect(() => {
-    if (hydrated && session?.modulos && !session.modulos.includes("vistoria") && session.modulos.includes("instalacao")) {
+    if (!hydrated || !session) return;
+    if (!session.modulos || session.modulos.length === 0) {
+      logout();
+      router.replace("/login");
+      return;
+    }
+    if (!session.modulos.includes("vistoria") && session.modulos.includes("instalacao")) {
       router.replace("/instalacao");
     }
-  }, [hydrated, session, router]);
+  }, [hydrated, session, router, logout]);
   useEffect(() => { setSaudacao(greeting()); }, []);
 
   useEffect(() => {
