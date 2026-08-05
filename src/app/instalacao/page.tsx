@@ -253,7 +253,7 @@ export default function InstalacaoHomePage() {
           transition={{ duration: 0.52, ease: [0.22, 0.7, 0.2, 1] }}
           className="relative overflow-hidden p-6"
           style={{
-            height: 200,
+            height: 252,
             borderRadius: 28,
             background: "linear-gradient(135deg, #021818 0%, #031E1E 35%, #052E2E 65%, #073838 100%)",
             boxShadow:
@@ -261,6 +261,43 @@ export default function InstalacaoHomePage() {
               "0 0 0 1px rgba(0,200,150,0.08), 0 12px 32px rgba(2,18,18,0.22), 0 4px 10px rgba(2,18,18,0.12)",
           }}
         >
+          {/* Foto de fundo — mesmo arquivo do hero da vistoria (banner.png):
+              técnico Nansen instalando equipamento no poste, sem nenhum
+              texto/rótulo de "vistoria" embutido na imagem — cabe igual
+              aqui, tema de instalação até combina mais. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner.png`}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full"
+            style={{
+              objectFit: "cover",
+              objectPosition: "center top",
+              filter: "brightness(1.08) contrast(1.04) saturate(0.88)",
+              zIndex: 0,
+            }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              zIndex: 1,
+              background:
+                "linear-gradient(to right, rgba(3,22,22,0.97) 0%, rgba(3,22,22,0.93) 20%, " +
+                "rgba(3,22,22,0.75) 36%, rgba(3,22,22,0.38) 52%, rgba(3,22,22,0.1) 66%, transparent 80%)",
+            }}
+          />
+          <div
+            className="absolute inset-x-0 top-0"
+            style={{ height: "30%", zIndex: 2, background: "linear-gradient(to bottom, rgba(3,22,22,0.52) 0%, transparent 100%)" }}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0"
+            style={{ height: "36%", zIndex: 2, background: "linear-gradient(to top, rgba(3,22,22,0.6) 0%, transparent 100%)" }}
+          />
           <div
             className="pointer-events-none absolute"
             style={{
@@ -268,11 +305,12 @@ export default function InstalacaoHomePage() {
               bottom: -30,
               width: 220,
               height: 220,
+              zIndex: 3,
               borderRadius: "50%",
               background: "radial-gradient(circle, rgba(0,200,150,0.16) 0%, rgba(0,200,150,0.05) 48%, transparent 68%)",
             }}
           />
-          <div className="relative flex h-full flex-col justify-between">
+          <div className="relative flex h-full flex-col justify-between" style={{ zIndex: 10 }}>
             <div
               className="w-fit rounded-full px-2.5 py-[5px] text-[8.5px] font-semibold uppercase"
               style={{
