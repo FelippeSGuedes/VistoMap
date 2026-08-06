@@ -47,6 +47,7 @@ import {
   RefreshCw,
   Route,
   Search,
+  Wrench,
   Target,
   User,
   UserCheck,
@@ -488,7 +489,6 @@ export default function PainelMapaPage() {
 
   const [data, setData] = useState<PainelMapaResponse | null>(null);
   const [instalacaoData, setInstalacaoData] = useState<PainelInstalacoesMapaResponse | null>(null);
-  const [showInstalacao, setShowInstalacao] = useState(true);
   const [loading, setLoading] = useState(false);
   const [activeLayer, setActiveLayer] = useState<LayerKey>("dark");
   // Tema lido apenas no init — o toggle no client-layout recarrega a página,
@@ -527,7 +527,7 @@ export default function PainelMapaPage() {
   const [hoveredPos, setHoveredPos] = useState<{ x: number; y: number } | null>(null);
 
   // Painel lateral
-  const [aba, setAba] = useState<"tecnicos" | "vistorias">("tecnicos");
+  const [aba, setAba] = useState<"tecnicos" | "vistorias" | "instalacao">("tecnicos");
   const [filtroSit, setFiltroSit] = useState<"todas" | SituacaoOperacional>("todas");
   const [filtroTec, setFiltroTec] = useState<"todos" | "online" | "parado" | "offline">("todos");
   const [buscaVis, setBuscaVis] = useState("");
@@ -699,7 +699,7 @@ export default function PainelMapaPage() {
       posteInstMarkersRef.current.clear();
     };
 
-    if (!showInstalacao || !instalacaoData) {
+    if (!instalacaoData) {
       clearAll();
       return;
     }
@@ -776,12 +776,7 @@ export default function PainelMapaPage() {
     if (map.loaded()) sync();
     else map.once("load", sync);
 
-    return () => {
-      // Só limpa no unmount do efeito por troca de dependência relevante;
-      // o cleanup completo (remover tudo) já é feito no branch acima quando
-      // showInstalacao vira false.
-    };
-  }, [instalacaoData, showInstalacao]);
+  }, [instalacaoData]);
 
   /* ── layer switcher ─────────────────────────────────────────────────────── */
 
@@ -1179,6 +1174,13 @@ export default function PainelMapaPage() {
             label="Vistorias"
             badge={data?.vistorias.length}
           />
+          <TabBtn
+            active={aba === "instalacao"}
+            onClick={() => setAba("instalacao")}
+            icon={<Wrench className="h-3 w-3" />}
+            label="Instalação"
+            badge={instalacaoData ? instalacaoData.instaladores.length + instalacaoData.postes.length : undefined}
+          />
         </div>
 
         {aba === "tecnicos" && (
@@ -1393,6 +1395,114 @@ export default function PainelMapaPage() {
             </div>
           </div>
         )}
+
+        {aba === "instalacao" && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="shrink-0 px-2 pt-2">
+              <p className="rounded-lg px-2 py-1.5 text-[9.5px] leading-relaxed" style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED" }}>
+                Módulo de Instalação — instaladores (losango) e postes (ícone),
+                separado da Vistoria.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+              {instalacaoData && instalacaoData.instaladores.length > 0 && (
+                <>
+                  <p className="mb-1.5 mt-2 px-1 text-[9.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                    Instaladores
+                  </p>
+                  <div className="space-y-1.5">
+                    {instalacaoData.instaladores.map((t) => {
+                      const c = INST_TEC_COLOR[t.status_operacional];
+                      return (
+                        <button
+                          key={t.users_id}
+                          type="button"
+                          onClick={() => {
+                            if (t.latitude != null && t.longitude != null) {
+                              mapRef.current?.flyTo({ center: [t.longitude, t.latitude], zoom: Math.max(14, mapRef.current.getZoom()), duration: 700 });
+                            }
+                          }}
+                          className="w-full rounded-xl p-2.5 text-left transition"
+                          style={{ background: "var(--vm-fill)", border: "1px solid var(--vm-fill-2)" }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
+                              style={{ background: "linear-gradient(135deg,#8B5CF6,#6D28D9)" }}
+                            >
+                              {initials(t.nome)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[12px] font-semibold" style={{ color: "var(--vm-text)" }}>
+                                {t.nome}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[9.5px]" style={{ color: c }}>
+                                <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
+                                <span>{INST_TEC_LABEL[t.status_operacional]}</span>
+                                {t.minutos_atras != null && (
+                                  <>
+                                    <span style={{ color: "var(--vm-faint)" }}>·</span>
+                                    <span style={{ color: "var(--vm-faint)" }}>há {t.minutos_atras}min</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <span
+                              className="shrink-0 rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-wide"
+                              style={{ background: "rgba(124,58,237,0.14)", color: "#7C3AED" }}
+                            >
+                              Instalador
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {instalacaoData && instalacaoData.postes.length > 0 && (
+                <>
+                  <p className="mb-1.5 mt-3 px-1 text-[9.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                    Postes
+                  </p>
+                  <div className="space-y-1.5">
+                    {instalacaoData.postes.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => mapRef.current?.flyTo({ center: [p.longitude, p.latitude], zoom: Math.max(15, mapRef.current.getZoom()), duration: 700 })}
+                        className="w-full rounded-xl p-2.5 text-left transition"
+                        style={{ background: "var(--vm-fill)", border: "1px solid var(--vm-fill-2)" }}
+                      >
+                        <p className="truncate text-[12px] font-semibold" style={{ color: "var(--vm-text)" }}>{p.equipamento}</p>
+                        <div className="flex items-center gap-1.5 text-[9.5px]" style={{ color: "var(--vm-faint)" }}>
+                          <span>{p.municipio ?? "—"}</span>
+                          <span>·</span>
+                          <span
+                            className="rounded-full px-1.5 py-[1px] font-bold uppercase tracking-wide"
+                            style={{
+                              background: p.status === "liberado" ? "rgba(245,158,11,0.14)" : "rgba(59,130,246,0.14)",
+                              color: p.status === "liberado" ? "#F59E0B" : "#3B82F6",
+                            }}
+                          >
+                            {p.status === "liberado" ? "Poste liberado" : "Poste em instalação"}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {instalacaoData && instalacaoData.instaladores.length === 0 && instalacaoData.postes.length === 0 && (
+                <p className="py-10 text-center text-[11px]" style={{ color: "var(--vm-faint)" }}>
+                  Nada em andamento na Instalação agora.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* ── STATUS BAR (floating top-right) ──────────────────────────────── */}
@@ -1457,35 +1567,6 @@ export default function PainelMapaPage() {
             </button>
           );
         })}
-      </div>
-
-      {/* ── INSTALAÇÃO — toggle + legenda (pins próprios, mesmo mapa) ──────── */}
-      <div
-        className="absolute z-10 flex items-center gap-2 px-2.5 py-1.5"
-        style={{ bottom: 76, left: 308, ...GLASS, borderRadius: 12 }}
-      >
-        <button
-          type="button"
-          onClick={() => setShowInstalacao((v) => !v)}
-          className="flex items-center gap-1.5 text-[10.5px] font-semibold transition"
-          style={{ color: showInstalacao ? "#7C3AED" : "var(--vm-muted)" }}
-        >
-          <span
-            className="inline-block h-2.5 w-2.5 shrink-0"
-            style={{
-              background: "#7C3AED",
-              transform: "rotate(45deg)",
-              opacity: showInstalacao ? 1 : 0.35,
-              boxShadow: "0 0 0 1.5px rgba(124,58,237,0.3)",
-            }}
-          />
-          Instalação
-          {instalacaoData && (
-            <span style={{ color: "var(--vm-faint)", fontWeight: 500 }}>
-              ({instalacaoData.instaladores.length + instalacaoData.postes.length})
-            </span>
-          )}
-        </button>
       </div>
 
       {/* ── GPS EDIT MODE BANNER ──────────────────────────────────────────── */}

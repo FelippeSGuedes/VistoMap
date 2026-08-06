@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { api } from "@/services/api";
 import { painelService } from "@/services/painel";
+import { fetchInstaladoresAtivos } from "@/services/painel-instalacoes";
 import { getMapboxToken, DEFAULT_CENTER } from "@/services/maps";
 import { ACAO_META, initials } from "@/lib/auditMeta";
 import type { AuditEntry, TecnicoAtivo } from "@/types";
@@ -87,6 +88,7 @@ export default function TecnicoDetalhePage() {
   const id = params?.id;
 
   const [tecnico, setTecnico] = useState<TecnicoAtivo | null>(null);
+  const [papel, setPapel] = useState<"vistoriador" | "instalador" | null>(null);
   const [historico, setHistorico] = useState<ExpedienteHistItem[]>([]);
   const [auditoria, setAuditoria] = useState<AuditEntry[]>([]);
   const [today, setToday] = useState<TecnicoTodayMetrics | null>(null);
@@ -116,8 +118,9 @@ export default function TecnicoDetalhePage() {
     setLoading(true);
     setErro(null);
     try {
-      const [tecnicos, histRes, todayRes, trailRes, auditEntries] = await Promise.all([
+      const [tecnicos, instaladores, histRes, todayRes, trailRes, auditEntries] = await Promise.all([
         painelService.fetchTecnicos(),
+        fetchInstaladoresAtivos().catch(() => [] as TecnicoAtivo[]),
         api.get<{ itens: ExpedienteHistItem[] }>(
           `/painel/expediente/historico?users_id=${id}&desde=${desde}&ate=${ate}&limit=200`
         ),
@@ -127,7 +130,10 @@ export default function TecnicoDetalhePage() {
         ),
         painelService.fetchAudit({ ator_id: Number(id), limit: 200 }),
       ]);
-      setTecnico(tecnicos.find((t) => String(t.id) === String(id)) ?? null);
+      const vistoriador = tecnicos.find((t) => String(t.id) === String(id));
+      const instalador = instaladores.find((t) => String(t.id) === String(id));
+      setTecnico(vistoriador ?? instalador ?? null);
+      setPapel(vistoriador ? "vistoriador" : instalador ? "instalador" : null);
       setHistorico(histRes.data.itens);
       setToday(todayRes.data);
       setTrail(trailRes.data.coords);
@@ -244,7 +250,12 @@ export default function TecnicoDetalhePage() {
           <>
             <span
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[13px] font-bold text-white"
-              style={{ background: "linear-gradient(145deg, #00B388, #00875F)" }}
+              style={{
+                background:
+                  papel === "instalador"
+                    ? "linear-gradient(145deg, #A78BFA, #7C3AED)"
+                    : "linear-gradient(145deg, #00B388, #00875F)",
+              }}
             >
               {initials(tecnico.nome)}
             </span>
@@ -258,6 +269,18 @@ export default function TecnicoDetalhePage() {
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusCfg[tecnico.status].color }} />
                   {statusCfg[tecnico.status].label}
                 </span>
+                {papel && (
+                  <span
+                    className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide"
+                    style={
+                      papel === "instalador"
+                        ? { background: "rgba(124,58,237,0.12)", color: "#7C3AED" }
+                        : { background: "var(--vm-accent-tint)", color: "#00875F" }
+                    }
+                  >
+                    {papel === "instalador" ? "Instalador" : "Vistoriador"}
+                  </span>
+                )}
               </div>
               <p className="flex items-center gap-1 truncate text-[12.5px] text-gray-500">
                 <Mail className="h-3 w-3" /> {tecnico.email ?? "—"}

@@ -1720,67 +1720,6 @@ export default function PainelOverviewPage() {
 
       </div>
 
-      {/* ════════════ INSTALAÇÃO — resumo unificado na mesma Operação ════════════
-          Cards da Instalação juntos com os da Vistoria nesta mesma tela (não é
-          uma tela separada) — dado vem de src/services/painel-instalacoes.ts,
-          isolado da Vistoria; só a apresentação fica junta aqui. Mesmas imagens
-          de fundo do app de campo (card_*.png, fundo_tudo.png), pra bater com o
-          visual que o instalador já vê no celular. */}
-      <div
-        className="vm-rise rounded-2xl p-4"
-        style={{
-          animationDelay: "0.04s",
-          backgroundColor: "#F7F9FB",
-          backgroundImage: `url(${asset("/fundo_tudo.png")})`,
-          backgroundSize: "cover",
-          backgroundPosition: "top center",
-        }}
-      >
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Instalação</span>
-          </div>
-          <Link href="/painel/mapa" className="flex items-center gap-1 text-[12px] font-semibold text-[#3B82F6] hover:underline">
-            <MapIcon className="h-3 w-3" /> Mapa em tempo real
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {(
-            [
-              { label: "Liberados", value: instalacaoStats?.liberados ?? null, sub: "aguardando instalador assumir", color: "#F59E0B", icon: Wrench, href: "/painel/mapa", bg: "card_disponivel.png" },
-              { label: "Em Instalação", value: instalacaoStats?.emInstalacao ?? null, sub: `${instalacaoStats?.instaladores24h ?? 0} instalador${(instalacaoStats?.instaladores24h ?? 0) === 1 ? "" : "es"} em campo`, color: "#3B82F6", icon: Activity, href: "/painel/mapa", bg: "card_andamento.png" },
-              { label: "Instaladas (30d)", value: instalacaoStats?.instaladas30d ?? null, sub: "últimos 30 dias", color: "#10B981", icon: CheckCircle2, href: null, bg: "card_instalado.png" },
-              { label: "Rejeitadas", value: instalacaoStats?.rejeitadasPendentes ?? null, sub: "aguardando decisão", color: "#DC2626", icon: Ban, href: "/painel/instalacoes/rejeitadas", bg: "card_rejeitado.png" },
-            ] as const
-          ).map((k) => {
-            const Icon = k.icon;
-            const content = (
-              <Card
-                className="p-4 transition hover:-translate-y-0.5"
-                style={{
-                  backgroundImage: `url(${asset(`/${k.bg}`)})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: `${k.color}1F`, color: k.color }}>
-                    <Icon className="h-4 w-4" />
-                  </span>
-                </div>
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
-                <div className="mt-0.5 text-[26px] font-bold tabular-nums text-[var(--vm-text)]">
-                  {k.value != null ? <CountUp value={k.value} /> : "—"}
-                </div>
-                <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
-              </Card>
-            );
-            return k.href ? <Link key={k.label} href={k.href}>{content}</Link> : <div key={k.label}>{content}</div>;
-          })}
-        </div>
-      </div>
-
       {/* ════════════ LINHA 1: Velocity | Heatmap SP | Equipe ════════════ */}
       <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" style={{ animationDelay: "0.08s" }}>
 
@@ -2077,6 +2016,68 @@ export default function PainelOverviewPage() {
       {/* ════════════ LINHA 3: Distribuição do pipeline ════════════ */}
       <div className="vm-rise" style={{ animationDelay: "0.22s" }}>
         <PipelineWidget stats={stats} />
+      </div>
+
+      {/* ════════════ INSTALAÇÃO — seção própria, depois de toda a Vistoria ════════════
+          Cards da Instalação numa seção clara e separada, no fim da tela de
+          Operação (depois da Distribuição das Vistorias) — dado vem de
+          src/services/painel-instalacoes.ts, isolado da Vistoria; só a
+          apresentação fica na mesma página. Mesmas imagens de fundo do app de
+          campo (card_*.png, fundo_tudo.png), pra bater com o visual que o
+          instalador já vê no celular. */}
+      <div
+        className="vm-rise rounded-2xl p-4"
+        style={{
+          animationDelay: "0.26s",
+          backgroundColor: "#F7F9FB",
+          backgroundImage: `url(${asset("/fundo_tudo.png")})`,
+          backgroundSize: "cover",
+          backgroundPosition: "top center",
+        }}
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Instalação</span>
+          </div>
+          <Link href="/painel/mapa" className="flex items-center gap-1 text-[12px] font-semibold text-[#3B82F6] hover:underline">
+            <MapIcon className="h-3 w-3" /> Mapa em tempo real
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {(
+            [
+              { label: "Liberados", value: instalacaoStats?.liberados ?? null, sub: "aguardando instalador assumir", color: "#F59E0B", icon: Wrench, href: "/painel/mapa", bg: "card_disponivel.png" },
+              { label: "Em Instalação", value: instalacaoStats?.emInstalacao ?? null, sub: `${instalacaoStats?.instaladores24h ?? 0} instalador${(instalacaoStats?.instaladores24h ?? 0) === 1 ? "" : "es"} em campo`, color: "#3B82F6", icon: Activity, href: "/painel/mapa", bg: "card_andamento.png" },
+              { label: "Instaladas (30d)", value: instalacaoStats?.instaladas30d ?? null, sub: "últimos 30 dias", color: "#10B981", icon: CheckCircle2, href: null, bg: "card_instalado.png" },
+              { label: "Rejeitadas", value: instalacaoStats?.rejeitadasPendentes ?? null, sub: "aguardando decisão", color: "#DC2626", icon: Ban, href: "/painel/instalacoes/rejeitadas", bg: "card_rejeitado.png" },
+            ] as const
+          ).map((k) => {
+            const Icon = k.icon;
+            const content = (
+              <Card
+                className="p-4 transition hover:-translate-y-0.5"
+                style={{
+                  backgroundImage: `url(${asset(`/${k.bg}`)})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: `${k.color}1F`, color: k.color }}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                </div>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
+                <div className="mt-0.5 text-[26px] font-bold tabular-nums text-[var(--vm-text)]">
+                  {k.value != null ? <CountUp value={k.value} /> : "—"}
+                </div>
+                <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
+              </Card>
+            );
+            return k.href ? <Link key={k.label} href={k.href}>{content}</Link> : <div key={k.label}>{content}</div>;
+          })}
+        </div>
       </div>
 
       {/* ════════════ RODAPÉ — barra de status NOC ════════════ */}

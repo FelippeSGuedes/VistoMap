@@ -18,6 +18,7 @@ import type {
   PainelInstalacoesMapaResponse,
   PainelInstalacoesStats,
 } from "@/types/painel-instalacoes";
+import type { TecnicoAtivo } from "@/types";
 
 /**
  * Agregação para o painel administrativo do módulo de Instalação — paralela
@@ -199,4 +200,132 @@ async function fetchMapaPostes(): Promise<PainelInstalacoesMapaPoste[]> {
 export async function fetchPainelInstalacoesMapa(): Promise<PainelInstalacoesMapaResponse> {
   const [instaladores, postes] = await Promise.all([fetchMapaInstaladores(), fetchMapaPostes()]);
   return { instaladores, postes, generated_at: new Date().toISOString() };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Técnicos (/painel/tecnicos) — instaladores, mesma forma de dado
+// (TecnicoAtivo) que fetchTecnicos() de painel.ts já usa pra vistoriadores.
+// Reaproveita o TIPO (já genérico o bastante: id/nome/status/atribuidas/
+// concluidasHoje), mas a query é toda própria — nunca lê tabela de vistoria.
+// ────────────────────────────────────────────────────────────────────────
+
+interface InstaladorAtivoRow {
+  id: number;
+  name: string;
+  firstname: string | null;
+  realname: string | null;
+  email: string | null;
+  atribuidas: number;
+  concluidas_hoje: number;
+  ultima_atividade: string | null;
+}
+
+export async function fetchInstaladoresAtivos(): Promise<TecnicoAtivo[]> {
+  const rows = await query<InstaladorAtivoRow>(
+    `
+      SELECT
+        u.id,
+        u.name,
+        u.firstname,
+        u.realname,
+        (
+          SELECT email FROM glpi_useremails
+           WHERE users_id = u.id
+        ORDER BY is_default DESC, id ASC
+           LIMIT 1
+        ) AS email,
+        (
+          SELECT COUNT(*) FROM \`${TABLE_FIELDS}\` f
+            INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+           WHERE f.${INSTALACAO_INSTALADOR_COLUMN} = u.id
+             AND ne.states_id = ${STATE_EM_INSTALACAO}
+        ) AS atribuidas,
+        (
+          SELECT COUNT(*) FROM \`${TABLE_FIELDS}\` f2
+            INNER JOIN \`${TABLE_NE}\` ne2 ON ne2.id = f2.items_id AND ne2.is_deleted = 0
+           WHERE f2.${INSTALACAO_INSTALADOR_COLUMN} = u.id
+             AND ne2.states_id = ${STATE_INSTALADO}
+             AND DATE(f2.datadeinstalaofield) = CURDATE()
+        ) AS concluidas_hoje,
+        (
+          SELECT MAX(f3.datadeinstalaofield)
+            FROM \`${TABLE_FIELDS}\` f3
+           WHERE f3.${INSTALACAO_INSTALADOR_COLUMN} = u.id
+        ) AS ultima_atividade
+      FROM \`${TABLE_USERS}\` u
+      INNER JOIN glpi_groups_users gu ON gu.users_id = u.id
+      INNER JOIN glpi_groups g ON g.id = gu.groups_id AND g.name IN (?, ?)
+      WHERE u.is_deleted = 0 AND u.is_active = 1
+      GROUP BY u.id
+      ORDER BY atribuidas DESC, u.name ASC
+    `,
+    INSTALACAO_GROUP_NAMES
+  );
+
+  const ids = rows.map((r) => r.id);
+
+  // Município "atual" — poste em instalação agora (mesma heurística de fetchTecnicos).
+  let municipios = new Map<number, string>();
+  if (ids.length > 0) {
+    const placeholders = ids.map(() => "?").join(",");
+    const muniRows = await query<{ tec: number; muni: string }>(
+      `
+        SELECT f.${INSTALACAO_INSTALADOR_COLUMN} AS tec, TRIM(f.municipiofield) AS muni
+          FROM \`${TABLE_FIELDS}\` f
+         WHERE f.${INSTALACAO_INSTALADOR_COLUMN} IN (${placeholders})
+           AND f.municipiofield IS NOT NULL
+           AND TRIM(f.municipiofield) <> ''
+         GROUP BY f.${INSTALACAO_INSTALADOR_COLUMN}, TRIM(f.municipiofield)
+      `,
+      ids
+    );
+    for (const m of muniRows) {
+      if (!municipios.has(m.tec)) municipios.set(m.tec, m.muni);
+    }
+  }
+
+  // Último ping GPS — mesma tabela genérica de locations que a Vistoria usa.
+  let ultimoPingGps = new Map<number, string>();
+  if (ids.length > 0) {
+    try {
+      const placeholders = ids.map(() => "?").join(",");
+      const gpsRows = await query<{ users_id: number; created_at: string }>(
+        `
+          SELECT l.users_id, l.created_at
+            FROM glpi_plugin_vistomap_locations l
+            INNER JOIN (
+              SELECT users_id, MAX(created_at) AS max_created
+                FROM glpi_plugin_vistomap_locations
+               WHERE users_id IN (${placeholders})
+               GROUP BY users_id
+            ) lm ON lm.users_id = l.users_id AND lm.max_created = l.created_at
+        `,
+        ids
+      );
+      for (const g of gpsRows) {
+        ultimoPingGps.set(g.users_id, g.created_at);
+      }
+    } catch {
+      // noop
+    }
+  }
+
+  return rows.map((r) => {
+    const nome = `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.name;
+    const ultimaAtividadeRef = ultimoPingGps.get(r.id) ?? r.ultima_atividade ?? null;
+    const ultimaMs = ultimaAtividadeRef ? new Date(ultimaAtividadeRef).getTime() : 0;
+    const minutesSince = ultimaMs ? (Date.now() - ultimaMs) / 60_000 : Infinity;
+    const status: TecnicoAtivo["status"] =
+      minutesSince < 5 ? "em-campo" : minutesSince < 30 ? "base" : minutesSince < 120 ? "off-shift" : "offline";
+    return {
+      id: String(r.id),
+      nome,
+      email: r.email ?? undefined,
+      status,
+      municipio: municipios.get(r.id),
+      atribuidas: Number(r.atribuidas) || 0,
+      concluidasHoje: Number(r.concluidas_hoje) || 0,
+      ultimaAtividade: ultimaAtividadeRef ?? undefined,
+    };
+  });
 }

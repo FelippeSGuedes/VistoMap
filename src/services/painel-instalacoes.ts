@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type { PainelInstalacoesMapaResponse, PainelInstalacoesStats } from "@/types/painel-instalacoes";
+import type { TecnicoAtivo } from "@/types";
 
 /**
  * Service do painel administrativo para Instalação — paralelo a
@@ -15,5 +16,10 @@ export async function fetchInstalacoesStats(): Promise<PainelInstalacoesStats> {
 
 export async function fetchInstalacoesMapa(): Promise<PainelInstalacoesMapaResponse> {
   const { data } = await api.get<PainelInstalacoesMapaResponse>("/painel/instalacoes/mapa");
+  return data;
+}
+
+export async function fetchInstaladoresAtivos(): Promise<TecnicoAtivo[]> {
+  const { data } = await api.get<TecnicoAtivo[]>("/painel/instalacoes/tecnicos");
   return data;
 }

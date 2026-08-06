@@ -20,6 +20,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { painelService, type HistoricoAnalytics } from "@/services/painel";
+import { fetchInstaladoresAtivos } from "@/services/painel-instalacoes";
 import type { TecnicoAtivo } from "@/types";
 import { api } from "@/services/api";
 
@@ -51,6 +52,24 @@ interface TecnicoEnriquecido extends TecnicoAtivo {
   produtividadePct: number;
 }
 
+// Instaladores ainda não têm ranking de 30d (histórico separado, fase futura)
+// — o card aceita os campos de enriquecimento como opcionais e omite o bloco
+// "Últimos 30 dias" quando eles não existem.
+type CardTecnico = TecnicoAtivo &
+  Partial<
+    Pick<
+      TecnicoEnriquecido,
+      "total30d" | "aprovadas30d" | "revisitas30d" | "cidades30d" | "kmPercorrido30d" | "produtividadePct"
+    >
+  >;
+
+type PapelEquipe = "vistoriador" | "instalador";
+
+const PAPEL_CFG: Record<PapelEquipe, { label: string; bg: string; fg: string }> = {
+  vistoriador: { label: "Vistoriador", bg: "var(--vm-accent-tint)", fg: "#00875F" },
+  instalador: { label: "Instalador", bg: "rgba(124,58,237,0.12)", fg: "#7C3AED" },
+};
+
 const STATUS_CFG: Record<
   TecnicoAtivo["status"],
   { label: string; bg: string; fg: string; ring: string }
@@ -75,6 +94,7 @@ function relativo(iso?: string): string {
 export default function TecnicosPage() {
   const router = useRouter();
   const [tecnicos, setTecnicos] = useState<TecnicoAtivo[]>([]);
+  const [instaladores, setInstaladores] = useState<TecnicoAtivo[]>([]);
   const [historico, setHistorico] = useState<HistoricoAnalytics | null>(null);
   const [expedientes, setExpedientes] = useState<ExpedienteAtivo[]>([]);
   const [query, setQuery] = useState("");
@@ -83,18 +103,20 @@ export default function TecnicosPage() {
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const [t, h, e] = await Promise.all([
+      const [t, h, e, inst] = await Promise.all([
         painelService.fetchTecnicos(),
         painelService.fetchHistorico(30),
         api
           .get<{ ativos: ExpedienteAtivo[] }>("/painel/expediente/ativos")
           .then((r) => r.data.ativos)
           .catch(() => [] as ExpedienteAtivo[]),
+        fetchInstaladoresAtivos().catch(() => [] as TecnicoAtivo[]),
       ]);
       if (!alive) return;
       setTecnicos(t);
       setHistorico(h);
       setExpedientes(e);
+      setInstaladores(inst);
     };
     load();
     const id = window.setInterval(load, 20000);
@@ -130,22 +152,27 @@ export default function TecnicosPage() {
     });
   }, [tecnicos, historico]);
 
-  const lista = useMemo(() => {
+  const filtrar = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return enriquecidos.filter((t) => {
-      if (filtroStatus !== "todos" && t.status !== filtroStatus) return false;
-      if (!q) return true;
-      return (
-        t.nome.toLowerCase().includes(q) ||
-        t.email?.toLowerCase().includes(q) ||
-        t.municipio?.toLowerCase().includes(q)
-      );
-    });
-  }, [query, filtroStatus, enriquecidos]);
+    return (arr: CardTecnico[]) =>
+      arr.filter((t) => {
+        if (filtroStatus !== "todos" && t.status !== filtroStatus) return false;
+        if (!q) return true;
+        return (
+          t.nome.toLowerCase().includes(q) ||
+          t.email?.toLowerCase().includes(q) ||
+          t.municipio?.toLowerCase().includes(q)
+        );
+      });
+  }, [query, filtroStatus]);
 
-  const ativos = tecnicos.filter((t) => t.status === "em-campo").length;
-  const naBase = tecnicos.filter((t) => t.status === "base").length;
-  const offline = tecnicos.filter((t) => t.status === "offline").length;
+  const listaVistoriadores = useMemo(() => filtrar(enriquecidos), [filtrar, enriquecidos]);
+  const listaInstaladores = useMemo(() => filtrar(instaladores), [filtrar, instaladores]);
+
+  const todaEquipe = useMemo(() => [...tecnicos, ...instaladores], [tecnicos, instaladores]);
+  const ativos = todaEquipe.filter((t) => t.status === "em-campo").length;
+  const naBase = todaEquipe.filter((t) => t.status === "base").length;
+  const offline = todaEquipe.filter((t) => t.status === "offline").length;
 
   return (
     <div className="space-y-5">
@@ -160,7 +187,7 @@ export default function TecnicosPage() {
             className="text-[10px] font-bold uppercase tracking-[0.22em]"
             style={{ color: "#00B388" }}
           >
-            Equipe · {tecnicos.length} técnicos
+            Equipe · {todaEquipe.length} pessoas
           </p>
           <h1
             className="mt-1 text-[28px] font-semibold tracking-[-0.5px]"
@@ -169,7 +196,7 @@ export default function TecnicosPage() {
             Técnicos de campo
           </h1>
           <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--vm-muted-b)" }}>
-            Status operacional, produtividade e disponibilidade em tempo real.
+            Vistoriadores e instaladores — status operacional e disponibilidade em tempo real.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -229,214 +256,305 @@ export default function TecnicosPage() {
         </div>
       </div>
 
-      {/* CARDS */}
-      <section className="grid grid-cols-3 gap-3">
-        {lista.map((t, i) => {
-          const cfg = STATUS_CFG[t.status];
-          const isOffline = t.status === "offline";
-          const exp = expedienteByUser.get(t.id);
-          const expColor = exp ? (exp.emPausa ? "#F59E0B" : "#00B388") : "#94A3B8";
-          const expLabel = exp
-            ? exp.emPausa
-              ? "Pausa-almoço"
-              : `Em expediente · ${elapsedShort(exp.inicio_at)}`
-            : "Fora de expediente";
-          return (
-            <motion.div
-              key={t.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.04 * i + 0.1 }}
-              onClick={() => router.push(`/painel/tecnicos/${t.id}`)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") router.push(`/painel/tecnicos/${t.id}`);
-              }}
-              className="relative cursor-pointer overflow-hidden rounded-[18px] p-4 transition hover:shadow-md"
-              style={{
-                background: "var(--vm-card)",
-                border: "1px solid var(--vm-border-soft)",
-                boxShadow:
-                  "0 1px 3px rgba(6,59,59,0.04), 0 8px 22px rgba(6,59,59,0.07)",
-              }}
-            >
-              <div
-                className="absolute right-3 top-3 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
-                style={{
-                  background: `${expColor}15`,
-                  color: expColor,
-                  border: `1px solid ${expColor}33`,
-                }}
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: expColor }} />
-                {expLabel}
-              </div>
-              {!isOffline && (
-                <div
-                  className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full blur-[28px]"
-                  style={{ background: `${cfg.ring}1a` }}
-                />
-              )}
+      {/* VISTORIADORES */}
+      <EquipeSection
+        titulo="Vistoriadores"
+        total={listaVistoriadores.length}
+        cor="#00875F"
+        lista={listaVistoriadores}
+        papel="vistoriador"
+        expedienteByUser={expedienteByUser}
+        router={router}
+      />
 
-              <div className="relative flex items-start gap-3">
-                <div className="relative">
-                  <span
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl text-[13px] font-bold text-white"
-                    style={{
-                      background:
-                        "linear-gradient(145deg, #00B388, #00875F)",
-                      boxShadow: "0 4px 14px rgba(0,179,136,0.28)",
-                    }}
-                  >
-                    {t.nome
-                      .split(/[\s._-]+/)
-                      .slice(0, 2)
-                      .map((s) => s[0])
-                      .join("")
-                      .toUpperCase()}
-                  </span>
-                  <span
-                    className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
-                    style={{
-                      background: cfg.ring,
-                      boxShadow: "0 0 0 3px var(--vm-card)",
-                    }}
-                  >
-                    <span className="h-1 w-1 rounded-full bg-white" />
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span
-                    className="inline-flex items-center rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-[0.1em]"
-                    style={{ background: cfg.bg, color: cfg.fg }}
-                  >
-                    {cfg.label}
-                  </span>
-                  <h3 className="mt-1 truncate text-[15px] font-semibold tracking-tight" style={{ color: "var(--vm-ink)" }}>
-                    {t.nome}
-                  </h3>
-                  <p className="truncate text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
-                    {t.email ?? "—"}
-                  </p>
-                </div>
-              </div>
+      {/* INSTALADORES */}
+      <EquipeSection
+        titulo="Instaladores"
+        total={listaInstaladores.length}
+        cor="#7C3AED"
+        lista={listaInstaladores}
+        papel="instalador"
+        expedienteByUser={expedienteByUser}
+        router={router}
+      />
+    </div>
+  );
+}
 
-              {/* meta */}
-              <div className="relative mt-3 space-y-1.5 text-[11.5px]">
-                <Meta icon={<MapPin className="h-3 w-3" />} label="Município">
-                  {t.municipio ?? "—"}
-                </Meta>
-                <Meta icon={<Clock className="h-3 w-3" />} label="Última atividade">
-                  {relativo(t.ultimaAtividade)}
-                </Meta>
-              </div>
-
-              {/* KPIs atuais (atribuídas + hoje) */}
-              <div className="relative mt-3 grid grid-cols-2 gap-1.5">
-                <KpiBox
-                  label="Atribuídas"
-                  value={t.atribuidas}
-                  bg="var(--vm-tile)"
-                  borderColor="var(--vm-border-soft)"
-                  labelColor="var(--vm-faint-b)"
-                  valueColor="var(--vm-ink)"
-                />
-                <KpiBox
-                  label="Hoje"
-                  value={t.concluidasHoje}
-                  bg="var(--vm-accent-tint)"
-                  borderColor="rgba(0,179,136,0.22)"
-                  labelColor="#00875F"
-                  valueColor="#00875F"
-                />
-              </div>
-
-              {/* KPIs 30 dias — produtividade operacional */}
-              <div className="relative mt-2 rounded-xl p-2.5" style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border-soft)" }}>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <p className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>
-                    Últimos 30 dias
-                  </p>
-                  <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold tabular-nums" style={{ color: t.produtividadePct >= 70 ? "#00875F" : t.produtividadePct >= 30 ? "#92400E" : "#94A3B8" }}>
-                    <TrendingUp className="h-2.5 w-2.5" strokeWidth={2.5} />
-                    {t.produtividadePct}%
-                  </span>
-                </div>
-                {/* progress produtividade */}
-                <div className="mb-2 h-1 overflow-hidden rounded-full" style={{ background: "var(--vm-border-soft)" }}>
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${Math.max(t.produtividadePct, 2)}%`,
-                      background: t.produtividadePct >= 70 ? "#00B388" : t.produtividadePct >= 30 ? "#F59E0B" : "#94A3B8",
-                    }}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <MiniStat
-                    icon={<CheckCircle2 className="h-2.5 w-2.5" strokeWidth={2.3} />}
-                    value={t.total30d}
-                    label="vistorias"
-                  />
-                  <MiniStat
-                    icon={<MapPin className="h-2.5 w-2.5" strokeWidth={2.3} />}
-                    value={t.cidades30d}
-                    label="cidades"
-                  />
-                  <MiniStat
-                    icon={<Navigation className="h-2.5 w-2.5" strokeWidth={2.3} />}
-                    value={t.kmPercorrido30d > 0 ? `${t.kmPercorrido30d}` : "0"}
-                    label="km"
-                  />
-                </div>
-              </div>
-
-              {/* actions */}
-              <div className="relative mt-3 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  disabled={isOffline}
-                  className="flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[10.5px] font-semibold text-white transition disabled:opacity-40"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #00C99B 0%, #00875F 100%)",
-                    boxShadow: "0 4px 12px rgba(0,179,136,0.28)",
-                  }}
-                >
-                  <Send className="h-3 w-3" strokeWidth={2.4} />
-                  Atribuir
-                </button>
-                <button
-                  type="button"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-black/5"
-                  style={{ color: "var(--vm-muted-b)" }}
-                  title="E-mail"
-                >
-                  <Mail className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-black/5"
-                  style={{ color: "var(--vm-muted-b)" }}
-                  title="Ligar"
-                >
-                  <Phone className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </motion.div>
-          );
-        })}
+function EquipeSection({
+  titulo,
+  total,
+  cor,
+  lista,
+  papel,
+  expedienteByUser,
+  router,
+}: {
+  titulo: string;
+  total: number;
+  cor: string;
+  lista: CardTecnico[];
+  papel: PapelEquipe;
+  expedienteByUser: Map<string, ExpedienteAtivo>;
+  router: ReturnType<typeof useRouter>;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
+        <h2 className="text-[13px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted-b)" }}>
+          {titulo}
+        </h2>
+        <span className="text-[11px] font-semibold tabular-nums" style={{ color: "var(--vm-faint-b)" }}>
+          {total}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {lista.map((t, i) => (
+          <TecnicoCard
+            key={t.id}
+            t={t}
+            index={i}
+            papel={papel}
+            exp={expedienteByUser.get(t.id)}
+            router={router}
+          />
+        ))}
         {lista.length === 0 && (
           <div
             className="col-span-3 rounded-2xl p-8 text-center text-[12.5px]"
             style={{ color: "var(--vm-faint-b)", background: "var(--vm-card)", border: "1px solid var(--vm-border-soft)" }}
           >
-            Nenhum técnico encontrado com esses filtros.
+            {papel === "vistoriador"
+              ? "Nenhum vistoriador encontrado com esses filtros."
+              : "Nenhum instalador encontrado com esses filtros."}
           </div>
         )}
-      </section>
-    </div>
+      </div>
+    </section>
+  );
+}
+
+function TecnicoCard({
+  t,
+  index,
+  papel,
+  exp,
+  router,
+}: {
+  t: CardTecnico;
+  index: number;
+  papel: PapelEquipe;
+  exp: ExpedienteAtivo | undefined;
+  router: ReturnType<typeof useRouter>;
+}) {
+  const cfg = STATUS_CFG[t.status];
+  const papelCfg = PAPEL_CFG[papel];
+  const isOffline = t.status === "offline";
+  const expColor = exp ? (exp.emPausa ? "#F59E0B" : "#00B388") : "#94A3B8";
+  const expLabel = exp
+    ? exp.emPausa
+      ? "Pausa-almoço"
+      : `Em expediente · ${elapsedShort(exp.inicio_at)}`
+    : "Fora de expediente";
+  const tem30d = t.produtividadePct !== undefined;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.04 * index + 0.1 }}
+      onClick={() => router.push(`/painel/tecnicos/${t.id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") router.push(`/painel/tecnicos/${t.id}`);
+      }}
+      className="relative cursor-pointer overflow-hidden rounded-[18px] p-4 transition hover:shadow-md"
+      style={{
+        background: "var(--vm-card)",
+        border: "1px solid var(--vm-border-soft)",
+        boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 22px rgba(6,59,59,0.07)",
+      }}
+    >
+      <div
+        className="absolute right-3 top-3 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+        style={{
+          background: `${expColor}15`,
+          color: expColor,
+          border: `1px solid ${expColor}33`,
+        }}
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: expColor }} />
+        {expLabel}
+      </div>
+      {!isOffline && (
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full blur-[28px]"
+          style={{ background: `${cfg.ring}1a` }}
+        />
+      )}
+
+      <div className="relative flex items-start gap-3">
+        <div className="relative">
+          <span
+            className="flex h-12 w-12 items-center justify-center rounded-2xl text-[13px] font-bold text-white"
+            style={{
+              background:
+                papel === "instalador"
+                  ? "linear-gradient(145deg, #A78BFA, #7C3AED)"
+                  : "linear-gradient(145deg, #00B388, #00875F)",
+              boxShadow:
+                papel === "instalador"
+                  ? "0 4px 14px rgba(124,58,237,0.28)"
+                  : "0 4px 14px rgba(0,179,136,0.28)",
+            }}
+          >
+            {t.nome
+              .split(/[\s._-]+/)
+              .slice(0, 2)
+              .map((s) => s[0])
+              .join("")
+              .toUpperCase()}
+          </span>
+          <span
+            className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full"
+            style={{
+              background: cfg.ring,
+              boxShadow: "0 0 0 3px var(--vm-card)",
+            }}
+          >
+            <span className="h-1 w-1 rounded-full bg-white" />
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <span
+              className="inline-flex items-center rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-[0.1em]"
+              style={{ background: cfg.bg, color: cfg.fg }}
+            >
+              {cfg.label}
+            </span>
+            <span
+              className="inline-flex items-center rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-[0.1em]"
+              style={{ background: papelCfg.bg, color: papelCfg.fg }}
+            >
+              {papelCfg.label}
+            </span>
+          </div>
+          <h3 className="mt-1 truncate text-[15px] font-semibold tracking-tight" style={{ color: "var(--vm-ink)" }}>
+            {t.nome}
+          </h3>
+          <p className="truncate text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
+            {t.email ?? "—"}
+          </p>
+        </div>
+      </div>
+
+      {/* meta */}
+      <div className="relative mt-3 space-y-1.5 text-[11.5px]">
+        <Meta icon={<MapPin className="h-3 w-3" />} label="Município">
+          {t.municipio ?? "—"}
+        </Meta>
+        <Meta icon={<Clock className="h-3 w-3" />} label="Última atividade">
+          {relativo(t.ultimaAtividade)}
+        </Meta>
+      </div>
+
+      {/* KPIs atuais (atribuídas + hoje) */}
+      <div className="relative mt-3 grid grid-cols-2 gap-1.5">
+        <KpiBox
+          label="Atribuídas"
+          value={t.atribuidas}
+          bg="var(--vm-tile)"
+          borderColor="var(--vm-border-soft)"
+          labelColor="var(--vm-faint-b)"
+          valueColor="var(--vm-ink)"
+        />
+        <KpiBox
+          label="Hoje"
+          value={t.concluidasHoje}
+          bg="var(--vm-accent-tint)"
+          borderColor="rgba(0,179,136,0.22)"
+          labelColor="#00875F"
+          valueColor="#00875F"
+        />
+      </div>
+
+      {/* KPIs 30 dias — produtividade operacional (só quando há ranking) */}
+      {tem30d && (
+        <div className="relative mt-2 rounded-xl p-2.5" style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border-soft)" }}>
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="text-[8.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "var(--vm-muted)" }}>
+              Últimos 30 dias
+            </p>
+            <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold tabular-nums" style={{ color: t.produtividadePct! >= 70 ? "#00875F" : t.produtividadePct! >= 30 ? "#92400E" : "#94A3B8" }}>
+              <TrendingUp className="h-2.5 w-2.5" strokeWidth={2.5} />
+              {t.produtividadePct}%
+            </span>
+          </div>
+          {/* progress produtividade */}
+          <div className="mb-2 h-1 overflow-hidden rounded-full" style={{ background: "var(--vm-border-soft)" }}>
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${Math.max(t.produtividadePct!, 2)}%`,
+                background: t.produtividadePct! >= 70 ? "#00B388" : t.produtividadePct! >= 30 ? "#F59E0B" : "#94A3B8",
+              }}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            <MiniStat
+              icon={<CheckCircle2 className="h-2.5 w-2.5" strokeWidth={2.3} />}
+              value={t.total30d!}
+              label="vistorias"
+            />
+            <MiniStat
+              icon={<MapPin className="h-2.5 w-2.5" strokeWidth={2.3} />}
+              value={t.cidades30d!}
+              label="cidades"
+            />
+            <MiniStat
+              icon={<Navigation className="h-2.5 w-2.5" strokeWidth={2.3} />}
+              value={t.kmPercorrido30d! > 0 ? `${t.kmPercorrido30d}` : "0"}
+              label="km"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* actions */}
+      <div className="relative mt-3 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          disabled={isOffline}
+          className="flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[10.5px] font-semibold text-white transition disabled:opacity-40"
+          style={{
+            background: "linear-gradient(135deg, #00C99B 0%, #00875F 100%)",
+            boxShadow: "0 4px 12px rgba(0,179,136,0.28)",
+          }}
+        >
+          <Send className="h-3 w-3" strokeWidth={2.4} />
+          Atribuir
+        </button>
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-black/5"
+          style={{ color: "var(--vm-muted-b)" }}
+          title="E-mail"
+        >
+          <Mail className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-black/5"
+          style={{ color: "var(--vm-muted-b)" }}
+          title="Ligar"
+        >
+          <Phone className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </motion.div>
   );
 }
 
