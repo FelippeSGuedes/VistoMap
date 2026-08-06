@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { AppBrandLockup } from "@/components/ui/AppBrandLockup";
 import { MunicipioField } from "@/components/dashboard/MunicipioField";
 import { SyncFilterPill } from "@/components/dashboard/SyncFilterPill";
 import { SyncFilterSheet } from "@/components/dashboard/SyncFilterSheet";
@@ -352,6 +353,7 @@ export default function DashboardPage() {
               <span style={{ color: "#00B388" }}>{saudacao},&nbsp;</span>
               <span style={{ color: "#063B3B" }}>{firstName}</span>
             </span>
+            <AppBrandLockup perfil="Vistoria" />
           </div>
         </div>
 

@@ -24,6 +24,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { AppBrandLockup } from "@/components/ui/AppBrandLockup";
 import { InstalacaoBottomNav } from "@/components/instalacoes/InstalacaoBottomNav";
 import { InstalacaoMunicipioField, type MunicipioInstalacao } from "@/components/instalacoes/InstalacaoMunicipioField";
 import { useInstalacoesStore } from "@/store/instalacoes";
@@ -227,10 +228,13 @@ export default function InstalacaoHomePage() {
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-emerald/14 text-brand-emerald">
             <Wrench className="h-4 w-4" />
           </span>
-          <span className="text-[21px] font-semibold leading-none tracking-[-0.4px]">
-            <span style={{ color: "#00B388" }}>{saudacao},&nbsp;</span>
-            <span style={{ color: "#063B3B" }}>{firstName}</span>
-          </span>
+          <div className="flex flex-col">
+            <span className="text-[21px] font-semibold leading-none tracking-[-0.4px]">
+              <span style={{ color: "#00B388" }}>{saudacao},&nbsp;</span>
+              <span style={{ color: "#063B3B" }}>{firstName}</span>
+            </span>
+            <AppBrandLockup perfil="Instalação" />
+          </div>
         </div>
 
         <div

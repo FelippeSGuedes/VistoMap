@@ -1723,8 +1723,19 @@ export default function PainelOverviewPage() {
       {/* ════════════ INSTALAÇÃO — resumo unificado na mesma Operação ════════════
           Cards da Instalação juntos com os da Vistoria nesta mesma tela (não é
           uma tela separada) — dado vem de src/services/painel-instalacoes.ts,
-          isolado da Vistoria; só a apresentação fica junta aqui. */}
-      <div className="vm-rise" style={{ animationDelay: "0.04s" }}>
+          isolado da Vistoria; só a apresentação fica junta aqui. Mesmas imagens
+          de fundo do app de campo (card_*.png, fundo_tudo.png), pra bater com o
+          visual que o instalador já vê no celular. */}
+      <div
+        className="vm-rise rounded-2xl p-4"
+        style={{
+          animationDelay: "0.04s",
+          backgroundColor: "#F7F9FB",
+          backgroundImage: `url(${asset("/fundo_tudo.png")})`,
+          backgroundSize: "cover",
+          backgroundPosition: "top center",
+        }}
+      >
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
@@ -1737,15 +1748,22 @@ export default function PainelOverviewPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {(
             [
-              { label: "Liberados", value: instalacaoStats?.liberados ?? null, sub: "aguardando instalador assumir", color: "#F59E0B", icon: Wrench, href: "/painel/instalacoes/mapa" },
-              { label: "Em Instalação", value: instalacaoStats?.emInstalacao ?? null, sub: `${instalacaoStats?.instaladores24h ?? 0} instalador${(instalacaoStats?.instaladores24h ?? 0) === 1 ? "" : "es"} em campo`, color: "#3B82F6", icon: Activity, href: "/painel/instalacoes/mapa" },
-              { label: "Instaladas (30d)", value: instalacaoStats?.instaladas30d ?? null, sub: "últimos 30 dias", color: "#10B981", icon: CheckCircle2, href: null },
-              { label: "Rejeitadas", value: instalacaoStats?.rejeitadasPendentes ?? null, sub: "aguardando decisão", color: "#DC2626", icon: Ban, href: "/painel/instalacoes/rejeitadas" },
+              { label: "Liberados", value: instalacaoStats?.liberados ?? null, sub: "aguardando instalador assumir", color: "#F59E0B", icon: Wrench, href: "/painel/instalacoes/mapa", bg: "card_disponivel.png" },
+              { label: "Em Instalação", value: instalacaoStats?.emInstalacao ?? null, sub: `${instalacaoStats?.instaladores24h ?? 0} instalador${(instalacaoStats?.instaladores24h ?? 0) === 1 ? "" : "es"} em campo`, color: "#3B82F6", icon: Activity, href: "/painel/instalacoes/mapa", bg: "card_andamento.png" },
+              { label: "Instaladas (30d)", value: instalacaoStats?.instaladas30d ?? null, sub: "últimos 30 dias", color: "#10B981", icon: CheckCircle2, href: null, bg: "card_instalado.png" },
+              { label: "Rejeitadas", value: instalacaoStats?.rejeitadasPendentes ?? null, sub: "aguardando decisão", color: "#DC2626", icon: Ban, href: "/painel/instalacoes/rejeitadas", bg: "card_rejeitado.png" },
             ] as const
           ).map((k) => {
             const Icon = k.icon;
             const content = (
-              <Card className="p-4 transition hover:-translate-y-0.5">
+              <Card
+                className="p-4 transition hover:-translate-y-0.5"
+                style={{
+                  backgroundImage: `url(${asset(`/${k.bg}`)})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: `${k.color}1F`, color: k.color }}>
                     <Icon className="h-4 w-4" />
