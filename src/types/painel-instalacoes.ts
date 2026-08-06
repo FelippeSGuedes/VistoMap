@@ -50,3 +50,37 @@ export interface PainelInstalacoesMapaResponse {
   postes: PainelInstalacoesMapaPoste[];
   generated_at: string;
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// Listas do painel (/painel/instalacoes/pendentes|andamento|instaladas)
+// ────────────────────────────────────────────────────────────────────────
+
+export type InstalacaoPainelStatus = "liberado" | "em-instalacao" | "instalado";
+
+export interface InstalacaoPainelItem {
+  id: string;
+  equipamento: string;
+  tipoEquipamento: string | null;
+  statusGeralId: number | null;
+  statusGeralNome: string | null;
+  municipio: string;
+  endereco: string;
+  psPoste: string;
+  alturaPoste: string;
+  instalador: { id: number; nome: string } | null;
+  dataInstalacao: string | null;
+  checklist: {
+    cintaInstalada: boolean | null;
+    equipamentoFixado: boolean | null;
+    cabeamentoOrganizado: boolean | null;
+    alimentacaoValidada: boolean | null;
+    equipamentoEnergizado: boolean | null;
+    registroFotografico: boolean | null;
+  };
+  validadorCpfl: { nome: string; status: string | null } | null;
+}
+
+export interface InstalacaoPainelListResponse {
+  items: InstalacaoPainelItem[];
+  total: number;
+}

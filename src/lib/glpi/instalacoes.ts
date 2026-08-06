@@ -249,6 +249,82 @@ export async function getInstalacao(id: number) {
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Listas do painel administrativo (/painel/instalacoes/pendentes|andamento|
+// instaladas) — monitoramento somente-leitura, diferente de listInstalacoes()
+// que é escopada pro uso do app de campo (instalador vendo o que pode
+// assumir). Não toca em listInstalacoes(): zero risco pro app de campo.
+// ────────────────────────────────────────────────────────────────────────
+
+export type InstalacaoPainelStatus = "liberado" | "em-instalacao" | "instalado";
+
+const PAINEL_STATUS_TO_STATE: Record<InstalacaoPainelStatus, number> = {
+  liberado: STATE_LIBERADO_INSTALACAO,
+  "em-instalacao": STATE_EM_INSTALACAO,
+  instalado: STATE_INSTALADO,
+};
+
+export interface ListInstalacoesPainelFilters {
+  status: InstalacaoPainelStatus;
+  municipio?: string;
+  instaladorId?: number;
+  query?: string;
+  desde?: string;
+  ate?: string;
+  limit?: number;
+  offset?: number;
+}
+
+function buildPainelWhere(filters: ListInstalacoesPainelFilters): { where: string; params: unknown[] } {
+  const params: unknown[] = [PAINEL_STATUS_TO_STATE[filters.status]];
+  let where = `AND ne.states_id = ?`;
+  if (filters.municipio) {
+    where += ` AND TRIM(f.municipiofield) = ?`;
+    params.push(filters.municipio.trim());
+  }
+  if (filters.instaladorId != null) {
+    where += ` AND f.${INSTALACAO_INSTALADOR_COLUMN} = ?`;
+    params.push(filters.instaladorId);
+  }
+  if (filters.query) {
+    where += ` AND (ne.name LIKE ? OR f.endereofield LIKE ? OR f.pspostefield LIKE ?)`;
+    const like = `%${filters.query.trim()}%`;
+    params.push(like, like, like);
+  }
+  if (filters.desde) {
+    where += ` AND f.datadeinstalaofield >= ?`;
+    params.push(`${filters.desde} 00:00:00`);
+  }
+  if (filters.ate) {
+    where += ` AND f.datadeinstalaofield <= ?`;
+    params.push(`${filters.ate} 23:59:59`);
+  }
+  return { where, params };
+}
+
+/** Lista pra monitoramento do painel — sem exigir coordenada válida (não é o mapa). */
+export async function listInstalacoesPainel(filters: ListInstalacoesPainelFilters) {
+  const { where, params } = buildPainelWhere(filters);
+  const limit = Math.min(Math.max(filters.limit ?? 200, 1), 1000);
+  const offset = Math.max(filters.offset ?? 0, 0);
+  params.push(limit, offset);
+  const rows = await query<RawRow>(
+    `${SELECT_BASE} ${where} ORDER BY ne.name LIMIT ? OFFSET ?`,
+    params
+  );
+  return rows.map(mapRow);
+}
+
+/** Contagem real (sem LIMIT) pra mesma WHERE de listInstalacoesPainel — evita "total" fictício. */
+export async function countInstalacoesPainel(filters: ListInstalacoesPainelFilters): Promise<number> {
+  const { where, params } = buildPainelWhere(filters);
+  const rows = await query<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM \`${TABLE_NE}\` ne INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id WHERE ne.is_deleted = 0 ${where}`,
+    params
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
 /** IDs de status geral (states_id) que representam algo pendente de instalar. */
 export const STATUS_GERAL = {
   emProcessoVistoria: STATE_EM_PROCESSO_VISTORIA,

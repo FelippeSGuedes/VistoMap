@@ -1,5 +1,10 @@
 import { api } from "./api";
-import type { PainelInstalacoesMapaResponse, PainelInstalacoesStats } from "@/types/painel-instalacoes";
+import type {
+  InstalacaoPainelListResponse,
+  InstalacaoPainelStatus,
+  PainelInstalacoesMapaResponse,
+  PainelInstalacoesStats,
+} from "@/types/painel-instalacoes";
 import type { TecnicoAtivo } from "@/types";
 
 /**
@@ -21,5 +26,32 @@ export async function fetchInstalacoesMapa(): Promise<PainelInstalacoesMapaRespo
 
 export async function fetchInstaladoresAtivos(): Promise<TecnicoAtivo[]> {
   const { data } = await api.get<TecnicoAtivo[]>("/painel/instalacoes/tecnicos");
+  return data;
+}
+
+export interface FetchInstalacoesListaFiltros {
+  status: InstalacaoPainelStatus;
+  municipio?: string;
+  instaladorId?: number;
+  query?: string;
+  desde?: string;
+  ate?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchInstalacoesLista(
+  filtros: FetchInstalacoesListaFiltros
+): Promise<InstalacaoPainelListResponse> {
+  const params: Record<string, string | number> = { status: filtros.status };
+  if (filtros.municipio) params.municipio = filtros.municipio;
+  if (filtros.instaladorId != null) params.instalador_id = filtros.instaladorId;
+  if (filtros.query) params.q = filtros.query;
+  if (filtros.desde) params.desde = filtros.desde;
+  if (filtros.ate) params.ate = filtros.ate;
+  if (filtros.limit != null) params.limit = filtros.limit;
+  if (filtros.offset != null) params.offset = filtros.offset;
+
+  const { data } = await api.get<InstalacaoPainelListResponse>("/painel/instalacoes/lista", { params });
   return data;
 }
