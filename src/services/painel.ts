@@ -285,9 +285,23 @@ export interface RealizadasFilters {
   offset?: number;
 }
 
+export interface VistoriasRealizadasStats {
+  total: number;
+  vistoriados: number;
+  revisitados: number;
+  pdfsGerados: number;
+}
+
+export interface RealizadasResponse {
+  items: VistoriaRealizada[];
+  stats: VistoriasRealizadasStats;
+}
+
+const EMPTY_REALIZADAS_STATS: VistoriasRealizadasStats = { total: 0, vistoriados: 0, revisitados: 0, pdfsGerados: 0 };
+
 export async function fetchRealizadas(
   filters: RealizadasFilters = {}
-): Promise<VistoriaRealizada[]> {
+): Promise<RealizadasResponse> {
   const p = new URLSearchParams();
   if (filters.municipio)     p.set("municipio",  filters.municipio);
   if (filters.tecnico_id != null) p.set("tecnico_id", String(filters.tecnico_id));
@@ -296,7 +310,10 @@ export async function fetchRealizadas(
   if (filters.limit != null) p.set("limit",      String(filters.limit));
   if (filters.offset != null) p.set("offset",    String(filters.offset));
   const url = `/painel/realizadas${p.toString() ? `?${p}` : ""}`;
-  return tryReal(api.get<VistoriaRealizada[]>(url).then(r => r.data), []);
+  return tryReal(
+    api.get<RealizadasResponse>(url).then(r => r.data),
+    { items: [], stats: EMPTY_REALIZADAS_STATS }
+  );
 }
 
 export interface ServiceCheck {

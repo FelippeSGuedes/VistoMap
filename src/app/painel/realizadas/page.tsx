@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
-import type { VistoriaRealizada, VistoriaFile } from "@/services/painel";
+import type { VistoriaRealizada, VistoriaFile, VistoriasRealizadasStats as PainelServiceRealizadasStats } from "@/services/painel";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 
@@ -842,8 +842,15 @@ function StatPill({
 
 /* ─── PAGE ────────────────────────────────────────────────────────── */
 
+// Página fixa alta o bastante pra cobrir o uso real (era 100 por padrão —
+// silenciosamente truncava a lista e o card de "resultados" mostrava esse
+// limite como se fosse o total verdadeiro). Os totais dos cards, porém, NUNCA
+// vêm de items.length — vêm de `serverStats` (contagem real, sem LIMIT).
+const PAGE_FETCH_LIMIT = 2000;
+
 export default function RealizadasPage() {
   const [items,        setItems]        = useState<VistoriaRealizada[]>([]);
+  const [serverStats,  setServerStats]  = useState<PainelServiceRealizadasStats>({ total: 0, vistoriados: 0, revisitados: 0, pdfsGerados: 0 });
   const [loading,      setLoading]      = useState(true);
   const [apiError,     setApiError]     = useState<string | null>(null);
   const [selected,     setSelected]     = useState<VistoriaRealizada | null>(null);
@@ -856,8 +863,8 @@ export default function RealizadasPage() {
     let alive = true;
     const load = async () => {
       try {
-        const data = await painelService.fetchRealizadas();
-        if (alive) { setItems(data); setApiError(null); setLoading(false); }
+        const { items: data, stats } = await painelService.fetchRealizadas({ limit: PAGE_FETCH_LIMIT });
+        if (alive) { setItems(data); setServerStats(stats); setApiError(null); setLoading(false); }
       } catch (err: unknown) {
         const axiosBody = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
         const msg = axiosBody ?? (err instanceof Error ? err.message : String(err));
@@ -886,12 +893,18 @@ export default function RealizadasPage() {
     return r;
   }, [items, q, filterStatus, filterPDF, dateRange]);
 
-  const stats = useMemo(() => ({
-    total:      items.length,
-    vistoriados: items.filter(i => i.status === "VISTORIADO").length,
-    revisitados: items.filter(i => i.status === "REVISITADO").length,
-    pdfsGerados: items.filter(i => i.projectStatus === "GERADO").length,
-  }), [items]);
+  // Só entra em uso quando NENHUM filtro está ativo — com filtro, os cards
+  // mostram a contagem do resultado filtrado (client-side, sobre a página
+  // carregada); sem filtro, mostram o total real do banco.
+  const semFiltro = !q.trim() && !filterStatus && !filterPDF && !dateRange.de && !dateRange.ate;
+  const stats = semFiltro
+    ? serverStats
+    : {
+        total:       filtered.length,
+        vistoriados: filtered.filter(i => i.status === "VISTORIADO").length,
+        revisitados: filtered.filter(i => i.status === "REVISITADO").length,
+        pdfsGerados: filtered.filter(i => i.projectStatus === "GERADO").length,
+      };
 
   return (
     <div className="space-y-5">

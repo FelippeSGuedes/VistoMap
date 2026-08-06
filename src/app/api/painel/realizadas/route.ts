@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchVistoriasRealizadas } from "@/lib/glpi/painel";
+import { fetchVistoriasRealizadas, fetchVistoriasRealizadasStats } from "@/lib/glpi/painel";
 import { requirePainelRole } from "@/lib/painel-auth";
 
 export async function GET(req: Request) {
@@ -15,10 +15,12 @@ export async function GET(req: Request) {
   const offset     = p.get("offset") ? Number(p.get("offset")) : undefined;
 
   try {
-    const items = await fetchVistoriasRealizadas({
-      municipio, tecnico_id, query: qParam, status, limit, offset,
-    });
-    return NextResponse.json(items);
+    const [items, stats] = await Promise.all([
+      fetchVistoriasRealizadas({ municipio, tecnico_id, query: qParam, status, limit, offset }),
+      // Contagens reais (sem LIMIT) — nunca refletem só a página atual.
+      fetchVistoriasRealizadasStats({ municipio, tecnico_id, query: qParam }),
+    ]);
+    return NextResponse.json({ items, stats });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[/api/painel/realizadas]", msg);

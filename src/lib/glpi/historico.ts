@@ -2,11 +2,20 @@ import "server-only";
 import { query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
+  SITUACAO_COLUMN,
   TABLE_AUX,
   TABLE_FIELDS,
   TABLE_NE,
   TABLE_STATUS_VISTORIA,
 } from "./constants";
+
+// situaodavistoriafield: 3=Vistoriado, 6=Revisitado — mesma prioridade 1 que
+// resolveAdminStatus() já usa em painel.ts e que fetchVistoriasRealizadas()
+// já cruza no WHERE. Sem isso aqui, vistorias concluídas só via situação
+// nova (sem o dropdown legado `statusvistoria` preenchido) ficavam de fora
+// das séries/ranking deste arquivo — divergindo do card "Concluídas" e de
+// /painel/realizadas, que já consideravam essas vistorias.
+const SITUACAO_CONCLUIDA_SQL = `f.\`${SITUACAO_COLUMN}\` IN (3, 6)`;
 import { agregarMotivos, type MotivoAgregado } from "./motivos";
 
 /**
@@ -98,11 +107,13 @@ export async function fetchHistoricoAnalytics(
   const serieRows = await query<{
     dia: string;
     status_name: string | null;
+    situacao_id: number | null;
     total: number;
   }>(
     `
       SELECT DATE(f.datadavistoriafield) AS dia,
              sv.name AS status_name,
+             f.\`${SITUACAO_COLUMN}\` AS situacao_id,
              COUNT(*) AS total
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
@@ -110,7 +121,7 @@ export async function fetchHistoricoAnalytics(
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
-       GROUP BY DATE(f.datadavistoriafield), sv.name
+       GROUP BY DATE(f.datadavistoriafield), sv.name, f.\`${SITUACAO_COLUMN}\`
        ORDER BY dia
     `,
     [inicio]
@@ -128,7 +139,9 @@ export async function fetchHistoricoAnalytics(
     const ref = diasMap.get(r.dia);
     if (!ref) continue;
     const s = (r.status_name ?? "").toLowerCase();
+    const situacaoConcluida = Number(r.situacao_id ?? 0) === 3 || Number(r.situacao_id ?? 0) === 6;
     if (
+      situacaoConcluida ||
       s === "em análise" ||
       s === "em analise" ||
       s === "finalizada" ||
@@ -158,10 +171,10 @@ export async function fetchHistoricoAnalytics(
   }>(
     `
       SELECT
-        SUM(CASE WHEN sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado') THEN 1 ELSE 0 END) AS finalizadas,
+        SUM(CASE WHEN ${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado') THEN 1 ELSE 0 END) AS finalizadas,
         SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
         SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovadas,
-        SUM(CASE WHEN sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
+        SUM(CASE WHEN (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
                   AND COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas_finalizadas,
         (SELECT COUNT(*) FROM \`${TABLE_AUX}\` WHERE project_status = 'GERADO') AS pdfs
         FROM \`${TABLE_FIELDS}\` f
@@ -231,7 +244,7 @@ export async function fetchHistoricoAnalytics(
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
-         AND sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
+         AND (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
        GROUP BY u.id
        ORDER BY total DESC
        LIMIT 50

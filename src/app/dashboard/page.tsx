@@ -87,12 +87,16 @@ const STATS: Array<{
   hex: string;
   pill: string;
   grad: string;
+  /** Mesmas imagens de fundo dos cards de Instalação (card_*.png) — mesmo
+   *  visual nos dois módulos. Pendentes~Disponíveis, Concluídas~Instaladas,
+   *  Revisitas~Em Andamento, Devoluções~Rejeitadas. */
+  bg: string;
 }> = [
-  { key: "pendentes",  label: "Pendentes",   icon: Activity,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
-  { key: "concluidas", label: "Concluídas",  icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500" },
+  { key: "pendentes",  label: "Pendentes",   icon: Activity,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_disponivel.png" },
+  { key: "concluidas", label: "Concluídas",  icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500", bg: "card_instalado.png" },
   // "Reprovada" no GLPI = revisita pendente pelo técnico (ação operacional).
-  { key: "reprovadas",  label: "Revisitas",   icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500" },
-  { key: "devolucoes",  label: "Devoluções",  icon: Undo2,    hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600" },
+  { key: "reprovadas",  label: "Revisitas",   icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_andamento.png" },
+  { key: "devolucoes",  label: "Devoluções",  icon: Undo2,    hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600", bg: "card_rejeitado.png" },
 ];
 
 /**
@@ -581,7 +585,7 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="grid grid-cols-2 gap-2.5">
-            {STATS.map(({ key, label, icon: Icon, hex, pill, grad }, i) => {
+            {STATS.map(({ key, label, icon: Icon, hex, pill, grad, bg }, i) => {
               const value = displayStats ? displayStats[key] : null;
               const series = displayStats?.trend7d?.[key];
               const delta = deltaPct(series);
@@ -596,7 +600,10 @@ export default function DashboardPage() {
                   whileHover={{ y: -2, transition: { duration: 0.2 } }}
                   className="group relative overflow-hidden rounded-[22px] p-[15px]"
                   style={{
-                    background: "#fff",
+                    backgroundColor: "#fff",
+                    backgroundImage: `url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/${bg})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
                     boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07), 0 0 0 1px rgba(6,59,59,0.04)",
                   }}
                 >

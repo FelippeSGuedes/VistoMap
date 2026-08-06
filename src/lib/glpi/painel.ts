@@ -74,6 +74,7 @@ interface StatsRow {
   status_name: string | null;
   is_repeat: number | null;
   tecnico_id: number | null;
+  situacao_id: number | null;
   total: number;
 }
 
@@ -81,8 +82,15 @@ interface StatsRow {
  * Agrega KPIs do painel.
  *
  * Estratégia: faz JOIN entre NE × Fields × Status × Aux e GROUP BY pelas
- * dimensões que afetam o AdminStatus (status_name, is_repeat, has_tecnico).
- * Depois resolve cada bucket em JS e soma nos slots do PainelStats.
+ * dimensões que afetam o AdminStatus (status_name, is_repeat, has_tecnico,
+ * situacao_id). Depois resolve cada bucket em JS e soma nos slots do
+ * PainelStats.
+ *
+ * situacao_id (campo nativo `situaodavistoriafield`) entra como prioridade 1
+ * em resolveAdminStatus — sem ele, vistorias com o dropdown `statusvistoria`
+ * legado vazio/desatualizado mas já concluídas via situação nova ficavam de
+ * fora da contagem de "Concluídas" (o card mostrava menos do que o real,
+ * divergindo de /painel/realizadas, que já cruzava os dois campos).
  */
 export async function fetchPainelStats(): Promise<PainelStats> {
   const rows = await query<StatsRow>(
@@ -91,6 +99,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
         sv.name AS status_name,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
         f.users_id_vistoriadorafield AS tecnico_id,
+        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COUNT(*) AS total
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
@@ -99,7 +108,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
       LEFT JOIN \`${TABLE_AUX}\` aux
               ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       WHERE ne.is_deleted = 0
-      GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield
+      GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield, f.\`${SITUACAO_COLUMN}\`
     `
   );
 
@@ -113,7 +122,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
   for (const r of rows) {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
-    const st = resolveAdminStatus(r.status_name, isRepeat, hasTecnico);
+    const st = resolveAdminStatus(r.status_name, isRepeat, hasTecnico, r.situacao_id);
     const n = Number(r.total) || 0;
     switch (st) {
       case "A_VISTORIAR":
@@ -1060,6 +1069,71 @@ export async function fetchVistoriasRealizadas(
   });
 
   return filtros.status ? items.filter(i => i.status === filtros.status) : items;
+}
+
+export interface VistoriasRealizadasStats {
+  total: number;
+  vistoriados: number;
+  revisitados: number;
+  pdfsGerados: number;
+}
+
+/**
+ * Contagens REAIS (sem LIMIT) pra /painel/realizadas — a lista em si é
+ * paginada (fetchVistoriasRealizadas usa LIMIT/OFFSET), mas o card de
+ * "resultados" não pode derivar de `items.length`: isso mostrava o limite
+ * (100) como se fosse o total real sempre que havia mais resultados do que
+ * a página buscou. Mesmo WHERE de fetchVistoriasRealizadas (situacao_id
+ * IN (3,6) OR status legado OR aprovado), só que agregado direto no banco.
+ */
+export async function fetchVistoriasRealizadasStats(
+  filtros: Pick<RealizadasFilters, "municipio" | "tecnico_id" | "query"> = {}
+): Promise<VistoriasRealizadasStats> {
+  const where: string[] = [
+    "ne.is_deleted = 0",
+    `(f.\`${SITUACAO_COLUMN}\` IN (3, 6)
+      OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
+      OR COALESCE(aux.approval_status,'') = 'APROVADO')`,
+  ];
+  const params: unknown[] = [];
+  if (filtros.municipio) {
+    where.push("TRIM(f.municipiofield) = ?");
+    params.push(filtros.municipio.trim());
+  }
+  if (filtros.tecnico_id != null) {
+    where.push("f.users_id_vistoriadorafield = ?");
+    params.push(filtros.tecnico_id);
+  }
+  if (filtros.query) {
+    where.push("(ne.name LIKE ? OR f.municipiofield LIKE ? OR f.endereofield LIKE ?)");
+    const q = `%${filtros.query}%`;
+    params.push(q, q, q);
+  }
+
+  const [row] = await query<{ total: number; vistoriados: number; revisitados: number; pdfs_gerados: number }>(
+    `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 0 THEN 1 ELSE 0 END) AS vistoriados,
+        SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitados,
+        SUM(CASE WHEN COALESCE(aux.project_status,'') = 'GERADO' THEN 1 ELSE 0 END) AS pdfs_gerados
+      FROM \`${TABLE_NE}\` ne
+      INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+              ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+      LEFT JOIN \`${TABLE_AUX}\` aux
+              ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+      WHERE ${where.join(" AND ")}
+    `,
+    params
+  );
+
+  return {
+    total: Number(row?.total ?? 0),
+    vistoriados: Number(row?.vistoriados ?? 0),
+    revisitados: Number(row?.revisitados ?? 0),
+    pdfsGerados: Number(row?.pdfs_gerados ?? 0),
+  };
 }
 
 /* ── Mapa operacional (tempo real) ─────────────────────────────── */

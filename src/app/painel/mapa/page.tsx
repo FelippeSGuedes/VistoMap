@@ -15,6 +15,16 @@ import type {
   PainelMapaVistoria,
   SituacaoOperacional,
 } from "@/types/painel-mapa";
+// Instalação — centralizada NESTE mesmo mapa (não é mais uma tela separada),
+// com pins de ícone/cor próprios. Fetch e sync 100% independentes do resto
+// do arquivo (services/tipos isolados, refs de marker próprios) — nunca
+// toca no estado/lógica da Vistoria.
+import { fetchInstalacoesMapa } from "@/services/painel-instalacoes";
+import type {
+  MapaInstaladorStatus,
+  PainelInstalacoesMapaInstalador,
+  PainelInstalacoesMapaResponse,
+} from "@/types/painel-instalacoes";
 import { VistoriaDetalheModal } from "@/components/painel/VistoriaDetalheModal";
 import { StreetViewModal } from "@/components/painel/StreetViewModal";
 import {
@@ -45,6 +55,27 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
+
+// ── Instalação — pins próprios no mapa unificado, ícone/cor diferentes dos
+// da Vistoria (instalador = losango roxo, poste = ícone svg próprio, já
+// usado no app de campo). Constantes de módulo (não recriam a cada render).
+const BP_INST = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const INST_POSTE_ICON = {
+  liberado: `${BP_INST}/icons/pin-pendente.svg`,
+  "em-instalacao": `${BP_INST}/icons/pin-em-campo.svg`,
+} as const;
+const INST_TEC_COLOR: Record<MapaInstaladorStatus, string> = {
+  "em-instalacao": "#7C3AED",
+  "em-operacao": "#A78BFA",
+  parado: "#FB923C",
+  offline: "#9CA3AF",
+};
+const INST_TEC_LABEL: Record<MapaInstaladorStatus, string> = {
+  "em-instalacao": "Instalando",
+  "em-operacao": "Em deslocamento",
+  parado: "Parado",
+  offline: "Offline",
+};
 
 function tint(hex: string, alpha: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -451,8 +482,13 @@ export default function PainelMapaPage() {
   const editMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const lastDataRef = useRef<PainelMapaResponse | null>(null);
   const vistoriasFiltradasRef = useRef<PainelMapaVistoria[]>([]);
+  // Refs próprios da Instalação — nunca compartilha marker/cache com a Vistoria.
+  const instaladorMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
+  const posteInstMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
   const [data, setData] = useState<PainelMapaResponse | null>(null);
+  const [instalacaoData, setInstalacaoData] = useState<PainelInstalacoesMapaResponse | null>(null);
+  const [showInstalacao, setShowInstalacao] = useState(true);
   const [loading, setLoading] = useState(false);
   const [activeLayer, setActiveLayer] = useState<LayerKey>("dark");
   // Tema lido apenas no init — o toggle no client-layout recarrega a página,
@@ -531,6 +567,20 @@ export default function PainelMapaPage() {
     const id = window.setInterval(fetchMapa, 5_000);
     return () => window.clearInterval(id);
   }, [fetchMapa]);
+
+  // Instalação — poll totalmente independente do fetchMapa acima (nunca
+  // entra no mesmo request/estado da Vistoria); mesma cadência (5s).
+  useEffect(() => {
+    let alive = true;
+    const loadInstalacao = () => {
+      fetchInstalacoesMapa()
+        .then((d) => { if (alive) setInstalacaoData(d); })
+        .catch(() => {});
+    };
+    loadInstalacao();
+    const id = window.setInterval(loadInstalacao, 5_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
 
   // Rastreia posição do cursor globalmente — usado pelo tooltip dos marcadores
   useEffect(() => {
@@ -637,6 +687,101 @@ export default function PainelMapaPage() {
       techMarkersRef.current.clear();
     };
   }, [token]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const clearAll = () => {
+      instaladorMarkersRef.current.forEach((m) => m.remove());
+      instaladorMarkersRef.current.clear();
+      posteInstMarkersRef.current.forEach((m) => m.remove());
+      posteInstMarkersRef.current.clear();
+    };
+
+    if (!showInstalacao || !instalacaoData) {
+      clearAll();
+      return;
+    }
+
+    const sync = () => {
+      const seenPostes = new Set<string>();
+      instalacaoData.postes.forEach((p) => {
+        seenPostes.add(p.id);
+        const existing = posteInstMarkersRef.current.get(p.id);
+        if (existing) {
+          existing.setLngLat([p.longitude, p.latitude]);
+          return;
+        }
+        const el = document.createElement("div");
+        el.style.cssText = "width:34px;height:42px;cursor:pointer;";
+        const img = document.createElement("img");
+        img.src = INST_POSTE_ICON[p.status];
+        img.width = 34;
+        img.height = 42;
+        img.alt = p.status;
+        el.appendChild(img);
+        const popup = new mapboxgl.Popup({ offset: 18 }).setHTML(
+          `<div style="padding:8px 10px;font:600 12px system-ui;color:#073B4C;">
+            ${p.equipamento}<br/>
+            <span style="font-weight:400;color:#667280;">${p.municipio ?? "—"} · ${p.status === "liberado" ? "Liberado" : "Em instalação"}${p.instalador_nome ? " · " + p.instalador_nome : ""}</span>
+          </div>`
+        );
+        const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat([p.longitude, p.latitude])
+          .setPopup(popup)
+          .addTo(map);
+        posteInstMarkersRef.current.set(p.id, marker);
+      });
+      posteInstMarkersRef.current.forEach((m, id) => {
+        if (!seenPostes.has(id)) { m.remove(); posteInstMarkersRef.current.delete(id); }
+      });
+
+      const seenTecs = new Set<number>();
+      instalacaoData.instaladores
+        .filter((t): t is PainelInstalacoesMapaInstalador & { latitude: number; longitude: number } =>
+          t.latitude != null && t.longitude != null
+        )
+        .forEach((t) => {
+          seenTecs.add(t.users_id);
+          const color = INST_TEC_COLOR[t.status_operacional];
+          const popupHtml = `<div style="padding:8px 10px;font:600 12px system-ui;color:#073B4C;">
+            ${t.nome} <span style="font-weight:400;color:#7C3AED;">(instalador)</span><br/>
+            <span style="font-weight:400;color:#667280;">${INST_TEC_LABEL[t.status_operacional]}${t.minutos_atras != null ? " · há " + t.minutos_atras + "min" : ""}</span>
+          </div>`;
+          const existing = instaladorMarkersRef.current.get(t.users_id);
+          if (existing) {
+            existing.setLngLat([t.longitude, t.latitude]);
+            existing.getPopup()?.setHTML(popupHtml);
+            return;
+          }
+          // Losango (diamond) — silhueta bem diferente do círculo da Vistoria.
+          const el = document.createElement("div");
+          el.style.cssText = `
+            width:16px;height:16px;cursor:pointer;transform:rotate(45deg);
+            background:${color};border:2px solid #fff;
+            box-shadow:0 2px 8px rgba(0,0,0,0.35);
+          `;
+          const marker = new mapboxgl.Marker({ element: el })
+            .setLngLat([t.longitude, t.latitude])
+            .setPopup(new mapboxgl.Popup({ offset: 14 }).setHTML(popupHtml))
+            .addTo(map);
+          instaladorMarkersRef.current.set(t.users_id, marker);
+        });
+      instaladorMarkersRef.current.forEach((m, id) => {
+        if (!seenTecs.has(id)) { m.remove(); instaladorMarkersRef.current.delete(id); }
+      });
+    };
+
+    if (map.loaded()) sync();
+    else map.once("load", sync);
+
+    return () => {
+      // Só limpa no unmount do efeito por troca de dependência relevante;
+      // o cleanup completo (remover tudo) já é feito no branch acima quando
+      // showInstalacao vira false.
+    };
+  }, [instalacaoData, showInstalacao]);
 
   /* ── layer switcher ─────────────────────────────────────────────────────── */
 
@@ -1312,6 +1457,35 @@ export default function PainelMapaPage() {
             </button>
           );
         })}
+      </div>
+
+      {/* ── INSTALAÇÃO — toggle + legenda (pins próprios, mesmo mapa) ──────── */}
+      <div
+        className="absolute z-10 flex items-center gap-2 px-2.5 py-1.5"
+        style={{ bottom: 76, left: 308, ...GLASS, borderRadius: 12 }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowInstalacao((v) => !v)}
+          className="flex items-center gap-1.5 text-[10.5px] font-semibold transition"
+          style={{ color: showInstalacao ? "#7C3AED" : "var(--vm-muted)" }}
+        >
+          <span
+            className="inline-block h-2.5 w-2.5 shrink-0"
+            style={{
+              background: "#7C3AED",
+              transform: "rotate(45deg)",
+              opacity: showInstalacao ? 1 : 0.35,
+              boxShadow: "0 0 0 1.5px rgba(124,58,237,0.3)",
+            }}
+          />
+          Instalação
+          {instalacaoData && (
+            <span style={{ color: "var(--vm-faint)", fontWeight: 500 }}>
+              ({instalacaoData.instaladores.length + instalacaoData.postes.length})
+            </span>
+          )}
+        </button>
       </div>
 
       {/* ── GPS EDIT MODE BANNER ──────────────────────────────────────────── */}

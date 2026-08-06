@@ -1741,15 +1741,15 @@ export default function PainelOverviewPage() {
             <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Instalação</span>
           </div>
-          <Link href="/painel/instalacoes/mapa" className="flex items-center gap-1 text-[12px] font-semibold text-[#3B82F6] hover:underline">
+          <Link href="/painel/mapa" className="flex items-center gap-1 text-[12px] font-semibold text-[#3B82F6] hover:underline">
             <MapIcon className="h-3 w-3" /> Mapa em tempo real
           </Link>
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {(
             [
-              { label: "Liberados", value: instalacaoStats?.liberados ?? null, sub: "aguardando instalador assumir", color: "#F59E0B", icon: Wrench, href: "/painel/instalacoes/mapa", bg: "card_disponivel.png" },
-              { label: "Em Instalação", value: instalacaoStats?.emInstalacao ?? null, sub: `${instalacaoStats?.instaladores24h ?? 0} instalador${(instalacaoStats?.instaladores24h ?? 0) === 1 ? "" : "es"} em campo`, color: "#3B82F6", icon: Activity, href: "/painel/instalacoes/mapa", bg: "card_andamento.png" },
+              { label: "Liberados", value: instalacaoStats?.liberados ?? null, sub: "aguardando instalador assumir", color: "#F59E0B", icon: Wrench, href: "/painel/mapa", bg: "card_disponivel.png" },
+              { label: "Em Instalação", value: instalacaoStats?.emInstalacao ?? null, sub: `${instalacaoStats?.instaladores24h ?? 0} instalador${(instalacaoStats?.instaladores24h ?? 0) === 1 ? "" : "es"} em campo`, color: "#3B82F6", icon: Activity, href: "/painel/mapa", bg: "card_andamento.png" },
               { label: "Instaladas (30d)", value: instalacaoStats?.instaladas30d ?? null, sub: "últimos 30 dias", color: "#10B981", icon: CheckCircle2, href: null, bg: "card_instalado.png" },
               { label: "Rejeitadas", value: instalacaoStats?.rejeitadasPendentes ?? null, sub: "aguardando decisão", color: "#DC2626", icon: Ban, href: "/painel/instalacoes/rejeitadas", bg: "card_rejeitado.png" },
             ] as const
