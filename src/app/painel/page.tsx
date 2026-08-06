@@ -26,6 +26,7 @@ import {
   Undo2,
   UserPlus,
   Users,
+  Wrench,
   Zap,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
@@ -35,6 +36,12 @@ import { getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import type { PainelMapaResponse, PainelMapaTecnico } from "@/types/painel-mapa";
 import { asset } from "@/utils/asset";
+// Instalação — service/tipos isolados (src/lib/glpi/painel-instalacoes.ts),
+// nunca a Vistoria importando dados dela: só consome o próprio endpoint
+// novo. Poll independente (ver useEffect próprio abaixo), não entra no
+// Promise.all da Vistoria — zero acoplamento com o fluxo de dados dela.
+import { fetchInstalacoesStats } from "@/services/painel-instalacoes";
+import type { PainelInstalacoesStats } from "@/types/painel-instalacoes";
 
 /* ─── helpers ───────────────────────────────────────────────────────────── */
 
@@ -1445,6 +1452,22 @@ export default function PainelOverviewPage() {
     return () => { alive = false; clearInterval(poll); clearInterval(tick); };
   }, []);
 
+  // Instalação — poll totalmente independente do bloco acima (nunca entra
+  // no Promise.all da Vistoria), pra garantir zero interferência se essa
+  // chamada falhar ou atrasar.
+  const [instalacaoStats, setInstalacaoStats] = useState<PainelInstalacoesStats | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const loadInstalacao = () => {
+      fetchInstalacoesStats()
+        .then((s) => { if (alive) setInstalacaoStats(s); })
+        .catch(() => {});
+    };
+    loadInstalacao();
+    const poll = window.setInterval(loadInstalacao, 20_000);
+    return () => { alive = false; clearInterval(poll); };
+  }, []);
+
   /* ── derived ── */
   const emCampo    = useMemo(() => tecnicos.filter(t => t.status === "em-campo").length, [tecnicos]);
   const expediente = useMemo(
@@ -1695,6 +1718,49 @@ export default function PainelOverviewPage() {
 
         </div>
 
+      </div>
+
+      {/* ════════════ INSTALAÇÃO — resumo unificado na mesma Operação ════════════
+          Cards da Instalação juntos com os da Vistoria nesta mesma tela (não é
+          uma tela separada) — dado vem de src/services/painel-instalacoes.ts,
+          isolado da Vistoria; só a apresentação fica junta aqui. */}
+      <div className="vm-rise" style={{ animationDelay: "0.04s" }}>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Instalação</span>
+          </div>
+          <Link href="/painel/instalacoes/mapa" className="flex items-center gap-1 text-[12px] font-semibold text-[#3B82F6] hover:underline">
+            <MapIcon className="h-3 w-3" /> Mapa em tempo real
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {(
+            [
+              { label: "Liberados", value: instalacaoStats?.liberados ?? null, sub: "aguardando instalador assumir", color: "#F59E0B", icon: Wrench, href: "/painel/instalacoes/mapa" },
+              { label: "Em Instalação", value: instalacaoStats?.emInstalacao ?? null, sub: `${instalacaoStats?.instaladores24h ?? 0} instalador${(instalacaoStats?.instaladores24h ?? 0) === 1 ? "" : "es"} em campo`, color: "#3B82F6", icon: Activity, href: "/painel/instalacoes/mapa" },
+              { label: "Instaladas (30d)", value: instalacaoStats?.instaladas30d ?? null, sub: "últimos 30 dias", color: "#10B981", icon: CheckCircle2, href: null },
+              { label: "Rejeitadas", value: instalacaoStats?.rejeitadasPendentes ?? null, sub: "aguardando decisão", color: "#DC2626", icon: Ban, href: "/painel/instalacoes/rejeitadas" },
+            ] as const
+          ).map((k) => {
+            const Icon = k.icon;
+            const content = (
+              <Card className="p-4 transition hover:-translate-y-0.5">
+                <div className="flex items-center justify-between">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: `${k.color}1F`, color: k.color }}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                </div>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
+                <div className="mt-0.5 text-[26px] font-bold tabular-nums text-[var(--vm-text)]">
+                  {k.value != null ? <CountUp value={k.value} /> : "—"}
+                </div>
+                <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
+              </Card>
+            );
+            return k.href ? <Link key={k.label} href={k.href}>{content}</Link> : <div key={k.label}>{content}</div>;
+          })}
+        </div>
       </div>
 
       {/* ════════════ LINHA 1: Velocity | Heatmap SP | Equipe ════════════ */}

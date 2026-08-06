@@ -72,9 +72,8 @@ const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
 // Sub-itens do grupo "Instalações" — módulo novo, fila própria (não é a
 // mesma tela/tabela de Vistorias Rejeitadas).
 const INSTALACOES_GROUP = [
-  { href: "/painel/instalacoes",            label: "Operação",        icon: LayoutDashboard, roles: ALL_ROLES },
-  { href: "/painel/instalacoes/mapa",       label: "Mapa Tempo Real", icon: MapIcon,         roles: ALL_ROLES },
-  { href: "/painel/instalacoes/rejeitadas", label: "Rejeitadas",      icon: Ban,             roles: ALL_ROLES },
+  { href: "/painel/instalacoes/mapa",       label: "Mapa Tempo Real", icon: MapIcon, roles: ALL_ROLES },
+  { href: "/painel/instalacoes/rejeitadas", label: "Rejeitadas",      icon: Ban,     roles: ALL_ROLES },
 ];
 const INSTALACOES_HREFS = new Set(INSTALACOES_GROUP.map((i) => i.href));
 
