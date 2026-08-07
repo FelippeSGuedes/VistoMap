@@ -78,6 +78,33 @@ const INST_TEC_LABEL: Record<MapaInstaladorStatus, string> = {
   offline: "Offline",
 };
 
+// Glifo do pin de instalador — path oficial do ícone Wrench do lucide-react
+// (copiado direto de node_modules/lucide-react/dist/esm/icons/wrench.js, v0.460.0),
+// embutido como string estática pra não puxar react-dom/server no bundle do
+// cliente só pra renderizar um ícone fixo (custava ~47kB extra no /painel/mapa).
+const WRENCH_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>' +
+  "</svg>";
+
+// Aba "Equipe" — vistoriador e instalador na mesma lista/mapa, só cor muda.
+type PapelEquipe = "vistoriador" | "instalador";
+
+interface MembroEquipe {
+  key: string;
+  papel: PapelEquipe;
+  nome: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
+  createdAt: string | null;
+  bucket: "online" | "parado" | "offline";
+  statusColor: string;
+  statusLabel: string;
+  tecnico?: PainelMapaTecnico;
+  instalador?: PainelInstalacoesMapaInstalador;
+}
+
 function tint(hex: string, alpha: number) {
   const n = parseInt(hex.slice(1), 16);
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
@@ -437,6 +464,79 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
   return root;
 }
 
+/* ─── instalador pin — mesmo formato/qualidade do pin de técnico (teardrop,
+   gradiente, iniciais, badge de status), só que roxo e com o glifo de chave
+   de boca (WRENCH_SVG, path oficial do lucide-react). O antigo marcador
+   (losango roxo liso) foi trocado por esse — ficava feio e sem nenhum
+   acabamento comparado ao pin do técnico. ────────────────────────────────── */
+
+function instaladorMarkerEl(t: PainelInstalacoesMapaInstalador): HTMLElement {
+  const dotColor = INST_TEC_COLOR[t.status_operacional];
+  const isOnline = t.status_operacional === "em-instalacao" || t.status_operacional === "em-operacao";
+  const gradId = `vmgi-${t.users_id}`;
+  const firstName = t.nome.split(/\s+/)[0] ?? t.nome;
+
+  const root = document.createElement("div");
+  root.className = "vm-pin-root";
+  root.style.cssText = "position:relative;width:54px;height:68px;cursor:pointer;";
+
+  const pinWrap = document.createElement("div");
+  pinWrap.style.cssText = "position:absolute;inset:0;filter:drop-shadow(0 6px 14px rgba(124,58,237,.38));transition:filter .18s ease;";
+  pinWrap.innerHTML = `
+    <svg viewBox="0 0 54 68" width="54" height="68" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#A78BFA"/>
+          <stop offset="100%" stop-color="#7C3AED"/>
+        </linearGradient>
+        <radialGradient id="${gradId}-hl" cx="35%" cy="30%" r="55%">
+          <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".40"/>
+          <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <path d="M27 2C12.6 2 2 12.4 2 26c0 16.5 25 42.5 25 42.5S52 42.5 52 26C52 12.4 41.4 2 27 2Z"
+            fill="url(#${gradId})" stroke="#FFFFFF" stroke-width="2.5"/>
+      <path d="M27 2C12.6 2 2 12.4 2 26c0 16.5 25 42.5 25 42.5S52 42.5 52 26C52 12.4 41.4 2 27 2Z"
+            fill="url(#${gradId}-hl)"/>
+      <circle cx="27" cy="26" r="15.5" fill="#FFFFFF"/>
+      <text x="27" y="35" text-anchor="middle"
+            font-family="-apple-system,BlinkMacSystemFont,Inter,sans-serif"
+            font-size="11" font-weight="700" fill="var(--vm-ink)" letter-spacing="0.6">
+        ${initials(t.nome)}
+      </text>
+    </svg>
+    <div style="position:absolute;top:10px;left:50%;transform:translateX(-50%);width:15px;height:15px;pointer-events:none;">
+      ${WRENCH_SVG}
+    </div>
+    <div style="position:absolute;top:1px;right:1px;width:14px;height:14px;border-radius:50%;
+                background:${dotColor};border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.28);
+                ${isOnline ? "animation:vmStatusPulse 1.8s ease-out infinite;" : ""}"></div>
+  `;
+
+  const label = document.createElement("div");
+  label.style.cssText = `
+    position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    margin-top:6px;padding:3px 10px;border-radius:999px;
+    background:rgba(43,18,74,0.90);border:1px solid rgba(124,58,237,0.25);
+    box-shadow:0 4px 12px rgba(0,0,0,.4);
+    color:#E4D9FB;font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;
+    font-size:11px;font-weight:600;letter-spacing:.2px;
+    white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;
+    pointer-events:none;
+  `;
+  label.textContent = firstName;
+
+  root.appendChild(pinWrap);
+  root.appendChild(label);
+  root.addEventListener("mouseenter", () => {
+    pinWrap.style.filter = "drop-shadow(0 10px 22px rgba(124,58,237,.75)) brightness(1.12)";
+  });
+  root.addEventListener("mouseleave", () => {
+    pinWrap.style.filter = "drop-shadow(0 6px 14px rgba(124,58,237,.38))";
+  });
+  return root;
+}
+
 if (typeof document !== "undefined" && !document.getElementById("vm-op-style")) {
   const s = document.createElement("style");
   s.id = "vm-op-style";
@@ -530,6 +630,9 @@ export default function PainelMapaPage() {
   const [aba, setAba] = useState<"tecnicos" | "vistorias" | "instalacao">("tecnicos");
   const [filtroSit, setFiltroSit] = useState<"todas" | SituacaoOperacional>("todas");
   const [filtroTec, setFiltroTec] = useState<"todos" | "online" | "parado" | "offline">("todos");
+  // Aba "Equipe" mostra vistoriadores + instaladores juntos, diferenciados só
+  // por cor — esse filtro decide qual papel aparece na lista/mapa.
+  const [filtroPapel, setFiltroPapel] = useState<"todos" | "vistoriador" | "instalador">("todos");
   const [buscaVis, setBuscaVis] = useState("");
 
   // Modo correção GPS
@@ -737,37 +840,45 @@ export default function PainelMapaPage() {
         if (!seenPostes.has(id)) { m.remove(); posteInstMarkersRef.current.delete(id); }
       });
 
+      // Pins de instalador respeitam os MESMOS filtros de papel/status da
+      // aba Equipe (consistência lista ↔ mapa) — igual ao que já acontece
+      // com os pins de técnico em syncTechMarkers.
       const seenTecs = new Set<number>();
-      instalacaoData.instaladores
-        .filter((t): t is PainelInstalacoesMapaInstalador & { latitude: number; longitude: number } =>
-          t.latitude != null && t.longitude != null
-        )
-        .forEach((t) => {
-          seenTecs.add(t.users_id);
-          const color = INST_TEC_COLOR[t.status_operacional];
-          const popupHtml = `<div style="padding:8px 10px;font:600 12px system-ui;color:#073B4C;">
-            ${t.nome} <span style="font-weight:400;color:#7C3AED;">(instalador)</span><br/>
-            <span style="font-weight:400;color:#667280;">${INST_TEC_LABEL[t.status_operacional]}${t.minutos_atras != null ? " · há " + t.minutos_atras + "min" : ""}</span>
-          </div>`;
-          const existing = instaladorMarkersRef.current.get(t.users_id);
-          if (existing) {
-            existing.setLngLat([t.longitude, t.latitude]);
-            existing.getPopup()?.setHTML(popupHtml);
-            return;
-          }
-          // Losango (diamond) — silhueta bem diferente do círculo da Vistoria.
-          const el = document.createElement("div");
-          el.style.cssText = `
-            width:16px;height:16px;cursor:pointer;transform:rotate(45deg);
-            background:${color};border:2px solid #fff;
-            box-shadow:0 2px 8px rgba(0,0,0,0.35);
-          `;
-          const marker = new mapboxgl.Marker({ element: el })
-            .setLngLat([t.longitude, t.latitude])
-            .setPopup(new mapboxgl.Popup({ offset: 14 }).setHTML(popupHtml))
-            .addTo(map);
-          instaladorMarkersRef.current.set(t.users_id, marker);
-        });
+      const showInstaladores = filtroPapel !== "vistoriador";
+      if (showInstaladores) {
+        instalacaoData.instaladores
+          .filter((t): t is PainelInstalacoesMapaInstalador & { latitude: number; longitude: number } =>
+            t.latitude != null && t.longitude != null
+          )
+          .filter((t) => {
+            const bucket =
+              t.status_operacional === "em-instalacao" || t.status_operacional === "em-operacao"
+                ? "online"
+                : t.status_operacional === "parado"
+                ? "parado"
+                : "offline";
+            if (filtroTec === "todos") return bucket !== "offline";
+            return bucket === filtroTec;
+          })
+          .forEach((t) => {
+            seenTecs.add(t.users_id);
+            const existing = instaladorMarkersRef.current.get(t.users_id);
+            if (existing) {
+              existing.setLngLat([t.longitude, t.latitude]);
+              return;
+            }
+            const el = instaladorMarkerEl(t);
+            el.addEventListener("click", () => {
+              setSelectedTec(null);
+              setSelectedVistoria(null);
+              setTrailUsersId(t.users_id);
+            });
+            const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+              .setLngLat([t.longitude, t.latitude])
+              .addTo(map);
+            instaladorMarkersRef.current.set(t.users_id, marker);
+          });
+      }
       instaladorMarkersRef.current.forEach((m, id) => {
         if (!seenTecs.has(id)) { m.remove(); instaladorMarkersRef.current.delete(id); }
       });
@@ -776,7 +887,7 @@ export default function PainelMapaPage() {
     if (map.loaded()) sync();
     else map.once("load", sync);
 
-  }, [instalacaoData]);
+  }, [instalacaoData, filtroTec, filtroPapel, setSelectedVistoria]);
 
   /* ── layer switcher ─────────────────────────────────────────────────────── */
 
@@ -1004,7 +1115,7 @@ export default function PainelMapaPage() {
     if (!map || !data) return;
 
     const syncTechMarkers = () => {
-      const visible = data.tecnicos.filter((t) => {
+      const visible = filtroPapel === "instalador" ? [] : data.tecnicos.filter((t) => {
         if (t.latitude == null || t.longitude == null) return false;
         if (filtroTec === "online") return t.status_operacional === "em-operacao" || t.status_operacional === "em-vistoria";
         if (filtroTec === "parado") return t.status_operacional === "parado";
@@ -1058,7 +1169,7 @@ export default function PainelMapaPage() {
     if (map.loaded()) sync();
     else map.once("load", sync);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, filtroTec, vistoriasFiltradas]);
+  }, [data, filtroTec, filtroPapel, vistoriasFiltradas]);
 
   /* ── GPS correção ───────────────────────────────────────────────────────── */
 
@@ -1137,6 +1248,59 @@ export default function PainelMapaPage() {
     return acc;
   }, [data]);
 
+  // Aba "Equipe" — vistoriadores e instaladores juntos na MESMA lista, só
+  // diferenciados por cor/badge (nunca em abas separadas — pedido do
+  // usuário: a aba "Instalação" é só pra equipamento, não pra pessoas).
+  const equipeUnificada = useMemo<MembroEquipe[]>(() => {
+    const vistoriadores: MembroEquipe[] = (data?.tecnicos ?? []).map((t) => ({
+      key: `v-${t.users_id}`,
+      papel: "vistoriador",
+      nome: t.nome,
+      latitude: t.latitude,
+      longitude: t.longitude,
+      accuracyMeters: t.accuracy_meters,
+      createdAt: t.created_at,
+      bucket:
+        t.status_operacional === "em-operacao" || t.status_operacional === "em-vistoria"
+          ? "online"
+          : t.status_operacional === "parado"
+          ? "parado"
+          : "offline",
+      statusColor: statusColor(t.status_operacional),
+      statusLabel: statusLabel(t.status_operacional),
+      tecnico: t,
+    }));
+    const instaladores: MembroEquipe[] = (instalacaoData?.instaladores ?? []).map((t) => ({
+      key: `i-${t.users_id}`,
+      papel: "instalador",
+      nome: t.nome,
+      latitude: t.latitude,
+      longitude: t.longitude,
+      accuracyMeters: t.accuracy_meters,
+      createdAt: t.created_at,
+      bucket:
+        t.status_operacional === "em-instalacao" || t.status_operacional === "em-operacao"
+          ? "online"
+          : t.status_operacional === "parado"
+          ? "parado"
+          : "offline",
+      statusColor: INST_TEC_COLOR[t.status_operacional],
+      statusLabel: INST_TEC_LABEL[t.status_operacional],
+      instalador: t,
+    }));
+    return [...vistoriadores, ...instaladores];
+  }, [data, instalacaoData]);
+
+  const equipeFiltrada = useMemo(
+    () =>
+      equipeUnificada.filter((m) => {
+        if (filtroPapel !== "todos" && m.papel !== filtroPapel) return false;
+        if (filtroTec !== "todos" && m.bucket !== filtroTec) return false;
+        return true;
+      }),
+    [equipeUnificada, filtroPapel, filtroTec]
+  );
+
   /* ── render ─────────────────────────────────────────────────────────────── */
 
   if (!token) {
@@ -1165,7 +1329,7 @@ export default function PainelMapaPage() {
             onClick={() => setAba("tecnicos")}
             icon={<Users className="h-3 w-3" />}
             label="Equipe"
-            badge={data?.tecnicos.length}
+            badge={equipeUnificada.length}
           />
           <TabBtn
             active={aba === "vistorias"}
@@ -1179,13 +1343,38 @@ export default function PainelMapaPage() {
             onClick={() => setAba("instalacao")}
             icon={<Wrench className="h-3 w-3" />}
             label="Instalação"
-            badge={instalacaoData ? instalacaoData.instaladores.length + instalacaoData.postes.length : undefined}
+            badge={instalacaoData?.postes.length}
+            accent="#7C3AED"
           />
         </div>
 
         {aba === "tecnicos" && (
           <div className="flex min-h-0 flex-1 flex-col">
-            {/* Filtro de status de técnico */}
+            {/* Filtro de papel — vistoriador/instalador na mesma lista */}
+            <div className="shrink-0 px-2 pt-2">
+              <div className="flex gap-1">
+                {(["todos", "vistoriador", "instalador"] as const).map((k) => {
+                  const on = filtroPapel === k;
+                  const cor = k === "instalador" ? "#7C3AED" : "#00D4A0";
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setFiltroPapel(k)}
+                      className="flex-1 truncate rounded-lg px-1.5 py-1 text-[9.5px] font-semibold transition"
+                      style={{
+                        background: on ? tint(cor, 0.16) : "var(--vm-fill)",
+                        color: on ? cor : "var(--vm-muted)",
+                        border: `1px solid ${on ? tint(cor, 0.35) : "var(--vm-fill-2)"}`,
+                      }}
+                    >
+                      {k === "todos" ? "Todos" : k === "vistoriador" ? "Vistoriadores" : "Instaladores"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Filtro de status */}
             <div className="shrink-0 p-2">
               <div className="flex gap-1">
                 {(["todos", "online", "parado", "offline"] as const).map((k) => (
@@ -1207,63 +1396,83 @@ export default function PainelMapaPage() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
               <div className="space-y-1.5">
-                {(data?.tecnicos ?? []).map((t) => {
-                  const c = statusColor(t.status_operacional);
-                  const isOnl = t.status_operacional === "em-operacao" || t.status_operacional === "em-vistoria";
+                {equipeFiltrada.map((m) => {
+                  const isOnl = m.bucket === "online";
+                  const isInstalador = m.papel === "instalador";
+                  const selected = isInstalador
+                    ? trailUsersId === m.instalador?.users_id
+                    : selectedTec?.users_id === m.tecnico?.users_id;
+                  const cor = isInstalador ? "#7C3AED" : "#00875F";
                   return (
                     <button
-                      key={t.users_id}
+                      key={m.key}
                       type="button"
                       onClick={() => {
-                        setSelectedTec(t);
-                        setSelectedVistoria(null);
-                        setTrailUsersId(t.users_id);
-                        if (t.latitude != null && t.longitude != null) {
-                          mapRef.current?.flyTo({ center: [t.longitude, t.latitude], zoom: Math.max(14, mapRef.current.getZoom()), duration: 700 });
+                        if (isInstalador && m.instalador) {
+                          setSelectedTec(null);
+                          setSelectedVistoria(null);
+                          setTrailUsersId(m.instalador.users_id);
+                        } else if (m.tecnico) {
+                          setSelectedTec(m.tecnico);
+                          setSelectedVistoria(null);
+                          setTrailUsersId(m.tecnico.users_id);
+                        }
+                        if (m.latitude != null && m.longitude != null) {
+                          mapRef.current?.flyTo({ center: [m.longitude, m.latitude], zoom: Math.max(14, mapRef.current.getZoom()), duration: 700 });
                         }
                       }}
                       className="w-full rounded-xl p-2.5 text-left transition"
                       style={{
-                        background: selectedTec?.users_id === t.users_id ? "rgba(0,179,136,0.12)" : "var(--vm-fill)",
-                        border: `1px solid ${selectedTec?.users_id === t.users_id ? "rgba(0,179,136,0.25)" : "var(--vm-fill-2)"}`,
+                        background: selected ? tint(cor, 0.1) : "var(--vm-fill)",
+                        border: `1px solid ${selected ? tint(cor, 0.25) : "var(--vm-fill-2)"}`,
                       }}
                     >
                       <div className="flex items-center gap-2">
                         <span
                           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
-                          style={{ background: "linear-gradient(135deg,#00C896,#008E74)" }}
+                          style={{
+                            background: isInstalador
+                              ? "linear-gradient(135deg,#A78BFA,#7C3AED)"
+                              : "linear-gradient(135deg,#00C896,#008E74)",
+                          }}
                         >
-                          {initials(t.nome)}
+                          {initials(m.nome)}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[12px] font-semibold" style={{ color: "var(--vm-text)" }}>
-                            {t.nome}
+                            {m.nome}
                           </p>
-                          <div className="flex items-center gap-1.5 text-[9.5px]" style={{ color: c }}>
-                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: c, boxShadow: isOnl ? `0 0 6px ${c}` : "none" }} />
-                            <span>{statusLabel(t.status_operacional)}</span>
+                          <div className="flex items-center gap-1.5 text-[9.5px]" style={{ color: m.statusColor }}>
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.statusColor, boxShadow: isOnl ? `0 0 6px ${m.statusColor}` : "none" }} />
+                            <span>{m.statusLabel}</span>
                             <span style={{ color: "var(--vm-faint)" }}>·</span>
-                            <span style={{ color: "var(--vm-faint)" }}>{relTime(t.created_at)}</span>
+                            <span style={{ color: "var(--vm-faint)" }}>{relTime(m.createdAt)}</span>
                           </div>
                         </div>
-                        {t.accuracy_meters != null && (
-                          <span
-                            className="shrink-0 rounded-full px-1.5 py-[2px] text-[8.5px] font-semibold"
-                            style={{
-                              background: t.accuracy_meters < 20 ? "rgba(0,179,136,0.14)" : "rgba(245,158,11,0.14)",
-                              color: t.accuracy_meters < 20 ? "#00B388" : "#F59E0B",
-                            }}
-                          >
-                            ±{Math.round(t.accuracy_meters)}m
-                          </span>
-                        )}
+                        <span
+                          className="shrink-0 rounded-full px-1.5 py-[2px] text-[8px] font-bold uppercase tracking-wide"
+                          style={{ background: tint(cor, 0.14), color: cor }}
+                        >
+                          {isInstalador ? "Instalador" : "Vistoriador"}
+                        </span>
                       </div>
+                      {m.accuracyMeters != null && (
+                        <span
+                          className="mt-1.5 inline-block rounded-full px-1.5 py-[2px] text-[8.5px] font-semibold"
+                          style={{
+                            background: m.accuracyMeters < 20 ? "rgba(0,179,136,0.14)" : "rgba(245,158,11,0.14)",
+                            color: m.accuracyMeters < 20 ? "#00B388" : "#F59E0B",
+                          }}
+                        >
+                          ±{Math.round(m.accuracyMeters)}m
+                        </span>
+                      )}
                     </button>
                   );
                 })}
-                {(data?.tecnicos ?? []).length === 0 && (
+                {equipeFiltrada.length === 0 && (
                   <p className="py-10 text-center text-[11px]" style={{ color: "var(--vm-faint)" }}>
-                    Nenhum técnico ativo.
+                    Ninguém ativo com esses filtros.
                   </p>
                 )}
               </div>
@@ -1400,67 +1609,12 @@ export default function PainelMapaPage() {
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="shrink-0 px-2 pt-2">
               <p className="rounded-lg px-2 py-1.5 text-[9.5px] leading-relaxed" style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED" }}>
-                Módulo de Instalação — instaladores (losango) e postes (ícone),
-                separado da Vistoria.
+                Equipamentos do módulo de Instalação — postes liberados ou em
+                instalação agora. Os instaladores (pessoas) aparecem na aba
+                Equipe.
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-              {instalacaoData && instalacaoData.instaladores.length > 0 && (
-                <>
-                  <p className="mb-1.5 mt-2 px-1 text-[9.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
-                    Instaladores
-                  </p>
-                  <div className="space-y-1.5">
-                    {instalacaoData.instaladores.map((t) => {
-                      const c = INST_TEC_COLOR[t.status_operacional];
-                      return (
-                        <button
-                          key={t.users_id}
-                          type="button"
-                          onClick={() => {
-                            if (t.latitude != null && t.longitude != null) {
-                              mapRef.current?.flyTo({ center: [t.longitude, t.latitude], zoom: Math.max(14, mapRef.current.getZoom()), duration: 700 });
-                            }
-                          }}
-                          className="w-full rounded-xl p-2.5 text-left transition"
-                          style={{ background: "var(--vm-fill)", border: "1px solid var(--vm-fill-2)" }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
-                              style={{ background: "linear-gradient(135deg,#8B5CF6,#6D28D9)" }}
-                            >
-                              {initials(t.nome)}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-[12px] font-semibold" style={{ color: "var(--vm-text)" }}>
-                                {t.nome}
-                              </p>
-                              <div className="flex items-center gap-1.5 text-[9.5px]" style={{ color: c }}>
-                                <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
-                                <span>{INST_TEC_LABEL[t.status_operacional]}</span>
-                                {t.minutos_atras != null && (
-                                  <>
-                                    <span style={{ color: "var(--vm-faint)" }}>·</span>
-                                    <span style={{ color: "var(--vm-faint)" }}>há {t.minutos_atras}min</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                            <span
-                              className="shrink-0 rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-wide"
-                              style={{ background: "rgba(124,58,237,0.14)", color: "#7C3AED" }}
-                            >
-                              Instalador
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-
               {instalacaoData && instalacaoData.postes.length > 0 && (
                 <>
                   <p className="mb-1.5 mt-3 px-1 text-[9.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
@@ -1495,9 +1649,9 @@ export default function PainelMapaPage() {
                 </>
               )}
 
-              {instalacaoData && instalacaoData.instaladores.length === 0 && instalacaoData.postes.length === 0 && (
+              {instalacaoData && instalacaoData.postes.length === 0 && (
                 <p className="py-10 text-center text-[11px]" style={{ color: "var(--vm-faint)" }}>
-                  Nada em andamento na Instalação agora.
+                  Nenhum poste liberado ou em instalação agora.
                 </p>
               )}
             </div>
@@ -2106,33 +2260,34 @@ function KpiChip({
 }
 
 function TabBtn({
-  active, onClick, icon, label, badge,
+  active, onClick, icon, label, badge, accent = "#00B388",
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
   badge?: number;
+  accent?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition"
+      className="flex flex-1 items-center justify-center gap-1 overflow-hidden rounded-lg px-1.5 py-1.5 text-[10.5px] font-semibold transition"
       style={{
-        background: active ? "rgba(0,179,136,0.15)" : "transparent",
-        color: active ? "#00D4A0" : "var(--vm-faint)",
-        border: active ? "1px solid rgba(0,179,136,0.28)" : "1px solid transparent",
+        background: active ? tint(accent, 0.15) : "transparent",
+        color: active ? accent : "var(--vm-faint)",
+        border: `1px solid ${active ? tint(accent, 0.3) : "transparent"}`,
       }}
     >
-      {icon}
-      {label}
+      <span className="flex shrink-0 items-center">{icon}</span>
+      <span className="truncate">{label}</span>
       {badge != null && badge > 0 && (
         <span
-          className="rounded-full px-1.5 py-[1px] text-[9px] font-bold tabular-nums"
+          className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold tabular-nums"
           style={{
-            background: active ? "rgba(0,179,136,0.20)" : "rgba(0,0,0,0.06)",
-            color: active ? "#00D4A0" : "var(--vm-faint)",
+            background: active ? tint(accent, 0.2) : "rgba(0,0,0,0.06)",
+            color: active ? accent : "var(--vm-faint)",
           }}
         >
           {badge >= 1000 ? `${(badge / 1000).toFixed(1)}k` : badge}
