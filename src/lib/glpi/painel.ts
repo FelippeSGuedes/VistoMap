@@ -847,7 +847,15 @@ export async function atribuirVistoria(
     [vistoriaId]
   );
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
-  const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_EM_VISTORIA;
+  // Atribuir só designa o técnico — situação fica "aguardando ele iniciar"
+  // (deriva pra "Atribuído" em resolveSituacaoOperacional). Antes pulava
+  // direto pra Em Vistoria (2), o que fazia o card aparecer como "Em
+  // Vistoria" mesmo sem o técnico ter feito nada — quem avança de verdade
+  // pra Em Vistoria é o próprio técnico em POST /api/vistorias/[id]/iniciar
+  // (geofence + audit "vistoria-iniciada"). Revisita mantido como estava
+  // (situação 5 só é setada aqui hoje; mudar isso é escopo maior, fora do
+  // que foi reportado).
+  const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_A_VISTORIAR;
 
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`

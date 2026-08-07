@@ -620,6 +620,19 @@ export default function PainelMapaPage() {
     }
   }, []);
 
+  // Mantém o painel de detalhe em dia com o polling (5s) — sem isso, depois
+  // de atribuir um técnico (ou qualquer outra mudança) pelo próprio painel,
+  // o card ficava preso no snapshot de antes da ação até fechar e reabrir.
+  // setSelectedVistoriaRaw direto (não o wrapper) pra não resetar o toggle
+  // de "postes próximos" a cada re-sincronização.
+  useEffect(() => {
+    if (!selectedVistoria || !data) return;
+    const atualizada = data.vistorias.find((v) => v.id === selectedVistoria.id);
+    if (atualizada && atualizada !== selectedVistoria) {
+      setSelectedVistoriaRaw(atualizada);
+    }
+  }, [data, selectedVistoria]);
+
   // Hover card do técnico
   const [hoveredTec, setHoveredTec] = useState<PainelMapaTecnico | null>(null);
   const [hoveredMetrics, setHoveredMetrics] = useState<TechTodayMetrics | null>(null);
