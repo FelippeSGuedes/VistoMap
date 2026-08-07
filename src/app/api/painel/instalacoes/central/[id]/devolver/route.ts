@@ -56,46 +56,54 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ message: "Motivo obrigatório" }, { status: 400 });
   }
 
-  const [row] = await query<{ equipamento: string; instalador_id: number | null; instalador_nome: string | null }>(
-    `SELECT ne.name AS equipamento, f.${INSTALACAO_INSTALADOR_COLUMN} AS instalador_id, u.name AS instalador_nome
-       FROM glpi_networkequipments ne
-       JOIN glpi_plugin_fields_networkequipmentdispositivosderedes f ON f.items_id = ne.id
-       LEFT JOIN glpi_users u ON u.id = f.${INSTALACAO_INSTALADOR_COLUMN}
-      WHERE ne.id = ? AND ne.is_deleted = 0
-      LIMIT 1`,
-    [itemsId]
-  );
-  if (!row) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
+  try {
+    const [row] = await query<{ equipamento: string; instalador_id: number | null; instalador_nome: string | null }>(
+      `SELECT ne.name AS equipamento, f.${INSTALACAO_INSTALADOR_COLUMN} AS instalador_id, u.name AS instalador_nome
+         FROM glpi_networkequipments ne
+         JOIN glpi_plugin_fields_networkequipmentdispositivosderedes f ON f.items_id = ne.id
+         LEFT JOIN glpi_users u ON u.id = f.${INSTALACAO_INSTALADOR_COLUMN}
+        WHERE ne.id = ? AND ne.is_deleted = 0
+        LIMIT 1`,
+      [itemsId]
+    );
+    if (!row) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
 
-  await devolverInstalacao(itemsId);
+    await devolverInstalacao(itemsId);
 
-  const devolucaoId = await criarInstalacaoDevolucao({
-    itemsId,
-    equipamento: row.equipamento,
-    instaladorId: row.instalador_id,
-    instaladorNome: row.instalador_nome,
-    analistaId,
-    analistaNome,
-    itensChecklist,
-    fotos,
-    motivo,
-  });
-
-  if (row.instalador_id) {
-    void sendPushTo({
-      usersIds: [row.instalador_id],
-      title: "Instalação devolvida para correção",
-      body: `${row.equipamento} precisa de correção — ${motivo}`,
-      data: { url: "/app/instalacao", items_id: String(itemsId), tipo: "devolucao" },
+    const devolucaoId = await criarInstalacaoDevolucao({
+      itemsId,
+      equipamento: row.equipamento,
+      instaladorId: row.instalador_id,
+      instaladorNome: row.instalador_nome,
+      analistaId,
+      analistaNome,
+      itensChecklist,
+      fotos,
+      motivo,
     });
+
+    if (row.instalador_id) {
+      void sendPushTo({
+        usersIds: [row.instalador_id],
+        title: "Instalação devolvida para correção",
+        body: `${row.equipamento} precisa de correção — ${motivo}`,
+        data: { url: "/app/instalacao", items_id: String(itemsId), tipo: "devolucao" },
+      });
+    }
+
+    void auditInsert({
+      ator: { id: analistaId, nome: analistaNome, role: auth.claims.role ?? "admin" },
+      acao: "instalacao-devolvida",
+      alvo: { tipo: "instalacao", id: String(itemsId), label: row.equipamento },
+      descricao: `Devolvida para correção — ${itensChecklist.length} item(ns), ${fotos.length} foto(s): ${motivo}`,
+    });
+
+    return NextResponse.json({ ok: true, devolucaoId });
+  } catch (err) {
+    console.error("[api/painel/instalacoes/central/devolver] error", err);
+    return NextResponse.json(
+      { message: "Falha ao devolver a instalação", error: String(err) },
+      { status: 500 }
+    );
   }
-
-  void auditInsert({
-    ator: { id: analistaId, nome: analistaNome, role: auth.claims.role ?? "admin" },
-    acao: "instalacao-devolvida",
-    alvo: { tipo: "instalacao", id: String(itemsId), label: row.equipamento },
-    descricao: `Devolvida para correção — ${itensChecklist.length} item(ns), ${fotos.length} foto(s): ${motivo}`,
-  });
-
-  return NextResponse.json({ ok: true, devolucaoId });
 }

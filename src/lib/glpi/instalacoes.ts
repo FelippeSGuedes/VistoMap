@@ -499,15 +499,18 @@ export async function devolverInstalacao(itemsId: number): Promise<void> {
  * (acesso a filesystem / instalacaoQueue.ts), não desta função.
  */
 export async function cancelarInstalacao(itemsId: number): Promise<void> {
+  // Colunas do GLPI Fields (dropdown FK + yesno) são NOT NULL — "sem valor"
+  // é 0, não NULL (só datadeinstalaofield, um DATETIME de verdade, aceita
+  // NULL). Setar NULL nelas quebra a query inteira com ER_BAD_NULL_ERROR.
   const checklistClears = Object.values(INSTALACAO_CHECKLIST_COLUMNS)
-    .map((col) => `f.\`${col}\` = NULL`)
+    .map((col) => `f.\`${col}\` = 0`)
     .join(", ");
   await execute(
     `UPDATE \`${TABLE_FIELDS}\` f
        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id
         SET f.${INSTALACAO_INSTALADOR_COLUMN} = 0,
             f.datadeinstalaofield = NULL,
-            f.${INSTALACAO_TENSAO_COLUMN} = NULL,
+            f.${INSTALACAO_TENSAO_COLUMN} = 0,
             ${checklistClears},
             ne.states_id = ?
       WHERE f.items_id = ?`,

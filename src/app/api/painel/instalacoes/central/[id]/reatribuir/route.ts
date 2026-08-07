@@ -33,24 +33,32 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ message: "Motivo obrigatório" }, { status: 400 });
   }
 
-  const [ne] = await query<{ name: string }>(
-    "SELECT name FROM glpi_networkequipments WHERE id = ? AND is_deleted = 0 LIMIT 1",
-    [itemsId]
-  );
-  if (!ne) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
+  try {
+    const [ne] = await query<{ name: string }>(
+      "SELECT name FROM glpi_networkequipments WHERE id = ? AND is_deleted = 0 LIMIT 1",
+      [itemsId]
+    );
+    if (!ne) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
 
-  const [inst] = await query<{ name: string }>("SELECT name FROM glpi_users WHERE id = ? LIMIT 1", [
-    body.instaladorId,
-  ]);
+    const [inst] = await query<{ name: string }>("SELECT name FROM glpi_users WHERE id = ? LIMIT 1", [
+      body.instaladorId,
+    ]);
 
-  await reatribuirInstalacao(itemsId, body.instaladorId);
+    await reatribuirInstalacao(itemsId, body.instaladorId);
 
-  void auditInsert({
-    ator: { id: analistaId, nome: analistaNome, role: auth.claims.role ?? "admin" },
-    acao: "instalacao-reatribuida",
-    alvo: { tipo: "instalacao", id: String(itemsId), label: ne.name },
-    descricao: `Reatribuído para ${inst?.name ?? body.instaladorId}. Motivo: ${body.motivo.trim()}`,
-  });
+    void auditInsert({
+      ator: { id: analistaId, nome: analistaNome, role: auth.claims.role ?? "admin" },
+      acao: "instalacao-reatribuida",
+      alvo: { tipo: "instalacao", id: String(itemsId), label: ne.name },
+      descricao: `Reatribuído para ${inst?.name ?? body.instaladorId}. Motivo: ${body.motivo.trim()}`,
+    });
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[api/painel/instalacoes/central/reatribuir] error", err);
+    return NextResponse.json(
+      { message: "Falha ao reatribuir a instalação", error: String(err) },
+      { status: 500 }
+    );
+  }
 }

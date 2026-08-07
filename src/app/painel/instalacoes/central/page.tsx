@@ -154,7 +154,16 @@ export default function CentralInstalacoesPage() {
   const [devMotivo, setDevMotivo] = useState("");
   const [devLoading, setDevLoading] = useState(false);
 
+  // Erro de ação (reatribuir/devolver/cancelar) — sem isso uma falha na API
+  // fica muda pro operador (loading para, nada acontece, sem pista do porquê).
+  const [erro, setErro] = useState<string | null>(null);
+
   const headers = useMemo(() => ({ Authorization: `Bearer ${session?.token}` }), [session?.token]);
+
+  function extrairErro(err: unknown): string {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    return msg || "Falha inesperada. Tente de novo em alguns segundos.";
+  }
 
   const fetchData = useCallback(async () => {
     if (!session?.token) return;
@@ -194,13 +203,14 @@ export default function CentralInstalacoesPage() {
   async function handleCancelar() {
     if (!cancelando || cancelConfirm !== "CANCELAR") return;
     setCancelLoading(true);
+    setErro(null);
     try {
       await api.post(`/painel/instalacoes/central/${cancelando.id}/cancelar`, {}, { headers });
       setCancelando(null);
       setCancelConfirm("");
       await fetchData();
-    } catch {
-      /* TODO: toast */
+    } catch (err) {
+      setErro(extrairErro(err));
     } finally {
       setCancelLoading(false);
     }
@@ -209,6 +219,7 @@ export default function CentralInstalacoesPage() {
   async function handleReatribuir() {
     if (!reatrib || !novoInstalador || !motivo.trim()) return;
     setReatribLoading(true);
+    setErro(null);
     try {
       await api.post(
         `/painel/instalacoes/central/${reatrib.id}/reatribuir`,
@@ -219,8 +230,8 @@ export default function CentralInstalacoesPage() {
       setNovoInstalador("");
       setMotivo("");
       await fetchData();
-    } catch {
-      /* TODO: toast */
+    } catch (err) {
+      setErro(extrairErro(err));
     } finally {
       setReatribLoading(false);
     }
@@ -236,6 +247,7 @@ export default function CentralInstalacoesPage() {
   async function handleDevolver() {
     if (!devolvendo || (devItensChecklist.length === 0 && devFotos.length === 0) || !devMotivo.trim()) return;
     setDevLoading(true);
+    setErro(null);
     try {
       await api.post(
         `/painel/instalacoes/central/${devolvendo.id}/devolver`,
@@ -247,8 +259,8 @@ export default function CentralInstalacoesPage() {
       setDevFotos([]);
       setDevMotivo("");
       await fetchData();
-    } catch {
-      /* TODO: toast */
+    } catch (err) {
+      setErro(extrairErro(err));
     } finally {
       setDevLoading(false);
     }
@@ -365,7 +377,7 @@ export default function CentralInstalacoesPage() {
                     {v.instaladorNome && (
                       <button
                         type="button"
-                        onClick={() => { setReatrib(v); setNovoInstalador(""); setMotivo(""); }}
+                        onClick={() => { setReatrib(v); setNovoInstalador(""); setMotivo(""); setErro(null); }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
                         style={{ border: `1px solid ${tint("#3B82F6", 0.35)}`, background: tint("#3B82F6", 0.12), color: "#3B82F6" }}
                       >
@@ -376,7 +388,7 @@ export default function CentralInstalacoesPage() {
                     {v.statesId === STATE_INSTALADO && (
                       <button
                         type="button"
-                        onClick={() => { setDevolvendo(v); setDevItensChecklist([]); setDevFotos([]); setDevMotivo(""); }}
+                        onClick={() => { setDevolvendo(v); setDevItensChecklist([]); setDevFotos([]); setDevMotivo(""); setErro(null); }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
                         style={{ border: `1px solid ${tint("#D97706", 0.4)}`, background: tint("#D97706", 0.14), color: "#D97706" }}
                       >
@@ -388,7 +400,7 @@ export default function CentralInstalacoesPage() {
                     {session?.role === "admin" && v.statesId >= STATE_EM_INSTALACAO && (
                       <button
                         type="button"
-                        onClick={() => { setCancelando(v); setCancelConfirm(""); }}
+                        onClick={() => { setCancelando(v); setCancelConfirm(""); setErro(null); }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
                         style={{ border: `1px solid ${tint("#DC2626", 0.35)}`, background: tint("#DC2626", 0.12), color: "#DC2626" }}
                       >
@@ -435,10 +447,15 @@ export default function CentralInstalacoesPage() {
             className="mb-4 w-full rounded-xl px-3 py-2 text-[13px] outline-none"
             style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
           />
+          {erro && (
+            <p className="mb-4 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background: "rgba(220,38,38,0.1)", color: "#DC2626" }}>
+              {erro}
+            </p>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setCancelando(null)}
+              onClick={() => { setCancelando(null); setErro(null); }}
               className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold transition hover:brightness-95"
               style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
             >
@@ -470,7 +487,7 @@ export default function CentralInstalacoesPage() {
                 <p className="text-[11px]" style={{ color: "var(--vm-muted)" }}>{reatrib.equipamento}</p>
               </div>
             </div>
-            <button type="button" onClick={() => setReatrib(null)} style={{ color: "var(--vm-faint)" }}>
+            <button type="button" onClick={() => { setReatrib(null); setErro(null); }} style={{ color: "var(--vm-faint)" }}>
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -509,10 +526,16 @@ export default function CentralInstalacoesPage() {
             style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
           />
 
+          {erro && (
+            <p className="mb-4 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background: "rgba(220,38,38,0.1)", color: "#DC2626" }}>
+              {erro}
+            </p>
+          )}
+
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setReatrib(null)}
+              onClick={() => { setReatrib(null); setErro(null); }}
               className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold transition hover:brightness-95"
               style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
             >
@@ -546,7 +569,7 @@ export default function CentralInstalacoesPage() {
                 </p>
               </div>
             </div>
-            <button type="button" onClick={() => setDevolvendo(null)} style={{ color: "var(--vm-faint)" }}>
+            <button type="button" onClick={() => { setDevolvendo(null); setErro(null); }} style={{ color: "var(--vm-faint)" }}>
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -595,10 +618,16 @@ export default function CentralInstalacoesPage() {
             style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
           />
 
+          {erro && (
+            <p className="mb-4 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background: "rgba(220,38,38,0.1)", color: "#DC2626" }}>
+              {erro}
+            </p>
+          )}
+
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setDevolvendo(null)}
+              onClick={() => { setDevolvendo(null); setErro(null); }}
               className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold transition hover:brightness-95"
               style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
             >

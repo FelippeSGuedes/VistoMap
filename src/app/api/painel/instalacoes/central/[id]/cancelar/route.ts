@@ -37,34 +37,42 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ message: "ID inválido" }, { status: 400 });
   }
 
-  const [ne] = await query<{ name: string }>(
-    "SELECT name FROM glpi_networkequipments WHERE id = ? AND is_deleted = 0 LIMIT 1",
-    [itemsId]
-  );
-  if (!ne) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
-
-  await cancelarInstalacao(itemsId);
-  await deleteInstalacaoQueueByItemsId(itemsId);
-
-  const folder = sanitizeFolderName(ne.name);
-  const dir = path.join(UPLOAD_PATH, folder);
   try {
-    const entries = await fs.readdir(dir);
-    await Promise.all(
-      entries
-        .filter((name) => INSTALACAO_FOTO_RE.test(name))
-        .map((name) => fs.rm(path.join(dir, name), { force: true }).catch(() => {}))
+    const [ne] = await query<{ name: string }>(
+      "SELECT name FROM glpi_networkequipments WHERE id = ? AND is_deleted = 0 LIMIT 1",
+      [itemsId]
     );
-  } catch {
-    // pasta pode não existir
+    if (!ne) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
+
+    await cancelarInstalacao(itemsId);
+    await deleteInstalacaoQueueByItemsId(itemsId);
+
+    const folder = sanitizeFolderName(ne.name);
+    const dir = path.join(UPLOAD_PATH, folder);
+    try {
+      const entries = await fs.readdir(dir);
+      await Promise.all(
+        entries
+          .filter((name) => INSTALACAO_FOTO_RE.test(name))
+          .map((name) => fs.rm(path.join(dir, name), { force: true }).catch(() => {}))
+      );
+    } catch {
+      // pasta pode não existir
+    }
+
+    void auditInsert({
+      ator: { id: adminId, nome: adminNome, role: auth.claims.role ?? "admin" },
+      acao: "instalacao-cancelada",
+      alvo: { tipo: "instalacao", id: String(itemsId), label: ne.name },
+      descricao: "Instalação cancelada e devolvida pra fila (Liberado). Fotos da instalação removidas.",
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[api/painel/instalacoes/central/cancelar] error", err);
+    return NextResponse.json(
+      { message: "Falha ao cancelar a instalação", error: String(err) },
+      { status: 500 }
+    );
   }
-
-  void auditInsert({
-    ator: { id: adminId, nome: adminNome, role: auth.claims.role ?? "admin" },
-    acao: "instalacao-cancelada",
-    alvo: { tipo: "instalacao", id: String(itemsId), label: ne.name },
-    descricao: "Instalação cancelada e devolvida pra fila (Liberado). Fotos da instalação removidas.",
-  });
-
-  return NextResponse.json({ ok: true });
 }
