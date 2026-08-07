@@ -207,6 +207,16 @@ body {
   height: 210mm;
 }
 
+/* FOTO1 é obrigatoriamente horizontal (paisagem) — caixa proporcional a
+   esse enquadramento em vez da caixa alta/vertical padrão. Ela continua
+   dividindo a página com a FOTO2 (a favor de manter as duas fotos juntas
+   na mesma página); como a linha da tabela segue a altura da célula mais
+   alta, sobra espaço em branco abaixo dela — aceito, pedido do usuário
+   2026-08-07. */
+.card-img-landscape {
+  height: 70mm;
+}
+
 .card-photo {
   display: block;
   width: 100%;

@@ -32,7 +32,7 @@ data = {
     "MATERIAL": "Concreto",
     "DAN": "600",
     "EQUIPAMENTO": "Access Point",
-    "FORMATO": "Estrutura Vertical (Poste)",
+    "FORMATO": "Retangular",
     "TENSAOCONTEXTO": "220 V",
     "LOCALINSTALACAO": "Topo do poste, lado norte",
     "ALIMENTACAO": "Rede CPFL",
