@@ -404,3 +404,113 @@ export async function countInstaladasPorMim(instaladorId: number): Promise<numbe
   );
   return Number(rows[0]?.cpt ?? 0);
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// Central das Instalações (/painel/instalacoes/central) — console de ações
+// administrativas (reatribuir/devolver/cancelar), espelha Central de
+// Vistorias (listCentralVistorias/cancelarVistoria/devolverVistoria/
+// reatribuirVistoria em src/lib/glpi/painel.ts), mas só pra states_id
+// EM_INSTALACAO/INSTALADO — REJEITADA já tem fila própria
+// (instalacaoRejeicoes.ts), não entra aqui pra não duplicar gestão.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface CentralInstalacao {
+  id: number;
+  equipamento: string;
+  municipio: string | null;
+  statesId: number;
+  statusGeralNome: string | null;
+  instaladorId: number | null;
+  instaladorNome: string | null;
+  dataInstalacao: string | null;
+}
+
+interface CentralInstalacaoRow {
+  id: number;
+  equipamento: string;
+  municipio: string | null;
+  states_id: number;
+  status_geral_nome: string | null;
+  instalador_id: number | null;
+  instalador_firstname: string | null;
+  instalador_realname: string | null;
+  instalador_login: string | null;
+  data_instalacao: string | null;
+}
+
+export async function listCentralInstalacoes(): Promise<CentralInstalacao[]> {
+  const rows = await query<CentralInstalacaoRow>(
+    `SELECT
+        ne.id AS id,
+        ne.name AS equipamento,
+        f.municipiofield AS municipio,
+        ne.states_id AS states_id,
+        st.name AS status_geral_nome,
+        f.${INSTALACAO_INSTALADOR_COLUMN} AS instalador_id,
+        inst.firstname AS instalador_firstname,
+        inst.realname AS instalador_realname,
+        inst.name AS instalador_login,
+        f.datadeinstalaofield AS data_instalacao
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+       LEFT JOIN \`${TABLE_STATES}\` st ON st.id = ne.states_id
+       LEFT JOIN \`${TABLE_USERS}\` inst ON inst.id = f.${INSTALACAO_INSTALADOR_COLUMN}
+      WHERE ne.is_deleted = 0
+        AND ne.states_id IN (?, ?)
+      ORDER BY CASE ne.states_id WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END, ne.name ASC`,
+    [STATE_EM_INSTALACAO, STATE_INSTALADO, STATE_INSTALADO, STATE_EM_INSTALACAO]
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    equipamento: r.equipamento,
+    municipio: r.municipio,
+    statesId: r.states_id,
+    statusGeralNome: r.status_geral_nome,
+    instaladorId: r.instalador_id,
+    instaladorNome: r.instalador_id
+      ? (`${r.instalador_firstname ?? ""} ${r.instalador_realname ?? ""}`.trim() || r.instalador_login)
+      : null,
+    dataInstalacao: r.data_instalacao,
+  }));
+}
+
+/** Reatribui pra outro instalador — sempre volta pra EM_INSTALACAO, pré-travado no novo. */
+export async function reatribuirInstalacao(itemsId: number, novoInstaladorId: number): Promise<void> {
+  await execute(
+    `UPDATE \`${TABLE_FIELDS}\` f
+       INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id
+        SET f.${INSTALACAO_INSTALADOR_COLUMN} = ?,
+            ne.states_id = ?
+      WHERE f.items_id = ?`,
+    [novoInstaladorId, STATE_EM_INSTALACAO, itemsId]
+  );
+}
+
+/** Devolve pro MESMO instalador corrigir — não desvincula, só volta o poste pra fila dele. */
+export async function devolverInstalacao(itemsId: number): Promise<void> {
+  await execute(`UPDATE \`${TABLE_NE}\` SET states_id = ? WHERE id = ?`, [STATE_EM_INSTALACAO, itemsId]);
+}
+
+/**
+ * Cancela: reseta pro início do módulo (LIBERADO), desvincula o instalador,
+ * limpa checklist/tensão/data — igual cancelarVistoria (painel.ts) reseta
+ * pra "A Vistoriar". Arquivos e fila de PDF são responsabilidade da rota
+ * (acesso a filesystem / instalacaoQueue.ts), não desta função.
+ */
+export async function cancelarInstalacao(itemsId: number): Promise<void> {
+  const checklistClears = Object.values(INSTALACAO_CHECKLIST_COLUMNS)
+    .map((col) => `f.\`${col}\` = NULL`)
+    .join(", ");
+  await execute(
+    `UPDATE \`${TABLE_FIELDS}\` f
+       INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id
+        SET f.${INSTALACAO_INSTALADOR_COLUMN} = 0,
+            f.datadeinstalaofield = NULL,
+            f.${INSTALACAO_TENSAO_COLUMN} = NULL,
+            ${checklistClears},
+            ne.states_id = ?
+      WHERE f.items_id = ?`,
+    [STATE_LIBERADO_INSTALACAO, itemsId]
+  );
+}

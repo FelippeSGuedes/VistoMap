@@ -60,6 +60,9 @@ export const ACAO_META: Record<
   "instalacao-reprovada":    { label: "Instalação reprovada (CPFL)",icon: XCircle,    fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#EF4444" },
   "instalacao-rejeicao-escalada":   { label: "Rejeição escalada p/ vistoria", icon: Undo2, fg: "#B45309", bg: "var(--vm-orange-tint)", dot: "#F97316" },
   "instalacao-rejeicao-descartada": { label: "Rejeição descartada",          icon: RotateCw, fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
+  "instalacao-reatribuida": { label: "Instalação reatribuída",             icon: Send,   fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
+  "instalacao-devolvida":   { label: "Instalação devolvida para correção", icon: Undo2,  fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
+  "instalacao-cancelada":   { label: "Instalação cancelada",               icon: XCircle,fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
 };
 
 export function initials(nome: string) {

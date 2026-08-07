@@ -76,6 +76,7 @@ const INSTALACOES_GROUP = [
   { href: "/painel/instalacoes/pendentes",  label: "Pendentes",    icon: Clock,        roles: ALL_ROLES },
   { href: "/painel/instalacoes/andamento",  label: "Em Andamento", icon: Activity,     roles: ALL_ROLES },
   { href: "/painel/instalacoes/instaladas", label: "Instaladas",   icon: CheckCircle2, roles: ALL_ROLES },
+  { href: "/painel/instalacoes/central",    label: "Central",      icon: Wrench,       roles: ADMIN_MOD },
   { href: "/painel/instalacoes/rejeitadas", label: "Rejeitadas",   icon: Ban,          roles: ALL_ROLES },
 ];
 const INSTALACOES_HREFS = new Set(INSTALACOES_GROUP.map((i) => i.href));

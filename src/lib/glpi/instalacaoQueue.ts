@@ -108,3 +108,9 @@ export async function upsertInstalacaoQueue(input: InstalacaoAuxUpsertInput): Pr
   );
   return rows[0]?.id ?? 0;
 }
+
+/** Remove a linha da fila de PDF — usado pelo Cancelar da Central das Instalações. */
+export async function deleteInstalacaoQueueByItemsId(itemsId: number): Promise<void> {
+  await ensureTable();
+  await execute(`DELETE FROM \`${TABLE_INSTALACAO_AUX}\` WHERE items_id = ?`, [itemsId]);
+}

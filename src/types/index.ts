@@ -459,7 +459,10 @@ export interface AuditEntry {
     | "instalacao-aprovada"
     | "instalacao-reprovada"
     | "instalacao-rejeicao-escalada"
-    | "instalacao-rejeicao-descartada";
+    | "instalacao-rejeicao-descartada"
+    | "instalacao-reatribuida"
+    | "instalacao-devolvida"
+    | "instalacao-cancelada";
   /** Alvo da ação. */
   alvo?: {
     tipo: "vistoria" | "tecnico" | "revisita" | "sistema" | "instalacao";
