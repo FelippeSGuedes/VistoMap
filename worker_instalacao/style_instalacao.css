@@ -172,6 +172,10 @@ body {
   width: 50%;
 }
 
+.gcol-single {
+  width: 100%;
+}
+
 .gcell {
   padding: 0;
   vertical-align: top;
@@ -186,17 +190,21 @@ body {
 }
 
 /* Caixa fixa da imagem — object-fit:contain preserva a foto inteira,
-   sem cortar nem distorcer, mantendo a qualidade original. */
+   sem cortar nem distorcer, mantendo a qualidade original. Só 2 fotos por
+   página (antes eram 3 linhas de 2 + 1 larga, fotos ficavam pequenas —
+   pedido dos avaliadores 2026-08-07), então cada foto tem bem mais espaço
+   vertical: 1 linha por página, altura calculada pro espaço disponível
+   entre o topo da tabela (40mm) e a margem inferior seguro (~275mm). */
 .card-img {
   width: 100%;
-  height: 50mm;
+  height: 200mm;
   overflow: hidden;
   background: #f5f8fa;
 }
 
-/* 7ª foto (Vista geral final) ocupa a linha inteira, sozinha. */
+/* 7ª foto (Vista geral final) sozinha na própria página, ocupa a largura toda. */
 .card-img-wide {
-  height: 58mm;
+  height: 210mm;
 }
 
 .card-photo {

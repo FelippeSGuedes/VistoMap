@@ -23,7 +23,6 @@ FIELD_TO_KEY: Dict[str, str] = {
     "material": "MATERIAL",
     "dan": "DAN",
     "equipamento": "EQUIPAMENTO",
-    "formato": "FORMATO",
     "tensao_contexto": "TENSAOCONTEXTO",
     "local_instalacao": "LOCALINSTALACAO",
     "alimentacao": "ALIMENTACAO",
@@ -74,6 +73,14 @@ class Resolver:
         resolved["DATE"] = self._format_date(raw.get("project_date"))
         resolved["DATAINSTALACAO"] = self._format_date(raw.get("data_instalacao"))
 
+        # Todas as instalações deste relatório são em poste — fixo, não
+        # depende do dropdown "formato" do GLPI (que às vezes vem vazio ou
+        # com um valor genérico). Pedido pelos avaliadores em 2026-08-07.
+        resolved["FORMATO"] = "Estrutura Vertical (Poste)"
+
+        resolved["LATITUDE"] = self._format_coord(raw.get("latitude"))
+        resolved["LONGITUDE"] = self._format_coord(raw.get("longitude"))
+
         return resolved
 
     @staticmethod
@@ -94,6 +101,15 @@ class Resolver:
             except ValueError:
                 continue
         return str(value)
+
+    @staticmethod
+    def _format_coord(value: Any) -> str:
+        if value is None:
+            return "N/I"
+        try:
+            return f"{float(value):.6f}"
+        except (TypeError, ValueError):
+            return "N/I"
 
     @staticmethod
     def _clean(value: Any) -> str:

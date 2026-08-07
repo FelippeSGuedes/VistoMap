@@ -41,6 +41,8 @@ _CONTEXT_SQL = f"""
         f.pspostefield AS ps_poste,
         f.alturadopostemfield AS altura_poste,
         f.endereofield AS endereco,
+        REPLACE(f.latitudefield, ',', '.') + 0.0 AS latitude,
+        REPLACE(f.longitudefield, ',', '.') + 0.0 AS longitude,
         f.observaofield AS observacao,
         f.aterramentofield AS aterramento,
         f.materialfield AS material,
