@@ -34,8 +34,8 @@ const STEPS: StepDef[] = [
   {
     key: "foto1",
     title: "Chegada e inspeção",
-    objective: "Poste e arredores antes de começar",
-    instruction: "Fotografe o poste e a área ao redor assim que chegar, mostrando o contexto do local antes de iniciar a instalação.",
+    objective: "Poste e arredores antes de começar — foto na HORIZONTAL",
+    instruction: "Gire o celular na horizontal (deitado) e fotografe o poste e a área ao redor assim que chegar, mostrando o contexto do local antes de iniciar a instalação.",
     scene: "chegada",
   },
   {
@@ -86,7 +86,7 @@ const STEPS: StepDef[] = [
 /*  Validação simples                                                  */
 /* ------------------------------------------------------------------ */
 
-type Feedback = { tone: "ok" | "warn"; message: string };
+type Feedback = { tone: "ok" | "warn" | "reject"; message: string };
 
 interface LoadedImage {
   blob: Blob;
@@ -104,7 +104,17 @@ async function readFileAsImage(file: File): Promise<LoadedImage> {
   return { blob, dataUrl: compressed.dataUrl, width: img.naturalWidth, height: img.naturalHeight };
 }
 
-function validateCapture(image: LoadedImage): Feedback {
+function validateCapture(image: LoadedImage, step: StepDef): Feedback {
+  // FOTO1 (chegada) é obrigatoriamente horizontal — o relatório PDF reserva
+  // uma caixa em formato paisagem só pra ela (template_instalacao.html);
+  // uma foto vertical fica pequena/torta ali. Barra aqui na captura em vez
+  // de deixar passar e só o analista perceber depois no PDF gerado.
+  if (step.key === "foto1" && image.width <= image.height) {
+    return {
+      tone: "reject",
+      message: "Essa foto precisa ser na horizontal (deitado). Gire o celular e tire de novo.",
+    };
+  }
   if (image.width < 400 || image.height < 400) {
     return { tone: "warn", message: "Resolução baixa, mas aceita. Aproxime mais se possível." };
   }
@@ -477,11 +487,19 @@ export function InstalacaoGuidedCaptureFlow({ bundle, onChange, onComplete }: In
     setBusy(true);
     try {
       const image = await readFileAsImage(file);
-      const feedback = validateCapture(image);
+      const feedback = validateCapture(image, step);
       const previousUrl = previews[step.key]?.url;
       if (previousUrl) URL.revokeObjectURL(previousUrl);
       const url = URL.createObjectURL(image.blob);
+      // Mostra a foto reprovada (pra explicar visualmente o motivo), mas NÃO
+      // grava no bundle — se já existia uma foto válida antes, ela continua
+      // sendo a oficial até uma nova captura passar na validação.
       setPreviews((p) => ({ ...p, [step.key]: { url, feedback } }));
+      if (feedback.tone === "reject") {
+        chime(220, 0.15);
+        buzz([40, 60, 40, 60]);
+        return;
+      }
       onChange({ ...bundle, [step.key]: image.blob });
       if (feedback.tone === "ok") {
         chime(880);
@@ -542,10 +560,14 @@ export function InstalacaoGuidedCaptureFlow({ bundle, onChange, onComplete }: In
                 exit={{ opacity: 0 }}
                 className={cn(
                   "flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-sm font-medium",
-                  current.feedback.tone === "ok" ? "bg-brand-emerald/15 text-brand-emerald" : "bg-brand-amber/20 text-[#8a5a00]"
+                  current.feedback.tone === "ok"
+                    ? "bg-brand-emerald/15 text-brand-emerald"
+                    : current.feedback.tone === "reject"
+                    ? "bg-red-500/15 text-red-600"
+                    : "bg-brand-amber/20 text-[#8a5a00]"
                 )}
               >
-                {current.feedback.tone === "ok" ? "✅" : "⚠️"}
+                {current.feedback.tone === "ok" ? "✅" : current.feedback.tone === "reject" ? "❌" : "⚠️"}
                 <span className="flex-1">{current.feedback.message}</span>
               </motion.div>
             )}
@@ -574,7 +596,7 @@ export function InstalacaoGuidedCaptureFlow({ bundle, onChange, onComplete }: In
             <button
               type="button"
               onClick={isLast ? onComplete : goNext}
-              disabled={!current || (isLast && !allDone)}
+              disabled={!current || current.feedback.tone === "reject" || (isLast && !allDone)}
               className="ml-auto inline-flex h-12 items-center gap-2 rounded-2xl bg-grad-emerald px-5 text-sm font-semibold text-white shadow-glow transition disabled:opacity-50"
             >
               {isLast ? "Concluir" : "Próximo"}
@@ -666,13 +688,18 @@ function ProgressHeader({
 
 function CaptureArea({ preview, busy, onPick }: { preview?: PreviewState; busy: boolean; onPick: () => void }) {
   const hasPreview = !!preview?.url;
+  const rejected = preview?.feedback.tone === "reject";
   return (
     <button
       type="button"
       onClick={onPick}
       className={cn(
         "relative w-full overflow-hidden rounded-3xl border-2 border-dashed transition",
-        hasPreview ? "border-brand-emerald/60 bg-black" : "border-brand-steel bg-brand-ice hover:border-brand-emerald hover:bg-white"
+        hasPreview
+          ? rejected
+            ? "border-red-500/60 bg-black"
+            : "border-brand-emerald/60 bg-black"
+          : "border-brand-steel bg-brand-ice hover:border-brand-emerald hover:bg-white"
       )}
       style={{ aspectRatio: "4/3" }}
     >
@@ -693,11 +720,15 @@ function CaptureArea({ preview, busy, onPick }: { preview?: PreviewState; busy: 
         <span
           className={cn(
             "absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]",
-            preview.feedback.tone === "ok" ? "bg-brand-emerald text-white" : "bg-brand-amber text-brand-deep"
+            preview.feedback.tone === "ok"
+              ? "bg-brand-emerald text-white"
+              : preview.feedback.tone === "reject"
+              ? "bg-red-500 text-white"
+              : "bg-brand-amber text-brand-deep"
           )}
         >
           {preview.feedback.tone === "ok" && <Check className="h-3 w-3" />}
-          {preview.feedback.tone === "ok" ? "Validada" : "Atenção"}
+          {preview.feedback.tone === "ok" ? "Validada" : preview.feedback.tone === "reject" ? "Reprovada" : "Atenção"}
         </span>
       )}
 
