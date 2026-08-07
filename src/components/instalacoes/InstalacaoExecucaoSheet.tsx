@@ -153,7 +153,11 @@ export function InstalacaoExecucaoSheet({
         if (blob) fotosPayload[key] = blob;
       });
       await instalacoesService.finalizarInstalacao(instalacao.id, {
-        checklist,
+        // "Registro fotográfico completo" não tem toggle manual próprio (não
+        // faz sentido perguntar de novo o que o sistema já sabe) — deriva do
+        // card de captura logo abaixo, que já é a fonte de verdade das 7
+        // fotos. Sempre true aqui, já que podeFinalizar exige fotosCompletas.
+        checklist: { ...checklist, registroFotografico: fotosCompletas },
         tensaoIdentificadaId: tensaoId,
         fotos: fotosPayload,
       });

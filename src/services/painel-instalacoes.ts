@@ -5,7 +5,21 @@ import type {
   PainelInstalacoesMapaResponse,
   PainelInstalacoesStats,
 } from "@/types/painel-instalacoes";
-import type { TecnicoAtivo } from "@/types";
+import type { Instalacao, TecnicoAtivo } from "@/types";
+
+export interface InstalacaoFile {
+  name: string;
+  url: string;
+  size: number;
+  modifiedAt: string;
+  kind: "image" | "other";
+}
+
+export interface InstalacaoFilesResponse {
+  equipamento: string;
+  folder: string;
+  items: InstalacaoFile[];
+}
 
 /**
  * Service do painel administrativo para Instalação — paralelo a
@@ -53,5 +67,15 @@ export async function fetchInstalacoesLista(
   if (filtros.offset != null) params.offset = filtros.offset;
 
   const { data } = await api.get<InstalacaoPainelListResponse>("/painel/instalacoes/lista", { params });
+  return data;
+}
+
+export async function fetchInstalacaoDetalhe(id: string | number): Promise<Instalacao> {
+  const { data } = await api.get<Instalacao>(`/painel/instalacoes/${id}`);
+  return data;
+}
+
+export async function fetchInstalacaoFiles(id: string | number): Promise<InstalacaoFilesResponse> {
+  const { data } = await api.get<InstalacaoFilesResponse>(`/painel/instalacoes/${id}/files`);
   return data;
 }
