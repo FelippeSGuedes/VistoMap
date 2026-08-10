@@ -53,6 +53,20 @@ export async function ensureRecusasTable(): Promise<void> {
     await execute(`ALTER TABLE \`${TABLE}\` ADD COLUMN foto_path VARCHAR(255) NULL AFTER justificativa`);
   }
 
+  // Migração defensiva: status 'REABERTA' (vistoria reaberta a partir de
+  // Rejeitadas — some da fila de rejeitadas/contagem sem precisar mexer em
+  // nenhuma query de leitura, que já filtram por status='APROVADO').
+  const [statusCol] = await query<{ COLUMN_TYPE: string }>(
+    `SELECT COLUMN_TYPE FROM information_schema.columns
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'status'`,
+    [TABLE]
+  );
+  if (statusCol && !statusCol.COLUMN_TYPE.includes("REABERTA")) {
+    await execute(
+      `ALTER TABLE \`${TABLE}\` MODIFY COLUMN status ENUM('PENDENTE','APROVADO','REPROVADO','REABERTA') NOT NULL DEFAULT 'PENDENTE'`
+    );
+  }
+
   ensured = true;
 }
 
@@ -97,7 +111,7 @@ export interface RecusaRow {
   respostas_json: string | null;
   justificativa: string;
   foto_path: string | null;
-  status: "PENDENTE" | "APROVADO" | "REPROVADO";
+  status: "PENDENTE" | "APROVADO" | "REPROVADO" | "REABERTA";
   motivo_reprovacao: string | null;
   criado_em: string;
   resolvido_em: string | null;
@@ -113,7 +127,7 @@ export interface Recusa {
   respostas: Record<string, string>;
   justificativa: string;
   fotoPath: string | null;
-  status: "PENDENTE" | "APROVADO" | "REPROVADO";
+  status: "PENDENTE" | "APROVADO" | "REPROVADO" | "REABERTA";
   motivoReprovacao: string | null;
   criadoEm: string;
   resolvidoEm: string | null;
@@ -168,6 +182,19 @@ export async function resolverRecusa(
     `UPDATE \`${TABLE}\` SET status = ?, motivo_reprovacao = ?, resolvido_em = NOW() WHERE id = ?`,
     [status, status === "REPROVADO" ? (motivoReprovacao ?? "").trim() : null, id]
   );
+}
+
+/**
+ * Reabre uma recusa aprovada — usado pelo "Reatribuir e reabrir" de
+ * Rejeitadas. A vistoria já foi reatribuída/situação resetada por
+ * reatribuirVistoria(); isso aqui só marca a recusa como não-mais-ativa
+ * (some de /painel/rejeitadas, para de contar como rejeitada nas
+ * estatísticas/mapa — nenhuma dessas leituras precisa mudar, todas já
+ * filtram por status='APROVADO').
+ */
+export async function reabrirRecusa(id: number): Promise<void> {
+  await ensureRecusasTable();
+  await execute(`UPDATE \`${TABLE}\` SET status = 'REABERTA' WHERE id = ?`, [id]);
 }
 
 export interface FetchRecusasFilters {

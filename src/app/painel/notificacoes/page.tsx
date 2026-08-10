@@ -22,6 +22,7 @@ function StatusBadge({ status }: { status: OverrideRequest["status"] }) {
     PENDENTE:  { label: "Aguardando", cls: "bg-orange-50 text-orange-700 border-orange-300" },
     APROVADO:  { label: "Aprovado",   cls: "bg-green-50 text-green-700 border-green-300" },
     REPROVADO: { label: "Recusado",   cls: "bg-red-50 text-red-700 border-red-300" },
+    REABERTA:  { label: "Reaberta",   cls: "bg-blue-50 text-blue-700 border-blue-300" },
   }[status];
   return (
     <span

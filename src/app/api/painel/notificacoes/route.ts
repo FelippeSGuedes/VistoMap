@@ -17,7 +17,7 @@ export interface OverrideRequest {
   equipamento: string;
   tecnico_nome: string;
   justificativa: string;
-  status: "PENDENTE" | "APROVADO" | "REPROVADO";
+  status: "PENDENTE" | "APROVADO" | "REPROVADO" | "REABERTA";
   motivo_reprovacao: string | null;
   distancia_m: number | null;
   exception_label: string | null;

@@ -18,10 +18,12 @@ interface Recusa {
   respostas: Record<string, string>;
   justificativa: string;
   fotoUrl: string | null;
-  status: "PENDENTE" | "APROVADO" | "REPROVADO";
+  status: "PENDENTE" | "APROVADO" | "REPROVADO" | "REABERTA";
   motivoReprovacao: string | null;
   criadoEm: string;
   resolvidoEm: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface Tecnico {
@@ -58,6 +60,8 @@ export default function RejeitadasPage() {
   const [reatrib, setReatrib] = useState<Recusa | null>(null);
   const [novoTecnico, setNovoTecnico] = useState<number | "">("");
   const [motivoReatrib, setMotivoReatrib] = useState("");
+  const [novaLat, setNovaLat] = useState("");
+  const [novaLng, setNovaLng] = useState("");
   const [reatribLoading, setReatribLoading] = useState(false);
 
   const headers = { Authorization: `Bearer ${session?.token}` };
@@ -93,14 +97,28 @@ export default function RejeitadasPage() {
     if (!reatrib || !novoTecnico || !motivoReatrib.trim()) return;
     setReatribLoading(true);
     try {
-      await api.post(
-        `/painel/central-vistorias/${reatrib.vistoriaId}/reatribuir`,
-        { tecnicoId: novoTecnico, motivo: motivoReatrib.trim() },
-        { headers }
-      );
+      const body: { tecnicoId: number; motivo: string; latitude?: number; longitude?: number } = {
+        tecnicoId: novoTecnico,
+        motivo: motivoReatrib.trim(),
+      };
+      // Só manda coordenada se o engenheiro realmente mexeu em alguma das
+      // duas — mas manda o par completo (o backend grava as duas juntas
+      // numa UPDATE só; mandar só metade deixaria a outra sem sentido).
+      const latNum = novaLat.trim() ? Number(novaLat) : null;
+      const lngNum = novaLng.trim() ? Number(novaLng) : null;
+      const coordMudou =
+        (latNum != null && Number.isFinite(latNum) && latNum !== reatrib.latitude) ||
+        (lngNum != null && Number.isFinite(lngNum) && lngNum !== reatrib.longitude);
+      if (coordMudou && latNum != null && Number.isFinite(latNum) && lngNum != null && Number.isFinite(lngNum)) {
+        body.latitude = latNum;
+        body.longitude = lngNum;
+      }
+      await api.post(`/painel/rejeitadas/${reatrib.id}/reabrir`, body, { headers });
       setReatrib(null);
       setNovoTecnico("");
       setMotivoReatrib("");
+      setNovaLat("");
+      setNovaLng("");
       await fetchData();
     } catch { /* TODO: toast */ }
     finally { setReatribLoading(false); }
@@ -229,7 +247,13 @@ export default function RejeitadasPage() {
                       <div className="mt-3 flex justify-end">
                         <button
                           type="button"
-                          onClick={() => { setReatrib(r); setNovoTecnico(""); setMotivoReatrib(""); }}
+                          onClick={() => {
+                            setReatrib(r);
+                            setNovoTecnico("");
+                            setMotivoReatrib("");
+                            setNovaLat(r.latitude != null ? String(r.latitude) : "");
+                            setNovaLng(r.longitude != null ? String(r.longitude) : "");
+                          }}
                           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-95"
                           style={{ border: `1px solid ${tint("#3B82F6", 0.35)}`, background: tint("#3B82F6", 0.12), color: "#3B82F6" }}
                         >
@@ -269,7 +293,7 @@ export default function RejeitadasPage() {
             </div>
 
             <p className="mb-3 rounded-xl px-3 py-2 text-[12px]" style={{ background: tint(ACCENT, 0.12), color: "var(--vm-text-soft)" }}>
-              Volta pra fila (situação "A Vistoriar") com o técnico escolhido — use quando a recusa foi aceita por engano ou a situação mudou.
+              Volta pra fila (situação "A Vistoriar") com o técnico escolhido e ele recebe uma notificação avisando. Se a rejeição foi por coordenada errada, corrija abaixo antes de reabrir.
             </p>
 
             <label className="mb-1 block text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Novo técnico</label>
@@ -288,6 +312,28 @@ export default function RejeitadasPage() {
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: "var(--vm-faint)" }} />
+            </div>
+
+            <label className="mb-1 block text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Corrigir coordenadas (opcional)</label>
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                step="any"
+                value={novaLat}
+                onChange={(e) => setNovaLat(e.target.value)}
+                placeholder="Latitude"
+                className="w-full rounded-xl px-3 py-2 text-[13px] outline-none focus:border-blue-400"
+                style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
+              />
+              <input
+                type="number"
+                step="any"
+                value={novaLng}
+                onChange={(e) => setNovaLng(e.target.value)}
+                placeholder="Longitude"
+                className="w-full rounded-xl px-3 py-2 text-[13px] outline-none focus:border-blue-400"
+                style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
+              />
             </div>
 
             <label className="mb-1 block text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Motivo da reabertura *</label>
