@@ -207,14 +207,30 @@ body {
   height: 210mm;
 }
 
-/* FOTO1 é obrigatoriamente horizontal (paisagem) — caixa proporcional a
-   esse enquadramento em vez da caixa alta/vertical padrão. Ela continua
-   dividindo a página com a FOTO2 (a favor de manter as duas fotos juntas
-   na mesma página); como a linha da tabela segue a altura da célula mais
-   alta, sobra espaço em branco abaixo dela — aceito, pedido do usuário
-   2026-08-07. */
-.card-img-landscape {
-  height: 70mm;
+/* PÁGINA 2 — FOTO1 (principal, horizontal, grande) empilhada acima da
+   FOTO2 (complementar, vertical, menor, centralizada) — pedido do usuário
+   2026-08-10, sem tabela: posicionamento absoluto direto, igual ao padrão
+   das outras páginas do documento. */
+.card-principal {
+  position: absolute;
+  top: 40mm;
+  left: 10mm;
+  width: 190mm;
+}
+
+.card-img-principal {
+  height: 120mm;
+}
+
+.card-complementar {
+  position: absolute;
+  top: 179mm;
+  left: 65mm;
+  width: 80mm;
+}
+
+.card-img-complementar {
+  height: 85mm;
 }
 
 .card-photo {

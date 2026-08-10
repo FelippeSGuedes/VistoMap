@@ -32,10 +32,10 @@
       </colgroup>
       <tbody>
         <tr>
-          {%- for src, num, label, orient in photos %}
+          {%- for src, num, label in photos %}
           <td class="gcell"{% if photos|length == 1 %} colspan="2"{% endif %}>
             <figure class="card{% if photos|length == 1 %} card-wide{% endif %}">
-              <div class="card-img{% if photos|length == 1 %} card-img-wide{% elif orient == 'h' %} card-img-landscape{% endif %}">
+              <div class="card-img{% if photos|length == 1 %} card-img-wide{% endif %}">
                 <img class="card-photo" src="{{ src }}" alt="{{ label }}">
               </div>
               <figcaption class="card-cap">{{ num }}. {{ label }}</figcaption>
@@ -170,12 +170,44 @@
   </main>
 
   <!-- ============================================================= -->
-  <!-- PÁGINAS 2-5 — Registro fotográfico (7 fotos fixas, 2 por       -->
+  <!-- PÁGINA 2 — foto principal (horizontal) + complementar          -->
+  <!-- (vertical, menor, centralizada) — layout empilhado pedido      -->
+  <!-- pelo usuário 2026-08-10, substitui o lado-a-lado do macro      -->
+  <!-- gallery_page só nesta página.                                  -->
+  <!-- ============================================================= -->
+  <section class="gallery-sheet">
+    <div class="classification">Uso Público CPFL</div>
+
+    <header class="document-header" aria-label="Cabeçalho do registro fotográfico">
+      <img class="brand-logo brand-logo-cpfl" src="assets/logo-cpfl.png" alt="CPFL Energia">
+      <img class="brand-logo brand-logo-nansen" src="assets/logo-nansen.png" alt="Nansen">
+    </header>
+
+    <h1 class="document-title">Registro Fotográfico — {{ NAME }}</h1>
+
+    <figure class="card card-principal">
+      <div class="card-img card-img-principal">
+        <img class="card-photo" src="{{ FOTO1 }}" alt="Chegada e inspeção">
+      </div>
+      <figcaption class="card-cap">1. Chegada e inspeção</figcaption>
+    </figure>
+
+    <figure class="card card-complementar">
+      <div class="card-img card-img-complementar">
+        <img class="card-photo" src="{{ FOTO2 }}" alt="Preparação do material">
+      </div>
+      <figcaption class="card-cap">2. Preparação do material</figcaption>
+    </figure>
+
+    <img class="page-marker" src="assets/footer-marker.png" alt="" aria-hidden="true">
+  </section>
+
+  <!-- ============================================================= -->
+  <!-- PÁGINAS 3-5 — Registro fotográfico (fotos restantes, 2 por     -->
   <!-- página pra ficarem maiores — pedido dos avaliadores 2026-08-07) -->
   <!-- ============================================================= -->
-  {{ gallery_page([(FOTO1, 1, "Chegada e inspeção", "h"), (FOTO2, 2, "Preparação do material", "v")]) }}
-  {{ gallery_page([(FOTO3, 3, "Fixação da cinta", "v"), (FOTO4, 4, "Fixação do Access Point", "v")]) }}
-  {{ gallery_page([(FOTO5, 5, "Teste de tensão", "v"), (FOTO6, 6, "Vista frontal", "v")]) }}
-  {{ gallery_page([(FOTO7, 7, "Vista geral final", "v")]) }}
+  {{ gallery_page([(FOTO3, 3, "Fixação da cinta"), (FOTO4, 4, "Fixação do Access Point")]) }}
+  {{ gallery_page([(FOTO5, 5, "Teste de tensão"), (FOTO6, 6, "Vista frontal")]) }}
+  {{ gallery_page([(FOTO7, 7, "Vista geral final")]) }}
 </body>
 </html>
