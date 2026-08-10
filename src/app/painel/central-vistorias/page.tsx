@@ -224,6 +224,8 @@ export default function CentralVistoriasPage() {
   const [devItens, setDevItens] = useState<string[]>([]);
   const [devMotivos, setDevMotivos] = useState<string[]>([]);
   const [devMotivoOutro, setDevMotivoOutro] = useState("");
+  const [devOutroTecnico, setDevOutroTecnico] = useState(false);
+  const [devNovoTecnicoId, setDevNovoTecnicoId] = useState<number | "">("");
   const [devLoading, setDevLoading] = useState(false);
 
   const headers = { Authorization: `Bearer ${session?.token}` };
@@ -295,17 +297,25 @@ export default function CentralVistoriasPage() {
   async function handleDevolver() {
     if (!devolvendo || devItens.length === 0 || devMotivos.length === 0) return;
     if (devMotivos.includes("Outro") && !devMotivoOutro.trim()) return;
+    if (devOutroTecnico && !devNovoTecnicoId) return;
     setDevLoading(true);
     try {
       await api.post(
         `/painel/central-vistorias/${devolvendo.id}/devolver`,
-        { itens: devItens, motivos: devMotivos, motivoOutro: devMotivoOutro.trim() || undefined },
+        {
+          itens: devItens,
+          motivos: devMotivos,
+          motivoOutro: devMotivoOutro.trim() || undefined,
+          novoTecnicoId: devOutroTecnico && devNovoTecnicoId ? devNovoTecnicoId : undefined,
+        },
         { headers }
       );
       setDevolvendo(null);
       setDevItens([]);
       setDevMotivos([]);
       setDevMotivoOutro("");
+      setDevOutroTecnico(false);
+      setDevNovoTecnicoId("");
       await fetchData();
     } catch { /* TODO: toast */ }
     finally { setDevLoading(false); }
@@ -458,6 +468,8 @@ export default function CentralVistoriasPage() {
                           setDevItens([]);
                           setDevMotivos([]);
                           setDevMotivoOutro("");
+                          setDevOutroTecnico(false);
+                          setDevNovoTecnicoId("");
                         }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
                         style={{ border: `1px solid ${tint("#D97706", 0.4)}`, background: tint("#D97706", 0.14), color: "#D97706" }}
@@ -760,6 +772,52 @@ export default function CentralVistoriasPage() {
                   </p>
                 )
               )}
+
+              {/* Redirecionar pra outro técnico — nem sempre quem devolveu consegue resolver (mudou de rota, saiu). */}
+              <label
+                className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-3 text-[12.5px] font-medium transition"
+                style={{
+                  borderColor: devOutroTecnico ? tint(DEV_PURPLE, 0.5) : "rgba(255,255,255,0.08)",
+                  background: devOutroTecnico ? tint(DEV_PURPLE, 0.12) : "rgba(255,255,255,0.03)",
+                  color: devOutroTecnico ? "#F4F4F5" : "#D4D4D8",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={devOutroTecnico}
+                  onChange={(e) => {
+                    setDevOutroTecnico(e.target.checked);
+                    if (!e.target.checked) setDevNovoTecnicoId("");
+                  }}
+                  className="h-4 w-4 shrink-0 rounded"
+                  style={{ accentColor: DEV_PURPLE }}
+                />
+                Devolver para outro técnico (o atual não consegue resolver)
+              </label>
+
+              {devOutroTecnico && (
+                <div className="relative">
+                  <select
+                    value={devNovoTecnicoId}
+                    onChange={(e) => setDevNovoTecnicoId(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full appearance-none rounded-xl px-3.5 py-2.5 text-[12.5px] outline-none"
+                    style={{ background: "#1B1E24", border: "1px solid rgba(255,255,255,0.08)", color: "#F4F4F5" }}
+                  >
+                    <option value="">Selecione o técnico…</option>
+                    {tecnicos
+                      .filter((t) => t.users_id !== devolvendo?.tecnico_id)
+                      .map((t) => (
+                        <option key={t.users_id} value={t.users_id}>
+                          {t.nome} {t.status_operacional !== "offline" ? "●" : "○"}
+                        </option>
+                      ))}
+                  </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                    style={{ color: "#9CA3AF" }}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Footer */}
@@ -781,6 +839,7 @@ export default function CentralVistoriasPage() {
                   devItens.length === 0 ||
                   devMotivos.length === 0 ||
                   (devMotivos.includes("Outro") && !devMotivoOutro.trim()) ||
+                  (devOutroTecnico && !devNovoTecnicoId) ||
                   devLoading
                 }
                 onClick={handleDevolver}

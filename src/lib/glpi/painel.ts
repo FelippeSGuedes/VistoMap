@@ -1536,15 +1536,31 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
  *     quando o técnico corrigir e reenviar (Fase 2), via o mesmo fluxo que já
  *     popula o aux no finalizar/route.ts.
  */
-export async function devolverVistoria(vistoriaId: number): Promise<{ affected: number }> {
+/**
+ * @param novoTecnicoId Se informado, também redireciona a vistoria pra
+ *   outro técnico como parte da mesma devolução — usado quando o técnico
+ *   original não tem como resolver a correção (ex.: mudou de rota, saiu da
+ *   empresa). Sem isso, a devolução sempre volta pro MESMO técnico.
+ */
+export async function devolverVistoria(
+  vistoriaId: number,
+  novoTecnicoId?: number
+): Promise<{ affected: number }> {
+  const sets = [
+    `\`${SITUACAO_COLUMN}\` = ?`,
+    `plugin_fields_statusvistoriafielddropdowns_id = ?`,
+    `datadavistoriafield = NULL`,
+    `dataenvioconcessionriafield = NULL`,
+  ];
+  const params: unknown[] = [SITUACAO_DEVOLVIDA, STATUS_VISTORIA_PENDENTE];
+  if (novoTecnicoId != null && novoTecnicoId > 0) {
+    sets.push(`users_id_vistoriadorafield = ?`);
+    params.push(novoTecnicoId);
+  }
+  params.push(vistoriaId);
   const r = await execute(
-    `UPDATE \`${TABLE_FIELDS}\`
-        SET \`${SITUACAO_COLUMN}\`   = ?,
-            plugin_fields_statusvistoriafielddropdowns_id = ?,
-            datadavistoriafield      = NULL,
-            dataenvioconcessionriafield = NULL
-      WHERE items_id = ?`,
-    [SITUACAO_DEVOLVIDA, STATUS_VISTORIA_PENDENTE, vistoriaId]
+    `UPDATE \`${TABLE_FIELDS}\` SET ${sets.join(", ")} WHERE items_id = ?`,
+    params
   );
   return { affected: r.affectedRows };
 }

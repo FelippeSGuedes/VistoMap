@@ -14,6 +14,8 @@ interface DevolverBody {
   itens?: string[];
   motivos?: string[];
   motivoOutro?: string;
+  /** Redireciona a devolução pra outro técnico — o original pode não ter como resolver. */
+  novoTecnicoId?: number;
 }
 
 /**
@@ -60,6 +62,8 @@ export async function POST(
   if (motivos.includes("Outro") && !motivoOutro) {
     return NextResponse.json({ message: "Descreva o motivo em \"Outro\"" }, { status: 400 });
   }
+  const novoTecnicoId =
+    typeof body.novoTecnicoId === "number" && body.novoTecnicoId > 0 ? body.novoTecnicoId : undefined;
 
   const [row] = await query<{ equipamento: string; tecnico_id: number | null; tecnico_nome: string | null }>(
     `SELECT ne.name AS equipamento, f.users_id_vistoriadorafield AS tecnico_id, u.name AS tecnico_nome
@@ -72,15 +76,29 @@ export async function POST(
   );
   if (!row) return NextResponse.json({ message: "Equipamento não encontrado" }, { status: 404 });
 
+  // Se veio um novo técnico, ele — não o original — é quem passa a ser o
+  // responsável pela devolução (registro em devolucoes.tecnico_id, que é
+  // o que o app do técnico consulta pra saber se HÁ algo pendente pra ele).
+  let tecnicoFinalId = row.tecnico_id;
+  let tecnicoFinalNome = row.tecnico_nome;
+  if (novoTecnicoId) {
+    const [novoTec] = await query<{ name: string }>("SELECT name FROM glpi_users WHERE id = ? LIMIT 1", [
+      novoTecnicoId,
+    ]);
+    if (!novoTec) return NextResponse.json({ message: "Técnico inválido" }, { status: 400 });
+    tecnicoFinalId = novoTecnicoId;
+    tecnicoFinalNome = novoTec.name;
+  }
+
   const precisaDeslocamento = devolucaoPrecisaDeslocamento(itens);
 
-  await devolverVistoria(vistoriaId);
+  await devolverVistoria(vistoriaId, novoTecnicoId);
 
   const devolucaoId = await criarDevolucao({
     vistoriaId,
     equipamento: row.equipamento,
-    tecnicoId: row.tecnico_id,
-    tecnicoNome: row.tecnico_nome,
+    tecnicoId: tecnicoFinalId,
+    tecnicoNome: tecnicoFinalNome,
     analistaId: adminId,
     analistaNome: adminNome,
     itens,
@@ -89,9 +107,9 @@ export async function POST(
     precisaDeslocamento,
   });
 
-  if (row.tecnico_id) {
+  if (tecnicoFinalId) {
     void sendPushTo({
-      usersIds: [row.tecnico_id],
+      usersIds: [tecnicoFinalId],
       title: "Vistoria devolvida para correção",
       body: `${row.equipamento} precisa de correção — ${motivos[0]}${motivos.length > 1 ? ` +${motivos.length - 1}` : ""}`,
       data: { url: "/app/vistorias", vistoria_id: String(vistoriaId), tipo: "devolucao" },
@@ -102,7 +120,9 @@ export async function POST(
     ator: { id: adminId, nome: adminNome, role: "admin" },
     acao: "vistoria-devolvida",
     alvo: { tipo: "vistoria", id: String(vistoriaId), label: row.equipamento },
-    descricao: `Devolvida para correção — ${itens.length} item(ns): ${motivos.join(", ")}`,
+    descricao: `Devolvida para correção — ${itens.length} item(ns): ${motivos.join(", ")}${
+      novoTecnicoId ? ` — redirecionada para ${tecnicoFinalNome ?? novoTecnicoId}` : ""
+    }`,
   });
 
   return NextResponse.json({ ok: true, devolucaoId, precisaDeslocamento });
