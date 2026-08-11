@@ -451,6 +451,8 @@ export interface AuditEntry {
     | "override-reprovado"
     | "vistoria-devolvida"
     | "devolucao-resolvida"
+    | "devolucao-editada"
+    | "devolucao-cancelada"
     | "recusa-solicitada"
     | "recusa-aprovada"
     | "recusa-reprovada"

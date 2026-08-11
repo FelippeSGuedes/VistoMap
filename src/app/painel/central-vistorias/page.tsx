@@ -228,6 +228,18 @@ export default function CentralVistoriasPage() {
   const [devNovoTecnicoId, setDevNovoTecnicoId] = useState<number | "">("");
   const [devLoading, setDevLoading] = useState(false);
 
+  // Devolver — corrigir localização do poste (só aparece quando o item
+  // apontado é print da operadora — sinal de que o poste pode estar errado).
+  const [devPosteOpen, setDevPosteOpen] = useState(false);
+  const [devPosteLoading, setDevPosteLoading] = useState(false);
+  const [devPosteOriginal, setDevPosteOriginal] = useState<{
+    psPoste: string; endereco: string; latitude: string; longitude: string;
+  } | null>(null);
+  const [devPsPosteNovo, setDevPsPosteNovo] = useState("");
+  const [devEnderecoNovo, setDevEnderecoNovo] = useState("");
+  const [devLatNovo, setDevLatNovo] = useState("");
+  const [devLngNovo, setDevLngNovo] = useState("");
+
   const headers = { Authorization: `Bearer ${session?.token}` };
 
   const fetchData = useCallback(async () => {
@@ -294,12 +306,66 @@ export default function CentralVistoriasPage() {
     setDevMotivos((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
   }
 
+  const mostrarMudarPoste = devItens.includes("imagem4") || devItens.includes("imagem5");
+
+  // Busca a localização atual do poste só quando a seção "poste errado?"
+  // realmente pode aparecer (evita 1 requisição a mais em toda devolução).
+  useEffect(() => {
+    if (!devolvendo || !mostrarMudarPoste || devPosteOriginal || devPosteLoading) return;
+    setDevPosteLoading(true);
+    api
+      .get<{ vistoria: { endereco?: string | null; latitude?: number | null; longitude?: number | null; fields?: { pspostefield?: string } } }>(
+        `/painel/vistoria/${devolvendo.id}`,
+        { headers }
+      )
+      .then(({ data }) => {
+        const v = data.vistoria;
+        const original = {
+          psPoste: v.fields?.pspostefield ?? "",
+          endereco: v.endereco ?? "",
+          latitude: v.latitude != null ? String(v.latitude) : "",
+          longitude: v.longitude != null ? String(v.longitude) : "",
+        };
+        setDevPosteOriginal(original);
+        setDevPsPosteNovo(original.psPoste);
+        setDevEnderecoNovo(original.endereco);
+        setDevLatNovo(original.latitude);
+        setDevLngNovo(original.longitude);
+      })
+      .catch(() => { /* segue sem prefill — analista digita do zero */ })
+      .finally(() => setDevPosteLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devolvendo, mostrarMudarPoste, devPosteOriginal, devPosteLoading]);
+
+  function resetDevolverState() {
+    setDevolvendo(null);
+    setDevItens([]);
+    setDevMotivos([]);
+    setDevMotivoOutro("");
+    setDevOutroTecnico(false);
+    setDevNovoTecnicoId("");
+    setDevPosteOpen(false);
+    setDevPosteOriginal(null);
+    setDevPsPosteNovo("");
+    setDevEnderecoNovo("");
+    setDevLatNovo("");
+    setDevLngNovo("");
+  }
+
   async function handleDevolver() {
     if (!devolvendo || devItens.length === 0 || devMotivos.length === 0) return;
     if (devMotivos.includes("Outro") && !devMotivoOutro.trim()) return;
     if (devOutroTecnico && !devNovoTecnicoId) return;
     setDevLoading(true);
     try {
+      const posteMudou =
+        mostrarMudarPoste &&
+        devPosteOriginal != null &&
+        (devPsPosteNovo.trim() !== devPosteOriginal.psPoste.trim() ||
+          devEnderecoNovo.trim() !== devPosteOriginal.endereco.trim() ||
+          devLatNovo.trim() !== devPosteOriginal.latitude.trim() ||
+          devLngNovo.trim() !== devPosteOriginal.longitude.trim());
+
       await api.post(
         `/painel/central-vistorias/${devolvendo.id}/devolver`,
         {
@@ -307,15 +373,18 @@ export default function CentralVistoriasPage() {
           motivos: devMotivos,
           motivoOutro: devMotivoOutro.trim() || undefined,
           novoTecnicoId: devOutroTecnico && devNovoTecnicoId ? devNovoTecnicoId : undefined,
+          ...(posteMudou
+            ? {
+                psPoste: devPsPosteNovo.trim() || undefined,
+                endereco: devEnderecoNovo.trim() || undefined,
+                latitude: devLatNovo.trim() ? Number(devLatNovo) : undefined,
+                longitude: devLngNovo.trim() ? Number(devLngNovo) : undefined,
+              }
+            : {}),
         },
         { headers }
       );
-      setDevolvendo(null);
-      setDevItens([]);
-      setDevMotivos([]);
-      setDevMotivoOutro("");
-      setDevOutroTecnico(false);
-      setDevNovoTecnicoId("");
+      resetDevolverState();
       await fetchData();
     } catch { /* TODO: toast */ }
     finally { setDevLoading(false); }
@@ -464,12 +533,8 @@ export default function CentralVistoriasPage() {
                       <button
                         type="button"
                         onClick={() => {
+                          resetDevolverState();
                           setDevolvendo(v);
-                          setDevItens([]);
-                          setDevMotivos([]);
-                          setDevMotivoOutro("");
-                          setDevOutroTecnico(false);
-                          setDevNovoTecnicoId("");
                         }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
                         style={{ border: `1px solid ${tint("#D97706", 0.4)}`, background: tint("#D97706", 0.14), color: "#D97706" }}
@@ -662,7 +727,7 @@ export default function CentralVistoriasPage() {
             >
               <button
                 type="button"
-                onClick={() => setDevolvendo(null)}
+                onClick={resetDevolverState}
                 aria-label="Voltar"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition duration-200 hover:-translate-y-0.5"
                 style={{
@@ -689,7 +754,7 @@ export default function CentralVistoriasPage() {
 
               <button
                 type="button"
-                onClick={() => setDevolvendo(null)}
+                onClick={resetDevolverState}
                 aria-label="Fechar"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition hover:bg-white/5"
               >
@@ -773,6 +838,78 @@ export default function CentralVistoriasPage() {
                 )
               )}
 
+              {/* Print da operadora ruim pode significar que o poste vistoriado
+                  está errado — dá pra corrigir a localização aqui em vez de
+                  depender do técnico digitar certo na tela de correção. */}
+              {mostrarMudarPoste && (
+                <div
+                  className="rounded-xl border px-3.5 py-3"
+                  style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setDevPosteOpen((o) => !o)}
+                    className="flex w-full items-center justify-between gap-2 text-[12.5px] font-semibold"
+                    style={{ color: "#D4D4D8" }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <MapPinOff className="h-4 w-4" style={{ color: DEV_ORANGE }} />
+                      Poste errado? Corrigir localização
+                    </span>
+                    <ChevronDown
+                      className="h-3.5 w-3.5 shrink-0 transition-transform"
+                      style={{ transform: devPosteOpen ? "rotate(180deg)" : "none" }}
+                    />
+                  </button>
+
+                  {devPosteOpen && (
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {devPosteLoading ? (
+                        <p className="col-span-2 py-2 text-[11.5px]" style={{ color: "#9CA3AF" }}>
+                          Carregando localização atual…
+                        </p>
+                      ) : (
+                        <>
+                          <input
+                            value={devPsPosteNovo}
+                            onChange={(e) => setDevPsPosteNovo(e.target.value)}
+                            placeholder="PS do poste"
+                            className="col-span-2 rounded-xl px-3.5 py-2.5 text-[12.5px] outline-none sm:col-span-1"
+                            style={{ background: "#1B1E24", border: "1px solid rgba(255,255,255,0.08)", color: "#F4F4F5" }}
+                          />
+                          <input
+                            value={devEnderecoNovo}
+                            onChange={(e) => setDevEnderecoNovo(e.target.value)}
+                            placeholder="Endereço"
+                            className="col-span-2 rounded-xl px-3.5 py-2.5 text-[12.5px] outline-none sm:col-span-1"
+                            style={{ background: "#1B1E24", border: "1px solid rgba(255,255,255,0.08)", color: "#F4F4F5" }}
+                          />
+                          <input
+                            value={devLatNovo}
+                            onChange={(e) => setDevLatNovo(e.target.value)}
+                            placeholder="Latitude"
+                            inputMode="decimal"
+                            className="rounded-xl px-3.5 py-2.5 text-[12.5px] outline-none"
+                            style={{ background: "#1B1E24", border: "1px solid rgba(255,255,255,0.08)", color: "#F4F4F5" }}
+                          />
+                          <input
+                            value={devLngNovo}
+                            onChange={(e) => setDevLngNovo(e.target.value)}
+                            placeholder="Longitude"
+                            inputMode="decimal"
+                            className="rounded-xl px-3.5 py-2.5 text-[12.5px] outline-none"
+                            style={{ background: "#1B1E24", border: "1px solid rgba(255,255,255,0.08)", color: "#F4F4F5" }}
+                          />
+                        </>
+                      )}
+                      <p className="col-span-2 text-[10.5px]" style={{ color: "#9CA3AF" }}>
+                        Só é salvo se algum valor for realmente alterado.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Redirecionar pra outro técnico — nem sempre quem devolveu consegue resolver (mudou de rota, saiu). */}
               <label
                 className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-3 text-[12.5px] font-medium transition"
@@ -827,7 +964,7 @@ export default function CentralVistoriasPage() {
             >
               <button
                 type="button"
-                onClick={() => setDevolvendo(null)}
+                onClick={resetDevolverState}
                 className="flex-1 rounded-2xl border py-3.5 text-[13.5px] font-semibold transition duration-200 hover:bg-white/5"
                 style={{ borderColor: "rgba(255,255,255,0.12)", color: "#D4D4D8" }}
               >

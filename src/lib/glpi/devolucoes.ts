@@ -29,7 +29,7 @@ export async function ensureDevolucoesTable(): Promise<void> {
       motivos_json         JSON            NOT NULL,
       motivo_outro         TEXT            NULL,
       precisa_deslocamento TINYINT(1)      NOT NULL DEFAULT 0,
-      status               ENUM('PENDENTE','RESOLVIDA') NOT NULL DEFAULT 'PENDENTE',
+      status               ENUM('PENDENTE','RESOLVIDA','CANCELADA') NOT NULL DEFAULT 'PENDENTE',
       criado_em            timestamp       NOT NULL DEFAULT CURRENT_TIMESTAMP,
       resolvido_em         timestamp       NULL DEFAULT NULL,
       PRIMARY KEY (id),
@@ -43,8 +43,8 @@ export async function ensureDevolucoesTable(): Promise<void> {
   // Migração defensiva: se a tabela já existia de uma versão anterior
   // (coluna única `motivo`, sem `motivos_json`), adiciona a coluna nova
   // sem mexer na antiga — evita perder dado de quem já tiver testado.
-  const cols = await query<{ COLUMN_NAME: string }>(
-    `SELECT COLUMN_NAME FROM information_schema.columns
+  const cols = await query<{ COLUMN_NAME: string; COLUMN_TYPE: string }>(
+    `SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.columns
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
     [TABLE]
   );
@@ -57,6 +57,16 @@ export async function ensureDevolucoesTable(): Promise<void> {
         `UPDATE \`${TABLE}\` SET motivos_json = JSON_ARRAY(motivo) WHERE motivos_json IS NULL`
       );
     }
+  }
+
+  // Migração defensiva: tabelas criadas antes de CANCELADA existir no ENUM
+  // (devolução anulada — vistoria cancelada antes do técnico corrigir, ou
+  // devolução indevida anulada manualmente pelo admin).
+  const statusCol = cols.find((c) => c.COLUMN_NAME === "status");
+  if (statusCol && !statusCol.COLUMN_TYPE.includes("CANCELADA")) {
+    await execute(
+      `ALTER TABLE \`${TABLE}\` MODIFY COLUMN status ENUM('PENDENTE','RESOLVIDA','CANCELADA') NOT NULL DEFAULT 'PENDENTE'`
+    );
   }
 
   ensured = true;
@@ -110,7 +120,7 @@ export interface DevolucaoRow {
   motivos_json: string | null;
   motivo_outro: string | null;
   precisa_deslocamento: number;
-  status: "PENDENTE" | "RESOLVIDA";
+  status: "PENDENTE" | "RESOLVIDA" | "CANCELADA";
   criado_em: string;
   resolvido_em: string | null;
 }
@@ -127,7 +137,7 @@ export interface Devolucao {
   motivos: string[];
   motivoOutro: string | null;
   precisaDeslocamento: boolean;
-  status: "PENDENTE" | "RESOLVIDA";
+  status: "PENDENTE" | "RESOLVIDA" | "CANCELADA";
   criadoEm: string;
   resolvidoEm: string | null;
 }
@@ -212,11 +222,71 @@ export async function resolverDevolucao(id: number): Promise<void> {
   );
 }
 
+/** Anula manualmente uma devolução PENDENTE (indevida, duplicada etc). */
+export async function cancelarDevolucao(id: number): Promise<void> {
+  await ensureDevolucoesTable();
+  await execute(
+    `UPDATE \`${TABLE}\` SET status = 'CANCELADA', resolvido_em = NOW() WHERE id = ? AND status = 'PENDENTE'`,
+    [id]
+  );
+}
+
+/**
+ * Cancela toda devolução PENDENTE de uma vistoria — chamado quando a
+ * vistoria em si é cancelada (Central de Vistorias), pra não deixar a
+ * devolução presa em PENDENTE pra sempre (isso bloqueava o técnico de
+ * iniciar vistorias novas no dia seguinte, via fetchDevolucaoPendente).
+ * Retorna quantas linhas foram canceladas (pra log/auditoria).
+ */
+export async function cancelarDevolucoesPorVistoria(vistoriaId: number): Promise<number> {
+  await ensureDevolucoesTable();
+  const result = await execute(
+    `UPDATE \`${TABLE}\` SET status = 'CANCELADA', resolvido_em = NOW() WHERE vistoria_id = ? AND status = 'PENDENTE'`,
+    [vistoriaId]
+  );
+  return result.affectedRows;
+}
+
+export interface EditarDevolucaoInput {
+  itens: string[];
+  motivos: string[];
+  motivoOutro?: string | null;
+  precisaDeslocamento: boolean;
+  tecnicoId?: number | null;
+  tecnicoNome?: string | null;
+}
+
+/** Edita itens/motivos/técnico responsável de uma devolução ainda PENDENTE. */
+export async function editarDevolucao(id: number, input: EditarDevolucaoInput): Promise<void> {
+  await ensureDevolucoesTable();
+  await execute(
+    `UPDATE \`${TABLE}\`
+        SET itens_json = ?, motivos_json = ?, motivo_outro = ?, precisa_deslocamento = ?,
+            tecnico_id = ?, tecnico_nome = ?
+      WHERE id = ? AND status = 'PENDENTE'`,
+    [
+      JSON.stringify(input.itens),
+      JSON.stringify(input.motivos),
+      input.motivoOutro ?? null,
+      input.precisaDeslocamento ? 1 : 0,
+      input.tecnicoId ?? null,
+      input.tecnicoNome ?? null,
+      id,
+    ]
+  );
+}
+
+export async function fetchDevolucaoPorId(id: number): Promise<Devolucao | null> {
+  await ensureDevolucoesTable();
+  const rows = await query<DevolucaoRow>(`SELECT * FROM \`${TABLE}\` WHERE id = ? LIMIT 1`, [id]);
+  return rows[0] ? mapRow(rows[0]) : null;
+}
+
 export interface FetchDevolucoesFilters {
   desde?: string;
   ate?: string;
   tecnicoId?: number;
-  status?: "PENDENTE" | "RESOLVIDA";
+  status?: "PENDENTE" | "RESOLVIDA" | "CANCELADA";
   limit?: number;
 }
 
@@ -254,6 +324,7 @@ export async function fetchDevolucoes(
 export interface DevolucoesStats {
   total: number;
   pendentes: number;
+  canceladas: number;
   rankMotivos: Array<{ motivo: string; total: number }>;
   rankTecnicos: Array<{ tecnicoId: number; tecnicoNome: string; total: number }>;
 }
@@ -266,9 +337,13 @@ export async function fetchDevolucoesStats(
   const motivoCount = new Map<string, number>();
   const tecnicoCount = new Map<number, { nome: string; total: number }>();
   let pendentes = 0;
+  let canceladas = 0;
 
   for (const d of itens) {
     if (d.status === "PENDENTE") pendentes++;
+    if (d.status === "CANCELADA") canceladas++;
+    // Devolução anulada não reflete um padrão real de correção — fora do rank.
+    if (d.status === "CANCELADA") continue;
     // Uma devolução com N motivos conta 1x pra CADA motivo no rank
     // (o rank mede "quantas vezes esse motivo apareceu", não devoluções).
     for (const motivo of d.motivos) {
@@ -289,5 +364,5 @@ export async function fetchDevolucoesStats(
     .map(([tecnicoId, v]) => ({ tecnicoId, tecnicoNome: v.nome, total: v.total }))
     .sort((a, b) => b.total - a.total);
 
-  return { total: itens.length, pendentes, rankMotivos, rankTecnicos };
+  return { total: itens.length, pendentes, canceladas, rankMotivos, rankTecnicos };
 }

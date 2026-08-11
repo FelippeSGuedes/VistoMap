@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
-import { devolverVistoria } from "@/lib/glpi/painel";
+import { devolverVistoria, atualizarCamposVistoria } from "@/lib/glpi/painel";
 import { criarDevolucao } from "@/lib/glpi/devolucoes";
 import { devolucaoPrecisaDeslocamento } from "@/lib/glpi/devolucaoItens";
 import { auditInsert } from "@/lib/glpi/audit";
@@ -16,6 +16,15 @@ interface DevolverBody {
   motivoOutro?: string;
   /** Redireciona a devolução pra outro técnico — o original pode não ter como resolver. */
   novoTecnicoId?: number;
+  /**
+   * Correção de localização — só faz sentido quando um dos itens apontados
+   * é print da operadora (RSRP), sinal de que a vistoria pode ter sido feita
+   * no poste errado. Envia só os campos que o analista de fato mudou.
+   */
+  psPoste?: string;
+  endereco?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 /**
@@ -65,6 +74,12 @@ export async function POST(
   const novoTecnicoId =
     typeof body.novoTecnicoId === "number" && body.novoTecnicoId > 0 ? body.novoTecnicoId : undefined;
 
+  const psPoste = typeof body.psPoste === "string" && body.psPoste.trim() ? body.psPoste.trim() : undefined;
+  const endereco = typeof body.endereco === "string" && body.endereco.trim() ? body.endereco.trim() : undefined;
+  const latitude = typeof body.latitude === "number" && Number.isFinite(body.latitude) ? body.latitude : undefined;
+  const longitude = typeof body.longitude === "number" && Number.isFinite(body.longitude) ? body.longitude : undefined;
+  const localizacaoCorrigida = psPoste != null || endereco != null || latitude != null || longitude != null;
+
   const [row] = await query<{ equipamento: string; tecnico_id: number | null; tecnico_nome: string | null }>(
     `SELECT ne.name AS equipamento, f.users_id_vistoriadorafield AS tecnico_id, u.name AS tecnico_nome
        FROM glpi_networkequipments ne
@@ -94,6 +109,15 @@ export async function POST(
 
   await devolverVistoria(vistoriaId, novoTecnicoId);
 
+  if (localizacaoCorrigida) {
+    await atualizarCamposVistoria(vistoriaId, {
+      pspostefield: psPoste,
+      endereofield: endereco,
+      latitudefield: latitude != null ? String(latitude) : undefined,
+      longitudefield: longitude != null ? String(longitude) : undefined,
+    });
+  }
+
   const devolucaoId = await criarDevolucao({
     vistoriaId,
     equipamento: row.equipamento,
@@ -122,7 +146,7 @@ export async function POST(
     alvo: { tipo: "vistoria", id: String(vistoriaId), label: row.equipamento },
     descricao: `Devolvida para correção — ${itens.length} item(ns): ${motivos.join(", ")}${
       novoTecnicoId ? ` — redirecionada para ${tecnicoFinalNome ?? novoTecnicoId}` : ""
-    }`,
+    }${localizacaoCorrigida ? " — localização do poste corrigida" : ""}`,
   });
 
   return NextResponse.json({ ok: true, devolucaoId, precisaDeslocamento });

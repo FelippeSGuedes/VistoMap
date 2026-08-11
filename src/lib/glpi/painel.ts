@@ -659,6 +659,7 @@ export interface AtualizarCamposInput {
   observaofield?: string;
   latitudefield?: string;
   longitudefield?: string;
+  pspostefield?: string;
 }
 
 const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
@@ -669,6 +670,7 @@ const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "observaofield",
   "latitudefield",
   "longitudefield",
+  "pspostefield",
 ]);
 
 export async function atualizarCamposVistoria(
@@ -1579,5 +1581,21 @@ export async function reatribuirVistoria(
             \`${SITUACAO_COLUMN}\`    = ?
       WHERE items_id = ?`,
     [novoTecnicoId, SITUACAO_A_VISTORIAR, vistoriaId]
+  );
+}
+
+/**
+ * Troca só o técnico responsável, SEM mexer na situação — usado ao editar
+ * uma devolução já enviada (a vistoria continua Devolvida para Correção,
+ * só muda quem tem que resolver). Diferente de reatribuirVistoria(), que
+ * reseta a situação pra "A Vistoriar" (fluxo de reatribuição normal).
+ */
+export async function trocarTecnicoResponsavel(
+  vistoriaId: number,
+  novoTecnicoId: number
+): Promise<void> {
+  await execute(
+    `UPDATE \`${TABLE_FIELDS}\` SET users_id_vistoriadorafield = ? WHERE items_id = ?`,
+    [novoTecnicoId, vistoriaId]
   );
 }

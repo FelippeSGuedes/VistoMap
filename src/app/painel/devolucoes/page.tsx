@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Clock, RefreshCw,
+  AlertTriangle, Ban, CalendarClock, CheckCircle2, ChevronRight, Clock, RefreshCw,
   Trophy, Undo2, Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
@@ -20,14 +20,20 @@ interface Devolucao {
   motivos: string[];
   motivoOutro: string | null;
   precisaDeslocamento: boolean;
-  status: "PENDENTE" | "RESOLVIDA";
+  status: "PENDENTE" | "RESOLVIDA" | "CANCELADA";
   criadoEm: string;
   resolvidoEm: string | null;
+}
+
+interface Tecnico {
+  users_id: number;
+  nome: string;
 }
 
 interface DevolucoesStats {
   total: number;
   pendentes: number;
+  canceladas: number;
   rankMotivos: Array<{ motivo: string; total: number }>;
   rankTecnicos: Array<{ tecnicoId: number; tecnicoNome: string; total: number }>;
 }
@@ -98,6 +104,7 @@ export default function DevolucoesPage() {
   const { session } = useAuthStore();
   const [stats, setStats] = useState<DevolucoesStats | null>(null);
   const [recentes, setRecentes] = useState<Devolucao[]>([]);
+  const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState<Periodo>("30");
   const [detalheDevolucao, setDetalheDevolucao] = useState<Devolucao | null>(null);
@@ -109,12 +116,16 @@ export default function DevolucoesPage() {
     setLoading(true);
     try {
       const desde = desdeDe(periodo);
-      const { data } = await api.get<{ stats: DevolucoesStats; recentes: Devolucao[] }>(
-        "/painel/devolucoes",
-        { headers, params: desde ? { desde } : {} }
-      );
-      setStats(data.stats);
-      setRecentes(data.recentes);
+      const [devRes, tRes] = await Promise.all([
+        api.get<{ stats: DevolucoesStats; recentes: Devolucao[] }>(
+          "/painel/devolucoes",
+          { headers, params: desde ? { desde } : {} }
+        ),
+        api.get<{ tecnicos: Tecnico[] }>("/painel/mapa", { headers }),
+      ]);
+      setStats(devRes.data.stats);
+      setRecentes(devRes.data.recentes);
+      setTecnicos(tRes.data.tecnicos ?? []);
     } catch { /* ignora */ }
     finally { setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,7 +133,7 @@ export default function DevolucoesPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const resolvidas = stats ? stats.total - stats.pendentes : 0;
+  const resolvidas = stats ? stats.total - stats.pendentes - stats.canceladas : 0;
   const taxaResolucao = stats && stats.total > 0 ? Math.round((resolvidas / stats.total) * 100) : 0;
 
   const maxMotivo = useMemo(
@@ -186,6 +197,7 @@ export default function DevolucoesPage() {
         <StatCard icon={Undo2} label="Total de devoluções" value={String(stats?.total ?? "—")} color={ACCENT} />
         <StatCard icon={Clock} label="Pendentes de correção" value={String(stats?.pendentes ?? "—")} color="#DC2626" />
         <StatCard icon={CheckCircle2} label="Corrigidas" value={String(resolvidas)} color="#059669" />
+        <StatCard icon={Ban} label="Canceladas" value={String(stats?.canceladas ?? "—")} color="#6B7280" />
         <StatCard icon={Trophy} label="Taxa de resolução" value={`${taxaResolucao}%`} color="#3B82F6" />
       </div>
 
@@ -272,7 +284,11 @@ export default function DevolucoesPage() {
           <p className="py-8 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>Nenhuma devolução no período.</p>
         ) : (
           <ul className="divide-y" style={{ borderColor: "var(--vm-border-soft)" }}>
-            {recentes.map((d) => (
+            {recentes.map((d) => {
+              const cor = d.status === "PENDENTE" ? "#DC2626" : d.status === "CANCELADA" ? "#6B7280" : "#059669";
+              const label = d.status === "PENDENTE" ? "Pendente" : d.status === "CANCELADA" ? "Cancelada" : "Corrigida";
+              const Icon = d.status === "PENDENTE" ? Clock : d.status === "CANCELADA" ? Ban : CheckCircle2;
+              return (
               <li key={d.id} className="py-3 first:pt-0 last:pb-0">
               <button
                 type="button"
@@ -281,21 +297,18 @@ export default function DevolucoesPage() {
               >
                 <span
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: tint(d.status === "PENDENTE" ? "#DC2626" : "#059669", 0.14), color: d.status === "PENDENTE" ? "#DC2626" : "#059669" }}
+                  style={{ background: tint(cor, 0.14), color: cor }}
                 >
-                  {d.status === "PENDENTE" ? <Clock className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                  <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[12.5px] font-semibold" style={{ color: "var(--vm-text)" }}>{d.equipamento}</span>
                     <span
                       className="shrink-0 rounded-full px-1.5 py-px text-[9.5px] font-bold"
-                      style={{
-                        background: tint(d.status === "PENDENTE" ? "#DC2626" : "#059669", 0.14),
-                        color: d.status === "PENDENTE" ? "#DC2626" : "#059669",
-                      }}
+                      style={{ background: tint(cor, 0.14), color: cor }}
                     >
-                      {d.status === "PENDENTE" ? "Pendente" : "Corrigida"}
+                      {label}
                     </span>
                   </div>
                   <p className="truncate text-[11px]" style={{ color: "var(--vm-muted)" }}>
@@ -306,12 +319,18 @@ export default function DevolucoesPage() {
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint)" }} />
               </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
 
-      <DevolucaoDetalheModal devolucao={detalheDevolucao} onClose={() => setDetalheDevolucao(null)} />
+      <DevolucaoDetalheModal
+        devolucao={detalheDevolucao}
+        tecnicos={tecnicos}
+        onClose={() => setDetalheDevolucao(null)}
+        onChanged={fetchData}
+      />
     </div>
   );
 }

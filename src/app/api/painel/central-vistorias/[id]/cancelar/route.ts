@@ -4,6 +4,7 @@ import path from "node:path";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
 import { cancelarVistoria } from "@/lib/glpi/painel";
+import { cancelarDevolucoesPorVistoria } from "@/lib/glpi/devolucoes";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sanitizeFolderName } from "@/lib/sanitize";
 
@@ -37,6 +38,12 @@ export async function POST(
   // Reset GLPI + remove projeto aux
   await cancelarVistoria(vistoriaId);
 
+  // Cancela devolução(ões) PENDENTE dessa vistoria — sem isso, a devolução
+  // ficava presa em PENDENTE pra sempre mesmo com a vistoria já cancelada,
+  // e isso bloqueava o técnico de iniciar vistorias NOVAS no dia seguinte
+  // (fetchDevolucaoPendente/devolucaoEhDeOutroDia em /vistorias/[id]/iniciar).
+  const devolucoesCanceladas = await cancelarDevolucoesPorVistoria(vistoriaId);
+
   // Remove arquivos físicos (fotos, vídeos, PDFs)
   const folder = sanitizeFolderName(ne.name);
   const dir = path.join(UPLOAD_PATH, folder);
@@ -48,7 +55,9 @@ export async function POST(
     ator: { id: adminId, nome: adminNome, role: "admin" },
     acao: "dados-editados",
     alvo: { tipo: "vistoria", id: String(vistoriaId), label: ne.name },
-    descricao: `Vistoria cancelada e devolvida para fila (A Vistoriar). Arquivos removidos.`,
+    descricao: `Vistoria cancelada e devolvida para fila (A Vistoriar). Arquivos removidos.${
+      devolucoesCanceladas > 0 ? ` ${devolucoesCanceladas} devolução(ões) pendente(s) anulada(s).` : ""
+    }`,
   });
 
   return NextResponse.json({ ok: true });

@@ -52,6 +52,8 @@ export const ACAO_META: Record<
   "override-reprovado":      { label: "Override reprovado",       icon: XCircle,      fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#EF4444" },
   "vistoria-devolvida":      { label: "Devolvida para correção",  icon: Undo2,        fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
   "devolucao-resolvida":     { label: "Devolução resolvida",      icon: ClipboardCheck,fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
+  "devolucao-editada":       { label: "Devolução editada",        icon: Edit3,        fg: "#2563EB", bg: "#EFF6FF", dot: "#3B82F6" },
+  "devolucao-cancelada":     { label: "Devolução cancelada",      icon: Ban,          fg: "#6B7280", bg: "var(--vm-tile)", dot: "#6B7280" },
   "recusa-solicitada":       { label: "Recusa solicitada",        icon: Ban,          fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
   "recusa-aprovada":         { label: "Recusa aprovada",          icon: ShieldCheck,  fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
   "recusa-reprovada":        { label: "Recusa reprovada",         icon: XCircle,      fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
