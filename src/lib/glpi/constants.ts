@@ -108,6 +108,11 @@ export const STATE_EM_INSTALACAO = 4;
 export const STATE_INSTALADO = 5;
 /** Instalador rejeitou — fica aqui até o analista decidir (escalar pra vistoria ou não). */
 export const STATE_INSTALACAO_REJEITADA = 6;
+/** Técnico finalizou a vistoria em campo (ainda não passou pela aprovação do CPFL). */
+export const STATE_VISTORIADO = 7;
+
+/** Avaliador CPFL — preenchido quando aprova/reprova (aprovarVistoria/reprovarVistoria). */
+export const AVALIADOR_CPFL_USER_COLUMN = "users_id_avaliadordavistoriacpflfield";
 
 /** Checklist de instalação — colunas sim/não em TABLE_FIELDS (yesno: 1/0). */
 export const INSTALACAO_CHECKLIST_COLUMNS = {

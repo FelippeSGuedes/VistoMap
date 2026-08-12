@@ -6,6 +6,7 @@ import {
   ITEMTYPE_NE,
   SITUACAO_DEVOLVIDA,
   STATE_NAME_TO_STATUS,
+  STATE_VISTORIADO,
   TABLE_AUX,
   TABLE_FIELDS,
   TABLE_NE,
@@ -299,4 +300,17 @@ export async function updateVistoriaFields(
   const sql = `UPDATE \`${TABLE_FIELDS}\` SET ${sets.join(", ")} WHERE items_id = ?`;
   const result = await execute(sql, params);
   return result.affectedRows;
+}
+
+/**
+ * "Status geral" do poste (campo NATIVO do GLPI, `glpi_networkequipments.states_id`
+ * — mesma coluna que a Instalação usa pra "Instalado") → Vistoriado (7), ao
+ * técnico finalizar em campo. Separado de `updateVistoriaFields` porque
+ * states_id vive em TABLE_NE, não em TABLE_FIELDS.
+ */
+export async function marcarStatusGeralVistoriado(networkEquipmentId: number): Promise<void> {
+  await execute(`UPDATE \`${TABLE_NE}\` SET states_id = ? WHERE id = ?`, [
+    STATE_VISTORIADO,
+    networkEquipmentId,
+  ]);
 }

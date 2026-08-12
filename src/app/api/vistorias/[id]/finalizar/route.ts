@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getVistoria, updateVistoriaFields } from "@/lib/glpi/equipments";
+import { getVistoria, updateVistoriaFields, marcarStatusGeralVistoriado } from "@/lib/glpi/equipments";
 import { resolveDropdowns } from "@/lib/glpi/dropdowns";
 import {
   buildEquipmentFilePath,
@@ -191,6 +191,10 @@ export async function POST(
       plugin_fields_situaodavistoriafielddropdowns_id: situacaoFinal,
       dropdowns: dropdownIds,
     });
+
+    // Status geral nativo do poste (glpi_networkequipments.states_id) — só
+    // avançava pra Instalação; nunca marcava Vistoriado ao técnico finalizar.
+    await marcarStatusGeralVistoriado(id);
 
     const saved = await saveEquipmentFiles(vistoria.equipamento, [
       ...files,

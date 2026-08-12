@@ -46,7 +46,7 @@ export async function POST(
       ).then((r) => r[0]),
     ]);
 
-    const result = await reprovarVistoria(id, body.motivo);
+    const result = await reprovarVistoria(id, body.motivo, actor?.id);
 
     void auditInsert({
       ator: actor ?? { id: 0, nome: "Sistema", role: "admin" },

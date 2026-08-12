@@ -1,6 +1,7 @@
 import "server-only";
 import { execute, query } from "@/lib/db";
 import {
+  AVALIADOR_CPFL_USER_COLUMN,
   DROPDOWN_COLUMNS,
   DROPDOWN_TABLES,
   ITEMTYPE_NE,
@@ -741,7 +742,10 @@ function nowDateTime(): string {
  *   - NÃO preenche dataaprovaoconcessionria (esse campo é da CPFL)
  *   - aux.approval_status = 'APROVADO'; is_repeat = 0 (sai da fila revisitas)
  */
-export async function aprovarVistoria(vistoriaId: number): Promise<{
+export async function aprovarVistoria(
+  vistoriaId: number,
+  avaliadorId?: number
+): Promise<{
   affected: number;
   eraRevisita: boolean;
 }> {
@@ -754,22 +758,29 @@ export async function aprovarVistoria(vistoriaId: number): Promise<{
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
   const now = nowDateTime();
 
+  const sets = [
+    "plugin_fields_statusvistoriafielddropdowns_id = ?",
+    "plugin_fields_pendnciafielddropdowns_id = ?",
+    `\`${SITUACAO_COLUMN}\` = ?`,
+    "datadavistoriafield = ?",
+    "dataenvioconcessionriafield = ?",
+  ];
+  const params: unknown[] = [
+    STATUS_VISTORIA_EM_ANALISE,
+    PENDENCIA_CPFL,
+    SITUACAO_REVISITADO,
+    now,
+    now,
+  ];
+  if (avaliadorId != null && avaliadorId > 0) {
+    sets.push(`\`${AVALIADOR_CPFL_USER_COLUMN}\` = ?`);
+    params.push(avaliadorId);
+  }
+  params.push(vistoriaId);
+
   const r = await execute(
-    `UPDATE \`${TABLE_FIELDS}\`
-        SET plugin_fields_statusvistoriafielddropdowns_id = ?,
-            plugin_fields_pendnciafielddropdowns_id = ?,
-            \`${SITUACAO_COLUMN}\` = ?,
-            datadavistoriafield = ?,
-            dataenvioconcessionriafield = ?
-      WHERE items_id = ?`,
-    [
-      STATUS_VISTORIA_EM_ANALISE,
-      PENDENCIA_CPFL,
-      SITUACAO_REVISITADO,
-      now,
-      now,
-      vistoriaId,
-    ]
+    `UPDATE \`${TABLE_FIELDS}\` SET ${sets.join(", ")} WHERE items_id = ?`,
+    params
   );
 
   // Aux: marca como aprovado internamente + remove flag revisita.
@@ -795,7 +806,8 @@ export async function aprovarVistoria(vistoriaId: number): Promise<{
  */
 export async function reprovarVistoria(
   vistoriaId: number,
-  motivo?: string
+  motivo?: string,
+  avaliadorId?: number
 ): Promise<{ affected: number }> {
   const sets: string[] = [
     "plugin_fields_statusvistoriafielddropdowns_id = ?",
@@ -805,6 +817,10 @@ export async function reprovarVistoria(
   if (motivo != null) {
     sets.push("motivofield = ?");
     params.push(motivo);
+  }
+  if (avaliadorId != null && avaliadorId > 0) {
+    sets.push(`\`${AVALIADOR_CPFL_USER_COLUMN}\` = ?`);
+    params.push(avaliadorId);
   }
   params.push(vistoriaId);
   const r = await execute(
