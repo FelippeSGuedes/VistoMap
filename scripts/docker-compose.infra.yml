@@ -3,8 +3,17 @@ services:
     image: mariadb:10.6
     container_name: vistomap-mariadb
     restart: unless-stopped
+    # Só 127.0.0.1 — painel/técnico não dependem mais da porta publicada,
+    # conectam via nome de serviço na rede Docker (vistomap_vistomap-net,
+    # ver docker network connect). 127.0.0.1 fica só pra acesso via túnel
+    # SSH de ferramentas administrativas (reset-db-password.sh etc.).
+    # Auditoria segurança 2026-08: antes disso o banco de produção, com
+    # senha real, ficava alcançável de qualquer interface (0.0.0.0).
+    networks:
+      - default
+      - vistomap_vistomap-net
     ports:
-      - "0.0.0.0:3307:3306"
+      - "127.0.0.1:3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: RootM@riaDB2026
       MYSQL_DATABASE: glpi_gioc
@@ -23,8 +32,11 @@ services:
     image: mysql:8.0
     container_name: auth-mysql
     restart: unless-stopped
+    # Nenhum consumidor encontrado no código pra este serviço — mesmo assim
+    # fechado pra 127.0.0.1 (auditoria segurança 2026-08). Considerar
+    # descomissionar se realmente não tiver uso.
     ports:
-      - "0.0.0.0:3306:3306"
+      - "127.0.0.1:3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: RootMySQL2026
       MYSQL_DATABASE: authdb
@@ -51,3 +63,12 @@ volumes:
     name: vistomap_mariadb-data
   auth-mysql-data:
     name: vistomap_auth-mysql-data
+
+networks:
+  default: {}
+  # Rede do projeto "vistomap" (painel/técnico, docker-compose.gioc.yml) —
+  # precisa existir antes deste compose subir (`docker network create` já
+  # aconteceu via aquele projeto). external:true porque não é dono da rede,
+  # só entra nela.
+  vistomap_vistomap-net:
+    external: true

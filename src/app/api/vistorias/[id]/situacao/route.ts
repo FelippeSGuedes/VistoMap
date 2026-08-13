@@ -3,6 +3,7 @@ import { verifySessionJwt } from "@/lib/jwt";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS, SITUACAO_COLUMN } from "@/lib/glpi/constants";
 import { auditInsert } from "@/lib/glpi/audit";
+import { getVistoria } from "@/lib/glpi/equipments";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,6 +46,17 @@ export async function PATCH(
   }
 
   try {
+    // Rota é usada só pelo app do técnico (marcadores "em deslocamento"/
+    // "em vistoria") — sem essa checagem, qualquer token técnico válido
+    // mexia na situação de qualquer vistoria, não só a atribuída a ele.
+    const vistoria = await getVistoria(id);
+    if (!vistoria) {
+      return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
+    }
+    if (String(actorId) !== vistoria.tecnico.id) {
+      return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
+    }
+
     await execute(
       `UPDATE \`${TABLE_FIELDS}\` SET \`${SITUACAO_COLUMN}\` = ? WHERE items_id = ?`,
       [situacao_id, id]

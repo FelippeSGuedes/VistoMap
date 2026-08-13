@@ -42,7 +42,8 @@ const SELECT_BASE = `
     d_tl.name AS tipollfield,
     d_tv.name AS tensovfield,
     COALESCE(aux.is_repeat, 0) AS is_repeat,
-    aux.project_status AS aux_project_status
+    aux.project_status AS aux_project_status,
+    f.users_id_vistoriadorafield AS tecnico_id
   FROM \`${TABLE_NE}\` ne
   INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
   LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
@@ -97,6 +98,7 @@ interface RawRow {
   tensovfield: string | null;
   is_repeat: number | string | null;
   aux_project_status: string | null;
+  tecnico_id: number | null;
 }
 
 function resolveStatus(name: string | null): VistoriaStatus {
@@ -137,7 +139,8 @@ function mapRow(r: RawRow) {
     status: resolveStatusComSituacao(r.status_vistoria_name, r.situacao_id),
     isRepeat,
     prioridade: "MEDIA" as const,
-    tecnico: { id: "0", nome: "—", email: "" },
+    // Antes vinha hardcoded "0" — nunca dava pra checar dono do registro.
+    tecnico: { id: r.tecnico_id != null ? String(r.tecnico_id) : "0", nome: "—", email: "" },
     fields: {
       pspostefield: r.ps_poste ?? "",
       alturadopostemfield: r.altura_poste ?? "",

@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import { getJwtExpiresAtMs, signSessionJwt } from "@/lib/jwt";
 import { logError } from "@/lib/observability";
+import { checkLoginRateLimit, resetLoginRateLimit, getClientIp } from "@/lib/rate-limit";
 import type { AuthSession, Modulo, Tecnico } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { message: "Usuário e senha são obrigatórios" },
         { status: 400 }
+      );
+    }
+
+    const rateLimitKey = `${getClientIp(req)}:${login.trim().toLowerCase()}`;
+    const rateLimit = checkLoginRateLimit(rateLimitKey);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { message: "Muitas tentativas. Tente novamente em alguns instantes." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds ?? 60) } }
       );
     }
 
@@ -149,6 +159,7 @@ export async function POST(req: NextRequest) {
       modulos,
     };
 
+    resetLoginRateLimit(rateLimitKey);
     return NextResponse.json(session);
   } catch (error) {
     console.error("[api/auth/login] POST error", error);

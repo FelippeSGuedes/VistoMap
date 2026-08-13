@@ -76,6 +76,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   try {
     const vistoria = await getVistoria(id);
     if (!vistoria) return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
+    if (actor.role === "tecnico" && String(actor.id) !== vistoria.tecnico.id) {
+      return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
+    }
 
     const existente = await fetchRecusaPendentePorVistoria(id);
     if (existente) {

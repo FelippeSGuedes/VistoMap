@@ -89,6 +89,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   try {
     const instalacao = await getInstalacao(id);
     if (!instalacao) return NextResponse.json({ message: "Instalação não encontrada" }, { status: 404 });
+    if (actor.role === "instalador" && instalacao.instalador?.id !== actor.id) {
+      return NextResponse.json({ message: "Você não tem acesso a esta instalação" }, { status: 403 });
+    }
 
     const existente = await fetchInstalacaoRejeicaoPendentePorItem(id);
     if (existente) {

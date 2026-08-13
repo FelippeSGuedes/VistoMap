@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { listInstalacaoRejeicoes } from "@/lib/glpi/instalacaoRejeicoes";
 import { sanitizeFolderName } from "@/lib/sanitize";
+import { signUploadUrl } from "@/lib/uploadUrl";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,12 +21,12 @@ export async function GET(request: Request) {
   try {
     const rejeicoes = await listInstalacaoRejeicoes("PENDENTE");
     const comFotos = rejeicoes.map((r) => {
-      const folder = encodeURIComponent(sanitizeFolderName(r.equipamento));
+      const folder = sanitizeFolderName(r.equipamento);
       return {
         ...r,
-        foto1Url: r.foto1_path ? `/uploads/${folder}/${encodeURIComponent(r.foto1_path)}` : null,
-        foto2Url: r.foto2_path ? `/uploads/${folder}/${encodeURIComponent(r.foto2_path)}` : null,
-        foto3Url: r.foto3_path ? `/uploads/${folder}/${encodeURIComponent(r.foto3_path)}` : null,
+        foto1Url: r.foto1_path ? signUploadUrl(folder, r.foto1_path) : null,
+        foto2Url: r.foto2_path ? signUploadUrl(folder, r.foto2_path) : null,
+        foto3Url: r.foto3_path ? signUploadUrl(folder, r.foto3_path) : null,
       };
     });
     return NextResponse.json({ rejeicoes: comFotos });

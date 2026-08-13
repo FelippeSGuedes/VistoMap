@@ -4,6 +4,7 @@ import path from "node:path";
 import { sanitizeFolderName } from "@/lib/sanitize";
 import { query } from "@/lib/db";
 import { requirePainelRole } from "@/lib/painel-auth";
+import { signUploadUrl } from "@/lib/uploadUrl";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -67,7 +68,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
             const isImage = [".png", ".jpg", ".jpeg", ".webp"].includes(ext);
             return {
               name,
-              url: `/uploads/${encodeURIComponent(folder)}/${encodeURIComponent(name)}`,
+              url: signUploadUrl(folder, name),
               size: stat.size,
               modifiedAt: stat.mtime.toISOString(),
               kind: isImage ? "image" : "other",

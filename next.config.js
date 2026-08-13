@@ -85,9 +85,45 @@ const ASSET_PREFIX = BUILD_VARIANT === "painel"
   ? "/painel-cdn"
   : (BASE_PATH || undefined);
 
+// Headers de segurança — auditoria 2026-08 (nenhum existia antes). Nota:
+// output:"export" (build mobile/Capacitor) IGNORA headers() por completo —
+// isso só afeta painel/técnico servidos via Node (standalone), nunca o APK.
+//
+// CSP vai como Report-Only: o app carrega Mapbox (api.mapbox.com), Google
+// Fonts (fonts.googleapis.com/gstatic.com) e usa Web Workers — sem
+// conseguir clicar em todas as telas num navegador real antes de aplicar,
+// prefiro só REPORTAR violação (zero risco de quebrar mapa/fonte de
+// ninguém) até confirmar visualmente e trocar pra enforcement de verdade.
+const CSP_DIRECTIVES = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com",
+  "worker-src 'self' blob:",
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
+
+const SECURITY_HEADERS = [
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // Inerte em HTTP puro (o navegador só respeita isso vindo de HTTPS) — fica
+  // pronto pra quando o domínio migrar pra TLS, sem efeito nenhum hoje.
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  { key: "Content-Security-Policy-Report-Only", value: CSP_DIRECTIVES },
+];
+
 const nextConfig = {
   // Mobile: export estático (out/) pro Capacitor. Web: standalone (Node).
   output: IS_MOBILE ? "export" : "standalone",
+  async headers() {
+    if (IS_MOBILE) return [];
+    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+  },
   // Mobile carrega do APK na raiz → sem basePath/assetPrefix.
   basePath: IS_MOBILE ? undefined : (USE_BASE_PATH && BASE_PATH ? BASE_PATH : undefined),
   assetPrefix: IS_MOBILE ? undefined : ASSET_PREFIX,

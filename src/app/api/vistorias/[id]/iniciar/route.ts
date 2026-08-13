@@ -85,11 +85,13 @@ export async function POST(
   const token = auth.replace(/^Bearer\s+/i, "").trim();
   let actorId: number | null = null;
   let actorNome = "Tecnico";
+  let actorRole: string | undefined;
   if (token) {
     try {
       const claims = await verifySessionJwt(token);
       const userId = Number(claims.sub);
       actorNome = claims.email ?? "Tecnico";
+      actorRole = claims.role;
       if (userId > 0) {
         actorId = userId;
         // Expediente automático: abre sozinho se dentro da janela. Fora da
@@ -134,6 +136,15 @@ export async function POST(
     const vistoria = await getVistoria(id);
     if (!vistoria) {
       return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
+    }
+    // actorId só ficava null se o token faltasse/fosse inválido, e a rota
+    // seguia mesmo assim (auditoria com id 0) — fecha aqui: sem token válido
+    // não inicia nada. E, com token válido, só quem está atribuído.
+    if (actorId == null) {
+      return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
+    }
+    if (actorRole === "tecnico" && String(actorId) !== vistoria.tecnico.id) {
+      return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
     }
 
     // ── Geofence ───────────────────────────────────────────────────────

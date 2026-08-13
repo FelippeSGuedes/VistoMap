@@ -129,7 +129,14 @@ export async function POST(
 
     const video = formData.get("video360");
     if (video instanceof File && video.size > 0) {
-      const ext = video.name.includes(".") ? video.name.split(".").pop() : "mp4";
+      // Whitelist de extensão — nunca confia no nome de arquivo do cliente
+      // sem checar contra os formatos reais que MediaRecorder/câmera nativa
+      // produzem (webm/mp4 no gravador embutido; mov/3gp/m4v em fallback de
+      // câmera nativa iOS/Android). Extensão fora da lista (ex.: .svg/.html
+      // disfarçado de vídeo) cai no default "mp4" em vez de ser respeitada.
+      const ALLOWED_VIDEO_EXT = new Set(["mp4", "webm", "mov", "3gp", "m4v"]);
+      const rawExt = video.name.includes(".") ? video.name.split(".").pop() ?? "" : "";
+      const ext = ALLOWED_VIDEO_EXT.has(rawExt.toLowerCase()) ? rawExt.toLowerCase() : "mp4";
       const buf = await blobToBuffer(video);
       console.log(`[finalizar] video360 → ${buf.byteLength} bytes`);
       videoFile = { filename: `video360.${ext}`, data: buf };
@@ -149,6 +156,12 @@ export async function POST(
     const vistoria = await getVistoria(id);
     if (!vistoria) {
       return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
+    }
+    // Só reforça posse pra ator-técnico — token de painel (admin/moderador/
+    // leitura) não passa por essa rota na prática, mas por segurança não
+    // aplica a checagem a um papel que não seja o esperado aqui.
+    if (actor.role === "tecnico" && String(actor.id) !== vistoria.tecnico.id) {
+      return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
     }
 
     const dropdownIds = payload.dropdowns

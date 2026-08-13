@@ -3,6 +3,7 @@ import { requirePainelRole } from "@/lib/painel-auth";
 import { listRecusas } from "@/lib/glpi/recusas";
 import { sanitizeFolderName } from "@/lib/sanitize";
 import { query } from "@/lib/db";
+import { signUploadUrl } from "@/lib/uploadUrl";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     const comExtras = rejeitadas.map((r) => ({
       ...r,
       fotoUrl: r.fotoPath
-        ? `/uploads/${encodeURIComponent(sanitizeFolderName(r.equipamento))}/${encodeURIComponent(r.fotoPath)}`
+        ? signUploadUrl(sanitizeFolderName(r.equipamento), r.fotoPath)
         : null,
       latitude: coordsById.get(r.vistoriaId)?.latitude ?? null,
       longitude: coordsById.get(r.vistoriaId)?.longitude ?? null,

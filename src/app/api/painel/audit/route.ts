@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const auth = await requirePainelRole(req, "leitura");
+  const auth = await requirePainelRole(req, "moderador");
   if (!auth.ok) return auth.response;
 
   try {

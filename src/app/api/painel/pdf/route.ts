@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { requirePainelRole } from "@/lib/painel-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,6 +11,9 @@ const FILES_BASE = process.env.GLPI_FILES_PATH ?? "/files";
 
 /** GET /api/painel/pdf?file=CAM-P-A-176/projeto.pdf */
 export async function GET(req: NextRequest) {
+  const auth = await requirePainelRole(req, "leitura");
+  if (!auth.ok) return auth.response;
+
   const fileParam = req.nextUrl.searchParams.get("file");
   if (!fileParam) {
     return NextResponse.json({ message: "Parâmetro 'file' obrigatório" }, { status: 400 });

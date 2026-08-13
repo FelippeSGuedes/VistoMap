@@ -103,6 +103,9 @@ export async function POST(
     if (!instalacao) {
       return NextResponse.json({ message: "Instalação não encontrada" }, { status: 404 });
     }
+    if (actor.role === "instalador" && instalacao.instalador?.id !== actor.id) {
+      return NextResponse.json({ message: "Você não tem acesso a esta instalação" }, { status: 403 });
+    }
 
     const afetados = await finalizarInstalacao(id, {
       checklist: payload.checklist,
