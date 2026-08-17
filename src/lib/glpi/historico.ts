@@ -176,7 +176,7 @@ export async function fetchHistoricoAnalytics(
         SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovadas,
         SUM(CASE WHEN (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
                   AND COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas_finalizadas,
-        (SELECT COUNT(*) FROM \`${TABLE_AUX}\` WHERE project_status = 'GERADO') AS pdfs
+        SUM(CASE WHEN aux.project_status = 'GERADO' THEN 1 ELSE 0 END) AS pdfs
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
