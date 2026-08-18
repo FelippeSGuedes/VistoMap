@@ -17,6 +17,7 @@ import {
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
+  TABLE_PROJETOS_PLUGIN,
   TABLE_FIELDS,
   TABLE_NE,
   TABLE_STATUS_VISTORIA,
@@ -1517,14 +1518,27 @@ export async function listCentralVistorias(): Promise<CentralVistoria[]> {
 
 /**
  * Cancela uma vistoria: volta ao estado inicial (A Vistoriar), remove
- * técnico atribuído, limpa datas e apaga o registro de projeto no aux.
- * Os arquivos físicos são removidos pela API (tem acesso ao filesystem).
+ * técnico atribuído, limpa datas e pendência, e apaga os registros de
+ * projeto (aux interno + aba nativa "VistoMap - Projetos"). Os arquivos
+ * físicos são removidos pela API (tem acesso ao filesystem).
+ *
+ * Achado em produção (18/08): quando uma vistoria já tinha sido aprovada
+ * internamente antes (aprovarVistoria() grava pendencia=PENDENCIA_CPFL) e
+ * DEPOIS era cancelada, a pendência ficava presa em "Pendência CPFL" pra
+ * sempre — o equipamento voltava pra fila "A Vistoriar" mas continuava
+ * marcado como se tivesse uma pendência da concessionária real. Da mesma
+ * forma, o registro na aba "VistoMap - Projetos" (glpi_plugin_vistomapprojetos_projects,
+ * gerenciado pela classe PHP do plugin — tabela DIFERENTE de TABLE_AUX)
+ * nunca era tocado aqui, então um projeto que já tinha ido a
+ * análise/aprovação ficava órfão com status "in_review"/"approved" mesmo
+ * com a vistoria zerada (casos reais: CAM-P-A-405/511/622/695).
  */
 export async function cancelarVistoria(vistoriaId: number): Promise<void> {
   await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET \`${SITUACAO_COLUMN}\`                        = ?,
             plugin_fields_statusvistoriafielddropdowns_id = ?,
+            plugin_fields_pendnciafielddropdowns_id       = 0,
             users_id_vistoriadorafield                    = 0,
             datadavistoriafield                           = NULL,
             dataenvioconcessionriafield                   = NULL
@@ -1533,6 +1547,11 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
   );
   await execute(
     `DELETE FROM \`${TABLE_AUX}\`
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
+    [vistoriaId]
+  );
+  await execute(
+    `DELETE FROM \`${TABLE_PROJETOS_PLUGIN}\`
       WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
     [vistoriaId]
   );

@@ -6,6 +6,16 @@ export const TABLE_LOCATIONS = "glpi_locations";
 export const TABLE_USERS = "glpi_users";
 export const TABLE_STATES = "glpi_states";
 export const TABLE_AUX = process.env.GLPI_AUX_TABLE ?? "glpi_plugin_vistomap_projects";
+/**
+ * Tabela da aba nativa "VistoMap - Projetos" (análise/aprovação de PDF de
+ * projeto), gerenciada pela classe PHP PluginVistomapprojetosProject —
+ * DIFERENTE de TABLE_AUX (glpi_plugin_vistomap_projects, tracking interno
+ * de is_repeat/approval_status do fluxo de vistoria). cancelarVistoria()
+ * também limpa aqui, senão um projeto que já tinha ido a análise/aprovação
+ * fica órfão com status "in_review"/"approved" mesmo com a vistoria de
+ * volta em "A Vistoriar".
+ */
+export const TABLE_PROJETOS_PLUGIN = "glpi_plugin_vistomapprojetos_projects";
 export const ITEMTYPE_NE = "NetworkEquipment";
 
 /**
