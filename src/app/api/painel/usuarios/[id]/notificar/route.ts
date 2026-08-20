@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
-import { setNotificar } from "@/lib/glpi/pushPrefs";
+import { setCategoriaPref } from "@/lib/glpi/pushPrefs";
+import { NOTIF_CATEGORIAS, CATEGORIA_META, type NotifCategoria } from "@/lib/notifCategorias";
 import { auditInsert } from "@/lib/glpi/audit";
 import { query } from "@/lib/db";
 
@@ -9,8 +10,8 @@ export const runtime = "nodejs";
 
 /**
  * PUT /api/painel/usuarios/[id]/notificar  (admin)
- * Body: { notificar: boolean }
- * Liga/desliga o web push para um analista. Só o admin decide.
+ * Body: { categoria: NotifCategoria; ativo: boolean }
+ * Liga/desliga UMA categoria de notificação pra um analista. Só o admin decide.
  */
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   const auth = await requirePainelRole(req, "admin");
@@ -21,17 +22,21 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ message: "ID inválido" }, { status: 400 });
   }
 
-  let body: { notificar?: boolean };
+  let body: { categoria?: string; ativo?: boolean };
   try {
-    body = (await req.json()) as { notificar?: boolean };
+    body = (await req.json()) as { categoria?: string; ativo?: boolean };
   } catch {
     return NextResponse.json({ message: "JSON inválido" }, { status: 400 });
   }
-  const enabled = !!body.notificar;
+  const categoria = body.categoria as NotifCategoria;
+  if (!NOTIF_CATEGORIAS.includes(categoria)) {
+    return NextResponse.json({ message: "categoria inválida" }, { status: 400 });
+  }
+  const enabled = !!body.ativo;
 
-  await setNotificar(userId, enabled);
+  await setCategoriaPref(userId, categoria, enabled);
 
-  // Auditoria — quem ligou/desligou pra quem.
+  // Auditoria — quem ligou/desligou o quê pra quem.
   const [alvo] = await query<{ name: string; firstname: string | null; realname: string | null }>(
     `SELECT name, firstname, realname FROM glpi_users WHERE id = ? LIMIT 1`,
     [userId]
@@ -43,8 +48,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     ator: { id: Number(auth.claims.sub) || 0, nome: auth.claims.email ?? "Administrador", role: "admin" },
     acao: "dados-editados",
     alvo: { tipo: "sistema", id: `notificar-${userId}`, label: alvoNome },
-    descricao: `Notificações do painel ${enabled ? "ativadas" : "desativadas"} para ${alvoNome}.`,
+    descricao: `Notificações de "${CATEGORIA_META[categoria].label}" ${enabled ? "ativadas" : "desativadas"} para ${alvoNome}.`,
   });
 
-  return NextResponse.json({ ok: true, userId, notificar: enabled });
+  return NextResponse.json({ ok: true, userId, categoria, ativo: enabled });
 }

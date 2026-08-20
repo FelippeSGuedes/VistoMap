@@ -4,6 +4,7 @@ import { query, execute } from "@/lib/db";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
 import { auditInsert } from "@/lib/glpi/audit";
+import { sendPainelWebPush } from "@/lib/webpush";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -88,6 +89,14 @@ export async function POST(
       ? `${contexto} APROVADO para ${row.tecnico_nome} — ${row.equipamento}`
       : `${contexto} REPROVADO para ${row.tecnico_nome} — ${row.equipamento}. Motivo: ${body.motivo}`,
   });
+  if (body.acao === "reprovar") {
+    void sendPainelWebPush({
+      acao: "override-reprovado",
+      equipamento: row.equipamento,
+      tecnico: row.tecnico_nome,
+      vistoriaId: row.vistoria_id,
+    });
+  }
 
   return NextResponse.json({ ok: true, status: novoStatus });
 }

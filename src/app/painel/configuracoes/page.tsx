@@ -12,8 +12,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
-  Bell,
-  BellOff,
   CheckCircle2,
   ChevronDown,
   Clock,
@@ -28,6 +26,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
+import { NOTIF_CATEGORIAS, CATEGORIA_META, type NotifCategoria } from "@/lib/notifCategorias";
 import type { UsuarioPainel } from "@/app/api/painel/usuarios/route";
 
 type AcessoPainel = "tecnico" | "administrador" | "moderador" | "leitura" | "nenhum";
@@ -255,7 +254,7 @@ function UsuariosCard({ isAdmin }: { isAdmin: boolean }) {
   const [analistas, setAnalistas] = useState<UsuarioPainel[]>([]);
   const [tecnicos, setTecnicos] = useState<UsuarioPainel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<number | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [novoOpen, setNovoOpen] = useState(false);
 
   const headers = { Authorization: `Bearer ${session?.token}` };
@@ -280,19 +279,33 @@ function UsuariosCard({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  async function toggleNotificar(u: UsuarioPainel) {
+  async function toggleCategoria(u: UsuarioPainel, categoria: NotifCategoria) {
     if (!isAdmin) return;
-    const novo = !u.notificar;
-    setSavingId(u.id);
+    const atual = u.categorias?.[categoria] ?? false;
+    const novo = !atual;
+    const key = `${u.id}:${categoria}`;
+    setSavingKey(key);
     // otimista
-    setAnalistas((prev) => prev.map((a) => (a.id === u.id ? { ...a, notificar: novo } : a)));
+    setAnalistas((prev) =>
+      prev.map((a) =>
+        a.id === u.id
+          ? { ...a, categorias: { ...(a.categorias as Record<NotifCategoria, boolean>), [categoria]: novo } }
+          : a
+      )
+    );
     try {
-      await api.put(`/painel/usuarios/${u.id}/notificar`, { notificar: novo }, { headers });
+      await api.put(`/painel/usuarios/${u.id}/notificar`, { categoria, ativo: novo }, { headers });
     } catch {
       // reverte
-      setAnalistas((prev) => prev.map((a) => (a.id === u.id ? { ...a, notificar: !novo } : a)));
+      setAnalistas((prev) =>
+        prev.map((a) =>
+          a.id === u.id
+            ? { ...a, categorias: { ...(a.categorias as Record<NotifCategoria, boolean>), [categoria]: atual } }
+            : a
+        )
+      );
     } finally {
-      setSavingId(null);
+      setSavingKey(null);
     }
   }
 
@@ -351,10 +364,10 @@ function UsuariosCard({ isAdmin }: { isAdmin: boolean }) {
         <p className="mb-3 flex items-start gap-2 rounded-xl bg-[var(--vm-fill)] px-3 py-2.5 text-[11.5px] leading-relaxed text-gray-500">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: "#00B388" }} />
           <span>
-            Quem você ligar aqui recebe <strong>notificação no navegador</strong> (recusa,
-            exceção, vistoria concluída, devolução) — mesmo com a aba do painel em segundo
-            plano. O aviso só chega depois que o usuário abre o painel logado uma vez
-            (o navegador dele pede permissão nesse momento).
+            Escolha por analista quais <strong>tipos de evento</strong> disparam notificação
+            no navegador dele — mesmo com a aba do painel em segundo plano. O aviso só chega
+            depois que o usuário abre o painel logado uma vez (o navegador dele pede permissão
+            nesse momento).
           </span>
         </p>
       )}
@@ -398,43 +411,45 @@ function UsuariosCard({ isAdmin }: { isAdmin: boolean }) {
                   <p className="truncate text-[11px] text-gray-400">{u.email ?? u.username}</p>
                 </div>
 
-                {/* toggle de notificação — só analistas, só admin edita */}
+                {/* grade de categorias de notificação — só analistas, só admin edita */}
                 {sub === "analistas" && (
                   <div className="flex shrink-0 items-center gap-2">
-                    {u.notificar && (
+                    {Object.values(u.categorias ?? {}).some(Boolean) && (
                       <span className="hidden text-[10px] text-gray-400 sm:inline">
                         {u.navegadores && u.navegadores > 0
                           ? `${u.navegadores} navegador${u.navegadores !== 1 ? "es" : ""}`
                           : "aguardando login"}
                       </span>
                     )}
-                    <button
-                      type="button"
-                      disabled={!isAdmin || savingId === u.id}
-                      onClick={() => toggleNotificar(u)}
-                      title={
-                        !isAdmin
-                          ? "Só o administrador pode alterar"
-                          : u.notificar
-                          ? "Desativar notificações"
-                          : "Ativar notificações"
-                      }
-                      className="relative flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50"
-                      style={{ background: u.notificar ? "#00B388" : "var(--vm-fill-2)" }}
-                    >
-                      <span
-                        className="absolute flex h-5 w-5 items-center justify-center rounded-full bg-white shadow transition-all"
-                        style={{ left: u.notificar ? 22 : 2 }}
-                      >
-                        {savingId === u.id ? (
-                          <RefreshCw className="h-2.5 w-2.5 animate-spin text-gray-400" />
-                        ) : u.notificar ? (
-                          <Bell className="h-2.5 w-2.5" style={{ color: "#00875F" }} />
-                        ) : (
-                          <BellOff className="h-2.5 w-2.5 text-gray-400" />
-                        )}
-                      </span>
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {NOTIF_CATEGORIAS.map((categoria) => {
+                        const meta = CATEGORIA_META[categoria];
+                        const Icon = meta.icon;
+                        const ativo = u.categorias?.[categoria] ?? false;
+                        const key = `${u.id}:${categoria}`;
+                        return (
+                          <button
+                            key={categoria}
+                            type="button"
+                            disabled={!isAdmin || savingKey === key}
+                            onClick={() => toggleCategoria(u, categoria)}
+                            title={
+                              !isAdmin
+                                ? "Só o administrador pode alterar"
+                                : `${meta.label}: ${ativo ? "ativado" : "desativado"}`
+                            }
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition disabled:opacity-50"
+                            style={{ background: ativo ? meta.bg : "var(--vm-fill-2)" }}
+                          >
+                            {savingKey === key ? (
+                              <RefreshCw className="h-3 w-3 animate-spin text-gray-400" />
+                            ) : (
+                              <Icon className="h-3 w-3" style={{ color: ativo ? meta.fg : "#9CA3AF" }} />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </li>

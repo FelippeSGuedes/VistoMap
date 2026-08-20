@@ -4,7 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, BellOff, Check, Clock, MapPin, User, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
+import { CATEGORIA_META, type NotifCategoria } from "@/lib/notifCategorias";
 import type { OverrideRequest } from "@/app/api/painel/notificacoes/route";
+
+function CategoriaBadge({ tipo }: { tipo: OverrideRequest["tipo"] }) {
+  const categoria: NotifCategoria = tipo === "recusa" ? "recusa-solicitada" : "excecao-solicitada";
+  const meta = CATEGORIA_META[categoria];
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+      style={{ background: meta.bg, color: meta.fg }}
+    >
+      {meta.label}
+    </span>
+  );
+}
 
 function timeAgo(dateStr: string): string {
   // MySQL retorna "2026-06-26 17:22:32" sem timezone — tratar como UTC
@@ -67,6 +81,7 @@ function RequestCard({ req, onReply }: CardProps) {
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
             <StatusBadge status={req.status} />
+            <CategoriaBadge tipo={req.tipo} />
             <span className="text-[10px] text-gray-400">{timeAgo(req.created_at)}</span>
           </div>
           <div className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-800">

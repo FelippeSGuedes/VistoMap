@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
-import type { AlertaEvento } from "@/types";
+import { getCategoriaPrefs } from "@/lib/glpi/pushPrefs";
+import { ACAO_CATEGORIA, categoriaDeAcao } from "@/lib/notifCategorias";
+import type { AlertaEvento, AuditEntry } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,19 +14,29 @@ export const runtime = "nodejs";
  * Feed leve dos eventos operacionais importantes das últimas horas, tirado
  * do audit log (fonte única — todos já são gravados lá). O painel faz
  * polling disso e dispara alerta na tela + som quando aparece um id novo.
+ *
+ * Filtrado pelas categorias que o usuário LOGADO tem habilitadas (mesma
+ * preferência que direciona o web push) — antes disso, todo analista via
+ * todo toast, sem exceção.
  */
-const ACOES = [
-  "recusa-solicitada",
-  "override-solicitado",
-  "vistoria-finalizada",
-  "devolucao-resolvida",
-] as const;
+const ACOES = Object.keys(ACAO_CATEGORIA) as AuditEntry["acao"][];
 
 export async function GET(req: Request) {
   const auth = await requirePainelRole(req, "leitura");
   if (!auth.ok) return auth.response;
 
+  const userId = Number(auth.claims.sub) || 0;
+  const prefs = (await getCategoriaPrefs([userId])).get(userId);
+  const acoesPermitidas = ACOES.filter((acao) => {
+    const categoria = categoriaDeAcao(acao);
+    return categoria != null && prefs?.[categoria];
+  });
+  if (acoesPermitidas.length === 0) {
+    return NextResponse.json({ eventos: [] });
+  }
+
   try {
+    const placeholders = acoesPermitidas.map(() => "?").join(",");
     const rows = await query<{
       id: number;
       ts: string;
@@ -36,12 +48,12 @@ export async function GET(req: Request) {
       `
         SELECT id, ts, acao, alvo_id, alvo_label, ator_nome
           FROM \`glpi_plugin_vistomap_audit\`
-         WHERE acao IN (?, ?, ?, ?)
+         WHERE acao IN (${placeholders})
            AND ts >= NOW() - INTERVAL 6 HOUR
          ORDER BY id DESC
          LIMIT 40
       `,
-      [...ACOES]
+      acoesPermitidas
     );
 
     const eventos: AlertaEvento[] = rows.map((r) => ({

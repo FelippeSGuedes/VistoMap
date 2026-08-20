@@ -12,8 +12,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Ban, CheckCircle2, ShieldAlert, Undo2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
+import { ACAO_META } from "@/lib/auditMeta";
+import { ACAO_HREF, categoriaDeAcao } from "@/lib/notifCategorias";
 import type { AlertaEvento } from "@/types";
 
 const POLL_MS = 12_000;
@@ -21,13 +23,6 @@ const TOAST_TTL_MS = 8_000;
 const MAX_VISIVEIS = 4;
 
 type Cfg = { label: string; color: string; icon: React.ElementType; href: string };
-
-const CONFIG: Record<string, Cfg> = {
-  "recusa-solicitada":   { label: "Nova recusa",        color: "#DC2626", icon: Ban,         href: "/painel/notificacoes" },
-  "override-solicitado": { label: "Pedido de exceção",  color: "#F59E0B", icon: ShieldAlert, href: "/painel/notificacoes" },
-  "vistoria-finalizada": { label: "Vistoria concluída", color: "#10B981", icon: CheckCircle2, href: "/painel/realizadas" },
-  "devolucao-resolvida": { label: "Devolução corrigida", color: "#3B82F6", icon: Undo2,      href: "/painel/devolucoes" },
-};
 
 interface Toast {
   key: string;
@@ -85,8 +80,15 @@ export default function PainelAlertas() {
     // ordem cronológica (o feed vem DESC) e limita o burst
     const novos = [...eventos].reverse();
     for (const e of novos) {
-      const cfg = CONFIG[e.acao];
-      if (!cfg) continue;
+      if (!categoriaDeAcao(e.acao)) continue;
+      const meta = ACAO_META[e.acao as keyof typeof ACAO_META];
+      if (!meta) continue;
+      const cfg: Cfg = {
+        label: meta.label,
+        color: meta.fg,
+        icon: meta.icon,
+        href: ACAO_HREF[e.acao as keyof typeof ACAO_HREF] ?? "/painel/notificacoes",
+      };
       const key = `${e.acao}-${e.id}`;
       setToasts((prev) => [
         ...prev.filter((t) => t.key !== key),

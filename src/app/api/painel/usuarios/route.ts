@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
-import { getNotificarFlags, countSubscriptions } from "@/lib/glpi/pushPrefs";
+import { getCategoriaPrefs, countSubscriptions } from "@/lib/glpi/pushPrefs";
+import type { NotifCategoria } from "@/lib/notifCategorias";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,8 +16,8 @@ export interface UsuarioPainel {
   email: string | null;
   perfil: PerfilUsuario;
   ativo: boolean;
-  /** Só analistas — allowlist de web push decidida pelo admin. */
-  notificar?: boolean;
+  /** Só analistas — preferência de web push por categoria, decidida pelo admin. */
+  categorias?: Record<NotifCategoria, boolean>;
   /** Só analistas — quantos navegadores já se inscreveram. */
   navegadores?: number;
 }
@@ -93,8 +94,8 @@ export async function GET(req: Request) {
     }
 
     const analistaIds = analistasRaw.map((a) => a.r.id);
-    const [flags, subs] = await Promise.all([
-      getNotificarFlags(analistaIds),
+    const [prefs, subs] = await Promise.all([
+      getCategoriaPrefs(analistaIds),
       countSubscriptions(analistaIds),
     ]);
 
@@ -105,7 +106,7 @@ export async function GET(req: Request) {
       email: r.email,
       perfil: perfilAnalista(grupos),
       ativo: Number(r.is_active) === 1,
-      notificar: flags.get(r.id) ?? false,
+      categorias: prefs.get(r.id),
       navegadores: subs.get(r.id) ?? 0,
     }));
 

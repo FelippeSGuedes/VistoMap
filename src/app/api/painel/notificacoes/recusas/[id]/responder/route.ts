@@ -4,6 +4,7 @@ import { execute } from "@/lib/db";
 import { TABLE_FIELDS } from "@/lib/glpi/constants";
 import { fetchRecusaPorId, resolverRecusa } from "@/lib/glpi/recusas";
 import { auditInsert } from "@/lib/glpi/audit";
+import { sendPainelWebPush } from "@/lib/webpush";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -72,6 +73,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
         ? `Recusa aprovada — vistoria de ${recusa.tecnicoNome} sai de circulação. ${recusa.justificativa}`
         : `Recusa reprovada — volta pra fila de ${recusa.tecnicoNome}. Motivo: ${body.motivo}`,
   });
+  if (body.acao === "reprovar") {
+    void sendPainelWebPush({
+      acao: "recusa-reprovada",
+      equipamento: recusa.equipamento,
+      tecnico: recusa.tecnicoNome,
+      vistoriaId: recusa.vistoriaId,
+    });
+  }
 
   return NextResponse.json({ ok: true, status: novoStatus });
 }

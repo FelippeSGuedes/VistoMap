@@ -4,6 +4,7 @@ import { auditInsert } from "@/lib/glpi/audit";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
+import { sendPainelWebPush } from "@/lib/webpush";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -59,6 +60,12 @@ export async function POST(
       descricao: body.motivo
         ? `Reprovada · ${body.motivo}`
         : "Reprovada · enviada para Central de Revisitas",
+    });
+    void sendPainelWebPush({
+      acao: "vistoria-reprovada",
+      equipamento: neRow?.name ?? `NE-${id}`,
+      tecnico: actor?.nome ?? "—",
+      vistoriaId: id,
     });
 
     return NextResponse.json({ ok: true, ...result });
