@@ -1741,7 +1741,19 @@ export default function PainelOverviewPage() {
       <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" style={{ animationDelay: "0.08s" }}>
 
         {/* Widget 01 — Vistorias Finalizadas · 14 dias */}
-        <Card>
+        <Card className="relative">
+          {/* fundo — graphwhite.png (claro) / graphblack.png (escuro) */}
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat dark:hidden"
+            style={{ backgroundImage: `url('${asset("/graphwhite.png")}')` }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat dark:block"
+            style={{ backgroundImage: `url('${asset("/graphblack.png")}')` }}
+          />
+          <div className="pointer-events-none absolute inset-0 bg-white/55 dark:bg-black/55" />
+
+          <div className="relative z-10 flex flex-col">
           <div className="flex items-start justify-between px-5 pt-5">
             <div>
               <div className="flex items-center gap-2">
@@ -1819,6 +1831,7 @@ export default function PainelOverviewPage() {
                 <Skeleton h={160} />
               )}
             </div>
+          </div>
           </div>
         </Card>
 
