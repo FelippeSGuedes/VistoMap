@@ -1623,8 +1623,8 @@ export default function PainelOverviewPage() {
               </div>
             </div>
 
-            {/* CENTER — vis.png (escuro) / viswhite.png (claro) + efeitos de camada */}
-            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: `url('${asset(dashDark() ? "/vis.png" : "/viswhite.png")}')`, backgroundSize: "cover", backgroundPosition: "center" }}>
+            {/* CENTER — vis.png + efeitos de camada */}
+            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: `url('${asset("/vis.png")}')`, backgroundSize: "cover", backgroundPosition: "center" }}>
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 35%, transparent 65%, #0d1117 100%)", pointerEvents: "none" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 60%, #0d1117 100%)", pointerEvents: "none" }} />
               <ParticlesCanvas />
