@@ -38,7 +38,6 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { api } from "@/services/api";
-import { asset } from "@/utils/asset";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import type { VistoriaRealizada, VistoriaFile, VistoriasRealizadasStats as PainelServiceRealizadasStats } from "@/services/painel";
 
@@ -441,104 +440,87 @@ function VistoriaCard({
       transition={{ delay: Math.min(index * 0.035, 0.25), duration: 0.28 }}
       whileHover={{ y: -4, boxShadow: `0 16px 40px ${cfg.glow}, 0 4px 16px rgba(0,0,0,0.07)` }}
       onClick={onClick}
-      className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#0B1220]"
+      className="group cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#0B1220]"
       style={{ border: `1px solid var(--vm-border)`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
     >
-      {/* fundo — imagem clara/escura conforme o tema (asset() prefixa o
-          basePath /painel; classe Tailwind pura não dá pra fazer isso). */}
-      <div
-        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat dark:hidden"
-        style={{ backgroundImage: `url('${asset("/cardconwhi.png")}')` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 z-0 hidden bg-cover bg-center bg-no-repeat dark:block"
-        style={{ backgroundImage: `url('${asset("/cardconbla.png")}')` }}
-      />
-      {/* véu de proteção — camada única e sólida (sem blur, sem gradiente):
-          a imagem fica de textura de fundo, não solta, o texto sempre lê
-          fácil por cima. */}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-white/88 dark:bg-[#0B1220]/88" />
+      {/* colored top strip */}
+      <div style={{ height: 3, background: cfg.strip, flexShrink: 0 }} />
 
-      <div className="relative z-10">
-        {/* colored top strip */}
-        <div style={{ height: 3, background: cfg.strip, flexShrink: 0 }} />
-
-        <div className="p-4">
-          {/* row 1: id + pdf badge */}
-          <div className="mb-2.5 flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <p
-                className="mb-0.5 text-[10.5px] font-bold uppercase tracking-wider"
-                style={{ color: cfg.color }}
-              >
-                {item.glpiId}
-                {item.isRepeat && (
-                  <span className="ml-1.5 text-violet-500">· REVISITA</span>
-                )}
-                {item.tipoEquipamento?.trim().toLowerCase() === "repetidor" && (
-                  <span
-                    className="ml-1.5"
-                    style={{ color: "#B45309" }}
-                    title="Repetidor — provável zona rural / baixa cobertura"
-                  >
-                    · 📡 RURAL
-                  </span>
-                )}
-              </p>
-              <h3
-                className="truncate text-[14.5px] font-bold text-[var(--vm-text)] transition-colors group-hover:text-[#059669]"
-                title={item.equipamento}
-              >
-                {item.equipamento}
-              </h3>
-              <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] text-[var(--vm-muted)]">
-                <MapPin className="h-2.5 w-2.5 shrink-0" />
-                {item.municipio}
-                {item.endereco && (
-                  <span className="truncate opacity-70"> · {item.endereco}</span>
-                )}
-              </p>
-            </div>
-            <PDFBadge projectStatus={item.projectStatus} />
+      <div className="p-4">
+        {/* row 1: id + pdf badge */}
+        <div className="mb-2.5 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p
+              className="mb-0.5 text-[10.5px] font-bold uppercase tracking-wider"
+              style={{ color: cfg.color }}
+            >
+              {item.glpiId}
+              {item.isRepeat && (
+                <span className="ml-1.5 text-violet-500">· REVISITA</span>
+              )}
+              {item.tipoEquipamento?.trim().toLowerCase() === "repetidor" && (
+                <span
+                  className="ml-1.5"
+                  style={{ color: "#B45309" }}
+                  title="Repetidor — provável zona rural / baixa cobertura"
+                >
+                  · 📡 RURAL
+                </span>
+              )}
+            </p>
+            <h3
+              className="truncate text-[14.5px] font-bold text-[var(--vm-text)] transition-colors group-hover:text-[#059669]"
+              title={item.equipamento}
+            >
+              {item.equipamento}
+            </h3>
+            <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] text-[var(--vm-muted)]">
+              <MapPin className="h-2.5 w-2.5 shrink-0" />
+              {item.municipio}
+              {item.endereco && (
+                <span className="truncate opacity-70"> · {item.endereco}</span>
+              )}
+            </p>
           </div>
-
-          {/* row 2: technician */}
-          {item.tecnico ? (
-            <div className="mb-3 flex items-center gap-2">
-              <TecnicoAvatar nome={item.tecnico.nome} />
-              <div className="min-w-0">
-                <p className="truncate text-[12.5px] font-semibold text-[var(--vm-text-soft)]">
-                  {item.tecnico.nome.split(" ")[0]}
-                </p>
-                <p className="text-[10.5px] text-[var(--vm-faint)]">{relativo(item.dataVistoria)}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-3 flex items-center gap-1.5 text-[11.5px] text-[var(--vm-faint)]">
-              <User className="h-3.5 w-3.5" /> Sem técnico
-            </div>
-          )}
-
-          <div className="h-px bg-[var(--vm-tile-2)]" />
-
-          {/* row 3: status + date */}
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <StatusBadge status={item.status} isRepeat={false} />
-            <span className="shrink-0 text-[10.5px] text-[#D1D5DB]">
-              {fmtDate(item.dataVistoria)}
-            </span>
-          </div>
-
-          {/* hover CTA */}
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            whileHover={{ opacity: 1 }}
-            className="mt-3 flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold opacity-0 transition-all group-hover:opacity-100"
-            style={{ background: "var(--vm-teal-tint)", color: "#059669" }}
-          >
-            Ver detalhes e fotos →
-          </motion.div>
+          <PDFBadge projectStatus={item.projectStatus} />
         </div>
+
+        {/* row 2: technician */}
+        {item.tecnico ? (
+          <div className="mb-3 flex items-center gap-2">
+            <TecnicoAvatar nome={item.tecnico.nome} />
+            <div className="min-w-0">
+              <p className="truncate text-[12.5px] font-semibold text-[var(--vm-text-soft)]">
+                {item.tecnico.nome.split(" ")[0]}
+              </p>
+              <p className="text-[10.5px] text-[var(--vm-faint)]">{relativo(item.dataVistoria)}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3 flex items-center gap-1.5 text-[11.5px] text-[var(--vm-faint)]">
+            <User className="h-3.5 w-3.5" /> Sem técnico
+          </div>
+        )}
+
+        <div className="h-px bg-[var(--vm-tile-2)]" />
+
+        {/* row 3: status + date */}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <StatusBadge status={item.status} isRepeat={false} />
+          <span className="shrink-0 text-[10.5px] text-[#D1D5DB]">
+            {fmtDate(item.dataVistoria)}
+          </span>
+        </div>
+
+        {/* hover CTA */}
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          whileHover={{ opacity: 1 }}
+          className="mt-3 flex items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-bold opacity-0 transition-all group-hover:opacity-100"
+          style={{ background: "var(--vm-teal-tint)", color: "#059669" }}
+        >
+          Ver detalhes e fotos →
+        </motion.div>
       </div>
     </motion.article>
   );
