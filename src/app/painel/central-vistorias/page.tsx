@@ -84,13 +84,25 @@ function tint(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/**
+ * Mesmo tint de cor, mas com um "forro" opaco (var(--vm-card)) por baixo —
+ * sem isso, badges/botões translúcidos em cima de um card com imagem de
+ * fundo (SITUACAO_BG) pegam a cor da imagem por trás e o chip perde
+ * contorno (ex.: badge verde de "Vistoriado" some dentro do próprio fundo
+ * verde do card). Em cards sem imagem de fundo não muda nada visualmente
+ * — var(--vm-card) já é a cor do card ali.
+ */
+function tintOnCard(hex: string, alpha: number) {
+  return `linear-gradient(${tint(hex, alpha)}, ${tint(hex, alpha)}), var(--vm-card)`;
+}
+
 function SituacaoBadge({ id }: { id: number }) {
   const label = SITUACAO_LABEL[id] ?? "?";
   const color = SITUACAO_COLOR[id] ?? "#9AA7B4";
   return (
     <span
       className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold"
-      style={{ background: tint(color, 0.15), color, border: `1px solid ${tint(color, 0.32)}` }}
+      style={{ background: tintOnCard(color, 0.15), color, border: `1px solid ${tint(color, 0.32)}` }}
     >
       {label}
     </span>
@@ -568,7 +580,7 @@ export default function CentralVistoriasPage() {
                         type="button"
                         onClick={() => { setReatrib(v); setNovoTecnico(""); setMotivo(""); }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
-                        style={{ border: `1px solid ${tint("#3B82F6", 0.35)}`, background: tint("#3B82F6", 0.12), color: "#3B82F6" }}
+                        style={{ border: `1px solid ${tint("#3B82F6", 0.35)}`, background: tintOnCard("#3B82F6", 0.12), color: "#3B82F6" }}
                       >
                         <UserCheck className="h-3.5 w-3.5" />
                         Reatribuir
@@ -583,7 +595,7 @@ export default function CentralVistoriasPage() {
                         type="button"
                         onClick={() => setDesatribuindo(v)}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
-                        style={{ border: `1px solid ${tint("#6B7280", 0.35)}`, background: tint("#6B7280", 0.12), color: "#6B7280" }}
+                        style={{ border: `1px solid ${tint("#6B7280", 0.35)}`, background: tintOnCard("#6B7280", 0.12), color: "#6B7280" }}
                       >
                         <X className="h-3.5 w-3.5" />
                         Desatribuir
@@ -597,7 +609,7 @@ export default function CentralVistoriasPage() {
                           setDevolvendo(v);
                         }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
-                        style={{ border: `1px solid ${tint("#D97706", 0.4)}`, background: tint("#D97706", 0.14), color: "#D97706" }}
+                        style={{ border: `1px solid ${tint("#D97706", 0.4)}`, background: tintOnCard("#D97706", 0.14), color: "#D97706" }}
                       >
                         <Undo2 className="h-3.5 w-3.5" />
                         Devolver
@@ -609,7 +621,7 @@ export default function CentralVistoriasPage() {
                         type="button"
                         onClick={() => { setCancelando(v); setCancelConfirm(""); }}
                         className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
-                        style={{ border: `1px solid ${tint("#DC2626", 0.35)}`, background: tint("#DC2626", 0.12), color: "#DC2626" }}
+                        style={{ border: `1px solid ${tint("#DC2626", 0.35)}`, background: tintOnCard("#DC2626", 0.12), color: "#DC2626" }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Cancelar
