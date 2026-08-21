@@ -774,63 +774,80 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
   }, [topMunicipios]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Card className="h-full">
-      <div className="flex items-center justify-between px-5 pt-4 pb-3">
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Padrão Diário · 30 dias</span>
-        </div>
-        <div className="flex items-center gap-1 text-[9.5px] text-[var(--vm-faint)]">
-          {(dashDark()
-            ? [choroEmpty(), ...choroRamp()]
-            : ["#e8f5ee", "#a8d5b5", "#5a9e74", "#1a6b3c"]
-          ).map(c => (
-            <span key={c} className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
-          ))}
-          <span className="ml-0.5">+ ativo</span>
-        </div>
-      </div>
-      <div className="relative h-[190px] w-full shrink-0">
-        <div ref={containerRef} className="vm-dash-heat h-full w-full" />
-        {/* Legenda de cores vertical (48px) */}
-        <div
-          className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 flex-col items-center justify-center gap-1"
-          style={{ width: 48 }}
-        >
-          <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Mais<br />vistorias</span>
-          <div
-            className="w-2.5 rounded-full"
-            style={{ height: 80, background: dashDark() ? "linear-gradient(to bottom,#22E0A6,#1E2733)" : "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
-          />
-          <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Menos<br />vistorias</span>
-        </div>
-        {!geoLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[var(--vm-tile)]">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--vm-border)] border-t-[#059669]" />
+    <Card className="relative h-full">
+      {/* fundo — cmpwhite.png (claro) / cmpblack.png (escuro), textura leve */}
+      <div
+        className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat dark:hidden"
+        style={{ backgroundImage: `url('${asset("/cmpwhite.png")}')` }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat dark:block"
+        style={{ backgroundImage: `url('${asset("/cmpblack.png")}')` }}
+      />
+      <div className="pointer-events-none absolute inset-0 bg-white/55 dark:bg-black/55" />
+
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex items-center justify-between px-5 pt-4 pb-3">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-[#059669]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Padrão Diário · 30 dias</span>
           </div>
-        )}
-      </div>
-      <div className="mt-auto grid grid-cols-3 border-t border-[var(--vm-tile-2)]">
-        {[
-          { icon: Activity, label: "Total no período", value: String(totais.vistoriasFinalizadas), color: "#059669" },
-          { icon: Clock,    label: "Média semanal",    value: mediaSemanal.toFixed(1).replace(".", ","), color: "#0EA5E9" },
-          { icon: FileText, label: "PDFs gerados",      value: String(totais.pdfsGerados), color: "#7C3AED" },
-        ].map((m, i) => (
+          <div className="flex items-center gap-1 text-[9.5px] text-[var(--vm-faint)]">
+            {(dashDark()
+              ? [choroEmpty(), ...choroRamp()]
+              : ["#e8f5ee", "#a8d5b5", "#5a9e74", "#1a6b3c"]
+            ).map(c => (
+              <span key={c} className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
+            ))}
+            <span className="ml-0.5">+ ativo</span>
+          </div>
+        </div>
+        {/* flex-1 (com piso de 190px) — antes era altura fixa e sobrava uma
+            margem grande embaixo quando o card ficava mais alto que o
+            conteúdo; agora o mapa cresce pra preencher o espaço disponível
+            sem mudar o tamanho do card em si. */}
+        <div className="relative min-h-[190px] w-full flex-1">
+          <div ref={containerRef} className="vm-dash-heat h-full w-full" />
+          {/* Legenda de cores vertical (48px) */}
           <div
-            key={m.label}
-            className="flex flex-col gap-1.5 px-4 py-3.5"
-            style={{ borderLeft: i > 0 ? "1px solid var(--vm-tile-2)" : undefined }}
+            className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 flex-col items-center justify-center gap-1"
+            style={{ width: 48 }}
           >
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-lg"
-              style={{ background: `${m.color}14`, color: m.color }}
-            >
-              <m.icon className="h-3.5 w-3.5" strokeWidth={2.2} />
-            </span>
-            <div className="text-[20px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{m.value}</div>
-            <div className="text-[9.5px] font-medium uppercase tracking-[0.08em] text-[var(--vm-faint)]">{m.label}</div>
+            <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Mais<br />vistorias</span>
+            <div
+              className="w-2.5 rounded-full"
+              style={{ height: 80, background: dashDark() ? "linear-gradient(to bottom,#22E0A6,#1E2733)" : "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
+            />
+            <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Menos<br />vistorias</span>
           </div>
-        ))}
+          {!geoLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[var(--vm-tile)]">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--vm-border)] border-t-[#059669]" />
+            </div>
+          )}
+        </div>
+        <div className="mt-auto grid grid-cols-3 border-t border-[var(--vm-tile-2)]">
+          {[
+            { icon: Activity, label: "Total no período", value: String(totais.vistoriasFinalizadas), color: "#059669" },
+            { icon: Clock,    label: "Média semanal",    value: mediaSemanal.toFixed(1).replace(".", ","), color: "#0EA5E9" },
+            { icon: FileText, label: "PDFs gerados",      value: String(totais.pdfsGerados), color: "#7C3AED" },
+          ].map((m, i) => (
+            <div
+              key={m.label}
+              className="flex flex-col gap-1.5 px-4 py-3.5"
+              style={{ borderLeft: i > 0 ? "1px solid var(--vm-tile-2)" : undefined }}
+            >
+              <span
+                className="flex h-7 w-7 items-center justify-center rounded-lg"
+                style={{ background: `${m.color}14`, color: m.color }}
+              >
+                <m.icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+              </span>
+              <div className="text-[20px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{m.value}</div>
+              <div className="text-[9.5px] font-medium uppercase tracking-[0.08em] text-[var(--vm-faint)]">{m.label}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </Card>
   );
@@ -1606,8 +1623,8 @@ export default function PainelOverviewPage() {
               </div>
             </div>
 
-            {/* CENTER — vis.png + efeitos de camada */}
-            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: `url('${asset("/vis.png")}')`, backgroundSize: "cover", backgroundPosition: "center" }}>
+            {/* CENTER — vis.png (escuro) / viswhite.png (claro) + efeitos de camada */}
+            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: `url('${asset(dashDark() ? "/vis.png" : "/viswhite.png")}')`, backgroundSize: "cover", backgroundPosition: "center" }}>
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 35%, transparent 65%, #0d1117 100%)", pointerEvents: "none" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 60%, #0d1117 100%)", pointerEvents: "none" }} />
               <ParticlesCanvas />
