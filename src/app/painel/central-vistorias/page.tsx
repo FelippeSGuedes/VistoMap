@@ -11,6 +11,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
+import { asset } from "@/utils/asset";
 import { DEVOLUCAO_ITENS, DEVOLUCAO_MOTIVOS, devolucaoPrecisaDeslocamento } from "@/lib/glpi/devolucaoItens";
 
 /* ── Ícones do modal "Devolver" (design premium dark) ────────────────── */
@@ -67,6 +68,13 @@ const SITUACAO_LABEL: Record<number, string> = {
 const SITUACAO_COLOR: Record<number, string> = {
   0: "#9AA7B4", 1: "#F59E0B", 2: "#3B82F6", 3: "#00B388",
   4: "#F97316", 5: "#0EA5E9", 6: "#10B981", 8: "#DC2626",
+};
+
+/** Fundo por situação (só as 3 mais frequentes) — claro/escuro. */
+const SITUACAO_BG: Partial<Record<number, { light: string; dark: string }>> = {
+  1: { light: "/avistoriarlaranja.png", dark: "/avistoriarlaranjablack.png" }, // A Vistoriar
+  2: { light: "/avistoriarazul.png", dark: "/avistoriarazulblack.png" }, // Em Vistoria
+  3: { light: "/vistoriadoverde.png", dark: "/vistoriadoverdeblack.png" }, // Vistoriado
 };
 
 /** Cor + fundo translúcido consistentes nos dois temas (opacidade absorve o contraste). */
@@ -219,6 +227,13 @@ export default function CentralVistoriasPage() {
   const [motivo, setMotivo] = useState("");
   const [reatribLoading, setReatribLoading] = useState(false);
 
+  // Desatribuir — movido de Pendentes pra cá (2026-08-14): em Pendentes não
+  // dava pra ver se o item tinha devolução/recusa em aberto antes de tirar
+  // o técnico, o que já causou perda de contexto em produção. Aqui o card
+  // mostra a situação/histórico antes de confirmar.
+  const [desatribuindo, setDesatribuindo] = useState<Vistoria | null>(null);
+  const [desatribuirLoading, setDesatribuirLoading] = useState(false);
+
   // Devolver
   const [devolvendo, setDevolvendo] = useState<Vistoria | null>(null);
   const [devItens, setDevItens] = useState<string[]>([]);
@@ -296,6 +311,21 @@ export default function CentralVistoriasPage() {
       await fetchData();
     } catch { /* TODO: toast */ }
     finally { setReatribLoading(false); }
+  }
+
+  async function handleDesatribuir() {
+    if (!desatribuindo) return;
+    setDesatribuirLoading(true);
+    try {
+      await api.post(
+        "/painel/atribuir",
+        { vistoria_id: desatribuindo.id, tecnico_id: 0 },
+        { headers }
+      );
+      setDesatribuindo(null);
+      await fetchData();
+    } catch { /* TODO: toast */ }
+    finally { setDesatribuirLoading(false); }
   }
 
   function toggleDevItem(key: string) {
@@ -474,20 +504,35 @@ export default function CentralVistoriasPage() {
           {filtradas.map((v) => {
             const cor = SITUACAO_COLOR[v.situacao_id] ?? "#9AA7B4";
             const semAcoes = !v.tecnico_nome && v.situacao_id <= 1;
+            const bg = SITUACAO_BG[v.situacao_id];
             return (
               <div
                 key={v.id}
-                className="flex flex-col overflow-hidden rounded-2xl transition hover:-translate-y-0.5"
+                className="relative flex flex-col overflow-hidden rounded-2xl transition hover:-translate-y-0.5"
                 style={{
                   background: "var(--vm-card)",
                   border: "1px solid var(--vm-border)",
                   boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 6px 18px rgba(0,0,0,0.06)",
                 }}
               >
-                {/* faixa de situação */}
-                <div style={{ height: 3, background: cor, flexShrink: 0 }} />
+                {bg && (
+                  <>
+                    <div
+                      className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat dark:hidden"
+                      style={{ backgroundImage: `url('${asset(bg.light)}')` }}
+                    />
+                    <div
+                      className="pointer-events-none absolute inset-0 z-0 hidden bg-cover bg-center bg-no-repeat dark:block"
+                      style={{ backgroundImage: `url('${asset(bg.dark)}')` }}
+                    />
+                    <div className="pointer-events-none absolute inset-0 z-0 bg-white/88 dark:bg-black/88" />
+                  </>
+                )}
 
-                <div className="flex flex-1 flex-col p-4">
+                {/* faixa de situação */}
+                <div className="relative z-10" style={{ height: 3, background: cor, flexShrink: 0 }} />
+
+                <div className="relative z-10 flex flex-1 flex-col p-4">
                   {/* equipamento + badge */}
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -527,6 +572,21 @@ export default function CentralVistoriasPage() {
                       >
                         <UserCheck className="h-3.5 w-3.5" />
                         Reatribuir
+                      </button>
+                    )}
+                    {/* Desatribuir só aparece pra ATRIBUÍDO (A_VISTORIAR + já
+                        tem técnico, ainda não começou) — item com progresso
+                        real (situação 3/6/8 etc.) usa Reatribuir/Devolver,
+                        que preservam o histórico em vez de zerar. */}
+                    {v.situacao_id === 1 && v.tecnico_nome && (
+                      <button
+                        type="button"
+                        onClick={() => setDesatribuindo(v)}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-95"
+                        style={{ border: `1px solid ${tint("#6B7280", 0.35)}`, background: tint("#6B7280", 0.12), color: "#6B7280" }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Desatribuir
                       </button>
                     )}
                     {(v.situacao_id === 3 || v.situacao_id === 6) && (
@@ -701,6 +761,58 @@ export default function CentralVistoriasPage() {
                 <CheckCircle2 className="h-4 w-4" />
               )}
               Confirmar reatribuição
+            </button>
+          </div>
+        </ModalShell>
+      )}
+
+      {/* Modal Desatribuir */}
+      {desatribuindo && (
+        <ModalShell>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: tint("#6B7280", 0.15), color: "#6B7280" }}
+              >
+                <X className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-[15px] font-bold" style={{ color: "var(--vm-text)" }}>Desatribuir vistoria</h2>
+                <p className="text-[11px]" style={{ color: "var(--vm-muted)" }}>{desatribuindo.equipamento}</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => setDesatribuindo(null)} style={{ color: "var(--vm-faint)" }}>
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div
+            className="mb-4 rounded-xl px-3 py-2.5 text-[12px]"
+            style={{ background: tint("#6B7280", 0.1), color: "var(--vm-text-soft)" }}
+          >
+            Tira <strong>{desatribuindo.tecnico_nome}</strong> desse poste e volta pra fila, sem técnico.
+            O poste continua com o histórico dele (fotos, devoluções, recusas) — isso só desvincula quem está responsável agora.
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDesatribuindo(null)}
+              className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold transition hover:brightness-95"
+              style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              disabled={desatribuirLoading}
+              onClick={handleDesatribuir}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
+              style={{ background: "#6B7280" }}
+            >
+              {desatribuirLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+              Confirmar desatribuição
             </button>
           </div>
         </ModalShell>
