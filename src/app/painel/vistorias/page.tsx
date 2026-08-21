@@ -191,19 +191,24 @@ function EquipamentoRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          onClick={onAtribuir}
-          className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-semibold transition hover:opacity-85"
-          style={{
-            background: C.brandTint,
-            color: C.brandDeep,
-            border: `1px solid ${C.brandLine}`,
-          }}
-        >
-          <UserPlus className="h-3.5 w-3.5" strokeWidth={2.3} />
-          {item.tecnico ? "Reatribuir" : "Atribuir"}
-        </button>
+        {/* Reatribuir/desvincular um técnico já em campo é só na Central de
+            Vistorias (2026-08-21) — aqui só oferece a ação pra quem ainda
+            não tem ninguém atribuído. */}
+        {!item.tecnico && (
+          <button
+            type="button"
+            onClick={onAtribuir}
+            className="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-semibold transition hover:opacity-85"
+            style={{
+              background: C.brandTint,
+              color: C.brandDeep,
+              border: `1px solid ${C.brandLine}`,
+            }}
+          >
+            <UserPlus className="h-3.5 w-3.5" strokeWidth={2.3} />
+            Atribuir
+          </button>
+        )}
         <button
           type="button"
           onClick={onEditar}
@@ -763,16 +768,13 @@ function AtribuirModal({
   tecnicos,
   onClose,
   onAtribuir,
-  onDesvincular,
 }: {
   item: FilaItem;
   tecnicos: TecnicoAtivo[];
   onClose: () => void;
   onAtribuir: (tec: TecnicoAtivo) => void;
-  onDesvincular: () => void;
 }) {
   const ativos = tecnicos;
-  const jaTemTecnico = !!item.tecnico;
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -803,7 +805,7 @@ function AtribuirModal({
               className="text-[9px] font-bold uppercase tracking-[0.18em]"
               style={{ color: C.brand }}
             >
-              {jaTemTecnico ? "Reatribuir técnico" : "Atribuir técnico"}
+              Atribuir técnico
             </p>
             <h3
               className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]"
@@ -813,12 +815,6 @@ function AtribuirModal({
             </h3>
             <p className="text-[11px]" style={{ color: C.muted }}>
               {item.municipio} · {item.glpiId}
-              {jaTemTecnico && (
-                <>
-                  {" · atual: "}
-                  <strong style={{ color: C.brandDeep }}>{item.tecnico!.nome}</strong>
-                </>
-              )}
             </p>
           </div>
           <button
@@ -831,37 +827,12 @@ function AtribuirModal({
           </button>
         </header>
         <div className="space-y-1 p-3">
-          {jaTemTecnico && (
-            <button
-              type="button"
-              onClick={onDesvincular}
-              className="mb-1 flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-black/5"
-              style={{ border: `1px solid ${C.line}` }}
-            >
-              <span
-                className="flex h-8 w-8 items-center justify-center rounded-xl"
-                style={{ background: C.iconBg, color: C.inkSoft }}
-              >
-                <X className="h-4 w-4" strokeWidth={2.4} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-semibold" style={{ color: C.inkSoft }}>
-                  Desvincular técnico atual
-                </p>
-                <p className="text-[10px]" style={{ color: C.faint }}>
-                  Remove {item.tecnico!.nome.split(" ")[0]} e devolve à fila
-                </p>
-              </div>
-            </button>
-          )}
-          {jaTemTecnico && ativos.length > 0 && (
-            <p
-              className="px-1 pb-0.5 pt-1 text-[8.5px] font-bold uppercase tracking-[0.14em]"
-              style={{ color: "var(--vm-faint-b)" }}
-            >
-              Ou reatribuir para
-            </p>
-          )}
+          {/* Reatribuir/desvincular um técnico já em campo é só na Central
+              de Vistorias (2026-08-14, reforçado 2026-08-21) — aqui não
+              dava pra ver devolução/recusa em aberto antes de tirar o
+              técnico, o que já causou perda de contexto real em produção
+              (ver auditoria 12/08). Esse modal agora só abre pra item sem
+              técnico nenhum. */}
           {ativos.map((t) => {
             const noMunicipio = t.municipio
               ? t.municipio.toLowerCase().includes(item.municipio.toLowerCase()) ||
@@ -1131,18 +1102,6 @@ export default function FilaVistoriasPage() {
       load();
     } catch {
       showToast("Falha ao atribuir.");
-    }
-  };
-
-  // Desvincular (tira o técnico, volta pra fila)
-  const handleDesvincular = async (item: FilaItem) => {
-    try {
-      await painelService.atribuir({ vistoria_id: item.id, tecnico_id: 0 });
-      showToast(`${item.equipamento} desvinculado · de volta à fila.`);
-      setAtribuirItem(null);
-      load();
-    } catch {
-      showToast("Falha ao desvincular.");
     }
   };
 
@@ -1552,7 +1511,6 @@ export default function FilaVistoriasPage() {
             tecnicos={tecnicos}
             onClose={() => setAtribuirItem(null)}
             onAtribuir={(tec) => handleAtribuirItem(atribuirItem, tec)}
-            onDesvincular={() => handleDesvincular(atribuirItem)}
           />
         )}
       </AnimatePresence>

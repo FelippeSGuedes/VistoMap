@@ -1589,8 +1589,11 @@ export default function PainelMapaPage() {
                           </>}
                         </div>
                       </button>
-                      {/* atribuição direta — não faz sentido para vistorias concluídas; leitura não age */}
-                      {session?.role !== "leitura" && v.situacao !== "VISTORIADO" && v.situacao !== "REVISITADO" && (
+                      {/* atribuição direta — só pra quem ainda não tem técnico;
+                          reatribuir/desvincular um técnico já em campo é só
+                          na Central de Vistorias (2026-08-21). Não faz
+                          sentido pra vistorias concluídas; leitura não age. */}
+                      {session?.role !== "leitura" && !v.tecnico_nome && v.situacao !== "VISTORIADO" && v.situacao !== "REVISITADO" && (
                         <button
                           type="button"
                           onClick={() => {
@@ -1602,7 +1605,7 @@ export default function PainelMapaPage() {
                           style={{ background: "rgba(59,130,246,0.08)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.15)" }}
                         >
                           <UserCheck className="h-3 w-3" />
-                          {v.tecnico_nome ? "Reatribuir técnico" : "Atribuir técnico"}
+                          Atribuir técnico
                         </button>
                       )}
                     </div>
@@ -2059,8 +2062,11 @@ export default function PainelMapaPage() {
                 )}
               </div>
 
-              {/* Ação secundária — Atribuir/Reatribuir (não aparece para vistorias concluídas; leitura não age) */}
-              {session?.role !== "leitura" && selectedVistoria.situacao !== "VISTORIADO" && selectedVistoria.situacao !== "REVISITADO" && (
+              {/* Ação secundária — só atribuir quem ainda não tem técnico;
+                  reatribuir/desvincular já em campo é só na Central de
+                  Vistorias (2026-08-21). Não aparece pra vistorias
+                  concluídas; leitura não age. */}
+              {session?.role !== "leitura" && !selectedVistoria.tecnico_nome && selectedVistoria.situacao !== "VISTORIADO" && selectedVistoria.situacao !== "REVISITADO" && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2072,7 +2078,7 @@ export default function PainelMapaPage() {
                   style={{ background: "rgba(255,255,255,0.06)", color: PANEL.text, borderRadius: 12, border: `1px solid ${PANEL.border}` }}
                 >
                   <UserCheck className="h-3.5 w-3.5" />
-                  {selectedVistoria.tecnico_nome ? "Reatribuir técnico" : "Atribuir técnico"}
+                  Atribuir técnico
                 </button>
               )}
 
@@ -2153,36 +2159,37 @@ export default function PainelMapaPage() {
         onClose={() => setStreetViewVistoria(null)}
       />
       {/* ── MODAL ATRIBUIR TÉCNICO ───────────────────────────────────────── */}
+      {/* Só abre pra vistoria sem técnico (gate nos dois gatilhos acima) —
+          reatribuir/desvincular um já em campo é exclusivo da Central de
+          Vistorias (2026-08-21). */}
       {atribuirVistoria && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+          <div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" }}
+          >
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100">
-                  <UserCheck className="h-5 w-5 text-blue-600" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--vm-tile-blue)" }}>
+                  <UserCheck className="h-5 w-5" style={{ color: "#3B82F6" }} />
                 </div>
                 <div>
-                  <h2 className="text-[14px] font-bold text-gray-900">Atribuir técnico</h2>
-                  <p className="truncate text-[11px] text-gray-400" style={{ maxWidth: 200 }}>{atribuirVistoria.equipamento}</p>
+                  <h2 className="text-[14px] font-bold" style={{ color: "var(--vm-text)" }}>Atribuir técnico</h2>
+                  <p className="truncate text-[11px]" style={{ color: "var(--vm-faint)", maxWidth: 200 }}>{atribuirVistoria.equipamento}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setAtribuirVistoria(null)} className="text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={() => setAtribuirVistoria(null)} style={{ color: "var(--vm-faint)" }}>
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {atribuirVistoria.tecnico_nome && (
-              <div className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-                Atual: <strong>{atribuirVistoria.tecnico_nome}</strong>
-              </div>
-            )}
-
-            <label className="mb-1 block text-[11px] font-semibold text-gray-700">Técnico</label>
+            <label className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Técnico</label>
             <div className="relative mb-3">
               <select
                 value={atribuirTecId}
                 onChange={(e) => setAtribuirTecId(e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2 pl-3 pr-8 text-[12px] outline-none focus:border-blue-400"
+                className="w-full appearance-none rounded-xl py-2 pl-3 pr-8 text-[12px] outline-none focus:border-blue-400"
+                style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
               >
                 <option value="">Selecione…</option>
                 {(data?.tecnicos ?? []).map((t) => (
@@ -2191,23 +2198,25 @@ export default function PainelMapaPage() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: "var(--vm-faint)" }} />
             </div>
 
-            <label className="mb-1 block text-[11px] font-semibold text-gray-700">Motivo *</label>
+            <label className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Motivo *</label>
             <textarea
               value={atribuirMotivo}
               onChange={(e) => setAtribuirMotivo(e.target.value)}
               placeholder="Ex: técnico mais próximo…"
               rows={2}
-              className="mb-4 w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-[11px] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
+              className="mb-4 w-full resize-none rounded-xl px-3 py-2 text-[11px] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
+              style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
             />
 
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setAtribuirVistoria(null)}
-                className="flex-1 rounded-xl border border-gray-200 py-2 text-[12px] font-semibold text-gray-600 hover:bg-gray-50"
+                className="flex-1 rounded-xl py-2 text-[12px] font-semibold transition hover:brightness-95"
+                style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)", background: "var(--vm-tile)" }}
               >
                 Cancelar
               </button>
