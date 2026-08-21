@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { api } from "@/services/api";
+import { asset } from "@/utils/asset";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import type { VistoriaRealizada, VistoriaFile, VistoriasRealizadasStats as PainelServiceRealizadasStats } from "@/services/painel";
 
@@ -443,6 +444,22 @@ function VistoriaCard({
       className="group cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#0B1220]"
       style={{ border: `1px solid var(--vm-border)`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
     >
+      {/* faixa de imagem — decorativa, confinada fora da área de texto de
+          propósito: era fundo do card inteiro antes, e brigava com
+          endereço/técnico em fonte pequena (ruído visual + baixo contraste
+          em dezenas de cards por tela, ruim pra um painel de auditoria que
+          se escaneia por horas). Aqui ela mantém a identidade visual sem
+          nunca ficar atrás de texto nenhum. */}
+      <div className="relative h-11 w-full overflow-hidden">
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat dark:hidden"
+          style={{ backgroundImage: `url('${asset("/cardconwhi.png")}')` }}
+        />
+        <div
+          className="absolute inset-0 hidden bg-cover bg-center bg-no-repeat dark:block"
+          style={{ backgroundImage: `url('${asset("/cardconbla.png")}')` }}
+        />
+      </div>
       {/* colored top strip */}
       <div style={{ height: 3, background: cfg.strip, flexShrink: 0 }} />
 
