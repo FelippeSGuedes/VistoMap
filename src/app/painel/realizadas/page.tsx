@@ -968,11 +968,24 @@ export default function RealizadasPage() {
     <div className="space-y-5">
 
       {/* ── PAGE HEADER ── */}
-      <div
-        className="overflow-hidden rounded-2xl"
-        style={{ background: "linear-gradient(135deg,#0f172a 0%,#1e293b 55%,#134e4a 100%)" }}
-      >
-        <div className="px-6 py-5">
+      <div className="relative overflow-hidden rounded-2xl">
+        {/* imagens de fundo — clara/escura conforme o tema do painel */}
+        <div
+          className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat dark:hidden"
+          style={{ backgroundImage: `url('${asset("/visrealizwht.png")}')` }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat dark:block"
+          style={{ backgroundImage: `url('${asset("/visrealizbl.png")}')` }}
+        />
+        {/* véu — mesmo gradiente "hero" de antes, agora semi-transparente
+            por cima da imagem, garantindo o contraste do texto branco */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: "linear-gradient(135deg,rgba(15,23,42,0.88) 0%,rgba(30,41,59,0.88) 55%,rgba(19,78,74,0.88) 100%)" }}
+        />
+
+        <div className="relative px-6 py-5">
           <div className="flex items-start justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
