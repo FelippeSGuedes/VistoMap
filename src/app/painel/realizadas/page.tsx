@@ -445,24 +445,19 @@ function VistoriaCard({
       style={{ border: `1px solid var(--vm-border)`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
     >
       {/* fundo — imagem clara/escura conforme o tema (asset() prefixa o
-          basePath /painel; classe Tailwind pura não dá pra fazer isso).
-          -inset-2 + blur: o desfoque suaviza os detalhes finos (linhas,
-          torres) que brigavam com o texto, sem esconder a composição geral;
-          a "sangria" de 8px evita a beirada mais nítida que o blur deixaria
-          bem na borda arredondada do card. */}
+          basePath /painel; classe Tailwind pura não dá pra fazer isso). */}
       <div
-        className="pointer-events-none absolute -inset-2 z-0 bg-cover bg-center bg-no-repeat blur-[3px] dark:hidden"
+        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat dark:hidden"
         style={{ backgroundImage: `url('${asset("/cardconwhi.png")}')` }}
       />
       <div
-        className="pointer-events-none absolute -inset-2 z-0 hidden bg-cover bg-center bg-no-repeat blur-[3px] dark:block"
+        className="pointer-events-none absolute inset-0 z-0 hidden bg-cover bg-center bg-no-repeat dark:block"
         style={{ backgroundImage: `url('${asset("/cardconbla.png")}')` }}
       />
-      {/* véu de proteção em gradiente — mais opaco nas pontas (onde ficam
-          título/endereço no topo e status/data embaixo), levemente mais
-          transparente no meio, então a imagem ainda aparece sem brigar
-          com nenhum texto. */}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/90 via-white/86 to-white/92 dark:from-[#0B1220]/90 dark:via-[#0B1220]/86 dark:to-[#0B1220]/92" />
+      {/* véu de proteção — camada única e sólida (sem blur, sem gradiente):
+          a imagem fica de textura de fundo, não solta, o texto sempre lê
+          fácil por cima. */}
+      <div className="pointer-events-none absolute inset-0 z-0 bg-white/88 dark:bg-[#0B1220]/88" />
 
       <div className="relative z-10">
         {/* colored top strip */}
