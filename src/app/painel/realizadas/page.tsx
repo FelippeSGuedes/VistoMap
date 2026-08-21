@@ -1,12 +1,20 @@
 "use client";
 
-/** Converte path absoluto do filesystem em URL servida pela API. */
-function pdfUrl(dbPath: string): string {
+/**
+ * Converte path absoluto do filesystem no `file` relativo que a API espera
+ * (/api/painel/pdf?file=...). NÃO monta a URL final pra navegação direta —
+ * a rota exige o header Authorization (Bearer), que um <a href target=_blank>
+ * nunca envia (é navegação de browser pura, sem os headers do axios). Por
+ * isso todo mundo, mesmo logado, caía em "Não autenticado" ao clicar no PDF
+ * CPFL Gerado (achado em produção 2026-08-21) — o fix é buscar o PDF via
+ * `api` (que já injeta o Bearer no interceptor) como blob, e abrir esse blob
+ * numa aba nova, em vez de deixar o browser navegar direto pra rota.
+ */
+function pdfFileParam(dbPath: string): string {
   const FILES_BASE = "/var/www/html/glpi/plugins/vistomapprojetos/files/";
-  const relative = dbPath.startsWith(FILES_BASE)
+  return dbPath.startsWith(FILES_BASE)
     ? dbPath.slice(FILES_BASE.length)
     : dbPath.replace(/^.*\/files\//, "");
-  return `/painel/api/painel/pdf?file=${encodeURIComponent(relative)}`;
 }
 
 import { AnimatePresence, motion } from "framer-motion";
@@ -29,6 +37,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
+import { api } from "@/services/api";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import type { VistoriaRealizada, VistoriaFile, VistoriasRealizadasStats as PainelServiceRealizadasStats } from "@/services/painel";
 
@@ -528,6 +537,26 @@ function DetailDrawer({
   const [files,        setFiles]        = useState<VistoriaFile[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(true);
   const [lightboxIdx,  setLightboxIdx]  = useState<number | null>(null);
+  const [abrindoPdf,   setAbrindoPdf]   = useState(false);
+  const [erroPdf,      setErroPdf]      = useState(false);
+
+  async function abrirPdf(dbPath: string) {
+    setErroPdf(false);
+    setAbrindoPdf(true);
+    try {
+      const r = await api.get("/painel/pdf", {
+        params: { file: pdfFileParam(dbPath) },
+        responseType: "blob",
+      });
+      const blobUrl = URL.createObjectURL(r.data as Blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch {
+      setErroPdf(true);
+    } finally {
+      setAbrindoPdf(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -725,31 +754,44 @@ function DetailDrawer({
 
           {/* ── pdf ── */}
           {item.pdfPath ? (
-            <a
-              href={pdfUrl(item.pdfPath)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between rounded-2xl p-4 transition"
+            <button
+              type="button"
+              disabled={abrindoPdf}
+              onClick={() => abrirPdf(item.pdfPath!)}
+              className="flex w-full items-center justify-between rounded-2xl p-4 text-left transition disabled:opacity-70"
               style={{
-                background: "#EFF6FF",
-                border: "1px solid #BFDBFE",
+                background: erroPdf ? "var(--vm-red-tint)" : "#EFF6FF",
+                border: erroPdf ? "1px solid #FECACA" : "1px solid #BFDBFE",
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#DBEAFE"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#EFF6FF"; }}
+              onMouseEnter={e => { if (!erroPdf) (e.currentTarget as HTMLElement).style.background = "#DBEAFE"; }}
+              onMouseLeave={e => { if (!erroPdf) (e.currentTarget as HTMLElement).style.background = "#EFF6FF"; }}
             >
               <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2563EB]/10">
-                  <FileText className="h-5 w-5 text-[#2563EB]" />
+                <span
+                  className="flex h-10 w-10 items-center justify-center rounded-xl"
+                  style={{ background: erroPdf ? "rgba(220,38,38,0.1)" : "rgba(37,99,235,0.1)" }}
+                >
+                  {abrindoPdf ? (
+                    <RefreshCw className="h-5 w-5 animate-spin text-[#2563EB]" />
+                  ) : (
+                    <FileText className="h-5 w-5" style={{ color: erroPdf ? "#DC2626" : "#2563EB" }} />
+                  )}
                 </span>
                 <div>
-                  <p className="text-[13px] font-bold text-[#1E40AF]">PDF CPFL Gerado</p>
-                  <p className="text-[10.5px] text-[#3B82F6]">
-                    Clique para abrir em nova aba
+                  <p className="text-[13px] font-bold" style={{ color: erroPdf ? "#B91C1C" : "#1E40AF" }}>
+                    PDF CPFL Gerado
+                  </p>
+                  <p className="text-[10.5px]" style={{ color: erroPdf ? "#DC2626" : "#3B82F6" }}>
+                    {abrindoPdf
+                      ? "Abrindo…"
+                      : erroPdf
+                      ? "Falha ao abrir — tente de novo"
+                      : "Clique para abrir em nova aba"}
                   </p>
                 </div>
               </div>
-              <ExternalLink className="h-4 w-4 text-[#3B82F6]" />
-            </a>
+              <ExternalLink className="h-4 w-4" style={{ color: erroPdf ? "#DC2626" : "#3B82F6" }} />
+            </button>
           ) : (
             <div
               className="flex items-center gap-3 rounded-2xl p-4"
