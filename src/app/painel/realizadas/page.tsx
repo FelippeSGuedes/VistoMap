@@ -445,17 +445,24 @@ function VistoriaCard({
       style={{ border: `1px solid var(--vm-border)`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
     >
       {/* fundo — imagem clara/escura conforme o tema (asset() prefixa o
-          basePath /painel; classe Tailwind pura não dá pra fazer isso). */}
+          basePath /painel; classe Tailwind pura não dá pra fazer isso).
+          -inset-2 + blur: o desfoque suaviza os detalhes finos (linhas,
+          torres) que brigavam com o texto, sem esconder a composição geral;
+          a "sangria" de 8px evita a beirada mais nítida que o blur deixaria
+          bem na borda arredondada do card. */}
       <div
-        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat dark:hidden"
+        className="pointer-events-none absolute -inset-2 z-0 bg-cover bg-center bg-no-repeat blur-[3px] dark:hidden"
         style={{ backgroundImage: `url('${asset("/cardconwhi.png")}')` }}
       />
       <div
-        className="pointer-events-none absolute inset-0 z-0 hidden bg-cover bg-center bg-no-repeat dark:block"
+        className="pointer-events-none absolute -inset-2 z-0 hidden bg-cover bg-center bg-no-repeat blur-[3px] dark:block"
         style={{ backgroundImage: `url('${asset("/cardconbla.png")}')` }}
       />
-      {/* véu de proteção — a imagem de fundo não pode brigar com o texto por cima */}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-white/82 dark:bg-[#0B1220]/84" />
+      {/* véu de proteção em gradiente — mais opaco nas pontas (onde ficam
+          título/endereço no topo e status/data embaixo), levemente mais
+          transparente no meio, então a imagem ainda aparece sem brigar
+          com nenhum texto. */}
+      <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/90 via-white/86 to-white/92 dark:from-[#0B1220]/90 dark:via-[#0B1220]/86 dark:to-[#0B1220]/92" />
 
       <div className="relative z-10">
         {/* colored top strip */}
@@ -466,7 +473,7 @@ function VistoriaCard({
           <div className="mb-2.5 flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <p
-                className="mb-0.5 text-[10px] font-bold uppercase tracking-wider"
+                className="mb-0.5 text-[10.5px] font-bold uppercase tracking-wider"
                 style={{ color: cfg.color }}
               >
                 {item.glpiId}
@@ -484,12 +491,12 @@ function VistoriaCard({
                 )}
               </p>
               <h3
-                className="truncate text-[13.5px] font-bold text-[var(--vm-text)] transition-colors group-hover:text-[#059669]"
+                className="truncate text-[14.5px] font-bold text-[var(--vm-text)] transition-colors group-hover:text-[#059669]"
                 title={item.equipamento}
               >
                 {item.equipamento}
               </h3>
-              <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-[var(--vm-muted)]">
+              <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] text-[var(--vm-muted)]">
                 <MapPin className="h-2.5 w-2.5 shrink-0" />
                 {item.municipio}
                 {item.endereco && (
@@ -505,14 +512,14 @@ function VistoriaCard({
             <div className="mb-3 flex items-center gap-2">
               <TecnicoAvatar nome={item.tecnico.nome} />
               <div className="min-w-0">
-                <p className="truncate text-[12px] font-semibold text-[var(--vm-text-soft)]">
+                <p className="truncate text-[12.5px] font-semibold text-[var(--vm-text-soft)]">
                   {item.tecnico.nome.split(" ")[0]}
                 </p>
-                <p className="text-[10px] text-[var(--vm-faint)]">{relativo(item.dataVistoria)}</p>
+                <p className="text-[10.5px] text-[var(--vm-faint)]">{relativo(item.dataVistoria)}</p>
               </div>
             </div>
           ) : (
-            <div className="mb-3 flex items-center gap-1.5 text-[11px] text-[var(--vm-faint)]">
+            <div className="mb-3 flex items-center gap-1.5 text-[11.5px] text-[var(--vm-faint)]">
               <User className="h-3.5 w-3.5" /> Sem técnico
             </div>
           )}
@@ -522,7 +529,7 @@ function VistoriaCard({
           {/* row 3: status + date */}
           <div className="mt-3 flex items-center justify-between gap-2">
             <StatusBadge status={item.status} isRepeat={false} />
-            <span className="shrink-0 text-[10px] text-[#D1D5DB]">
+            <span className="shrink-0 text-[10.5px] text-[#D1D5DB]">
               {fmtDate(item.dataVistoria)}
             </span>
           </div>
