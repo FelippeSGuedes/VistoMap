@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   Sun,
   Undo2,
+  UserPlus,
   Users,
   Wrench,
 } from "lucide-react";
@@ -54,8 +55,19 @@ const BOTTOM_NAV = [
   { href: "/painel/auditoria",      label: "Auditoria",     icon: ShieldAlert, roles: ALL_ROLES },
   { href: "/painel/historico",      label: "Histórico",     icon: History,     roles: ALL_ROLES },
   { href: "/painel/status",         label: "Status",        icon: HeartPulse,  roles: ADMIN_ONLY },
-  { href: "/painel/configuracoes",  label: "Configurações", icon: Settings,    roles: ADMIN_MOD },
 ];
+
+// Sub-itens do grupo "Configurações" — cada um é página própria (era tudo
+// abas dentro de /painel/configuracoes antes; separado pra ficar mais fácil
+// de achar cada seção e não misturar preferência de notificação com lista
+// de usuários).
+const CONFIG_GROUP = [
+  { href: "/painel/configuracoes/expediente",    label: "Expediente",     icon: Clock,    roles: ADMIN_MOD },
+  { href: "/painel/configuracoes/notificacoes",  label: "Notificações",   icon: Bell,     roles: ADMIN_MOD },
+  { href: "/painel/configuracoes/colaboradores", label: "Colaboradores",  icon: Users,    roles: ADMIN_MOD },
+  { href: "/painel/configuracoes/novo",          label: "Novo Colaborador", icon: UserPlus, roles: ADMIN_ONLY },
+];
+const CONFIG_HREFS = new Set(CONFIG_GROUP.map((i) => i.href));
 
 // Sub-itens do grupo "Vistorias"
 const VISTORIAS_GROUP = [
@@ -88,6 +100,7 @@ const PAGE_ROLES: Array<{ href: string; roles: SessionRole[] }> = [
   ...BOTTOM_NAV,
   ...VISTORIAS_GROUP,
   ...INSTALACOES_GROUP,
+  ...CONFIG_GROUP,
   { href: "/painel/teste", roles: ADMIN_ONLY },
 ];
 
@@ -214,6 +227,7 @@ export default function PainelClientLayout({ children }: { children: React.React
   const [isDark, setIsDark] = useState(false);
   const [vistoriasOpen, setVistoriasOpen] = useState(false);
   const [instalacoesOpen, setInstalacoesOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [pendentesCount, setPendentesCount] = useState(0);
   const prefRef = useRef(false); // preferência manual do usuário (expandido/recolhido)
@@ -240,6 +254,10 @@ export default function PainelClientLayout({ children }: { children: React.React
 
   useEffect(() => {
     if (INSTALACOES_HREFS.has(pathname)) setInstalacoesOpen(true);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (CONFIG_HREFS.has(pathname)) setConfigOpen(true);
   }, [pathname]);
 
   // Polling do badge de notificações pendentes
@@ -310,10 +328,12 @@ export default function PainelClientLayout({ children }: { children: React.React
   const nome = session.tecnico.nome;
   const vistoriasActive = VISTORIAS_HREFS.has(pathname);
   const instalacoesActive = INSTALACOES_HREFS.has(pathname);
+  const configActive = CONFIG_HREFS.has(pathname);
   const topNav = TOP_NAV.filter((i) => i.roles.includes(session.role));
   const bottomNav = BOTTOM_NAV.filter((i) => i.roles.includes(session.role));
   const vistoriasGroup = VISTORIAS_GROUP.filter((i) => i.roles.includes(session.role));
   const instalacoesGroup = INSTALACOES_GROUP.filter((i) => i.roles.includes(session.role));
+  const configGroup = CONFIG_GROUP.filter((i) => i.roles.includes(session.role));
 
   return (
     <div
@@ -558,6 +578,80 @@ export default function PainelClientLayout({ children }: { children: React.React
                 {instalacoesOpen && (
                   <ul className="mt-0.5 space-y-[2px]">
                     {instalacoesGroup.map(({ href, label, icon }) => (
+                      <NavItem
+                        key={href}
+                        href={href}
+                        label={label}
+                        icon={icon}
+                        pathname={pathname}
+                        T={T}
+                        indent
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )}
+
+            {/* ── GRUPO: CONFIGURAÇÕES ───────────────────────────── */}
+            {configGroup.length === 0 ? null : collapsed ? (
+              <li>
+                <button
+                  type="button"
+                  title="Configurações"
+                  onClick={() => { toggleCollapse(); setConfigOpen(true); }}
+                  className="relative flex w-full items-center justify-center rounded-lg py-[9px] transition-colors duration-100"
+                  style={{
+                    background: configActive ? T.navActive : "transparent",
+                    color: configActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {configActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                    />
+                  )}
+                  <Settings
+                    className="h-[15px] w-[15px]"
+                    strokeWidth={configActive ? 2.3 : 1.8}
+                    style={{ color: configActive ? "#00B388" : T.navInactive }}
+                  />
+                </button>
+              </li>
+            ) : (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setConfigOpen((v) => !v)}
+                  className="relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
+                  style={{
+                    background: configActive ? T.navActive : "transparent",
+                    color: configActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {configActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                    />
+                  )}
+                  <Settings
+                    className="h-[15px] w-[15px] shrink-0"
+                    strokeWidth={configActive ? 2.3 : 1.8}
+                    style={{ color: configActive ? "#00B388" : T.navInactive }}
+                  />
+                  <span className="flex-1 truncate text-left">Configurações</span>
+                  {configOpen ? (
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                  )}
+                </button>
+
+                {configOpen && (
+                  <ul className="mt-0.5 space-y-[2px]">
+                    {configGroup.map(({ href, label, icon }) => (
                       <NavItem
                         key={href}
                         href={href}
