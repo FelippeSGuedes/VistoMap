@@ -885,9 +885,9 @@ function StatPill({
   return (
     <div
       className="rounded-xl p-3"
-      style={{ background: bg, border: "1px solid rgba(255,255,255,0.06)" }}
+      style={{ background: bg, border: "1px solid var(--vm-border)" }}
     >
-      <p className="text-[9.5px] font-bold uppercase tracking-wider text-white/40">{label}</p>
+      <p className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: "var(--vm-faint)" }}>{label}</p>
       <p
         className="mt-1 text-[22px] font-bold leading-none tabular-nums"
         style={{ color }}
@@ -978,26 +978,24 @@ export default function RealizadasPage() {
           className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat dark:block"
           style={{ backgroundImage: `url('${asset("/visrealizbl.png")}')` }}
         />
-        {/* véu — mesmo gradiente "hero" de antes, agora semi-transparente
-            por cima da imagem, garantindo o contraste do texto branco */}
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{ background: "linear-gradient(135deg,rgba(15,23,42,0.88) 0%,rgba(30,41,59,0.88) 55%,rgba(19,78,74,0.88) 100%)" }}
-        />
+        {/* véu bem leve — as imagens já têm a cor/gradiente certos embutidos
+            (a escura já É quase o navy/teal do design antigo), só precisa
+            de uma pitada de profundidade, não de esconder a textura */}
+        <div className="pointer-events-none absolute inset-0 bg-white/10 dark:bg-black/10" />
 
         <div className="relative px-6 py-5">
           <div className="flex items-start justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
-                <span className="inline-block h-px w-8 bg-emerald-400" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400">
+                <span className="inline-block h-px w-8" style={{ background: "var(--vm-accent)" }} />
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--vm-accent)" }}>
                   Auditoria
                 </span>
               </div>
-              <h1 className="text-[22px] font-bold leading-tight text-white">
+              <h1 className="text-[22px] font-bold leading-tight" style={{ color: "var(--vm-text)" }}>
                 Vistorias Realizadas
               </h1>
-              <p className="mt-1 text-[12px] text-white/45">
+              <p className="mt-1 text-[12px]" style={{ color: "var(--vm-muted)" }}>
                 Histórico completo · fotos · PDFs · linha do tempo de execução
               </p>
             </div>
@@ -1005,10 +1003,10 @@ export default function RealizadasPage() {
               <motion.span
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold text-emerald-400"
-                style={{ background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.2)" }}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold"
+                style={{ background: "var(--vm-accent-tint)", border: "1px solid var(--vm-glass-border)", color: "var(--vm-accent)" }}
               >
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "var(--vm-accent)" }} />
                 {stats.total} registros
               </motion.span>
             )}
