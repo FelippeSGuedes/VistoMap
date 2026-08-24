@@ -22,7 +22,11 @@ import mapboxgl from "mapbox-gl";
 export const TECH_MODEL_LAYER_ID = "vm-tech-3d-model";
 
 const TWEEN_MS = 800; // mesma duração do animateMarkerTo (page.tsx)
-const MODEL_RADIUS_M = 14;
+// DEBUG: esfera enorme e magenta pra ser impossível de não ver, mesmo com
+// posição/escala levemente erradas — depois de confirmar que aparece,
+// volta pro tamanho/cor discretos (14, 0x00c896).
+const MODEL_RADIUS_M = 60;
+const DEBUG_LOG = true;
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -43,6 +47,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private scene!: THREE.Scene;
   private renderer!: THREE.WebGLRenderer;
   private mesh!: THREE.Mesh;
+  private loggedFirstRender = false;
 
   // Tween em espaço Mercator (x/y planos; altitude fixa em 0 nesta POC).
   private from: MercatorXY;
@@ -55,6 +60,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.from = { x: m.x, y: m.y };
     this.to = { x: m.x, y: m.y };
     this.z = m.z ?? 0;
+    if (DEBUG_LOG) {
+      // eslint-disable-next-line no-console
+      console.log("[vm-3d] layer construída", { initialLng, initialLat, mercator: { x: m.x, y: m.y, z: this.z } });
+    }
   }
 
   /** Chamado de fora (sync de técnicos) a cada novo fetch — dispara o tween. */
@@ -69,6 +78,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], 0);
     this.to = { x: m.x, y: m.y };
     this.tweenStart = performance.now();
+    if (DEBUG_LOG) {
+      // eslint-disable-next-line no-console
+      console.log("[vm-3d] setTargetPosition", { lng, lat });
+    }
   }
 
   private tweenProgress(): number {
@@ -90,7 +103,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 
     const geometry = new THREE.SphereGeometry(MODEL_RADIUS_M, 24, 24);
-    const material = new THREE.MeshStandardMaterial({ color: 0x00c896, emissive: 0x003322 });
+    // DEBUG: MeshBasicMaterial não depende de luz nenhuma (sempre na cor
+    // cheia, veio o que vier de iluminação) — elimina "problema de luz"
+    // como causa possível de invisibilidade enquanto diagnosticamos.
+    const material = new THREE.MeshBasicMaterial({ color: 0xff00ff });
     this.mesh = new THREE.Mesh(geometry, material);
     this.scene.add(this.mesh);
 
@@ -102,6 +118,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       antialias: true,
     });
     this.renderer.autoClear = false;
+
+    if (DEBUG_LOG) {
+      // eslint-disable-next-line no-console
+      console.log("[vm-3d] onAdd rodou", {
+        canvasSize: { w: map.getCanvas().width, h: map.getCanvas().height },
+        isWebGL2: typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext,
+        projection: map.getProjection?.(),
+      });
+    }
   }
 
   render(_gl: WebGLRenderingContext, matrix: number[]): void {
@@ -128,12 +153,28 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
     this.camera.projectionMatrix = m.multiply(l);
 
+    if (DEBUG_LOG && !this.loggedFirstRender) {
+      this.loggedFirstRender = true;
+      // eslint-disable-next-line no-console
+      console.log("[vm-3d] primeiro render()", {
+        mercatorXYZ: { x, y, z: this.z },
+        scale,
+        matrixRecebidaDoMapbox: matrix,
+        matrizFinal: this.camera.projectionMatrix.toArray(),
+      });
+    }
+
     // Obrigatório a cada frame — Mapbox e Three.js dividem o mesmo
     // contexto GL e pisam no estado um do outro sem isso (sintoma
     // clássico: tiles do mapa ficam pretos/transparentes).
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
 
+    // DEBUG: repaint incondicional pra maximizar chance de flagrar o
+    // objeto enquanto diagnosticamos. Depois de confirmar que aparece,
+    // troca por "só enquanto frac < 1" (só durante o tween) — hoje isso
+    // força o mapa a redesenhar a 60fps o tempo todo, é o que deixou o
+    // mapa pesado no teste anterior.
     this.map?.triggerRepaint();
   }
 

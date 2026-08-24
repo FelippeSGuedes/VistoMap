@@ -201,9 +201,19 @@ function ensureTechModelLayer(
   firstTechIdRef: MutableRefObject<number | null>,
   tecnicos: PainelMapaTecnico[]
 ) {
-  if (map.getLayer(TECH_MODEL_LAYER_ID)) return;
+  if (map.getLayer(TECH_MODEL_LAYER_ID)) {
+    // eslint-disable-next-line no-console
+    console.log("[vm-3d] ensureTechModelLayer: layer já existe, ignorando");
+    return;
+  }
   const t = tecnicos.find((tec) => tec.latitude != null && tec.longitude != null);
-  if (!t) return;
+  if (!t) {
+    // eslint-disable-next-line no-console
+    console.log("[vm-3d] ensureTechModelLayer: nenhum técnico com lat/lng válido em", tecnicos.length, "técnicos");
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.log("[vm-3d] ensureTechModelLayer: adicionando layer pro técnico", t.users_id, t.nome);
   const layer = new TechModel3DLayer(t.longitude!, t.latitude!);
   map.addLayer(layer);
   layerRef.current = layer;
