@@ -3,6 +3,7 @@
 import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AnimatePresence, motion } from "framer-motion";
+import { TechModel3DLayer, TECH_MODEL_LAYER_ID } from "./techModel3DLayer";
 import { useAuthStore } from "@/store/auth";
 import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
@@ -124,7 +125,7 @@ const PANEL = {
   success: "#22C55E",
   danger: "#EF4444",
 } as const;
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 
 /** Mesmo raio do backend (POSTE_TROCA_RAIO_M) — consistência com o app técnico. */
 const POSTES_PROXIMOS_RAIO_M = 100;
@@ -188,6 +189,30 @@ function add3DBuildings(map: mapboxgl.Map) {
   };
   if (map.loaded()) apply();
   else map.once("load", apply);
+}
+
+/**
+ * POC de camada 3D (Three.js) — planta o objeto na posição do primeiro
+ * técnico com GPS válido. Idempotente (não faz nada se a layer já existe).
+ */
+function ensureTechModelLayer(
+  map: mapboxgl.Map,
+  layerRef: MutableRefObject<TechModel3DLayer | null>,
+  firstTechIdRef: MutableRefObject<number | null>,
+  tecnicos: PainelMapaTecnico[]
+) {
+  if (map.getLayer(TECH_MODEL_LAYER_ID)) return;
+  const t = tecnicos.find((tec) => tec.latitude != null && tec.longitude != null);
+  if (!t) return;
+  const layer = new TechModel3DLayer(t.longitude!, t.latitude!);
+  map.addLayer(layer);
+  layerRef.current = layer;
+  firstTechIdRef.current = t.users_id;
+}
+
+function removeTechModelLayer(map: mapboxgl.Map, layerRef: MutableRefObject<TechModel3DLayer | null>) {
+  if (map.getLayer(TECH_MODEL_LAYER_ID)) map.removeLayer(TECH_MODEL_LAYER_ID);
+  layerRef.current = null;
 }
 
 const SITUACAO_COR: Record<string, string> = {
@@ -583,6 +608,9 @@ export default function PainelMapaPage() {
   const editMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const lastDataRef = useRef<PainelMapaResponse | null>(null);
   const vistoriasFiltradasRef = useRef<PainelMapaVistoria[]>([]);
+  // POC de camada 3D (Three.js) — só existe/atualiza no modo "3d".
+  const tech3DLayerRef = useRef<TechModel3DLayer | null>(null);
+  const firstTechIdRef = useRef<number | null>(null);
   // Refs próprios da Instalação — nunca compartilha marker/cache com a Vistoria.
   const instaladorMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const posteInstMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -769,9 +797,14 @@ export default function PainelMapaPage() {
       zoom: 10,
       attributionControl: false,
       pitchWithRotate: true,
+      antialias: true, // custom layer 3D (Three.js) precisa disso pra não serrilhar
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "top-right");
     mapRef.current = map;
+    // CustomLayerInterface só funciona certo em projeção mercator — mapbox-gl v3
+    // usa "globe" por padrão nesses estilos, e todo setStyle() reseta pra globe
+    // de novo (reforçado nos callbacks de style.load abaixo).
+    map.setProjection("mercator");
 
     // Bulletproof resize: in some webviews 100dvh settles late (>1.5s) and a single
     // resize latches onto a transient short height (canvas stays e.g. 272px while the
@@ -801,6 +834,7 @@ export default function PainelMapaPage() {
       map.remove();
       mapRef.current = null;
       techMarkersRef.current.clear();
+      tech3DLayerRef.current = null;
     };
   }, [token]);
 
@@ -910,9 +944,10 @@ export default function PainelMapaPage() {
 
     const prev = activeLayer;
 
-    // Saindo do 3D: remove buildings + pitch
+    // Saindo do 3D: remove buildings + pitch + a camada 3D (Three.js)
     if (prev === "3d" && key !== "3d") {
       if (map.getLayer(BUILDINGS_LAYER)) map.removeLayer(BUILDINGS_LAYER);
+      removeTechModelLayer(map, tech3DLayerRef);
       map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
     }
 
@@ -925,12 +960,15 @@ export default function PainelMapaPage() {
       if (prev !== "3d") {
         map.setStyle(target3d);
         map.once("style.load", () => {
+          map.setProjection("mercator"); // setStyle reseta pra globe (default do estilo novo)
           if (lastDataRef.current) ensureVistoriaLayers(map, vistoriasFiltradasRef.current);
           if (trailUsersId) fetchTrail(trailUsersId);
           add3DBuildings(map);
+          ensureTechModelLayer(map, tech3DLayerRef, firstTechIdRef, lastDataRef.current?.tecnicos ?? []);
         });
       } else {
         add3DBuildings(map);
+        ensureTechModelLayer(map, tech3DLayerRef, firstTechIdRef, lastDataRef.current?.tecnicos ?? []);
       }
       return;
     }
@@ -942,6 +980,7 @@ export default function PainelMapaPage() {
 
     map.setStyle(targetStyle);
     map.once("style.load", () => {
+      map.setProjection("mercator"); // idem — reforça mesmo fora do 3D
       // Re-adiciona layers de vistorias perdidos com a troca de estilo
       if (lastDataRef.current) ensureVistoriaLayers(map, vistoriasFiltradasRef.current);
       // Re-adiciona trail se houver
@@ -1136,9 +1175,18 @@ export default function PainelMapaPage() {
         // "todos" — exclui offline do mapa para evitar falso positivo de localização
         return t.status_operacional !== "offline";
       });
+      // POC de camada 3D (Three.js) — só existe/atualiza no modo "3d"; nos
+      // outros modos o pin 2D (SVG/HTML) já criado abaixo é suficiente.
+      if (activeLayerRef.current === "3d") {
+        ensureTechModelLayer(map, tech3DLayerRef, firstTechIdRef, data.tecnicos);
+      }
+
       const seen = new Set<number>();
       visible.forEach((t) => {
         seen.add(t.users_id);
+        if (tech3DLayerRef.current && t.users_id === firstTechIdRef.current) {
+          tech3DLayerRef.current.setTargetPosition(t.longitude!, t.latitude!);
+        }
         const existing = techMarkersRef.current.get(t.users_id);
         if (existing) {
           animateMarkerTo(existing, t.longitude!, t.latitude!);
