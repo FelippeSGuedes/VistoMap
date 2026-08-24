@@ -22,11 +22,11 @@ import mapboxgl from "mapbox-gl";
 export const TECH_MODEL_LAYER_ID = "vm-tech-3d-model";
 
 const TWEEN_MS = 800; // mesma duração do animateMarkerTo (page.tsx)
-// DEBUG: esfera enorme e magenta pra ser impossível de não ver, mesmo com
-// posição/escala levemente erradas — depois de confirmar que aparece,
-// volta pro tamanho/cor discretos (14, 0x00c896).
-const MODEL_RADIUS_M = 60;
-const DEBUG_LOG = true;
+// 18m/cor cheia (MeshBasicMaterial, sem depender de luz) — validado que
+// 14m com material com luz ficava sutil demais pra notar no mapa real.
+const MODEL_RADIUS_M = 18;
+const MODEL_COLOR = 0x00d4a0; // mesmo teal-neon usado no resto da identidade visual
+const DEBUG_LOG = false; // já validado (posição/escala/projeção corretos) — reativa se precisar depurar de novo
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -94,19 +94,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.camera = new THREE.Camera();
     this.scene = new THREE.Scene();
 
-    const light1 = new THREE.DirectionalLight(0xffffff, 1);
-    light1.position.set(0, -70, 100).normalize();
-    this.scene.add(light1);
-    const light2 = new THREE.DirectionalLight(0xffffff, 0.6);
-    light2.position.set(0, 70, 100).normalize();
-    this.scene.add(light2);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-
     const geometry = new THREE.SphereGeometry(MODEL_RADIUS_M, 24, 24);
-    // DEBUG: MeshBasicMaterial não depende de luz nenhuma (sempre na cor
-    // cheia, veio o que vier de iluminação) — elimina "problema de luz"
-    // como causa possível de invisibilidade enquanto diagnosticamos.
-    const material = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+    // MeshBasicMaterial (sem luz) — fica sempre na cor cheia, consistente
+    // em qualquer ângulo/hora do dia, no mesmo espírito neon do resto da
+    // identidade visual (vis.png etc.). Quando entrar o modelo de
+    // carro/pessoa de verdade (fase seguinte), reavaliar se cabe luz.
+    const material = new THREE.MeshBasicMaterial({ color: MODEL_COLOR });
     this.mesh = new THREE.Mesh(geometry, material);
     this.scene.add(this.mesh);
 
@@ -134,9 +127,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     const x = this.from.x + (this.to.x - this.from.x) * frac;
     const y = this.from.y + (this.to.y - this.from.y) * frac;
 
-    // Rotação contínua só pra provar que o loop roda sem interação do
-    // usuário no mapa (map.triggerRepaint() sustenta o ciclo).
-    this.mesh.rotation.z += 0.01;
+    // Só gira enquanto o tween de posição está rolando (~800ms a cada
+    // atualização real) — girar sem parar exigiria repaint a 60fps o
+    // tempo todo, que foi o que deixou o mapa pesado no teste anterior.
+    if (frac < 1) this.mesh.rotation.z += 0.01;
 
     // Instanciado via construtor (x, y, z) — nunca via spread, que perde
     // o método meterInMercatorCoordinateUnits() e quebra a escala.
@@ -170,12 +164,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
 
-    // DEBUG: repaint incondicional pra maximizar chance de flagrar o
-    // objeto enquanto diagnosticamos. Depois de confirmar que aparece,
-    // troca por "só enquanto frac < 1" (só durante o tween) — hoje isso
-    // força o mapa a redesenhar a 60fps o tempo todo, é o que deixou o
-    // mapa pesado no teste anterior.
-    this.map?.triggerRepaint();
+    // Só pede o próximo frame enquanto o tween ainda não terminou — fora
+    // disso, o mapa só redesenha quando o usuário interage (comportamento
+    // normal do Mapbox), sem custo de repaint contínuo em segundo plano.
+    if (frac < 1) this.map?.triggerRepaint();
   }
 
   onRemove(): void {
