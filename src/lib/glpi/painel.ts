@@ -10,6 +10,7 @@ import {
   SITUACAO_AGUARDANDO_REVISITA,
   SITUACAO_COLUMN,
   SITUACAO_DEVOLVIDA,
+  SITUACAO_EM_DESLOCAMENTO,
   SITUACAO_EM_REVISITA,
   SITUACAO_EM_VISTORIA,
   SITUACAO_REVISITADO,
@@ -1218,6 +1219,7 @@ function resolveSituacaoOperacional(
     case 5: return "EM_REVISITA";
     case 6: return "REVISITADO";
     case 1: return hasTecnico ? "ATRIBUIDO" : "A_VISTORIAR";
+    case SITUACAO_EM_DESLOCAMENTO: return "EM_DESLOCAMENTO";
     case 8: return "DEVOLVIDA";
   }
   // Fallback: deriva de statusvistoria + is_repeat

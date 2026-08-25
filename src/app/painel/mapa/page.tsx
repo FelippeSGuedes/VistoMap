@@ -213,7 +213,7 @@ function resolveDestino(t: PainelMapaTecnico, vistorias: PainelMapaVistoria[]): 
   let bestD = Infinity;
   for (const v of vistorias) {
     if (v.tecnico_id !== t.users_id) continue;
-    if (v.situacao !== "ATRIBUIDO" && v.situacao !== "EM_VISTORIA") continue;
+    if (v.situacao !== "ATRIBUIDO" && v.situacao !== "EM_DESLOCAMENTO" && v.situacao !== "EM_VISTORIA") continue;
     const d = haversineM({ lng: t.longitude, lat: t.latitude }, { lng: v.longitude, lat: v.latitude });
     if (d < bestD) { bestD = d; best = v; }
   }
@@ -266,6 +266,7 @@ function updateRouteLineSource(map: mapboxgl.Map, routes: RouteResult[]) {
 const SITUACAO_COR: Record<string, string> = {
   A_VISTORIAR:         "#F97316",  // laranja — pendente, sem técnico
   ATRIBUIDO:           "#EC4899",  // rosa — já tem técnico, aguardando ele iniciar
+  EM_DESLOCAMENTO:     "#00D4A0",  // teal — a caminho (mesma cor do carro/rota no modo 3D)
   EM_VISTORIA:         "#3B82F6",  // azul
   VISTORIADO:          "#00B388",  // verde
   AGUARDANDO_REVISITA: "#F59E0B",  // âmbar
@@ -277,6 +278,7 @@ const SITUACAO_COR: Record<string, string> = {
 const SITUACAO_LABEL: Record<string, string> = {
   A_VISTORIAR:       "A vistoriar",
   ATRIBUIDO:         "Atribuído",
+  EM_DESLOCAMENTO:   "Em deslocamento",
   EM_VISTORIA:       "Em vistoria",
   VISTORIADO:        "Vistoriado",
   AGUARDANDO_REVISITA: "Ag. revisita",
@@ -1242,7 +1244,14 @@ export default function PainelMapaPage() {
         visible.forEach((t) => {
           const destino = resolveDestino(t, data.vistorias);
           let route: RouteResult | null = null;
-          if (destino && t.status_operacional === "em-operacao") {
+          // situacao_id 7 = SITUACAO_EM_DESLOCAMENTO (constants.ts, server-only —
+          // não dá pra importar aqui). O status_operacional do TÉCNICO
+          // (status_operacional==="em-operacao") não serve pra isso: ele vem de
+          // um dropdown legado (statusvistoriafield="Em campo") que fica ligado
+          // do momento da atribuição até a conclusão, sem distinguir "a
+          // caminho" de "chegou" — o sinal certo é a situação da PRÓPRIA
+          // vistoria de destino, setada quando o técnico escolhe a rota.
+          if (destino && destino.situacao_id === 7) {
             route = peekRoute(t.users_id);
             // Busca/atualiza em segundo plano — o próprio routeService decide
             // se precisa ir à rede (cache por destino/desvio/TTL) ou não.
@@ -1645,6 +1654,7 @@ export default function PainelMapaPage() {
                   [
                     ["A_VISTORIAR", "A vistoriar", "#F97316"],
                     ["ATRIBUIDO", "Atribuído", "#EC4899"],
+                    ["EM_DESLOCAMENTO", "Em deslocamento", "#00D4A0"],
                     ["EM_VISTORIA", "Em vistoria", "#3B82F6"],
                     ["VISTORIADO", "Vistoriado", "#00B388"],
                     ["AGUARDANDO_REVISITA", "Ag. revisita", "#F59E0B"],

@@ -39,6 +39,8 @@ export type SituacaoOperacional =
   | "A_VISTORIAR"
   /** Sub-estado de A_VISTORIAR: já tem técnico, mas ele ainda não iniciou a vistoria. */
   | "ATRIBUIDO"
+  /** Técnico selecionou a rota (Waze/Maps) e está a caminho — ainda não chegou. */
+  | "EM_DESLOCAMENTO"
   | "EM_VISTORIA"
   | "VISTORIADO"
   | "AGUARDANDO_REVISITA"
