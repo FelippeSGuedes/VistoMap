@@ -155,13 +155,24 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
             const box = new THREE.Box3().setFromObject(root);
             const size = new THREE.Vector3();
             box.getSize(size);
+            // Tamanho do modelo já na escala aplicada (CAR_MODEL_SCALE=1, ou
+            // seja, "1 unidade local = 1 metro real" na conta do mapa) — se
+            // isso NÃO parecer um carro (~4-5m de comprimento), o modelo não
+            // foi exportado em metros e CAR_MODEL_SCALE precisa compensar.
             // eslint-disable-next-line no-console
-            console.log("[vm-3d] car.glb carregado", {
-              hasSkinned,
-              // Tamanho do modelo em unidades LOCAIS (antes da escala pro mapa)
-              // — se isso for gigante (centenas/milhares) ou minúsculo
-              // (<0.01), o modelo provavelmente não foi exportado em metros.
-              bboxSizeUnidadesLocais: { x: size.x, y: size.y, z: size.z },
+            console.log(
+              `[vm-3d] car.glb carregado — tamanho assumindo metros: ` +
+              `${size.x.toFixed(3)} x ${size.y.toFixed(3)} x ${size.z.toFixed(3)} ` +
+              `(um carro real tem uns 4-5m de comprimento)`
+            );
+            // DEBUG: material unlit bem vistoso em TODOS os meshes do carro —
+            // elimina "problema de textura/material" como causa possível de
+            // invisibilidade, do mesmo jeito que a esfera de teste da Fase 0.
+            root.traverse((o) => {
+              const mesh = o as THREE.Mesh;
+              if ((mesh as THREE.Mesh).isMesh) {
+                mesh.material = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+              }
             });
           }
           resolve(root);
@@ -342,14 +353,11 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       if (DEBUG_LOG && !this.loggedFirstRenderFor.has(e.usersId)) {
         this.loggedFirstRenderFor.add(e.usersId);
         // eslint-disable-next-line no-console
-        console.log("[vm-3d] primeiro render() da entry", {
-          usersId: e.usersId,
-          kind: e.kind,
-          visualIsCar: e.visualIsCar,
-          xyz: { x, y, z },
-          scale,
-          visibleChildCount: e.object3d.children.length,
-        });
+        console.log(
+          `[vm-3d] primeiro render() usersId=${e.usersId} kind=${e.kind} ` +
+          `visualIsCar=${e.visualIsCar} filhosVisiveis=${e.object3d.children.length} ` +
+          `escalaAplicada=${scale.toExponential(3)}`
+        );
       }
     });
 
