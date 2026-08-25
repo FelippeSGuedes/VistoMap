@@ -787,6 +787,10 @@ export default function PainelMapaPage() {
   const fetchTrail = useCallback(async (usersId: number) => {
     const map = mapRef.current;
     if (!map?.loaded()) return;
+    // No modo 3D o rastro histórico (8h de GPS bruto, cheio de ruído/zigue-
+    // zague) some — ali o objetivo é mostrar só a rota atual limpa
+    // (origem→destino), não o histórico do dia inteiro por cima.
+    if (activeLayerRef.current === "3d") return;
     try {
       const r = await api.get<{ coords: [number, number][] }>(
         `/painel/tecnico-trail?users_id=${usersId}&hours=8`
