@@ -799,7 +799,11 @@ export default function PainelMapaPage() {
       if (map.getSource(TRAIL_SRC)) {
         (map.getSource(TRAIL_SRC) as GeoJSONSource).setData(geojson);
       } else {
-        map.addSource(TRAIL_SRC, { type: "geojson", data: geojson });
+        // lineMetrics:true é obrigatório pra "line-gradient" funcionar (usa
+        // ["line-progress"], que só existe com métricas de linha habilitadas)
+        // — sem isso, addLayer joga uma exceção toda vez que o rastro é
+        // buscado (a cada 30s enquanto um técnico está selecionado).
+        map.addSource(TRAIL_SRC, { type: "geojson", data: geojson, lineMetrics: true });
         map.addLayer({
           id: TRAIL_LAYER,
           type: "line",

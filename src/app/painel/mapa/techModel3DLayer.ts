@@ -34,7 +34,11 @@ const IDLE_RADIUS_M = 10;
 
 // Calibrados olhando o modelo real rodar no mapa — não dá pra cravar sem
 // testar visualmente (ver passo de verificação no plano da Fase 1).
-const CAR_MODEL_SCALE = 1;
+// CAR_MODEL_SCALE=1 media 0.487 x 1.000 x 0.411 "metros" (log [vm-3d] car.glb
+// carregado) — o modelo foi exportado normalizado num cubo unitário, não em
+// metros reais. 4.5 escala a maior dimensão (1.000) pra ~4.5m, do tamanho de
+// um carro real (proporção resultante ≈ 2.2m x 4.5m x 1.85m).
+const CAR_MODEL_SCALE = 4.5;
 const CAR_BASE_ROTATION_X = Math.PI / 2; // GLTF Y-up → embedding do Mapbox (Z "pra cima")
 const HEADING_AXIS: "y" | "z" = "z";
 const HEADING_SIGN = -1;
@@ -155,25 +159,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
             const box = new THREE.Box3().setFromObject(root);
             const size = new THREE.Vector3();
             box.getSize(size);
-            // Tamanho do modelo já na escala aplicada (CAR_MODEL_SCALE=1, ou
-            // seja, "1 unidade local = 1 metro real" na conta do mapa) — se
-            // isso NÃO parecer um carro (~4-5m de comprimento), o modelo não
-            // foi exportado em metros e CAR_MODEL_SCALE precisa compensar.
+            // Tamanho já com CAR_MODEL_SCALE aplicado — deve parecer um
+            // carro real (~4-5m de comprimento) agora que a escala foi
+            // calibrada (era 0.487x1.000x0.411 "metros" com escala 1x,
+            // confirmado normalizado num cubo unitário na exportação).
             // eslint-disable-next-line no-console
             console.log(
-              `[vm-3d] car.glb carregado — tamanho assumindo metros: ` +
-              `${size.x.toFixed(3)} x ${size.y.toFixed(3)} x ${size.z.toFixed(3)} ` +
-              `(um carro real tem uns 4-5m de comprimento)`
+              `[vm-3d] car.glb carregado — tamanho final no mapa: ` +
+              `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)} m`
             );
-            // DEBUG: material unlit bem vistoso em TODOS os meshes do carro —
-            // elimina "problema de textura/material" como causa possível de
-            // invisibilidade, do mesmo jeito que a esfera de teste da Fase 0.
-            root.traverse((o) => {
-              const mesh = o as THREE.Mesh;
-              if ((mesh as THREE.Mesh).isMesh) {
-                mesh.material = new THREE.MeshBasicMaterial({ color: 0xff00ff });
-              }
-            });
           }
           resolve(root);
           // Backfill: técnicos que já estavam "em carro" antes do modelo
@@ -364,11 +358,11 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
 
-    // DEBUG: incondicional por enquanto pra maximizar chance de flagrar o
-    // problema. Depois de confirmar visibilidade, volta pra "só enquanto
-    // anyTweenActive" (fix de performance já validado na Fase 0).
-    void anyTweenActive;
-    this.map?.triggerRepaint();
+    // Só pede o próximo frame enquanto algum tween (posição OU progresso na
+    // rota) ainda não terminou — mesmo fix de performance validado na
+    // Fase 0 (sem isso, o mapa redesenha a 60fps o tempo todo em segundo
+    // plano mesmo parado).
+    if (anyTweenActive) this.map?.triggerRepaint();
   }
 
   onRemove(): void {
