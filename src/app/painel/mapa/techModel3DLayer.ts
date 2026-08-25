@@ -22,6 +22,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import mapboxgl from "mapbox-gl";
 import { asset } from "@/utils/asset";
 import { sampleRouteAt, projectOntoRoute, type RouteResult } from "./routeService";
@@ -128,6 +129,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       antialias: true,
     });
     this.renderer.autoClear = false;
+
+    // O carro tem pintura metálica (metalness alto) — sem um environment
+    // map pra reflexão, PBR metálico renderiza praticamente preto/sem forma
+    // com só luz direta (HemisphereLight/DirectionalLight não bastam).
+    // RoomEnvironment é um ambiente sintético do próprio Three.js pra isso,
+    // sem precisar de um HDRI externo.
+    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmremGenerator.dispose();
 
     if (DEBUG_LOG) {
       // eslint-disable-next-line no-console
@@ -369,6 +379,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.entries.forEach((e) => this.scene.remove(e.object3d));
     this.entries.clear();
 
+    this.scene.environment?.dispose();
     this.idleRingGeo?.dispose();
     this.idleRingMat?.dispose();
     this.idleCoreGeo?.dispose();
