@@ -3,7 +3,8 @@
 import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AnimatePresence, motion } from "framer-motion";
-import { TechModel3DLayer, TECH_MODEL_LAYER_ID } from "./techModel3DLayer";
+import { TechModel3DLayer, TECH_MODEL_LAYER_ID, type TechEntrySpec } from "./techModel3DLayer";
+import { getRouteFor, peekRoute, haversineM, type RouteResult } from "./routeService";
 import { useAuthStore } from "@/store/auth";
 import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
@@ -191,28 +192,78 @@ function add3DBuildings(map: mapboxgl.Map) {
   else map.once("load", apply);
 }
 
-/**
- * POC de camada 3D (Three.js) — planta o objeto na posição do primeiro
- * técnico com GPS válido. Idempotente (não faz nada se a layer já existe).
- */
-function ensureTechModelLayer(
-  map: mapboxgl.Map,
-  layerRef: MutableRefObject<TechModel3DLayer | null>,
-  firstTechIdRef: MutableRefObject<number | null>,
-  tecnicos: PainelMapaTecnico[]
-) {
+/** Camada 3D (Three.js) — carro seguindo rota (em deslocamento) ou beacon
+ * (parado/em vistoria) por técnico. Idempotente. */
+function ensureTechModelLayer(map: mapboxgl.Map, layerRef: MutableRefObject<TechModel3DLayer | null>) {
   if (map.getLayer(TECH_MODEL_LAYER_ID)) return;
-  const t = tecnicos.find((tec) => tec.latitude != null && tec.longitude != null);
-  if (!t) return;
-  const layer = new TechModel3DLayer(t.longitude!, t.latitude!);
+  const layer = new TechModel3DLayer();
   map.addLayer(layer);
   layerRef.current = layer;
-  firstTechIdRef.current = t.users_id;
 }
 
 function removeTechModelLayer(map: mapboxgl.Map, layerRef: MutableRefObject<TechModel3DLayer | null>) {
   if (map.getLayer(TECH_MODEL_LAYER_ID)) map.removeLayer(TECH_MODEL_LAYER_ID);
   layerRef.current = null;
+}
+
+/** Acima disso, considera o técnico "em deslocamento" (dirigindo) — abaixo, a pé/parado. */
+const DRIVING_SPEED_KMH = 12;
+
+/** Vistoria atribuída/em andamento mais próxima do técnico — usada como "destino" da rota. */
+function resolveDestino(t: PainelMapaTecnico, vistorias: PainelMapaVistoria[]): PainelMapaVistoria | null {
+  if (t.latitude == null || t.longitude == null) return null;
+  let best: PainelMapaVistoria | null = null;
+  let bestD = Infinity;
+  for (const v of vistorias) {
+    if (v.tecnico_id !== t.users_id) continue;
+    if (v.situacao !== "ATRIBUIDO" && v.situacao !== "EM_VISTORIA") continue;
+    const d = haversineM({ lng: t.longitude, lat: t.latitude }, { lng: v.longitude, lat: v.latitude });
+    if (d < bestD) { bestD = d; best = v; }
+  }
+  return best;
+}
+
+const ROUTES_SRC = "vm-tech-routes-src";
+const ROUTES_GLOW_LAYER = "vm-tech-routes-glow";
+const ROUTES_LINE_LAYER = "vm-tech-routes-line";
+
+/** Linha de rota (estilo Waze/Maps) — uma fonte só com todas as rotas ativas. */
+function ensureRouteLayers(map: mapboxgl.Map) {
+  if (map.getSource(ROUTES_SRC)) return;
+  map.addSource(ROUTES_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({
+    id: ROUTES_GLOW_LAYER,
+    type: "line",
+    source: ROUTES_SRC,
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#00D4A0", "line-width": 10, "line-blur": 6, "line-opacity": 0.35 },
+  });
+  map.addLayer({
+    id: ROUTES_LINE_LAYER,
+    type: "line",
+    source: ROUTES_SRC,
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#00D4A0", "line-width": 3, "line-opacity": 0.9 },
+  });
+}
+
+function removeRouteLayers(map: mapboxgl.Map) {
+  if (map.getLayer(ROUTES_LINE_LAYER)) map.removeLayer(ROUTES_LINE_LAYER);
+  if (map.getLayer(ROUTES_GLOW_LAYER)) map.removeLayer(ROUTES_GLOW_LAYER);
+  if (map.getSource(ROUTES_SRC)) map.removeSource(ROUTES_SRC);
+}
+
+function updateRouteLineSource(map: mapboxgl.Map, routes: RouteResult[]) {
+  const src = map.getSource(ROUTES_SRC) as GeoJSONSource | undefined;
+  if (!src) return;
+  src.setData({
+    type: "FeatureCollection",
+    features: routes.map((r) => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "LineString" as const, coordinates: r.coordinates },
+    })),
+  });
 }
 
 const SITUACAO_COR: Record<string, string> = {
@@ -608,9 +659,8 @@ export default function PainelMapaPage() {
   const editMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const lastDataRef = useRef<PainelMapaResponse | null>(null);
   const vistoriasFiltradasRef = useRef<PainelMapaVistoria[]>([]);
-  // POC de camada 3D (Three.js) — só existe/atualiza no modo "3d".
+  // Camada 3D (Three.js) — só existe/atualiza no modo "3d".
   const tech3DLayerRef = useRef<TechModel3DLayer | null>(null);
-  const firstTechIdRef = useRef<number | null>(null);
   // Refs próprios da Instalação — nunca compartilha marker/cache com a Vistoria.
   const instaladorMarkersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const posteInstMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -944,10 +994,13 @@ export default function PainelMapaPage() {
 
     const prev = activeLayer;
 
-    // Saindo do 3D: remove buildings + pitch + a camada 3D (Three.js)
+    // Saindo do 3D: remove buildings + rota + a camada 3D (Three.js) + pitch,
+    // e reexibe os pins 2D (senão ficam escondidos até o próximo poll).
     if (prev === "3d" && key !== "3d") {
       if (map.getLayer(BUILDINGS_LAYER)) map.removeLayer(BUILDINGS_LAYER);
+      removeRouteLayers(map);
       removeTechModelLayer(map, tech3DLayerRef);
+      techMarkersRef.current.forEach((m) => { m.getElement().style.display = ""; });
       map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
     }
 
@@ -956,6 +1009,9 @@ export default function PainelMapaPage() {
     if (key === "3d") {
       // 3D pode trocar de estilo (claro/escuro) se o tema mudou desde o último.
       map.easeTo({ pitch: 50, bearing: -17, duration: 800 });
+      // Esconde os pins 2D na hora — sem isso ficam "grudados" no mapa até
+      // o próximo poll (5s), duplicados com os objetos 3D na mesma posição.
+      techMarkersRef.current.forEach((m) => { m.getElement().style.display = "none"; });
       const target3d = mapStyleFor("3d", readDarkTheme());
       if (prev !== "3d") {
         map.setStyle(target3d);
@@ -964,11 +1020,13 @@ export default function PainelMapaPage() {
           if (lastDataRef.current) ensureVistoriaLayers(map, vistoriasFiltradasRef.current);
           if (trailUsersId) fetchTrail(trailUsersId);
           add3DBuildings(map);
-          ensureTechModelLayer(map, tech3DLayerRef, firstTechIdRef, lastDataRef.current?.tecnicos ?? []);
+          ensureRouteLayers(map);
+          ensureTechModelLayer(map, tech3DLayerRef);
         });
       } else {
         add3DBuildings(map);
-        ensureTechModelLayer(map, tech3DLayerRef, firstTechIdRef, lastDataRef.current?.tecnicos ?? []);
+        ensureRouteLayers(map);
+        ensureTechModelLayer(map, tech3DLayerRef);
       }
       return;
     }
@@ -1175,27 +1233,49 @@ export default function PainelMapaPage() {
         // "todos" — exclui offline do mapa para evitar falso positivo de localização
         return t.status_operacional !== "offline";
       });
-      // POC de camada 3D (Three.js) — só existe/atualiza no modo "3d"; nos
-      // outros modos o pin 2D (SVG/HTML) já criado abaixo é suficiente.
-      if (activeLayerRef.current === "3d") {
-        ensureTechModelLayer(map, tech3DLayerRef, firstTechIdRef, data.tecnicos);
+      // Camada 3D (Three.js) — carro em rota / beacon parado por técnico,
+      // só existe/atualiza no modo "3d"; nos outros modos o pin 2D
+      // (SVG/HTML) criado abaixo já é suficiente e fica visível.
+      const in3D = activeLayerRef.current === "3d";
+      if (in3D) {
+        ensureTechModelLayer(map, tech3DLayerRef);
+
+        const specs: TechEntrySpec[] = [];
+        const routesParaLinha: RouteResult[] = [];
+        visible.forEach((t) => {
+          const destino = resolveDestino(t, data.vistorias);
+          let route: RouteResult | null = null;
+          if (destino && (t.speed_kmh ?? 0) > DRIVING_SPEED_KMH) {
+            route = peekRoute(t.users_id);
+            // Busca/atualiza em segundo plano — o próprio routeService decide
+            // se precisa ir à rede (cache por destino/desvio/TTL) ou não.
+            void getRouteFor(
+              t.users_id,
+              { lng: t.longitude!, lat: t.latitude! },
+              { lng: destino.longitude, lat: destino.latitude }
+            );
+            if (route) routesParaLinha.push(route);
+          }
+          specs.push({ usersId: t.users_id, lng: t.longitude!, lat: t.latitude!, route });
+        });
+        tech3DLayerRef.current?.syncEntries(specs);
+        updateRouteLineSource(map, routesParaLinha);
       }
 
       const seen = new Set<number>();
       visible.forEach((t) => {
         seen.add(t.users_id);
-        if (tech3DLayerRef.current && t.users_id === firstTechIdRef.current) {
-          tech3DLayerRef.current.setTargetPosition(t.longitude!, t.latitude!);
-        }
         const existing = techMarkersRef.current.get(t.users_id);
         if (existing) {
           animateMarkerTo(existing, t.longitude!, t.latitude!);
+          existing.getElement().style.display = in3D ? "none" : "";
           return;
         }
         const el = techMarkerEl(t);
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([t.longitude!, t.latitude!])
           .addTo(map);
+        el.style.display = in3D ? "none" : "";
         el.addEventListener("click", () => {
           setSelectedTec(t);
           setSelectedVistoria(null);
