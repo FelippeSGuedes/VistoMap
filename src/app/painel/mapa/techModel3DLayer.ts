@@ -38,6 +38,7 @@ const CAR_MODEL_SCALE = 1;
 const CAR_BASE_ROTATION_X = Math.PI / 2; // GLTF Y-up → embedding do Mapbox (Z "pra cima")
 const HEADING_AXIS: "y" | "z" = "z";
 const HEADING_SIGN = -1;
+const DEBUG_LOG = true;
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -90,6 +91,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private carTemplate: THREE.Object3D | null = null;
   private carUsesSkeletonClone = false;
   private carLoadingPromise: Promise<THREE.Object3D> | null = null;
+  private loggedFirstRenderFor = new Set<number>();
 
   // Geometria/material do beacon idle — compartilhados entre todas as
   // instâncias (procedural, barato de reusar; só descartados no onRemove).
@@ -123,6 +125,14 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     });
     this.renderer.autoClear = false;
 
+    if (DEBUG_LOG) {
+      // eslint-disable-next-line no-console
+      console.log("[vm-3d] onAdd (multi-entry) rodou", {
+        canvasSize: { w: map.getCanvas().width, h: map.getCanvas().height },
+        projection: map.getProjection?.(),
+      });
+    }
+
     this.loadCarTemplate();
   }
 
@@ -141,6 +151,19 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
           root.rotation.x = CAR_BASE_ROTATION_X;
           root.scale.setScalar(CAR_MODEL_SCALE);
           this.carTemplate = root;
+          if (DEBUG_LOG) {
+            const box = new THREE.Box3().setFromObject(root);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            // eslint-disable-next-line no-console
+            console.log("[vm-3d] car.glb carregado", {
+              hasSkinned,
+              // Tamanho do modelo em unidades LOCAIS (antes da escala pro mapa)
+              // — se isso for gigante (centenas/milhares) ou minúsculo
+              // (<0.01), o modelo provavelmente não foi exportado em metros.
+              bboxSizeUnidadesLocais: { x: size.x, y: size.y, z: size.z },
+            });
+          }
           resolve(root);
           // Backfill: técnicos que já estavam "em carro" antes do modelo
           // carregar (até aqui, mostrando o beacon como placeholder).
@@ -191,6 +214,17 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     const m = mapboxgl.MercatorCoordinate.fromLngLat([spec.lng, spec.lat], 0);
     const object3d = new THREE.Group();
     this.scene.add(object3d);
+    if (DEBUG_LOG) {
+      // eslint-disable-next-line no-console
+      console.log("[vm-3d] createEntry", {
+        usersId: spec.usersId,
+        kind: spec.route ? "car" : "idle",
+        lng: spec.lng,
+        lat: spec.lat,
+        temRota: !!spec.route,
+        pontosDaRota: spec.route?.coordinates?.length,
+      });
+    }
     const e: TechEntry = {
       usersId: spec.usersId,
       kind: spec.route ? "car" : "idle",
@@ -304,12 +338,29 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         if (HEADING_AXIS === "z") e.object3d.rotation.z = HEADING_SIGN * headingRad;
         else e.object3d.rotation.y = HEADING_SIGN * headingRad;
       }
+
+      if (DEBUG_LOG && !this.loggedFirstRenderFor.has(e.usersId)) {
+        this.loggedFirstRenderFor.add(e.usersId);
+        // eslint-disable-next-line no-console
+        console.log("[vm-3d] primeiro render() da entry", {
+          usersId: e.usersId,
+          kind: e.kind,
+          visualIsCar: e.visualIsCar,
+          xyz: { x, y, z },
+          scale,
+          visibleChildCount: e.object3d.children.length,
+        });
+      }
     });
 
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
 
-    if (anyTweenActive) this.map?.triggerRepaint();
+    // DEBUG: incondicional por enquanto pra maximizar chance de flagrar o
+    // problema. Depois de confirmar visibilidade, volta pra "só enquanto
+    // anyTweenActive" (fix de performance já validado na Fase 0).
+    void anyTweenActive;
+    this.map?.triggerRepaint();
   }
 
   onRemove(): void {

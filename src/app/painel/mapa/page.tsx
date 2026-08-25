@@ -1263,6 +1263,14 @@ export default function PainelMapaPage() {
             if (route) routesParaLinha.push(route);
           }
           specs.push({ usersId: t.users_id, lng: t.longitude!, lat: t.latitude!, route });
+          // eslint-disable-next-line no-console
+          console.log("[vm-3d] spec do técnico", {
+            usersId: t.users_id,
+            nome: t.nome,
+            destinoEncontrado: !!destino,
+            destinoSituacaoId: destino?.situacao_id,
+            temRota: !!route,
+          });
         });
         tech3DLayerRef.current?.syncEntries(specs);
         updateRouteLineSource(map, routesParaLinha);
