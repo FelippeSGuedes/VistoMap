@@ -206,9 +206,6 @@ function removeTechModelLayer(map: mapboxgl.Map, layerRef: MutableRefObject<Tech
   layerRef.current = null;
 }
 
-/** Acima disso, considera o técnico "em deslocamento" (dirigindo) — abaixo, a pé/parado. */
-const DRIVING_SPEED_KMH = 12;
-
 /** Vistoria atribuída/em andamento mais próxima do técnico — usada como "destino" da rota. */
 function resolveDestino(t: PainelMapaTecnico, vistorias: PainelMapaVistoria[]): PainelMapaVistoria | null {
   if (t.latitude == null || t.longitude == null) return null;
@@ -1245,7 +1242,7 @@ export default function PainelMapaPage() {
         visible.forEach((t) => {
           const destino = resolveDestino(t, data.vistorias);
           let route: RouteResult | null = null;
-          if (destino && (t.speed_kmh ?? 0) > DRIVING_SPEED_KMH) {
+          if (destino && t.status_operacional === "em-operacao") {
             route = peekRoute(t.users_id);
             // Busca/atualiza em segundo plano — o próprio routeService decide
             // se precisa ir à rede (cache por destino/desvio/TTL) ou não.
