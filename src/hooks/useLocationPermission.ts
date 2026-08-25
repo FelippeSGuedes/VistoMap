@@ -16,11 +16,26 @@ export interface GeoCoords {
   accuracy: number;
 }
 
-const POSITION_OPTIONS: PositionOptions = {
+const HIGH_ACCURACY_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
   maximumAge: 5_000,
   timeout: 15_000,
 };
+
+// GPS de alta precisão pode não fechar um fix em 15s (comum em local
+// fechado/sinal fraco) — em vez de só falhar, cai pra localização
+// aproximada (rede/wifi), bem mais rápida de resolver.
+const FALLBACK_OPTIONS: PositionOptions = {
+  enableHighAccuracy: false,
+  maximumAge: 30_000,
+  timeout: 10_000,
+};
+
+function getPosition(options: PositionOptions): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
 
 export function useLocationPermission() {
   const [state, setState] = useState<LocationPermissionState>("unknown");
@@ -68,41 +83,49 @@ export function useLocationPermission() {
    * Pede a posição atual. Em iOS, isso dispara o prompt nativo do sistema.
    * Em Android Chrome, dispara o banner do navegador.
    */
-  const request = useCallback((): Promise<GeoCoords | null> => {
+  const request = useCallback(async (): Promise<GeoCoords | null> => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setState("unsupported");
-      return Promise.resolve(null);
+      return null;
     }
     setRequesting(true);
     setError(null);
-    return new Promise<GeoCoords | null>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setRequesting(false);
-          setState("granted");
-          resolve({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-          });
-        },
-        (err) => {
-          setRequesting(false);
-          if (err.code === err.PERMISSION_DENIED) {
-            setState("denied");
-            setError("Permissão negada");
-          } else if (err.code === err.POSITION_UNAVAILABLE) {
-            setError("Sinal de GPS indisponível");
-          } else if (err.code === err.TIMEOUT) {
-            setError("Tempo esgotado — sem sinal");
-          } else {
-            setError(err.message);
-          }
-          resolve(null);
-        },
-        POSITION_OPTIONS
-      );
-    });
+    try {
+      const pos = await getPosition(HIGH_ACCURACY_OPTIONS);
+      setRequesting(false);
+      setState("granted");
+      return { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+    } catch (err) {
+      const geoErr = err as GeolocationPositionError;
+      if (geoErr.code === geoErr.PERMISSION_DENIED) {
+        setRequesting(false);
+        setState("denied");
+        setError("Permissão negada");
+        return null;
+      }
+      // Timeout ou sinal indisponível com alta precisão — tenta de novo
+      // com localização aproximada antes de desistir.
+      try {
+        const pos = await getPosition(FALLBACK_OPTIONS);
+        setRequesting(false);
+        setState("granted");
+        return { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+      } catch (err2) {
+        setRequesting(false);
+        const geoErr2 = err2 as GeolocationPositionError;
+        if (geoErr2.code === geoErr2.PERMISSION_DENIED) {
+          setState("denied");
+          setError("Permissão negada");
+        } else if (geoErr2.code === geoErr2.POSITION_UNAVAILABLE) {
+          setError("Sinal de GPS indisponível");
+        } else if (geoErr2.code === geoErr2.TIMEOUT) {
+          setError("Tempo esgotado — sem sinal");
+        } else {
+          setError(geoErr2.message);
+        }
+        return null;
+      }
+    }
   }, []);
 
   return { state, requesting, error, request };
