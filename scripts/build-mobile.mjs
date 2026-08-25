@@ -67,7 +67,33 @@ function restore() {
 // não faz sentido inflar o zip OTA do técnico (baixado no campo, às vezes em
 // sinal fraco) com branding administrativo. Confirmado via grep: sem
 // nenhuma referência fora de src/app/painel/**.
-const PAINEL_ONLY_ASSETS = ["vis.png", "login_painel.png", "logo-vistomap.png"];
+//
+// 2026-08-25: lista estava desatualizada — vários fundos de card e o modelo
+// 3D do carro (car.glb, 17MB sozinho) adicionados nas últimas sessões nunca
+// foram incluídos aqui, inflando o app técnico em ~35MB de branding que ele
+// nunca exibe. Revalidado com o mesmo critério (grep sem hit fora de
+// src/app/painel/**) antes de adicionar.
+const PAINEL_ONLY_ASSETS = [
+  "vis.png",
+  "login_painel.png",
+  "logo-vistomap.png",
+  "car.glb",
+  "viswhite.png",
+  "vistoriadoverde.png",
+  "vistoriadoverdeblack.png",
+  "graphwhite.png",
+  "graphblack.png",
+  "cmpblack.png",
+  "cmpwhite.png",
+  "avistoriarlaranja.png",
+  "avistoriarlaranjablack.png",
+  "avistoriarazul.png",
+  "avistoriarazulblack.png",
+  "cardconwhi.png",
+  "cardconbla.png",
+  "visrealizwht.png",
+  "visrealizbl.png",
+];
 
 function copyOutToWww() {
   const out = path.join(ROOT, "out");
