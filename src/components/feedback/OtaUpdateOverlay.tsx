@@ -26,10 +26,16 @@ const BENEFITS = [
   { icon: Sparkles, title: "Novas funcionalidades", desc: "Recursos exclusivos liberados" },
 ] as const;
 
+/** Se travar nisso tudo (fica preso nesse tempo em "baixando"), mostra uma
+ * saída manual — defesa extra além do timeout no próprio useOtaUpdate,
+ * pra nunca deixar o técnico realmente sem saída na tela cheia. */
+const ESCAPE_HATCH_MS = 25_000;
+
 export function OtaUpdateOverlay() {
   const phase = useOtaStore((s) => s.phase);
   const progresso = useOtaStore((s) => s.progresso);
   const paraVersao = useOtaStore((s) => s.paraVersao);
+  const reset = useOtaStore((s) => s.reset);
 
   // Creep de fallback: se o download não emite progresso (ou emite devagar),
   // a barra ainda "respira" avançando suavemente até ~90% — nunca trava.
@@ -43,6 +49,16 @@ export function OtaUpdateOverlay() {
       setCreep((c) => (c < 90 ? c + Math.random() * 3.5 : c));
     }, 260);
     return () => window.clearInterval(id);
+  }, [phase]);
+
+  const [showEscape, setShowEscape] = useState(false);
+  useEffect(() => {
+    if (phase !== "baixando" && phase !== "aplicando") {
+      setShowEscape(false);
+      return;
+    }
+    const id = window.setTimeout(() => setShowEscape(true), ESCAPE_HATCH_MS);
+    return () => window.clearTimeout(id);
   }, [phase]);
 
   const pct = useMemo(() => {
@@ -360,6 +376,18 @@ export function OtaUpdateOverlay() {
                 >
                   Não feche o aplicativo durante a atualização.
                 </p>
+                {showEscape && (
+                  <motion.button
+                    type="button"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    onClick={() => reset()}
+                    className="mx-auto mt-4 block text-center text-[12px] font-semibold underline underline-offset-2"
+                    style={{ color: "rgba(220,255,235,0.8)" }}
+                  >
+                    Está demorando? Continuar sem atualizar
+                  </motion.button>
+                )}
               </div>
             )}
           </div>

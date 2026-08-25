@@ -137,6 +137,24 @@ function getCapacitor(): CapacitorBridge | null {
 }
 
 /**
+ * Timeout defensivo pra qualquer chamada nativa/rede do fluxo OTA — sem
+ * isso, sinal fraco em campo pode deixar `Updater.download()`/`set()` (ou
+ * o fetch do manifesto) pendurados pra sempre: a promise nunca resolve nem
+ * rejeita, a tela cheia de atualização fica presa e o técnico não consegue
+ * nem fechar o overlay nem usar o app (relatado como "atualização
+ * infinita" — reabrir o app só reinicia o mesmo ciclo travado).
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = window.setTimeout(() => reject(new Error(`${label} excedeu ${ms}ms`)), ms);
+    p.then(
+      (v) => { window.clearTimeout(t); resolve(v); },
+      (e) => { window.clearTimeout(t); reject(e); }
+    );
+  });
+}
+
+/**
  * @param enabled - só dispara a checagem/download/aplicação com uma sessão
  * autenticada (pós-login). `notifyAppReady()` roda sempre, independente disso.
  */
@@ -189,15 +207,23 @@ export function useOtaUpdate(enabled: boolean) {
 
     (async () => {
       try {
-        const res = await fetch(`${OTA_BASE}/latest.json?ts=${Date.now()}`, {
-          cache: "no-store",
-        });
+        const manifestController = new AbortController();
+        const manifestTimer = window.setTimeout(() => manifestController.abort(), 10_000);
+        let res: Response;
+        try {
+          res = await fetch(`${OTA_BASE}/latest.json?ts=${Date.now()}`, {
+            cache: "no-store",
+            signal: manifestController.signal,
+          });
+        } finally {
+          window.clearTimeout(manifestTimer);
+        }
         if (!res.ok) return;
 
         const manifest = (await res.json()) as { version?: string; url?: string };
         if (!manifest?.version || !manifest?.url) return;
 
-        const cur = await Updater.current();
+        const cur = await withTimeout(Updater.current(), 8_000, "Updater.current()");
         const deVersao = cur?.bundle?.version ?? null;
         if (deVersao === manifest.version) {
           clearAttempt(); // rodando na versão certa — qualquer trava antiga não vale mais.
@@ -226,13 +252,24 @@ export function useOtaUpdate(enabled: boolean) {
         // Abre a tela de atualização e escuta o progresso real do download.
         useOtaStore.getState().iniciarDownload(deVersao, manifest.version);
 
+        // Registra a tentativa JÁ AQUI (antes de qualquer chamada de rede) —
+        // não só antes do reload. Antes, uma falha no download/list (sinal
+        // fraco) nunca incrementava o contador, então a trava de loop só
+        // pegava rollback do capgo, não conexão ruim — reabrir o app depois
+        // de um download travado reiniciava o ciclo do zero indefinidamente.
+        writeAttempt({
+          version: manifest.version,
+          count: attempt?.version === manifest.version ? attempt.count + 1 : 1,
+          ts: Date.now(),
+        });
+
         // 3a. Reaproveita um bundle DESTA MESMA versão que já esteja baixado
         //     e íntegro (status success). Evita rebaixar 16 MB a cada abertura
         //     numa rede ruim — que era o que fazia o app "atualizar várias
         //     vezes" e às vezes travar sem conseguir puxar. Só re-aplica (set).
         let bundle: BundleInfo | null = null;
         try {
-          const lista = await Updater.list?.();
+          const lista = await withTimeout(Updater.list?.() ?? Promise.resolve(undefined), 8_000, "Updater.list()");
           const existente = lista?.bundles?.find(
             (b) => b.version === manifest.version && b.id && b.status !== "error"
           );
@@ -241,10 +278,13 @@ export function useOtaUpdate(enabled: boolean) {
             console.log(`[useOtaUpdate] Bundle ${manifest.version} já baixado — reaproveitando.`);
           }
         } catch {
-          /* list() indisponível nesta versão do plugin — segue pro download */
+          /* list() indisponível/travou — segue pro download */
         }
 
-        // 3b. Se não tinha baixado ainda, baixa com progresso real.
+        // 3b. Se não tinha baixado ainda, baixa com progresso real. Timeout
+        // generoso (16MB numa rede ruim pode demorar), mas NUNCA infinito —
+        // é exatamente isso que deixava o técnico preso na tela cheia sem
+        // conseguir usar o app.
         if (!bundle) {
           try {
             progressHandle = (await Updater.addListener?.("download", (e) => {
@@ -255,10 +295,11 @@ export function useOtaUpdate(enabled: boolean) {
           } catch {
             /* sem evento de progresso — a barra usa fallback animado na overlay */
           }
-          bundle = await Updater.download({
-            url: manifest.url,
-            version: manifest.version,
-          });
+          bundle = await withTimeout(
+            Updater.download({ url: manifest.url, version: manifest.version }),
+            60_000,
+            "Updater.download()"
+          );
         }
 
         if (cancelled || !bundle?.id) {
@@ -275,20 +316,20 @@ export function useOtaUpdate(enabled: boolean) {
           /* segue mesmo sem o marcador */
         }
 
-        // Registra a tentativa ANTES do reload — se o capgo rejeitar/reverter
-        // esse bundle, o próximo ciclo já vê o contador e a trava entra em ação.
-        writeAttempt({
-          version: manifest.version,
-          count: attempt?.version === manifest.version ? attempt.count + 1 : 1,
-          ts: Date.now(),
-        });
-
-        await Updater.set({ id: bundle.id });
+        await withTimeout(Updater.set({ id: bundle.id }), 15_000, "Updater.set()");
         console.log(`[useOtaUpdate] Bundle ${manifest.version} aplicado — recarregando.`);
       } catch (err) {
         console.warn("[useOtaUpdate] Checagem OTA falhou (offline?):", err);
         const st = useOtaStore.getState();
-        if (st.phase === "baixando") {
+        if (st.phase === "baixando" || st.phase === "aplicando") {
+          // set() pode ter travado antes do reload real acontecer — limpa o
+          // marcador "acabei de atualizar" pra não mostrar "Atualizado ✓"
+          // falso na próxima abertura (o reload nunca aconteceu de verdade).
+          try {
+            window.localStorage.removeItem(OTA_JUST_UPDATED_KEY);
+          } catch {
+            /* ignora */
+          }
           st.erro();
           window.setTimeout(() => useOtaStore.getState().reset(), 2600);
         }
