@@ -100,7 +100,9 @@ const CSP_DIRECTIVES = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
-  "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com",
+  // blob: aqui é pro GLTFLoader (mapa 3D/car.glb) — ele resolve texturas
+  // embutidas do glTF criando blob URLs internamente e faz fetch nelas.
+  "connect-src 'self' blob: https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com",
   "worker-src 'self' blob:",
   "frame-ancestors 'self'",
   "base-uri 'self'",
