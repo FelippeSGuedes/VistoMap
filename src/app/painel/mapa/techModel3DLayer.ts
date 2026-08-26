@@ -77,9 +77,17 @@ const CAR_TARGET_LENGTH_M = 3.9 * CAR_EXAGGERATION;
 const USE_CAR_MODEL = true;
 
 // GLTF é Y-up; o embedding do Mapbox é Z-up. Depois desta rotação o modelo
-// mede (medido em produção, escala 1): 0.487 largura x 1.000 comprimento x
-// 0.411 altura — ou seja, comprimento no eixo Y, que é a convenção de
-// "frente" usada aqui. Se o carro andar de ré, inverter CAR_MODEL_FLIP.
+// mede (medido no arquivo, escala 1): 0.487 largura x 1.000 comprimento x
+// 0.411 altura, com o comprimento no eixo Y local.
+//
+// A frente do modelo fica em glTF +Z (ele NÃO segue a convenção de -Z) —
+// determinado medindo o arquivo, ver o comentário sobre heading em render().
+// Essa rotação leva +Z pra -Y local, que é o norte do Mercator, e é por isso
+// que o heading entra sem offset.
+//
+// Se um dia o modelo for trocado por outro e o veículo andar de ré, o ajuste
+// é CAR_MODEL_FLIP — mas confira a frente do novo arquivo antes, em vez de
+// tentar por tentativa e erro.
 const CAR_BASE_ROTATION_X = Math.PI / 2;
 const CAR_MODEL_FLIP = false;
 
@@ -692,13 +700,24 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       // que deriva orientação no shader, e já custou o flatShading e o
       // normalMap aqui. Sem negativar, o modelo fica espelhado
       // esquerda/direita — imperceptível num ícone de veículo — e a
-      // iluminação funciona. O preço é o nariz apontar pro SUL em rotação
-      // zero, corrigido somando π: heading 0 (norte) → π → nariz em -Y =
-      // norte; heading 90° (leste) → 270° → nariz em +X = leste.
+      // iluminação funciona.
+      //
+      // HEADING sem offset. O car.glb NÃO segue a convenção glTF de frente
+      // em -Z: medindo o arquivo, 260 de 271 vértices que caem em pixels
+      // vermelhos da textura (as lanternas) estão em z < 0, agrupados em
+      // z≈-0.46. Traseira em -Z, logo FRENTE EM +Z. Confere com o perfil de
+      // altura: queda abrupta no lado -Z (parede traseira da cabine antes da
+      // caçamba), queda gradual no lado +Z (para-brisa descendo pro capô) e
+      // alargamento em z≈0.1 (retrovisores, que ficam à frente da cabine).
+      //
+      // A rotação de base (X, π/2) leva glTF +Z pra -Y local, e -Y local cai
+      // no norte do Mercator. Então rotationZ(heading) puro já acerta:
+      // heading 0 (norte) → frente em -Y = norte; heading 90° (leste) →
+      // frente em +X = leste. Somar π aqui faria a picape andar de ré.
       SCRATCH_MODELO
         .makeTranslation(x, y, z)
         .multiply(SCRATCH_SCALE.makeScale(scale, scale, scale))
-        .multiply(SCRATCH_ROT.makeRotationZ((headingRad ?? 0) + Math.PI));
+        .multiply(SCRATCH_ROT.makeRotationZ(headingRad ?? 0));
       this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
 
       e.object3d.visible = true;
