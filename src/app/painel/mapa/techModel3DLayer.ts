@@ -23,9 +23,8 @@
  * (`camera.projectionMatrix = mapboxMatrix * (translate·scale)`), o que só
  * funciona pra 1 objeto. Agora a câmera recebe a matriz do Mapbox CRUA, e
  * cada objeto ganha posição/rotação/escala própria via
- * `object3d.position/rotation/scale` — o próprio Three.js compõe isso a
- * cada frame (matrixAutoUpdate), igual várias libs de integração
- * Mapbox+Three.js fazem pra múltiplos modelos numa cena só.
+ * uma matriz própria montada a cada frame (ver render()), igual várias libs
+ * de integração Mapbox+Three.js fazem pra múltiplos modelos numa cena só.
  *
  * Pré-requisito OBRIGATÓRIO no mapa hospedeiro: projeção "mercator" (ver
  * chamadas de map.setProjection() em page.tsx).
@@ -41,27 +40,40 @@ const TWEEN_MS = 800; // mesma duração do animateMarkerTo (page.tsx)
 const MODEL_COLOR = 0x00d4a0; // mesmo teal-neon usado no resto da identidade visual
 const IDLE_RADIUS_M = 10;
 
-// HEADING_AXIS/HEADING_SIGN calibram qual eixo local do objeto vira "pra
-// frente" depois da rotação de heading (ver render()). Não foi possível
-// validar visualmente ainda com um modelo reconhecível — se o nariz do
-// carrinho não acompanhar a direção real de deslocamento em produção,
-// ajustar HEADING_SIGN (inverte) primeiro antes de mexer no eixo.
-const HEADING_AXIS: "y" | "z" = "z";
+// Heading da rota é bearing em graus horários a partir do norte. No espaço
+// métrico local (+Y = norte, +X = leste) isso vira rotationZ(-heading) —
+// por isso o sinal negativo. Só vale se a rotação for aplicada ANTES do
+// flip de Y do Mercator (ver a montagem de matriz em render()).
 const HEADING_SIGN = -1;
 const DEBUG_LOG = true;
 
-// Dimensões do carrinho, em metros — proporção de um carro de passeio
-// pequeno. Eixo local: X = largura, Y = comprimento ("frente" = +Y antes
-// da rotação de heading), Z = altura (esse é o "up" da cena, não o Y do
-// Three.js padrão — ver comentário sobre escala em render()).
-const CAR_WIDTH = 1.85;
-const CAR_BODY_LENGTH = 3.9;
-const CAR_BODY_HEIGHT = 0.85;
-const CAR_CABIN_WIDTH = 1.55;
-const CAR_CABIN_LENGTH = 2.1;
-const CAR_CABIN_HEIGHT = 0.62;
-const CAR_WHEEL_RADIUS = 0.33;
-const CAR_WHEEL_WIDTH = 0.24;
+// Dimensões do carrinho, em metros REAIS de carro de passeio — depois
+// multiplicadas por CAR_EXAGGERATION.
+//
+// Um carro em tamanho real (3.9m) é pequeno demais pra ler como ícone de
+// mapa: no print onde os dois apareciam juntos, o beacon (20m de diâmetro)
+// renderizava sólido e nítido enquanto o carro do lado era uma manchinha
+// escura de poucos pixels. Marcador de veículo em mapa 3D é sempre
+// exagerado — o objetivo é ser reconhecível no zoom de operação, não estar
+// em escala com as ruas.
+//
+// Eixo local: X = largura, Y = comprimento ("frente" = +Y antes da rotação
+// de heading), Z = altura (Z é o "up" do embedding do Mapbox, não o Y do
+// Three.js padrão — ver a montagem de matriz em render()).
+const CAR_EXAGGERATION = 3.5;
+const CAR_WIDTH = 1.85 * CAR_EXAGGERATION;
+const CAR_BODY_LENGTH = 3.9 * CAR_EXAGGERATION;
+const CAR_BODY_HEIGHT = 0.85 * CAR_EXAGGERATION;
+const CAR_CABIN_WIDTH = 1.55 * CAR_EXAGGERATION;
+const CAR_CABIN_LENGTH = 2.1 * CAR_EXAGGERATION;
+const CAR_CABIN_HEIGHT = 0.62 * CAR_EXAGGERATION;
+const CAR_WHEEL_RADIUS = 0.33 * CAR_EXAGGERATION;
+const CAR_WHEEL_WIDTH = 0.24 * CAR_EXAGGERATION;
+
+// Reaproveitados a cada frame só pra não alocar Matrix4 por técnico por
+// frame (render() roda a 60fps enquanto há tween ativo).
+const SCRATCH_SCALE = new THREE.Matrix4();
+const SCRATCH_ROT = new THREE.Matrix4();
 
 // Corpo escuro (verde-petróleo) lido em produção como uma mancha preta sem
 // contraste com o asfalto claro, num objeto baixo visto de ângulo raso —
@@ -158,6 +170,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.idleCoreGeo = new THREE.IcosahedronGeometry(IDLE_RADIUS_M * 0.45, 0);
     this.idleCoreMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR });
 
+    // flatShading: cada face ganha a própria normal, então topo e laterais
+    // recebem luz diferente e o volume é legível. Sem isso a interpolação
+    // suave deixa o bloco inteiro na mesma cor — foi o que fez o carrinho
+    // parecer um quadrilátero chapado nos prints, mesmo com a geometria certa.
     this.carBodyGeo = new THREE.BoxGeometry(CAR_WIDTH, CAR_BODY_LENGTH, CAR_BODY_HEIGHT);
     this.carBodyMat = new THREE.MeshStandardMaterial({
       color: CAR_BODY_COLOR,
@@ -165,9 +181,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       roughness: 0.6,
       emissive: CAR_BODY_COLOR,
       emissiveIntensity: 0.35, // não deixa o corpo escurecer demais em ângulo/luz ruim
+      flatShading: true,
     });
     this.carCabinGeo = new THREE.BoxGeometry(CAR_CABIN_WIDTH, CAR_CABIN_LENGTH, CAR_CABIN_HEIGHT);
-    this.carCabinMat = new THREE.MeshStandardMaterial({ color: CAR_CABIN_COLOR, metalness: 0.1, roughness: 0.45 });
+    this.carCabinMat = new THREE.MeshStandardMaterial({
+      color: CAR_CABIN_COLOR,
+      metalness: 0.1,
+      roughness: 0.45,
+      flatShading: true,
+    });
     // Eixo do cilindro rotacionado pra X (lateral) — permite girar em
     // rotation.x pra "rolar" pra frente/trás sem precisar de outra transform.
     this.carWheelGeo = new THREE.CylinderGeometry(CAR_WHEEL_RADIUS, CAR_WHEEL_RADIUS, CAR_WHEEL_WIDTH, 14);
@@ -218,11 +240,16 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
   private buildIdleBeacon(): THREE.Object3D {
     const group = new THREE.Group();
+    // O beacon estava na convenção errada (Y como "cima"): o anel era
+    // rotacionado pra ficar EM PÉ e o núcleo era deslocado pro norte, não
+    // pra cima. Passava despercebido porque num mapa bem inclinado um anel
+    // vertical ainda parece redondo e "norte" cai pra cima na tela. Aqui Z
+    // é o eixo vertical, e TorusGeometry já nasce no plano XY — que é o
+    // chão. Ou seja: sem rotação nenhuma o anel deita sozinho.
     const ring = new THREE.Mesh(this.idleRingGeo, this.idleRingMat);
-    ring.rotation.x = Math.PI / 2; // deita o anel no "chão"
     group.add(ring);
     const core = new THREE.Mesh(this.idleCoreGeo, this.idleCoreMat);
-    core.position.y = IDLE_RADIUS_M * 0.9;
+    core.position.z = IDLE_RADIUS_M * 0.9;
     group.add(core);
     return group;
   }
@@ -247,6 +274,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private createEntry(spec: TechEntrySpec): TechEntry {
     const m = mapboxgl.MercatorCoordinate.fromLngLat([spec.lng, spec.lat], 0);
     const object3d = new THREE.Group();
+    // A matriz do container é montada na mão a cada frame (ordem T·S·R —
+    // ver render()), então o Three.js não deve recompô-la a partir de
+    // position/rotation/scale.
+    object3d.matrixAutoUpdate = false;
     this.scene.add(object3d);
     if (DEBUG_LOG) {
       // eslint-disable-next-line no-console
@@ -379,17 +410,20 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       }
 
       const scale = new mapboxgl.MercatorCoordinate(x, y, z).meterInMercatorCoordinateUnits();
-      e.object3d.position.set(x, y, z);
-      // Y negativo: Mercator Y cresce pra sul, Three.js é Y-up — Three.js
-      // ajusta sozinho o winding de face com escala negativa (não quebra
-      // culling), então isso é seguro pra qualquer geometria, simétrica ou não.
-      e.object3d.scale.set(scale, -scale, scale);
 
-      if (headingRad != null) {
-        e.object3d.rotation.set(0, 0, 0);
-        if (HEADING_AXIS === "z") e.object3d.rotation.z = HEADING_SIGN * headingRad;
-        else e.object3d.rotation.y = HEADING_SIGN * headingRad;
-      }
+      // Ordem T·S·R, montada na mão. O Three.js compõe T·R·S a partir de
+      // position/rotation/scale, e aqui isso importa: a escala inclui um Y
+      // NEGATIVO (Mercator cresce pra sul, o espaço métrico do modelo cresce
+      // pra norte). Espelhamento não comuta com rotação — em T·R·S o carro é
+      // espelhado primeiro e só então girado, o que reflete o heading em
+      // torno do eixo errado e faz o carro apontar pra direção errada.
+      // Rotacionar no espaço métrico e só depois espelhar pro Mercator é a
+      // ordem correta.
+      e.object3d.matrix
+        .makeTranslation(x, y, z)
+        .multiply(SCRATCH_SCALE.makeScale(scale, -scale, scale))
+        .multiply(SCRATCH_ROT.makeRotationZ(HEADING_SIGN * (headingRad ?? 0)));
+      e.object3d.matrixWorldNeedsUpdate = true;
 
       if (DEBUG_LOG && !this.loggedFirstRenderFor.has(e.usersId)) {
         this.loggedFirstRenderFor.add(e.usersId);
