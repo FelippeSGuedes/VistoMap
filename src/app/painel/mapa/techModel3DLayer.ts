@@ -86,6 +86,9 @@ const CAR_MODEL_FLIP = false;
 /** Piso de luminosidade (HSL) das cores do car.glb — nada renderiza preto. */
 const CAR_MIN_LIGHTNESS = 0.3;
 
+/** true = modelo sem iluminação (só a textura). Ver prepareCarTemplate(). */
+const CAR_UNLIT = true;
+
 // Reaproveitados a cada frame só pra não alocar Matrix4 por técnico por
 // frame (render() roda a 60fps enquanto há tween ativo).
 const SCRATCH_SCALE = new THREE.Matrix4();
@@ -132,6 +135,40 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+    // CAMINHO SEM ILUMINAÇÃO (padrão).
+    //
+    // Toda falha visual desta sequência — preto total, estilhaços, "camada
+    // preta na frente" — veio do cálculo de iluminação sobre a matriz do
+    // Mapbox: metalness sem environment map, normais derivadas no shader
+    // (flatShading e normalMap sem TANGENT), eixo da luz hemisférica, sinal
+    // do determinante. MeshBasicMaterial não calcula luz nenhuma: mostra a
+    // textura de cor como ela é. Some com a classe inteira de problemas em
+    // vez de continuar caçando um por um.
+    //
+    // Num ícone de mapa isso é aceitável, e até desejável: o veículo fica
+    // igualmente legível em qualquer ângulo e nunca escurece contra o
+    // asfalto claro. Perde-se o sombreado que dá volume — se um dia valer a
+    // pena, dá pra voltar ao material PBR com CAR_UNLIT=false, agora que os
+    // problemas de matriz e de luz já estão corrigidos.
+    if (CAR_UNLIT) {
+      const flat = mats.map((mat) => {
+        const src = mat as THREE.MeshStandardMaterial;
+        const basic = new THREE.MeshBasicMaterial({
+          map: src.map ?? null,
+          color: src.map ? 0xffffff : src.color.clone(),
+          side: THREE.DoubleSide, // malha do Tripo não é watertight; evita furos
+        });
+        if (DEBUG_LOG) {
+          // eslint-disable-next-line no-console
+          console.log(`[vm-3d] material sem luz: textura=${!!src.map}`);
+        }
+        return basic;
+      });
+      mesh.material = flat.length === 1 ? flat[0] : flat;
+      return;
+    }
+
     mats.forEach((mat) => {
       const m = mat as THREE.MeshPhysicalMaterial;
       if (!m.isMeshStandardMaterial) return;
