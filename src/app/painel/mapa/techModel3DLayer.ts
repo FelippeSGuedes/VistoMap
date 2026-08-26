@@ -164,6 +164,17 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
       m.envMapIntensity = 0;
       m.flatShading = false; // ver comentário em onAdd — quebra com matriz espelhada
 
+      // Sem normal map: MESMA armadilha do flatShading. O GLB traz só
+      // POSITION/NORMAL/TEXCOORD_0 — não tem TANGENT. Sem tangentes o
+      // Three.js deriva o sistema tangente no shader por derivadas de tela,
+      // e com a matriz espelhada do Mercator (Y negativo, determinante < 0)
+      // esse frame sai invertido: a normal aponta pra dentro, a luz bate por
+      // trás e a superfície renderiza PRETA. Foi o que deixou a picape
+      // "escondida atrás de uma camada preta" mesmo com a textura de cor
+      // aplicada corretamente. Sem o normal map perde-se relevo fino, mas a
+      // pintura (que é o que identifica o veículo no mapa) aparece.
+      m.normalMap = null;
+
       if (m.map) {
         m.emissiveIntensity = 0; // deixa a textura falar por si
       } else {
