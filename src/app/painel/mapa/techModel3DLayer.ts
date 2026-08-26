@@ -123,29 +123,57 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
   new THREE.Box3().setFromObject(root).getSize(size);
   root.scale.setScalar(CAR_TARGET_LENGTH_M / (size.y || 1));
 
-  // Impede que o modelo renderize preto sem descaracterizá-lo: material
-  // metálico sem environment map fica escuro, e dar reflexo (RoomEnvironment)
-  // fez o carro virar espelho refletindo as paredes do ambiente sintético.
-  // Fosco + um piso de luminosidade não depende de reflexo nem de ângulo de
-  // luz. As cores próprias do modelo são preservadas — só as escuras demais
-  // são levantadas — pra vidro, pneu e acabamento continuarem se
-  // distinguindo do corpo.
+  // Ajuste de material. O car.glb é uma picape TEXTURIZADA (basecolor +
+  // metallicRoughness + normal embutidos) e SEM baseColorFactor — ou seja,
+  // toda a cor vem da textura e m.color é branco.
+  //
+  // Isso quebrava a "rede de segurança contra preto" que existia aqui antes:
+  // ela levantava m.color (inútil, já era branco) e somava emissive da
+  // própria cor, o que virava um véu branco de 22% por cima da textura e
+  // lavava a pintura inteira num cinza chapado. A rede só faz sentido em
+  // material de cor sólida; com textura ela só atrapalha.
   const hsl = { h: 0, s: 0, l: 0 };
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     mats.forEach((mat) => {
-      const m = mat as THREE.MeshStandardMaterial;
+      const m = mat as THREE.MeshPhysicalMaterial;
       if (!m.isMeshStandardMaterial) return;
-      m.metalness = Math.min(m.metalness, 0.25);
-      m.roughness = Math.max(m.roughness, 0.6);
-      m.color.getHSL(hsl);
-      if (hsl.l < CAR_MIN_LIGHTNESS) m.color.setHSL(hsl.h, hsl.s, CAR_MIN_LIGHTNESS);
-      m.emissive.copy(m.color);
-      m.emissiveIntensity = 0.22;
+
+      // O GLB declara KHR_materials_volume, que o Three.js traduz em material
+      // de vidro (thickness/transmission). Numa carroceria opaca isso deixa a
+      // superfície leitosa e sem forma definida.
+      if ("transmission" in m) m.transmission = 0;
+      if ("thickness" in m) m.thickness = 0;
+
+      // Metalness alto sem environment map renderiza preto, e dar reflexo
+      // (RoomEnvironment) fez o carro virar espelho refletindo as paredes do
+      // ambiente sintético — fosco é o único que não depende de reflexo.
+      // Com metallicRoughnessTexture presente estes viram multiplicadores.
+      m.metalness = Math.min(m.metalness, 0.4);
+      m.roughness = Math.max(m.roughness, 0.5);
       m.flatShading = false; // ver comentário em onAdd — quebra com matriz espelhada
+
+      if (m.map) {
+        m.emissiveIntensity = 0; // deixa a textura falar por si
+      } else {
+        // Sem textura: aí sim vale o piso de luminosidade, pra um material
+        // de cor sólida escura não sumir em preto.
+        m.color.getHSL(hsl);
+        if (hsl.l < CAR_MIN_LIGHTNESS) m.color.setHSL(hsl.h, hsl.s, CAR_MIN_LIGHTNESS);
+        m.emissive.copy(m.color);
+        m.emissiveIntensity = 0.22;
+      }
       m.needsUpdate = true;
+
+      if (DEBUG_LOG) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[vm-3d] material "${m.name || "(sem nome)"}": textura=${!!m.map} ` +
+          `metalness=${m.metalness.toFixed(2)} roughness=${m.roughness.toFixed(2)}`
+        );
+      }
     });
   });
 
