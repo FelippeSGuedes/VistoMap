@@ -155,7 +155,12 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
           map: src.map ?? null,
           color: src.map ? 0xffffff : src.color.clone(),
 
-          side: THREE.FrontSide,
+          // DoubleSide porque a malha gerada por IA (Tripo) não é watertight:
+          // tem faces com orientação invertida, que o descarte de faces
+          // traseiras eliminava — apareciam como buracos na carroceria e nas
+          // portas. Com profundidade ligada, desenhar os dois lados é seguro:
+          // o depth buffer resolve a ordem corretamente.
+          side: THREE.DoubleSide,
           depthTest: true,
           depthWrite: true,
         });

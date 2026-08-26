@@ -113,7 +113,7 @@ class LayerTeste implements mapboxgl.CustomLayerInterface {
             return new THREE.MeshBasicMaterial({
               map: src.map ?? null,
               color: src.map ? 0xffffff : src.color.clone(),
-              side: THREE.FrontSide,
+              side: THREE.DoubleSide, // malha do Tripo não é watertight
               ...comum,
             });
           })[0] as THREE.Material;
