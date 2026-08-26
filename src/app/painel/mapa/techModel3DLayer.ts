@@ -2,9 +2,21 @@
 
 /**
  * TechModel3DLayer — camada 3D (Three.js) dentro do Mapbox GL JS que
- * desenha UM objeto por técnico visível: um carro (car.glb) seguindo a
- * rota real quando em deslocamento, ou um "beacon" (geometria Three.js
- * pura) quando parado/em vistoria.
+ * desenha UM objeto por técnico visível: um carrinho procedural (geometria
+ * Three.js pura, rodas animadas) seguindo a rota real quando em
+ * deslocamento, ou um "beacon" (anel + núcleo) quando parado/em vistoria.
+ *
+ * O carro já foi tentado como modelo importado (car.glb, ~17MB, exportado
+ * via IA/Tripo) — teve dois problemas sérios em produção: material
+ * metálico sem environment map renderiza preto, e COM environment map
+ * (RoomEnvironment) vira espelho refletindo as paredes do ambiente
+ * sintético (parece manchas/geometria quebrada num ícone pequeno). Depois
+ * disso descobrimos que o mesh tinha ~502 mil faces — pesado demais pra um
+ * ícone de mapa e arriscado pra precisão de float na escala minúscula do
+ * Mercator. Um carrinho geométrico (caixas + cilindros) resolve tudo isso:
+ * não depende de luz/reflexo pra parecer certo, não tem arquivo pra
+ * carregar, e tem controle total sobre a animação (rodas giram conforme a
+ * distância real percorrida na rota).
  *
  * Evolução da POC (Fase 0, 1 objeto só) — mudança de arquitetura: antes a
  * posição do único objeto ia embutida direto na matriz da câmera
@@ -20,10 +32,7 @@
  */
 
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import mapboxgl from "mapbox-gl";
-import { asset } from "@/utils/asset";
 import { sampleRouteAt, projectOntoRoute, type RouteResult } from "./routeService";
 
 export const TECH_MODEL_LAYER_ID = "vm-tech-3d-model";
@@ -32,39 +41,31 @@ const TWEEN_MS = 800; // mesma duração do animateMarkerTo (page.tsx)
 const MODEL_COLOR = 0x00d4a0; // mesmo teal-neon usado no resto da identidade visual
 const IDLE_RADIUS_M = 10;
 
-// Calibrados olhando o modelo real rodar no mapa — não dá pra cravar sem
-// testar visualmente (ver passo de verificação no plano da Fase 1).
-// CAR_MODEL_SCALE=1 media 0.487 x 1.000 x 0.411 "metros" (log [vm-3d] car.glb
-// carregado) — o modelo foi exportado normalizado num cubo unitário, não em
-// metros reais. 4.5 escala a maior dimensão (1.000) pra ~4.5m, do tamanho de
-// um carro real (proporção resultante ≈ 2.2m x 4.5m x 1.85m).
-const CAR_MODEL_SCALE = 4.5;
-const CAR_BASE_ROTATION_X = Math.PI / 2; // GLTF Y-up → embedding do Mapbox (Z "pra cima")
+// HEADING_AXIS/HEADING_SIGN calibram qual eixo local do objeto vira "pra
+// frente" depois da rotação de heading (ver render()). Não foi possível
+// validar visualmente ainda com um modelo reconhecível — se o nariz do
+// carrinho não acompanhar a direção real de deslocamento em produção,
+// ajustar HEADING_SIGN (inverte) primeiro antes de mexer no eixo.
 const HEADING_AXIS: "y" | "z" = "z";
 const HEADING_SIGN = -1;
 const DEBUG_LOG = true;
 
-// O material original do car.glb (pintura metálica) fica praticamente
-// espelhado sem um environment map — e COM environment map reflete as
-// paredes do ambiente sintético, parecendo manchas/geometria quebrada num
-// ícone pequeno de mapa (ver histórico do commit). Achata o material em vez
-// de tentar acertar reflexo: sem brilho de espelho, não precisa de env map.
-const CAR_MAX_METALNESS = 0.35;
-const CAR_MIN_ROUGHNESS = 0.55;
+// Dimensões do carrinho, em metros — proporção de um carro de passeio
+// pequeno. Eixo local: X = largura, Y = comprimento ("frente" = +Y antes
+// da rotação de heading), Z = altura (esse é o "up" da cena, não o Y do
+// Three.js padrão — ver comentário sobre escala em render()).
+const CAR_WIDTH = 1.85;
+const CAR_BODY_LENGTH = 3.9;
+const CAR_BODY_HEIGHT = 0.85;
+const CAR_CABIN_WIDTH = 1.55;
+const CAR_CABIN_LENGTH = 2.1;
+const CAR_CABIN_HEIGHT = 0.62;
+const CAR_WHEEL_RADIUS = 0.33;
+const CAR_WHEEL_WIDTH = 0.24;
 
-function clampCarMaterials(root: THREE.Object3D): void {
-  root.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    mats.forEach((mat) => {
-      const m = mat as THREE.MeshStandardMaterial;
-      if (!m.isMeshStandardMaterial) return;
-      m.metalness = Math.min(m.metalness, CAR_MAX_METALNESS);
-      m.roughness = Math.max(m.roughness, CAR_MIN_ROUGHNESS);
-    });
-  });
-}
+const CAR_BODY_COLOR = 0x123832; // verde-petróleo escuro, combina com o teal da marca
+const CAR_CABIN_COLOR = 0x274b46;
+const CAR_WHEEL_COLOR = 0x161616;
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -92,8 +93,9 @@ interface TechEntry {
   usersId: number;
   kind: "car" | "idle";
   object3d: THREE.Group; // container — posição/rotação/escala setadas a cada frame
-  visual: THREE.Object3D | null; // filho atual (clone do carro ou beacon)
+  visual: THREE.Object3D | null; // filho atual (carrinho ou beacon)
   visualIsCar: boolean;
+  wheels: THREE.Mesh[] | null; // só quando visual = carrinho — girados por distância percorrida
   route: RouteResult | null;
   fromDistM: number; // progresso (metros) na rota — só kind="car"
   toDistM: number;
@@ -113,32 +115,29 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private scene!: THREE.Scene;
   private renderer!: THREE.WebGLRenderer;
   private entries = new Map<number, TechEntry>();
-
-  private carTemplate: THREE.Object3D | null = null;
-  private carUsesSkeletonClone = false;
-  private carLoadingPromise: Promise<THREE.Object3D> | null = null;
   private loggedFirstRenderFor = new Set<number>();
 
-  // Geometria/material do beacon idle — compartilhados entre todas as
-  // instâncias (procedural, barato de reusar; só descartados no onRemove).
+  // Geometria/material compartilhados entre todas as instâncias (procedural,
+  // barato de reusar; só descartados no onRemove).
   private idleRingGeo!: THREE.TorusGeometry;
   private idleRingMat!: THREE.MeshBasicMaterial;
   private idleCoreGeo!: THREE.IcosahedronGeometry;
   private idleCoreMat!: THREE.MeshBasicMaterial;
+
+  private carBodyGeo!: THREE.BoxGeometry;
+  private carBodyMat!: THREE.MeshStandardMaterial;
+  private carCabinGeo!: THREE.BoxGeometry;
+  private carCabinMat!: THREE.MeshStandardMaterial;
+  private carWheelGeo!: THREE.CylinderGeometry;
+  private carWheelMat!: THREE.MeshStandardMaterial;
 
   onAdd(map: mapboxgl.Map, gl: WebGLRenderingContext): void {
     this.map = map;
     this.camera = new THREE.Camera();
     this.scene = new THREE.Scene();
 
-    // O carro tem material PBR (o GLB traz textura/metalness/roughness) —
-    // precisa de luz de verdade, ao contrário do beacon (MeshBasicMaterial,
-    // sempre na cor cheia, não depende de luz). Metalness alto sem
-    // environment map renderiza preto; COM environment map (testado com
-    // RoomEnvironment) o carro vira um espelho refletindo as paredes
-    // coloridas do ambiente sintético — parece "manchas"/geometria quebrada
-    // num ícone pequeno de mapa. Em vez de reflexo, o material é achatado
-    // (clampCarMaterials) pra não precisar de env map nenhum.
+    // Luz simples — materiais são MeshStandardMaterial com metalness baixo
+    // (foscos), não dependem de reflexo/environment map pra parecer certo.
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.1);
     sun.position.set(0, -70, 100).normalize();
@@ -151,6 +150,16 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.idleRingMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, transparent: true, opacity: 0.55 });
     this.idleCoreGeo = new THREE.IcosahedronGeometry(IDLE_RADIUS_M * 0.45, 0);
     this.idleCoreMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR });
+
+    this.carBodyGeo = new THREE.BoxGeometry(CAR_WIDTH, CAR_BODY_LENGTH, CAR_BODY_HEIGHT);
+    this.carBodyMat = new THREE.MeshStandardMaterial({ color: CAR_BODY_COLOR, metalness: 0.2, roughness: 0.6 });
+    this.carCabinGeo = new THREE.BoxGeometry(CAR_CABIN_WIDTH, CAR_CABIN_LENGTH, CAR_CABIN_HEIGHT);
+    this.carCabinMat = new THREE.MeshStandardMaterial({ color: CAR_CABIN_COLOR, metalness: 0.1, roughness: 0.45 });
+    // Eixo do cilindro rotacionado pra X (lateral) — permite girar em
+    // rotation.x pra "rolar" pra frente/trás sem precisar de outra transform.
+    this.carWheelGeo = new THREE.CylinderGeometry(CAR_WHEEL_RADIUS, CAR_WHEEL_RADIUS, CAR_WHEEL_WIDTH, 14);
+    this.carWheelGeo.rotateZ(Math.PI / 2);
+    this.carWheelMat = new THREE.MeshStandardMaterial({ color: CAR_WHEEL_COLOR, metalness: 0.15, roughness: 0.85 });
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: map.getCanvas(),
@@ -166,63 +175,32 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         projection: map.getProjection?.(),
       });
     }
-
-    this.loadCarTemplate();
   }
 
-  private loadCarTemplate(): Promise<THREE.Object3D> {
-    if (this.carLoadingPromise) return this.carLoadingPromise;
-    this.carLoadingPromise = new Promise((resolve) => {
-      new GLTFLoader().load(
-        asset("/car.glb"),
-        (gltf) => {
-          const root = gltf.scene;
-          let hasSkinned = false;
-          root.traverse((o) => {
-            if ((o as THREE.SkinnedMesh).isSkinnedMesh) hasSkinned = true;
-          });
-          this.carUsesSkeletonClone = hasSkinned;
-          clampCarMaterials(root);
-          root.rotation.x = CAR_BASE_ROTATION_X;
-          root.scale.setScalar(CAR_MODEL_SCALE);
-          this.carTemplate = root;
-          if (DEBUG_LOG) {
-            const box = new THREE.Box3().setFromObject(root);
-            const size = new THREE.Vector3();
-            box.getSize(size);
-            // Tamanho já com CAR_MODEL_SCALE aplicado — deve parecer um
-            // carro real (~4-5m de comprimento) agora que a escala foi
-            // calibrada (era 0.487x1.000x0.411 "metros" com escala 1x,
-            // confirmado normalizado num cubo unitário na exportação).
-            // eslint-disable-next-line no-console
-            console.log(
-              `[vm-3d] car.glb carregado — tamanho final no mapa: ` +
-              `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)} m`
-            );
-          }
-          resolve(root);
-          // Backfill: técnicos que já estavam "em carro" antes do modelo
-          // carregar (até aqui, mostrando o beacon como placeholder).
-          this.entries.forEach((e) => {
-            if (e.kind === "car" && !e.visualIsCar) this.ensureVisual(e);
-          });
-        },
-        undefined,
-        (err) => {
-          // eslint-disable-next-line no-console
-          console.error("[vm-3d] falha ao carregar car.glb", err);
-        }
-      );
+  private buildCarModel(): { object3d: THREE.Object3D; wheels: THREE.Mesh[] } {
+    const group = new THREE.Group();
+
+    const body = new THREE.Mesh(this.carBodyGeo, this.carBodyMat);
+    body.position.z = CAR_WHEEL_RADIUS + CAR_BODY_HEIGHT / 2;
+    group.add(body);
+
+    const cabin = new THREE.Mesh(this.carCabinGeo, this.carCabinMat);
+    cabin.position.set(0, -CAR_BODY_LENGTH * 0.06, CAR_WHEEL_RADIUS + CAR_BODY_HEIGHT + CAR_CABIN_HEIGHT / 2);
+    group.add(cabin);
+
+    const wx = CAR_WIDTH / 2 + CAR_WHEEL_WIDTH / 2 - 0.02;
+    const wy = CAR_BODY_LENGTH / 2 - CAR_WHEEL_RADIUS * 1.15;
+    const wheelOffsets: Array<[number, number]> = [
+      [-wx, wy], [wx, wy], [-wx, -wy], [wx, -wy],
+    ];
+    const wheels = wheelOffsets.map(([x, y]) => {
+      const wheel = new THREE.Mesh(this.carWheelGeo, this.carWheelMat);
+      wheel.position.set(x, y, CAR_WHEEL_RADIUS);
+      group.add(wheel);
+      return wheel;
     });
-    return this.carLoadingPromise;
-  }
 
-  private cloneCar(): THREE.Object3D {
-    const tpl = this.carTemplate;
-    if (!tpl) throw new Error("carTemplate ainda não carregado");
-    // Clone raso da hierarquia — geometria/material compartilhados entre
-    // clones (não duplica buffers de GPU por técnico).
-    return this.carUsesSkeletonClone ? cloneSkeleton(tpl) : tpl.clone(true);
+    return { object3d: group, wheels };
   }
 
   private buildIdleBeacon(): THREE.Object3D {
@@ -238,10 +216,17 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
   /** Garante que o filho visual da entry bate com o kind atual (troca só quando muda). */
   private ensureVisual(e: TechEntry): void {
-    const wantCar = e.kind === "car" && !!this.carTemplate;
+    const wantCar = e.kind === "car";
     if (wantCar === e.visualIsCar && e.visual) return;
     if (e.visual) e.object3d.remove(e.visual);
-    e.visual = wantCar ? this.cloneCar() : this.buildIdleBeacon();
+    if (wantCar) {
+      const { object3d, wheels } = this.buildCarModel();
+      e.visual = object3d;
+      e.wheels = wheels;
+    } else {
+      e.visual = this.buildIdleBeacon();
+      e.wheels = null;
+    }
     e.visualIsCar = wantCar;
     e.object3d.add(e.visual);
   }
@@ -267,6 +252,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       object3d,
       visual: null,
       visualIsCar: false,
+      wheels: null,
       route: spec.route,
       fromDistM: 0,
       toDistM: 0,
@@ -355,6 +341,13 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         y = m.y;
         z = m.z ?? 0;
         headingRad = sample.headingRad;
+
+        // Rodas giram conforme a distância real percorrida (não por tempo)
+        // — para quando o técnico para, acelera quando o progresso acelera.
+        if (e.wheels) {
+          const spin = (distM / CAR_WHEEL_RADIUS) % (Math.PI * 2);
+          for (const wheel of e.wheels) wheel.rotation.x = spin;
+        }
       } else {
         x = e.fromXY.x + (e.toXY.x - e.fromXY.x) * frac;
         y = e.fromXY.y + (e.toXY.y - e.fromXY.y) * frac;
@@ -390,9 +383,9 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.renderer.render(this.scene, this.camera);
 
     // Só pede o próximo frame enquanto algum tween (posição OU progresso na
-    // rota) ainda não terminou — mesmo fix de performance validado na
-    // Fase 0 (sem isso, o mapa redesenha a 60fps o tempo todo em segundo
-    // plano mesmo parado).
+    // rota, o que também move as rodas) ainda não terminou — mesmo fix de
+    // performance validado na Fase 0 (sem isso, o mapa redesenha a 60fps o
+    // tempo todo em segundo plano mesmo parado).
     if (anyTweenActive) this.map?.triggerRepaint();
   }
 
@@ -404,17 +397,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.idleRingMat?.dispose();
     this.idleCoreGeo?.dispose();
     this.idleCoreMat?.dispose();
-
-    if (this.carTemplate) {
-      this.carTemplate.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if ((mesh as THREE.Mesh).isMesh) {
-          mesh.geometry?.dispose();
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          mats.forEach((mat) => mat?.dispose());
-        }
-      });
-    }
+    this.carBodyGeo?.dispose();
+    this.carBodyMat?.dispose();
+    this.carCabinGeo?.dispose();
+    this.carCabinMat?.dispose();
+    this.carWheelGeo?.dispose();
+    this.carWheelMat?.dispose();
 
     this.renderer.dispose();
   }

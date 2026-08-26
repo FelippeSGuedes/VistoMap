@@ -68,16 +68,18 @@ function restore() {
 // sinal fraco) com branding administrativo. Confirmado via grep: sem
 // nenhuma referência fora de src/app/painel/**.
 //
-// 2026-08-25: lista estava desatualizada — vários fundos de card e o modelo
-// 3D do carro (car.glb, 17MB sozinho) adicionados nas últimas sessões nunca
-// foram incluídos aqui, inflando o app técnico em ~35MB de branding que ele
-// nunca exibe. Revalidado com o mesmo critério (grep sem hit fora de
-// src/app/painel/**) antes de adicionar.
+// 2026-08-25: lista estava desatualizada — vários fundos de card adicionados
+// nas últimas sessões nunca foram incluídos aqui, inflando o app técnico em
+// ~35MB de branding que ele nunca exibe. Revalidado com o mesmo critério
+// (grep sem hit fora de src/app/painel/**) antes de adicionar.
+//
+// 2026-08-26: car.glb (modelo 3D do carro, 17MB) saiu da lista porque saiu
+// do projeto inteiro — trocado por um carrinho geométrico (Three.js puro)
+// no mapa 3D do painel, sem arquivo nenhum pra carregar.
 const PAINEL_ONLY_ASSETS = [
   "vis.png",
   "login_painel.png",
   "logo-vistomap.png",
-  "car.glb",
   "viswhite.png",
   "vistoriadoverde.png",
   "vistoriadoverdeblack.png",
