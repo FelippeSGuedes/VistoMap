@@ -63,8 +63,15 @@ const CAR_CABIN_HEIGHT = 0.62;
 const CAR_WHEEL_RADIUS = 0.33;
 const CAR_WHEEL_WIDTH = 0.24;
 
-const CAR_BODY_COLOR = 0x123832; // verde-petróleo escuro, combina com o teal da marca
-const CAR_CABIN_COLOR = 0x274b46;
+// Corpo escuro (verde-petróleo) lido em produção como uma mancha preta sem
+// contraste com o asfalto claro, num objeto baixo visto de ângulo raso —
+// mesmo padrão que apareceu em toda tentativa anterior (material metálico,
+// ambiente sintético, material fosco escuro). Corpo agora usa o MESMO teal
+// do beacon, com emissive pra nunca depender do ângulo de luz pra ficar
+// visível — beacon já usa MeshBasicMaterial (sempre na cor cheia) pelo
+// mesmo motivo.
+const CAR_BODY_COLOR = MODEL_COLOR;
+const CAR_CABIN_COLOR = 0x0a1f1c; // vidro escuro — contraste contra o corpo teal
 const CAR_WHEEL_COLOR = 0x161616;
 
 function easeOutCubic(t: number): number {
@@ -152,7 +159,13 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.idleCoreMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR });
 
     this.carBodyGeo = new THREE.BoxGeometry(CAR_WIDTH, CAR_BODY_LENGTH, CAR_BODY_HEIGHT);
-    this.carBodyMat = new THREE.MeshStandardMaterial({ color: CAR_BODY_COLOR, metalness: 0.2, roughness: 0.6 });
+    this.carBodyMat = new THREE.MeshStandardMaterial({
+      color: CAR_BODY_COLOR,
+      metalness: 0.2,
+      roughness: 0.6,
+      emissive: CAR_BODY_COLOR,
+      emissiveIntensity: 0.35, // não deixa o corpo escurecer demais em ângulo/luz ruim
+    });
     this.carCabinGeo = new THREE.BoxGeometry(CAR_CABIN_WIDTH, CAR_CABIN_LENGTH, CAR_CABIN_HEIGHT);
     this.carCabinMat = new THREE.MeshStandardMaterial({ color: CAR_CABIN_COLOR, metalness: 0.1, roughness: 0.45 });
     // Eixo do cilindro rotacionado pra X (lateral) — permite girar em
