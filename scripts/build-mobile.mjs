@@ -73,13 +73,14 @@ function restore() {
 // ~35MB de branding que ele nunca exibe. Revalidado com o mesmo critério
 // (grep sem hit fora de src/app/painel/**) antes de adicionar.
 //
-// 2026-08-26: car.glb (modelo 3D do carro, 17MB) saiu da lista porque saiu
-// do projeto inteiro — trocado por um carrinho geométrico (Three.js puro)
-// no mapa 3D do painel, sem arquivo nenhum pra carregar.
+// 2026-08-26: car.glb (17MB) chegou a sair do projeto e voltou — o que
+// quebrava o modelo era escala/transformação, não o arquivo. Continua sendo
+// só do painel (mapa 3D), então continua fora do bundle do técnico.
 const PAINEL_ONLY_ASSETS = [
   "vis.png",
   "login_painel.png",
   "logo-vistomap.png",
+  "car.glb",
   "viswhite.png",
   "vistoriadoverde.png",
   "vistoriadoverdeblack.png",

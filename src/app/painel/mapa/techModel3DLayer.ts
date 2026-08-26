@@ -31,7 +31,9 @@
  */
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import mapboxgl from "mapbox-gl";
+import { asset } from "@/utils/asset";
 import { sampleRouteAt, projectOntoRoute, type RouteResult } from "./routeService";
 
 export const TECH_MODEL_LAYER_ID = "vm-tech-3d-model";
@@ -69,6 +71,25 @@ const CAR_CABIN_LENGTH = 2.1 * CAR_EXAGGERATION;
 const CAR_CABIN_HEIGHT = 0.62 * CAR_EXAGGERATION;
 const CAR_WHEEL_RADIUS = 0.33 * CAR_EXAGGERATION;
 const CAR_WHEEL_WIDTH = 0.24 * CAR_EXAGGERATION;
+
+/** Comprimento final do veículo no mapa, em metros. */
+const CAR_TARGET_LENGTH_M = 3.9 * CAR_EXAGGERATION;
+
+// car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
+// continua no código como fallback: aparece enquanto os 17MB carregam e
+// fica permanentemente se o download falhar. Virar `false` aqui volta pro
+// carrinho geométrico sem mexer em mais nada.
+const USE_CAR_MODEL = true;
+
+// GLTF é Y-up; o embedding do Mapbox é Z-up. Depois desta rotação o modelo
+// mede (medido em produção, escala 1): 0.487 largura x 1.000 comprimento x
+// 0.411 altura — ou seja, comprimento no eixo Y, que é a convenção de
+// "frente" usada aqui. Se o carro andar de ré, inverter CAR_MODEL_FLIP.
+const CAR_BASE_ROTATION_X = Math.PI / 2;
+const CAR_MODEL_FLIP = false;
+
+/** Piso de luminosidade (HSL) das cores do car.glb — nada renderiza preto. */
+const CAR_MIN_LIGHTNESS = 0.3;
 
 // Reaproveitados a cada frame só pra não alocar Matrix4 por técnico por
 // frame (render() roda a 60fps enquanto há tween ativo).
@@ -136,6 +157,9 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private entries = new Map<number, TechEntry>();
   private loggedFirstRenderFor = new Set<number>();
 
+  private carTemplate: THREE.Object3D | null = null;
+  private carLoadingStarted = false;
+
   // Geometria/material compartilhados entre todas as instâncias (procedural,
   // barato de reusar; só descartados no onRemove).
   private idleRingGeo!: THREE.TorusGeometry;
@@ -170,10 +194,13 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.idleCoreGeo = new THREE.IcosahedronGeometry(IDLE_RADIUS_M * 0.45, 0);
     this.idleCoreMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR });
 
-    // flatShading: cada face ganha a própria normal, então topo e laterais
-    // recebem luz diferente e o volume é legível. Sem isso a interpolação
-    // suave deixa o bloco inteiro na mesma cor — foi o que fez o carrinho
-    // parecer um quadrilátero chapado nos prints, mesmo com a geometria certa.
+    // NÃO usar flatShading aqui: ele deriva a normal de cada face no shader
+    // (dFdx/dFdy do vértice em view-space), e a matriz do Mercator é
+    // espelhada (Y negativo). Com determinante negativo a normal derivada
+    // sai apontando pra DENTRO do objeto, a luz bate por trás e tudo
+    // renderiza preto — foi exatamente o que aconteceu em produção. E era
+    // desnecessário: BoxGeometry já traz normal própria por face (24
+    // vértices, não 8), então topo e laterais sombreiam diferente sozinhos.
     this.carBodyGeo = new THREE.BoxGeometry(CAR_WIDTH, CAR_BODY_LENGTH, CAR_BODY_HEIGHT);
     this.carBodyMat = new THREE.MeshStandardMaterial({
       color: CAR_BODY_COLOR,
@@ -181,14 +208,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       roughness: 0.6,
       emissive: CAR_BODY_COLOR,
       emissiveIntensity: 0.35, // não deixa o corpo escurecer demais em ângulo/luz ruim
-      flatShading: true,
     });
     this.carCabinGeo = new THREE.BoxGeometry(CAR_CABIN_WIDTH, CAR_CABIN_LENGTH, CAR_CABIN_HEIGHT);
     this.carCabinMat = new THREE.MeshStandardMaterial({
       color: CAR_CABIN_COLOR,
       metalness: 0.1,
       roughness: 0.45,
-      flatShading: true,
     });
     // Eixo do cilindro rotacionado pra X (lateral) — permite girar em
     // rotation.x pra "rolar" pra frente/trás sem precisar de outra transform.
@@ -210,9 +235,99 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         projection: map.getProjection?.(),
       });
     }
+
+    if (USE_CAR_MODEL) this.loadCarTemplate();
+  }
+
+  /** Carrega car.glb uma vez; cada técnico recebe um clone (geometria e
+   * material compartilhados, não duplica buffer de GPU). */
+  private loadCarTemplate(): void {
+    if (this.carLoadingStarted) return;
+    this.carLoadingStarted = true;
+
+    new GLTFLoader().load(
+      asset("/car.glb"),
+      (gltf) => {
+        const root = gltf.scene;
+        root.rotation.x = CAR_BASE_ROTATION_X;
+        if (CAR_MODEL_FLIP) root.rotation.y = Math.PI;
+        root.updateMatrixWorld(true);
+
+        // Escala derivada do próprio modelo, não chutada: o GLB veio
+        // normalizado num cubo unitário (não em metros), então medir e
+        // ajustar pro comprimento alvo é o único jeito estável — se o
+        // modelo for reexportado com outra escala, isso continua certo.
+        const size = new THREE.Vector3();
+        new THREE.Box3().setFromObject(root).getSize(size);
+        const lengthAtScale1 = size.y || 1;
+        root.scale.setScalar(CAR_TARGET_LENGTH_M / lengthAtScale1);
+
+        // Impede que o modelo renderize preto sem descaracterizá-lo:
+        // material metálico sem environment map fica escuro, e dar reflexo
+        // (RoomEnvironment) fez o carro virar espelho refletindo as paredes
+        // do ambiente sintético. Fosco + um piso de luminosidade não depende
+        // de reflexo nem de ângulo de luz. As cores próprias do modelo são
+        // preservadas — só as escuras demais são levantadas — pra vidro,
+        // pneu e acabamento continuarem se distinguindo do corpo.
+        const hsl = { h: 0, s: 0, l: 0 };
+        root.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          mats.forEach((mat) => {
+            const m = mat as THREE.MeshStandardMaterial;
+            if (!m.isMeshStandardMaterial) return;
+            m.metalness = Math.min(m.metalness, 0.25);
+            m.roughness = Math.max(m.roughness, 0.6);
+            m.color.getHSL(hsl);
+            if (hsl.l < CAR_MIN_LIGHTNESS) m.color.setHSL(hsl.h, hsl.s, CAR_MIN_LIGHTNESS);
+            m.emissive.copy(m.color);
+            m.emissiveIntensity = 0.22;
+            m.flatShading = false; // ver comentário em onAdd — quebra com matriz espelhada
+            m.needsUpdate = true;
+          });
+        });
+
+        this.carTemplate = root;
+
+        if (DEBUG_LOG) {
+          const finalSize = new THREE.Vector3();
+          new THREE.Box3().setFromObject(root).getSize(finalSize);
+          // eslint-disable-next-line no-console
+          console.log(
+            `[vm-3d] car.glb pronto — ${finalSize.x.toFixed(1)} x ` +
+            `${finalSize.y.toFixed(1)} x ${finalSize.z.toFixed(1)} m`
+          );
+        }
+
+        // Troca quem já estava mostrando o carrinho geométrico enquanto
+        // o modelo carregava.
+        this.entries.forEach((e) => {
+          if (e.kind === "car") {
+            e.visualIsCar = false; // força ensureVisual a reconstruir
+            this.ensureVisual(e);
+          }
+        });
+        this.map?.triggerRepaint();
+      },
+      undefined,
+      (err) => {
+        // Fica no carrinho geométrico — não quebra a tela.
+        // eslint-disable-next-line no-console
+        console.error("[vm-3d] falha ao carregar car.glb, seguindo com o carrinho geométrico", err);
+      }
+    );
   }
 
   private buildCarModel(): { object3d: THREE.Object3D; wheels: THREE.Mesh[] } {
+    // car.glb quando já carregou; o carrinho geométrico abaixo é o
+    // placeholder durante o download e o fallback se ele falhar. As rodas
+    // animadas são só do carrinho — no modelo importado elas fazem parte
+    // da malha e não dá pra girar separado.
+    if (this.carTemplate) {
+      return { object3d: this.carTemplate.clone(true), wheels: [] };
+    }
+
     const group = new THREE.Group();
 
     const body = new THREE.Mesh(this.carBodyGeo, this.carBodyMat);
@@ -460,6 +575,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.carCabinMat?.dispose();
     this.carWheelGeo?.dispose();
     this.carWheelMat?.dispose();
+
+    this.carTemplate?.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((mat) => mat?.dispose());
+    });
+    this.carTemplate = null;
 
     this.renderer.dispose();
   }
