@@ -93,6 +93,7 @@ const CAR_UNLIT = true;
 // frame (render() roda a 60fps enquanto há tween ativo).
 const SCRATCH_SCALE = new THREE.Matrix4();
 const SCRATCH_ROT = new THREE.Matrix4();
+const SCRATCH_MODELO = new THREE.Matrix4();
 
 // ---------------------------------------------------------------------------
 // Template do car.glb — MÓDULO, não instância.
@@ -154,23 +155,9 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
           map: src.map ?? null,
           color: src.map ? 0xffffff : src.color.clone(),
 
-          // A causa real dos recortes: PRECISÃO DE PROFUNDIDADE. O Mapbox
-          // monta a projeção pro mundo visível inteiro, com o plano distante
-          // muito longe. Um objeto de ~13m cai praticamente dentro de um
-          // único incremento do depth buffer, então todas as faces terminam
-          // com o mesmo valor e qual aparece na frente vira sorteio — daí os
-          // polígonos recortados, a variação conforme zoom/inclinação, e o
-          // fato de atingir igualmente o modelo de 502 mil faces, as caixas
-          // do carrinho e o anel do beacon.
-          //
-          // Sem teste de profundidade, a oclusão passa a ser resolvida só
-          // pelo descarte de faces traseiras (side: FrontSide). Num corpo
-          // fechado e aproximadamente convexo — que é o caso de um veículo —
-          // as faces frontais formam exatamente a superfície visível, sem
-          // sobreposição, então o depth buffer é dispensável.
           side: THREE.FrontSide,
-          depthTest: false,
-          depthWrite: false,
+          depthTest: true,
+          depthWrite: true,
         });
         if (DEBUG_LOG) {
           // eslint-disable-next-line no-console
@@ -376,12 +363,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     fill.position.set(0, 70, 40).normalize();
     this.scene.add(fill);
 
-    // depthTest/depthWrite desligados em TODOS os visuais desta camada — ver
-    // a explicação longa em prepareCarTemplate(): na escala de um veículo, a
-    // projeção do Mapbox não tem precisão de profundidade suficiente e as
-    // faces se recortam entre si. Vale igual pro beacon: foi ele, com a borda
-    // do anel rasgada, que denunciou que o defeito não era do modelo 3D.
-    const semDepth = { depthTest: false, depthWrite: false };
+    // Profundidade LIGADA. Ela chegou a ser desligada como paliativo quando
+    // eu achava que os recortes vinham de precisão de depth — não vinham,
+    // vinham de precisão de COORDENADA (ver o comentário longo em render()).
+    // Com a transformação na matriz da câmera, o depth buffer volta a
+    // funcionar e é ele que dá a auto-oclusão correta do veículo.
+    const semDepth = { depthTest: true, depthWrite: true };
 
     this.idleRingGeo = new THREE.TorusGeometry(IDLE_RADIUS_M, IDLE_RADIUS_M * 0.12, 12, 32);
     this.idleRingMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, transparent: true, opacity: 0.55, ...semDepth });
@@ -620,9 +607,16 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   }
 
   render(gl: WebGLRenderingContext, matrix: number[]): void {
-    this.camera.projectionMatrix.fromArray(matrix);
-
     let anyTweenActive = false;
+
+    // Prepara o estado de GL uma vez só; o laço abaixo desenha por objeto.
+    const fboDoMapbox = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+    this.renderer.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fboDoMapbox);
+    this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.depthRange(0, 1);
+
+    this.entries.forEach((e) => { e.object3d.visible = false; });
 
     this.entries.forEach((e) => {
       const frac = tweenFrac(e.tweenStart);
@@ -654,31 +648,44 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
       const scale = new mapboxgl.MercatorCoordinate(x, y, z).meterInMercatorCoordinateUnits();
 
-      // ESCALA POSITIVA nos três eixos — sem espelhamento.
+      // PRECISÃO: a transformação vai na matriz da CÂMERA, não na do objeto.
       //
-      // A convenção usual (inclusive no exemplo oficial Mapbox+Three) usa
-      // scale(s, -s, s), negativando Y porque o Mercator cresce pra sul e o
-      // espaço do modelo cresce pra norte. Só que isso deixa o determinante
-      // da matriz NEGATIVO, e determinante negativo foi a origem de toda uma
-      // família de bugs aqui: qualquer coisa que derive orientação no shader
-      // sai invertida, a luz passa a bater por dentro do objeto e a
-      // superfície renderiza preta. Já custou o flatShading e o normalMap
-      // (que, sem TANGENT no GLB, também depende de derivadas).
+      // Este é o ponto que quebrava tudo. Colocar a posição no objeto
+      // significa entregar ao shader uma matriz com translação em Mercator
+      // (~0.29) e escala ~2.6e-8. O Three.js envia matrizes pra GPU em
+      // float32, onde o incremento representável perto de 0.29 é ~3e-8 —
+      // enquanto o veículo INTEIRO ocupa ~3.4e-7. Ou seja, o objeto todo
+      // cabia em cerca de dez passos de precisão: os vértices eram
+      // arredondados nessa grade grosseira e a malha colapsava em blocos
+      // angulares. Por ser precisão de coordenada, atingia qualquer
+      // geometria igualmente — modelo de 502 mil faces, caixas do carrinho,
+      // toro do beacon e até um cubo simples — e variava com zoom e
+      // inclinação. Foi o que me fez perseguir material, luz, profundidade e
+      // framebuffer por muitas rodadas.
       //
-      // Sem negativar Y o modelo fica espelhado esquerda/direita — o que num
-      // ícone de veículo em mapa é imperceptível — e em troca todo o
-      // pipeline de iluminação passa a funcionar normalmente.
+      // O jeito certo (e o que o exemplo oficial do Mapbox faz) é compor a
+      // transformação na projeção: os vértices continuam em METROS, onde o
+      // float32 tem precisão de sobra, e a composição com o offset enorme
+      // acontece em float64 na CPU. Por isso cada objeto é desenhado com sua
+      // própria matriz de câmera, e a matriz do objeto fica identidade.
       //
-      // O preço é o heading: com Y positivo o nariz do modelo (frente glTF,
-      // -Z, que a rotação de base leva pra +Y) aponta pro SUL em rotação
-      // zero. Somar π corrige — verificado nos dois extremos: heading 0
-      // (norte) → π → nariz em -Y = norte; heading 90° (leste) → 270° →
-      // nariz em +X = leste.
-      e.object3d.matrix
+      // Sobre a escala positiva nos três eixos (a convenção usual negativa Y,
+      // porque o Mercator cresce pra sul): determinante negativo inverte tudo
+      // que deriva orientação no shader, e já custou o flatShading e o
+      // normalMap aqui. Sem negativar, o modelo fica espelhado
+      // esquerda/direita — imperceptível num ícone de veículo — e a
+      // iluminação funciona. O preço é o nariz apontar pro SUL em rotação
+      // zero, corrigido somando π: heading 0 (norte) → π → nariz em -Y =
+      // norte; heading 90° (leste) → 270° → nariz em +X = leste.
+      SCRATCH_MODELO
         .makeTranslation(x, y, z)
         .multiply(SCRATCH_SCALE.makeScale(scale, scale, scale))
         .multiply(SCRATCH_ROT.makeRotationZ((headingRad ?? 0) + Math.PI));
-      e.object3d.matrixWorldNeedsUpdate = true;
+      this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
+
+      e.object3d.visible = true;
+      this.renderer.render(this.scene, this.camera);
+      e.object3d.visible = false;
 
       if (DEBUG_LOG && !this.loggedFirstRenderFor.has(e.usersId)) {
         this.loggedFirstRenderFor.add(e.usersId);
@@ -691,46 +698,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       }
     });
 
-    // CAUSA RAIZ dos polígonos recortados.
-    //
-    // renderer.resetState() do Three.js faz, entre outras coisas:
-    //     gl.bindFramebuffer( gl.FRAMEBUFFER, null )
-    // ou seja, ele volta pro framebuffer PADRÃO. O Mapbox GL v3 não desenha
-    // no framebuffer padrão: ele renderiza no próprio, e depois compõe o
-    // resultado na tela. Então, ao resetar, nossa cena passava a ser
-    // desenhada numa superfície diferente da que o Mapbox estava usando, e a
-    // composição posterior dele comia pedaços do que a gente havia
-    // desenhado. Daí o veículo aparecer "no fundo", com blocos faltando.
-    //
-    // Isso explica por que NADA que eu mexesse resolvia: material, luz,
-    // metalness, normais, tangentes, espelhamento da matriz, profundidade —
-    // todos irrelevantes quando o desenho vai parar no lugar errado. O
-    // sintoma sobreviveu inclusive a MeshBasicMaterial (sem luz nenhuma) e a
-    // depthTest desligado, que foi o que finalmente apontou pra cá.
-    //
-    // Correção: guardar o framebuffer que o Mapbox estava usando e
-    // reassociá-lo logo após o reset.
-    const fboDoMapbox = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
-    this.renderer.resetState();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fboDoMapbox);
-
-    // resetState() também zera viewport/scissor pro tamanho do canvas, e o
-    // WebGLRenderer só leu esse tamanho uma vez, no construtor. Reaplica com
-    // o tamanho real e atual do buffer de desenho, que muda com resize de
-    // janela e com mudança de DPR.
-    this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-
-    // O Mapbox também aperta gl.depthRange numa faixa estreita pra ordenar
-    // suas camadas, e resetState() não restaura isso.
-    //
-    // Devolve a faixa cheia. NÃO limpar o depth buffer aqui: agora que
-    // estamos no framebuffer do próprio Mapbox, apagá-lo destruiria a
-    // profundidade que as camadas desenhadas depois da nossa precisam. E é
-    // desnecessário — os materiais desta camada usam depthTest/depthWrite
-    // desligados (ver prepareCarTemplate).
-    gl.depthRange(0, 1);
-
-    this.renderer.render(this.scene, this.camera);
+    this.entries.forEach((e) => { e.object3d.visible = true; });
 
     // Só pede o próximo frame enquanto algum tween (posição OU progresso na
     // rota, o que também move as rodas) ainda não terminou — mesmo fix de

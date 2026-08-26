@@ -133,22 +133,35 @@ class LayerTeste implements mapboxgl.CustomLayerInterface {
   }
 
   render(gl: WebGLRenderingContext, matrix: number[]): void {
-    this.camera.projectionMatrix.fromArray(matrix);
-
-    for (const { obj, lng, lat } of this.objetos) {
-      const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], 0);
-      const s = m.meterInMercatorCoordinateUnits();
-      obj.matrix.makeTranslation(m.x, m.y, m.z ?? 0).multiply(new THREE.Matrix4().makeScale(s, s, s));
-      obj.matrixWorldNeedsUpdate = true;
-    }
-
     const fbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
     if (this.opts.reset) this.renderer.resetState();
     if (this.opts.fbo) gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.depthRange(0, 1);
 
-    this.renderer.render(this.scene, this.camera);
+    // A transformação vai na matriz da CÂMERA, não na do objeto. Posicionar
+    // o objeto em Mercator (~0.29) com escala ~2.6e-8 entrega ao shader uma
+    // matriz float32 cujo incremento representável (~3e-8) é maior que boa
+    // parte do próprio objeto — os vértices colapsam numa grade grosseira.
+    // Compondo na projeção, os vértices ficam em metros e o offset enorme é
+    // resolvido em float64 na CPU. Cada objeto é desenhado no seu próprio
+    // passe, com sua própria matriz.
+    for (const { obj } of this.objetos) obj.visible = false;
+
+    for (const { obj, lng, lat } of this.objetos) {
+      const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], 0);
+      const s = m.meterInMercatorCoordinateUnits();
+      const modelo = new THREE.Matrix4()
+        .makeTranslation(m.x, m.y, m.z ?? 0)
+        .multiply(new THREE.Matrix4().makeScale(s, s, s));
+      this.camera.projectionMatrix.fromArray(matrix).multiply(modelo);
+
+      obj.visible = true;
+      this.renderer.render(this.scene, this.camera);
+      obj.visible = false;
+    }
+
+    for (const { obj } of this.objetos) obj.visible = true;
   }
 
   onRemove(): void {
