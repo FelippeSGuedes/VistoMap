@@ -322,8 +322,18 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
-  render(_gl: WebGLRenderingContext, matrix: number[]): void {
+  render(gl: WebGLRenderingContext, matrix: number[]): void {
     this.camera.projectionMatrix.fromArray(matrix);
+
+    // O WebGLRenderer só lê o tamanho do canvas 1x, no construtor (onAdd).
+    // Se o mapa redimensionar depois (resize de janela, sidebar, DPR cair
+    // pra dentro do devtools), o viewport interno do Three fica desatualizado
+    // e a cena é recortada num retângulo errado — objetos aparecem cortados/
+    // fatiados de um jeito que parece bug de geometria mas não é (mesmo
+    // padrão apareceu tanto com o car.glb quanto com o carrinho procedural,
+    // sinal de que a causa é anterior à geometria). Resincroniza todo frame
+    // — é barato, `gl` aqui sempre reflete o tamanho real e atual do canvas.
+    this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
     let anyTweenActive = false;
 
