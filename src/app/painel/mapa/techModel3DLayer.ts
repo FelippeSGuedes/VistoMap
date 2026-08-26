@@ -147,12 +147,21 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
       if ("transmission" in m) m.transmission = 0;
       if ("thickness" in m) m.thickness = 0;
 
-      // Metalness alto sem environment map renderiza preto, e dar reflexo
-      // (RoomEnvironment) fez o carro virar espelho refletindo as paredes do
-      // ambiente sintético — fosco é o único que não depende de reflexo.
-      // Com metallicRoughnessTexture presente estes viram multiplicadores.
-      m.metalness = Math.min(m.metalness, 0.4);
-      m.roughness = Math.max(m.roughness, 0.5);
+      // Superfície 100% dielétrica (sem metal nenhum). Metalness alto sem
+      // environment map renderiza PRETO, e dar reflexo (RoomEnvironment) fez
+      // o carro virar espelho refletindo as paredes do ambiente sintético —
+      // sem env map, fosco é o único caminho que funciona.
+      //
+      // Só baixar m.metalness não bastava: o GLB traz metallicRoughnessTexture,
+      // e nesse caso m.metalness/m.roughness são apenas MULTIPLICADORES da
+      // textura, que reintroduz metal pixel a pixel. Por isso os mapas são
+      // removidos, não só os escalares — foi o que manteve a picape preta
+      // mesmo com o clamp em 0.4.
+      m.metalness = 0;
+      m.metalnessMap = null;
+      m.roughness = 0.75;
+      m.roughnessMap = null;
+      m.envMapIntensity = 0;
       m.flatShading = false; // ver comentário em onAdd — quebra com matriz espelhada
 
       if (m.map) {
@@ -170,8 +179,9 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
       if (DEBUG_LOG) {
         // eslint-disable-next-line no-console
         console.log(
-          `[vm-3d] material "${m.name || "(sem nome)"}": textura=${!!m.map} ` +
-          `metalness=${m.metalness.toFixed(2)} roughness=${m.roughness.toFixed(2)}`
+          `[vm-3d] material "${m.name || "(sem nome)"}": corTextura=${!!m.map} ` +
+          `normalMap=${!!m.normalMap} corBase=#${m.color.getHexString()} ` +
+          `metalness=${m.metalness} roughness=${m.roughness}`
         );
       }
     });
