@@ -22,7 +22,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import mapboxgl from "mapbox-gl";
 import { asset } from "@/utils/asset";
 import { sampleRouteAt, projectOntoRoute, type RouteResult } from "./routeService";
@@ -44,6 +43,28 @@ const CAR_BASE_ROTATION_X = Math.PI / 2; // GLTF Y-up → embedding do Mapbox (Z
 const HEADING_AXIS: "y" | "z" = "z";
 const HEADING_SIGN = -1;
 const DEBUG_LOG = true;
+
+// O material original do car.glb (pintura metálica) fica praticamente
+// espelhado sem um environment map — e COM environment map reflete as
+// paredes do ambiente sintético, parecendo manchas/geometria quebrada num
+// ícone pequeno de mapa (ver histórico do commit). Achata o material em vez
+// de tentar acertar reflexo: sem brilho de espelho, não precisa de env map.
+const CAR_MAX_METALNESS = 0.35;
+const CAR_MIN_ROUGHNESS = 0.55;
+
+function clampCarMaterials(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    mats.forEach((mat) => {
+      const m = mat as THREE.MeshStandardMaterial;
+      if (!m.isMeshStandardMaterial) return;
+      m.metalness = Math.min(m.metalness, CAR_MAX_METALNESS);
+      m.roughness = Math.max(m.roughness, CAR_MIN_ROUGHNESS);
+    });
+  });
+}
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -112,11 +133,19 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
     // O carro tem material PBR (o GLB traz textura/metalness/roughness) —
     // precisa de luz de verdade, ao contrário do beacon (MeshBasicMaterial,
-    // sempre na cor cheia, não depende de luz).
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    // sempre na cor cheia, não depende de luz). Metalness alto sem
+    // environment map renderiza preto; COM environment map (testado com
+    // RoomEnvironment) o carro vira um espelho refletindo as paredes
+    // coloridas do ambiente sintético — parece "manchas"/geometria quebrada
+    // num ícone pequeno de mapa. Em vez de reflexo, o material é achatado
+    // (clampCarMaterials) pra não precisar de env map nenhum.
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.1);
     sun.position.set(0, -70, 100).normalize();
     this.scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+    fill.position.set(0, 70, 40).normalize();
+    this.scene.add(fill);
 
     this.idleRingGeo = new THREE.TorusGeometry(IDLE_RADIUS_M, IDLE_RADIUS_M * 0.12, 12, 32);
     this.idleRingMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, transparent: true, opacity: 0.55 });
@@ -129,15 +158,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       antialias: true,
     });
     this.renderer.autoClear = false;
-
-    // O carro tem pintura metálica (metalness alto) — sem um environment
-    // map pra reflexão, PBR metálico renderiza praticamente preto/sem forma
-    // com só luz direta (HemisphereLight/DirectionalLight não bastam).
-    // RoomEnvironment é um ambiente sintético do próprio Three.js pra isso,
-    // sem precisar de um HDRI externo.
-    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-    pmremGenerator.dispose();
 
     if (DEBUG_LOG) {
       // eslint-disable-next-line no-console
@@ -162,6 +182,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
             if ((o as THREE.SkinnedMesh).isSkinnedMesh) hasSkinned = true;
           });
           this.carUsesSkeletonClone = hasSkinned;
+          clampCarMaterials(root);
           root.rotation.x = CAR_BASE_ROTATION_X;
           root.scale.setScalar(CAR_MODEL_SCALE);
           this.carTemplate = root;
@@ -379,7 +400,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.entries.forEach((e) => this.scene.remove(e.object3d));
     this.entries.clear();
 
-    this.scene.environment?.dispose();
     this.idleRingGeo?.dispose();
     this.idleRingMat?.dispose();
     this.idleCoreGeo?.dispose();
