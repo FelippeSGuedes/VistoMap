@@ -622,16 +622,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   render(gl: WebGLRenderingContext, matrix: number[]): void {
     this.camera.projectionMatrix.fromArray(matrix);
 
-    // O WebGLRenderer só lê o tamanho do canvas 1x, no construtor (onAdd).
-    // Se o mapa redimensionar depois (resize de janela, sidebar, DPR cair
-    // pra dentro do devtools), o viewport interno do Three fica desatualizado
-    // e a cena é recortada num retângulo errado — objetos aparecem cortados/
-    // fatiados de um jeito que parece bug de geometria mas não é (mesmo
-    // padrão apareceu tanto com o car.glb quanto com o carrinho procedural,
-    // sinal de que a causa é anterior à geometria). Resincroniza todo frame
-    // — é barato, `gl` aqui sempre reflete o tamanho real e atual do canvas.
-    this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-
     let anyTweenActive = false;
 
     this.entries.forEach((e) => {
@@ -701,30 +691,44 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       }
     });
 
+    // CAUSA RAIZ dos polígonos recortados.
+    //
+    // renderer.resetState() do Three.js faz, entre outras coisas:
+    //     gl.bindFramebuffer( gl.FRAMEBUFFER, null )
+    // ou seja, ele volta pro framebuffer PADRÃO. O Mapbox GL v3 não desenha
+    // no framebuffer padrão: ele renderiza no próprio, e depois compõe o
+    // resultado na tela. Então, ao resetar, nossa cena passava a ser
+    // desenhada numa superfície diferente da que o Mapbox estava usando, e a
+    // composição posterior dele comia pedaços do que a gente havia
+    // desenhado. Daí o veículo aparecer "no fundo", com blocos faltando.
+    //
+    // Isso explica por que NADA que eu mexesse resolvia: material, luz,
+    // metalness, normais, tangentes, espelhamento da matriz, profundidade —
+    // todos irrelevantes quando o desenho vai parar no lugar errado. O
+    // sintoma sobreviveu inclusive a MeshBasicMaterial (sem luz nenhuma) e a
+    // depthTest desligado, que foi o que finalmente apontou pra cá.
+    //
+    // Correção: guardar o framebuffer que o Mapbox estava usando e
+    // reassociá-lo logo após o reset.
+    const fboDoMapbox = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
     this.renderer.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fboDoMapbox);
 
-    // Sem isto a cena inteira renderiza "esfarelada": faces some/aparecem em
-    // pedaços, o carro vira fatias soltas e até o anel do beacon (um toro
-    // liso) sai com a borda rasgada. Não é bug de geometria — geometrias
-    // completamente diferentes (modelo de 502 mil faces, caixas, toro) deram
-    // o MESMO artefato, o que descarta a malha como causa.
+    // resetState() também zera viewport/scissor pro tamanho do canvas, e o
+    // WebGLRenderer só leu esse tamanho uma vez, no construtor. Reaplica com
+    // o tamanho real e atual do buffer de desenho, que muda com resize de
+    // janela e com mudança de DPR.
+    this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+
+    // O Mapbox também aperta gl.depthRange numa faixa estreita pra ordenar
+    // suas camadas, e resetState() não restaura isso.
     //
-    // O Mapbox fatia o depth buffer entre suas camadas: antes de chamar cada
-    // uma ele aperta gl.depthRange numa faixa estreita, pra garantir a ordem
-    // de desenho entre elas. resetState() do Three.js não restaura isso (não
-    // faz parte do estado que ele rastreia), então nossa cena é espremida
-    // naquela fatia mínima e perde quase toda a precisão de profundidade —
-    // faces do mesmo objeto passam a brigar entre si (z-fighting) e o
-    // rasterizador descarta fragmentos. Também explica por que o defeito ia
-    // e vinha conforme zoom e inclinação: precisão de depth é view-dependent.
-    //
-    // Devolve a faixa cheia e zera o buffer: os objetos se auto-ordenam com
-    // precisão total e ficam sempre visíveis por cima do mapa — que é o
-    // comportamento desejado num marcador de veículo (não faz sentido um
-    // técnico sumir atrás de um prédio extrudado).
-    const ctx = this.renderer.getContext();
-    ctx.depthRange(0, 1);
-    this.renderer.clearDepth();
+    // Devolve a faixa cheia. NÃO limpar o depth buffer aqui: agora que
+    // estamos no framebuffer do próprio Mapbox, apagá-lo destruiria a
+    // profundidade que as camadas desenhadas depois da nossa precisam. E é
+    // desnecessário — os materiais desta camada usam depthTest/depthWrite
+    // desligados (ver prepareCarTemplate).
+    gl.depthRange(0, 1);
 
     this.renderer.render(this.scene, this.camera);
 
