@@ -96,6 +96,92 @@ const CAR_MIN_LIGHTNESS = 0.3;
 const SCRATCH_SCALE = new THREE.Matrix4();
 const SCRATCH_ROT = new THREE.Matrix4();
 
+// ---------------------------------------------------------------------------
+// Template do car.glb — MÓDULO, não instância.
+//
+// switchLayer() cria uma TechModel3DLayer NOVA a cada style.load (entrar no
+// 3D, trocar pra satélite e voltar, alternar tema). Com o template preso à
+// instância, cada uma dessas trocas rebaixava/reprocessava os 17MB e 502 mil
+// faces do zero — e durante todo esse tempo os técnicos apareciam com o
+// carrinho geométrico de fallback. Era isso que dava a impressão de que o
+// modelo "não voltou": ele voltava, e a troca de estilo seguinte o derrubava.
+// No escopo do módulo o download e o parse acontecem UMA vez por página.
+// ---------------------------------------------------------------------------
+let sharedCarTemplate: THREE.Object3D | null = null;
+let sharedCarPromise: Promise<THREE.Object3D> | null = null;
+
+function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
+  root.rotation.x = CAR_BASE_ROTATION_X;
+  if (CAR_MODEL_FLIP) root.rotation.y = Math.PI;
+  root.updateMatrixWorld(true);
+
+  // Escala derivada do próprio modelo, não chutada: o GLB veio normalizado
+  // num cubo unitário (não em metros), então medir e ajustar pro comprimento
+  // alvo é o único jeito estável — se o modelo for reexportado com outra
+  // escala, isso continua certo.
+  const size = new THREE.Vector3();
+  new THREE.Box3().setFromObject(root).getSize(size);
+  root.scale.setScalar(CAR_TARGET_LENGTH_M / (size.y || 1));
+
+  // Impede que o modelo renderize preto sem descaracterizá-lo: material
+  // metálico sem environment map fica escuro, e dar reflexo (RoomEnvironment)
+  // fez o carro virar espelho refletindo as paredes do ambiente sintético.
+  // Fosco + um piso de luminosidade não depende de reflexo nem de ângulo de
+  // luz. As cores próprias do modelo são preservadas — só as escuras demais
+  // são levantadas — pra vidro, pneu e acabamento continuarem se
+  // distinguindo do corpo.
+  const hsl = { h: 0, s: 0, l: 0 };
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    mats.forEach((mat) => {
+      const m = mat as THREE.MeshStandardMaterial;
+      if (!m.isMeshStandardMaterial) return;
+      m.metalness = Math.min(m.metalness, 0.25);
+      m.roughness = Math.max(m.roughness, 0.6);
+      m.color.getHSL(hsl);
+      if (hsl.l < CAR_MIN_LIGHTNESS) m.color.setHSL(hsl.h, hsl.s, CAR_MIN_LIGHTNESS);
+      m.emissive.copy(m.color);
+      m.emissiveIntensity = 0.22;
+      m.flatShading = false; // ver comentário em onAdd — quebra com matriz espelhada
+      m.needsUpdate = true;
+    });
+  });
+
+  if (DEBUG_LOG) {
+    const finalSize = new THREE.Vector3();
+    new THREE.Box3().setFromObject(root).getSize(finalSize);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[vm-3d] car.glb pronto (1x por página) — ${finalSize.x.toFixed(1)} x ` +
+      `${finalSize.y.toFixed(1)} x ${finalSize.z.toFixed(1)} m`
+    );
+  }
+  return root;
+}
+
+function loadCarTemplateOnce(): Promise<THREE.Object3D> {
+  if (sharedCarPromise) return sharedCarPromise;
+  sharedCarPromise = new Promise<THREE.Object3D>((resolve, reject) => {
+    new GLTFLoader().load(
+      asset("/car.glb"),
+      (gltf) => {
+        sharedCarTemplate = prepareCarTemplate(gltf.scene);
+        resolve(sharedCarTemplate);
+      },
+      undefined,
+      (err) => {
+        // Deixa tentar de novo numa próxima camada em vez de travar o
+        // fallback pra sempre numa falha de rede pontual.
+        sharedCarPromise = null;
+        reject(err);
+      }
+    );
+  });
+  return sharedCarPromise;
+}
+
 // Corpo escuro (verde-petróleo) lido em produção como uma mancha preta sem
 // contraste com o asfalto claro, num objeto baixo visto de ângulo raso —
 // mesmo padrão que apareceu em toda tentativa anterior (material metálico,
@@ -157,8 +243,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private entries = new Map<number, TechEntry>();
   private loggedFirstRenderFor = new Set<number>();
 
-  private carTemplate: THREE.Object3D | null = null;
-  private carLoadingStarted = false;
 
   // Geometria/material compartilhados entre todas as instâncias (procedural,
   // barato de reusar; só descartados no onRemove).
@@ -236,87 +320,25 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       });
     }
 
-    if (USE_CAR_MODEL) this.loadCarTemplate();
-  }
-
-  /** Carrega car.glb uma vez; cada técnico recebe um clone (geometria e
-   * material compartilhados, não duplica buffer de GPU). */
-  private loadCarTemplate(): void {
-    if (this.carLoadingStarted) return;
-    this.carLoadingStarted = true;
-
-    new GLTFLoader().load(
-      asset("/car.glb"),
-      (gltf) => {
-        const root = gltf.scene;
-        root.rotation.x = CAR_BASE_ROTATION_X;
-        if (CAR_MODEL_FLIP) root.rotation.y = Math.PI;
-        root.updateMatrixWorld(true);
-
-        // Escala derivada do próprio modelo, não chutada: o GLB veio
-        // normalizado num cubo unitário (não em metros), então medir e
-        // ajustar pro comprimento alvo é o único jeito estável — se o
-        // modelo for reexportado com outra escala, isso continua certo.
-        const size = new THREE.Vector3();
-        new THREE.Box3().setFromObject(root).getSize(size);
-        const lengthAtScale1 = size.y || 1;
-        root.scale.setScalar(CAR_TARGET_LENGTH_M / lengthAtScale1);
-
-        // Impede que o modelo renderize preto sem descaracterizá-lo:
-        // material metálico sem environment map fica escuro, e dar reflexo
-        // (RoomEnvironment) fez o carro virar espelho refletindo as paredes
-        // do ambiente sintético. Fosco + um piso de luminosidade não depende
-        // de reflexo nem de ângulo de luz. As cores próprias do modelo são
-        // preservadas — só as escuras demais são levantadas — pra vidro,
-        // pneu e acabamento continuarem se distinguindo do corpo.
-        const hsl = { h: 0, s: 0, l: 0 };
-        root.traverse((o) => {
-          const mesh = o as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          mats.forEach((mat) => {
-            const m = mat as THREE.MeshStandardMaterial;
-            if (!m.isMeshStandardMaterial) return;
-            m.metalness = Math.min(m.metalness, 0.25);
-            m.roughness = Math.max(m.roughness, 0.6);
-            m.color.getHSL(hsl);
-            if (hsl.l < CAR_MIN_LIGHTNESS) m.color.setHSL(hsl.h, hsl.s, CAR_MIN_LIGHTNESS);
-            m.emissive.copy(m.color);
-            m.emissiveIntensity = 0.22;
-            m.flatShading = false; // ver comentário em onAdd — quebra com matriz espelhada
-            m.needsUpdate = true;
+    if (USE_CAR_MODEL && !sharedCarTemplate) {
+      loadCarTemplateOnce()
+        .then(() => {
+          // Troca quem já estava mostrando o carrinho geométrico enquanto
+          // o modelo carregava.
+          this.entries.forEach((e) => {
+            if (e.kind === "car") {
+              e.visualIsCar = false; // força ensureVisual a reconstruir
+              this.ensureVisual(e);
+            }
           });
-        });
-
-        this.carTemplate = root;
-
-        if (DEBUG_LOG) {
-          const finalSize = new THREE.Vector3();
-          new THREE.Box3().setFromObject(root).getSize(finalSize);
+          this.map?.triggerRepaint();
+        })
+        .catch((err) => {
+          // Fica no carrinho geométrico — não quebra a tela.
           // eslint-disable-next-line no-console
-          console.log(
-            `[vm-3d] car.glb pronto — ${finalSize.x.toFixed(1)} x ` +
-            `${finalSize.y.toFixed(1)} x ${finalSize.z.toFixed(1)} m`
-          );
-        }
-
-        // Troca quem já estava mostrando o carrinho geométrico enquanto
-        // o modelo carregava.
-        this.entries.forEach((e) => {
-          if (e.kind === "car") {
-            e.visualIsCar = false; // força ensureVisual a reconstruir
-            this.ensureVisual(e);
-          }
+          console.error("[vm-3d] falha ao carregar car.glb, seguindo com o carrinho geométrico", err);
         });
-        this.map?.triggerRepaint();
-      },
-      undefined,
-      (err) => {
-        // Fica no carrinho geométrico — não quebra a tela.
-        // eslint-disable-next-line no-console
-        console.error("[vm-3d] falha ao carregar car.glb, seguindo com o carrinho geométrico", err);
-      }
-    );
+    }
   }
 
   private buildCarModel(): { object3d: THREE.Object3D; wheels: THREE.Mesh[] } {
@@ -324,8 +346,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // placeholder durante o download e o fallback se ele falhar. As rodas
     // animadas são só do carrinho — no modelo importado elas fazem parte
     // da malha e não dá pra girar separado.
-    if (this.carTemplate) {
-      return { object3d: this.carTemplate.clone(true), wheels: [] };
+    if (DEBUG_LOG) {
+      // eslint-disable-next-line no-console
+      console.log(`[vm-3d] visual do carro: ${sharedCarTemplate ? "car.glb" : "fallback geométrico"}`);
+    }
+    if (sharedCarTemplate) {
+      return { object3d: sharedCarTemplate.clone(true), wheels: [] };
     }
 
     const group = new THREE.Group();
@@ -576,14 +602,9 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.carWheelGeo?.dispose();
     this.carWheelMat?.dispose();
 
-    this.carTemplate?.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry?.dispose();
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      mats.forEach((mat) => mat?.dispose());
-    });
-    this.carTemplate = null;
+    // sharedCarTemplate NÃO é descartado aqui de propósito: ele vive no
+    // módulo e é reaproveitado pela próxima camada (toda troca de estilo
+    // cria uma nova). Descartar aqui forçaria rebaixar 17MB a cada troca.
 
     this.renderer.dispose();
   }
