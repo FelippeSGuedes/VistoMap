@@ -42,11 +42,6 @@ const TWEEN_MS = 800; // mesma duração do animateMarkerTo (page.tsx)
 const MODEL_COLOR = 0x00d4a0; // mesmo teal-neon usado no resto da identidade visual
 const IDLE_RADIUS_M = 10;
 
-// Heading da rota é bearing em graus horários a partir do norte. No espaço
-// métrico local (+Y = norte, +X = leste) isso vira rotationZ(-heading) —
-// por isso o sinal negativo. Só vale se a rotação for aplicada ANTES do
-// flip de Y do Mercator (ver a montagem de matriz em render()).
-const HEADING_SIGN = -1;
 const DEBUG_LOG = true;
 
 // Dimensões do carrinho, em metros REAIS de carro de passeio — depois
@@ -314,7 +309,16 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
     // Luz simples — materiais são MeshStandardMaterial com metalness baixo
     // (foscos), não dependem de reflexo/environment map pra parecer certo.
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.6));
+    //
+    // HemisphereLight interpola céu/chão pelo ângulo entre a normal e o eixo
+    // dado pela sua POSITION, cujo padrão é (0,1,0) — o "up" do Three.js.
+    // Aqui o eixo vertical é Z (embedding do Mapbox), então no padrão a luz
+    // tratava o SUL como céu e o NORTE como chão: superfícies viradas pro
+    // norte recebiam só a cor escura de chão, criando grandes manchas
+    // pretas que não tinham nada a ver com a forma do objeto.
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x666666, 1.6);
+    hemi.position.set(0, 0, 1);
+    this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 1.1);
     sun.position.set(0, -70, 100).normalize();
     this.scene.add(sun);
@@ -601,18 +605,30 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
       const scale = new mapboxgl.MercatorCoordinate(x, y, z).meterInMercatorCoordinateUnits();
 
-      // Ordem T·S·R, montada na mão. O Three.js compõe T·R·S a partir de
-      // position/rotation/scale, e aqui isso importa: a escala inclui um Y
-      // NEGATIVO (Mercator cresce pra sul, o espaço métrico do modelo cresce
-      // pra norte). Espelhamento não comuta com rotação — em T·R·S o carro é
-      // espelhado primeiro e só então girado, o que reflete o heading em
-      // torno do eixo errado e faz o carro apontar pra direção errada.
-      // Rotacionar no espaço métrico e só depois espelhar pro Mercator é a
-      // ordem correta.
+      // ESCALA POSITIVA nos três eixos — sem espelhamento.
+      //
+      // A convenção usual (inclusive no exemplo oficial Mapbox+Three) usa
+      // scale(s, -s, s), negativando Y porque o Mercator cresce pra sul e o
+      // espaço do modelo cresce pra norte. Só que isso deixa o determinante
+      // da matriz NEGATIVO, e determinante negativo foi a origem de toda uma
+      // família de bugs aqui: qualquer coisa que derive orientação no shader
+      // sai invertida, a luz passa a bater por dentro do objeto e a
+      // superfície renderiza preta. Já custou o flatShading e o normalMap
+      // (que, sem TANGENT no GLB, também depende de derivadas).
+      //
+      // Sem negativar Y o modelo fica espelhado esquerda/direita — o que num
+      // ícone de veículo em mapa é imperceptível — e em troca todo o
+      // pipeline de iluminação passa a funcionar normalmente.
+      //
+      // O preço é o heading: com Y positivo o nariz do modelo (frente glTF,
+      // -Z, que a rotação de base leva pra +Y) aponta pro SUL em rotação
+      // zero. Somar π corrige — verificado nos dois extremos: heading 0
+      // (norte) → π → nariz em -Y = norte; heading 90° (leste) → 270° →
+      // nariz em +X = leste.
       e.object3d.matrix
         .makeTranslation(x, y, z)
-        .multiply(SCRATCH_SCALE.makeScale(scale, -scale, scale))
-        .multiply(SCRATCH_ROT.makeRotationZ(HEADING_SIGN * (headingRad ?? 0)));
+        .multiply(SCRATCH_SCALE.makeScale(scale, scale, scale))
+        .multiply(SCRATCH_ROT.makeRotationZ((headingRad ?? 0) + Math.PI));
       e.object3d.matrixWorldNeedsUpdate = true;
 
       if (DEBUG_LOG && !this.loggedFirstRenderFor.has(e.usersId)) {
