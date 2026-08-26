@@ -578,6 +578,30 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     });
 
     this.renderer.resetState();
+
+    // Sem isto a cena inteira renderiza "esfarelada": faces some/aparecem em
+    // pedaços, o carro vira fatias soltas e até o anel do beacon (um toro
+    // liso) sai com a borda rasgada. Não é bug de geometria — geometrias
+    // completamente diferentes (modelo de 502 mil faces, caixas, toro) deram
+    // o MESMO artefato, o que descarta a malha como causa.
+    //
+    // O Mapbox fatia o depth buffer entre suas camadas: antes de chamar cada
+    // uma ele aperta gl.depthRange numa faixa estreita, pra garantir a ordem
+    // de desenho entre elas. resetState() do Three.js não restaura isso (não
+    // faz parte do estado que ele rastreia), então nossa cena é espremida
+    // naquela fatia mínima e perde quase toda a precisão de profundidade —
+    // faces do mesmo objeto passam a brigar entre si (z-fighting) e o
+    // rasterizador descarta fragmentos. Também explica por que o defeito ia
+    // e vinha conforme zoom e inclinação: precisão de depth é view-dependent.
+    //
+    // Devolve a faixa cheia e zera o buffer: os objetos se auto-ordenam com
+    // precisão total e ficam sempre visíveis por cima do mapa — que é o
+    // comportamento desejado num marcador de veículo (não faz sentido um
+    // técnico sumir atrás de um prédio extrudado).
+    const ctx = this.renderer.getContext();
+    ctx.depthRange(0, 1);
+    this.renderer.clearDepth();
+
     this.renderer.render(this.scene, this.camera);
 
     // Só pede o próximo frame enquanto algum tween (posição OU progresso na
