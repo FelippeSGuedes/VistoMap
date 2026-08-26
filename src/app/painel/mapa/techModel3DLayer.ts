@@ -615,6 +615,19 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     let anyTweenActive = false;
 
     // Prepara o estado de GL uma vez só; o laço abaixo desenha por objeto.
+    //
+    // resetState() do Three.js zera bastante coisa que o Mapbox tinha
+    // configurado — inclusive faz bindFramebuffer(FRAMEBUFFER, null), zera
+    // viewport/scissor e não restaura o depthRange que o Mapbox aperta pra
+    // ordenar as próprias camadas. As três linhas abaixo desfazem isso.
+    //
+    // Nota honesta pra quem vier depois: a reassociação do framebuffer foi
+    // adicionada quando eu achava que ELA era a causa dos polígonos
+    // recortados. Não era — a causa foi precisão de coordenada (ver o
+    // comentário no laço). Comprovado em /painel/teste3d, onde com
+    // profundidade ligada o resultado é idêntico com e sem esta linha
+    // (?fbo=0). Fica como salvaguarda, pra o caso de o Mapbox renderizar
+    // num framebuffer próprio em alguma configuração (terreno, globo).
     const fboDoMapbox = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
     this.renderer.resetState();
     gl.bindFramebuffer(gl.FRAMEBUFFER, fboDoMapbox);

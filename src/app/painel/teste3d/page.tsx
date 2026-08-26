@@ -18,7 +18,7 @@
  *
  * Chaves na URL, todas combináveis:
  *   ?fbo=0    não reassocia o framebuffer do Mapbox após resetState()
- *   ?depth=1  liga depthTest/depthWrite
+ *   ?depth=0  DESLIGA depthTest/depthWrite (ligados por padrão)
  *   ?luz=1    usa material PBR com iluminação em vez de cor chapada
  *   ?reset=0  não chama resetState() (deixa o estado do Mapbox como está)
  */
@@ -178,7 +178,11 @@ export default function Teste3D() {
     const q = new URLSearchParams(window.location.search);
     setOpts({
       fbo: q.get("fbo") !== "0",
-      depth: q.get("depth") === "1",
+      // Profundidade LIGADA por padrão, igual à produção. Ela nasceu
+      // desligada aqui por descuido, e isso custou uma rodada de diagnóstico:
+      // a página parecia quebrada (dava pra ver dentro do carro, e de cima
+      // ele aparecia pelo chassi) quando na verdade era só o padrão errado.
+      depth: q.get("depth") !== "0",
       luz: q.get("luz") === "1",
       reset: q.get("reset") !== "0",
     });
@@ -218,7 +222,7 @@ export default function Teste3D() {
           fbo={String(opts.fbo)} depth={String(opts.depth)} luz={String(opts.luz)} reset={String(opts.reset)}
         </div>
         <div className="mt-2 text-[10px] leading-relaxed text-neutral-600">
-          ?fbo=0 · ?depth=1 · ?luz=1 · ?reset=0
+          ?fbo=0 · ?depth=0 · ?luz=1 · ?reset=0
         </div>
         {logs.map((l, i) => (
           <div key={i} className="mt-1 text-[10px] text-emerald-700">{l}</div>
