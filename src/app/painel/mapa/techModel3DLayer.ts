@@ -138,26 +138,39 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
 
     // CAMINHO SEM ILUMINAÇÃO (padrão).
     //
-    // Toda falha visual desta sequência — preto total, estilhaços, "camada
-    // preta na frente" — veio do cálculo de iluminação sobre a matriz do
-    // Mapbox: metalness sem environment map, normais derivadas no shader
-    // (flatShading e normalMap sem TANGENT), eixo da luz hemisférica, sinal
-    // do determinante. MeshBasicMaterial não calcula luz nenhuma: mostra a
-    // textura de cor como ela é. Some com a classe inteira de problemas em
-    // vez de continuar caçando um por um.
+    // MeshBasicMaterial não calcula luz nenhuma: mostra a textura de cor como
+    // ela é. Isso foi introduzido pra descartar de uma vez a hipótese de
+    // iluminação — e descartou: com ele os polígonos pretos CONTINUARAM,
+    // provando que metalness, normais, tangentes, luz hemisférica e sinal do
+    // determinante nunca foram a causa dos recortes.
     //
-    // Num ícone de mapa isso é aceitável, e até desejável: o veículo fica
-    // igualmente legível em qualquer ângulo e nunca escurece contra o
-    // asfalto claro. Perde-se o sombreado que dá volume — se um dia valer a
-    // pena, dá pra voltar ao material PBR com CAR_UNLIT=false, agora que os
-    // problemas de matriz e de luz já estão corrigidos.
+    // Fica como padrão mesmo assim: num ícone de mapa é aceitável e até
+    // desejável, porque o veículo fica igualmente legível em qualquer ângulo
+    // e nunca escurece contra o asfalto claro. CAR_UNLIT=false volta ao PBR.
     if (CAR_UNLIT) {
       const flat = mats.map((mat) => {
         const src = mat as THREE.MeshStandardMaterial;
         const basic = new THREE.MeshBasicMaterial({
           map: src.map ?? null,
           color: src.map ? 0xffffff : src.color.clone(),
-          side: THREE.DoubleSide, // malha do Tripo não é watertight; evita furos
+
+          // A causa real dos recortes: PRECISÃO DE PROFUNDIDADE. O Mapbox
+          // monta a projeção pro mundo visível inteiro, com o plano distante
+          // muito longe. Um objeto de ~13m cai praticamente dentro de um
+          // único incremento do depth buffer, então todas as faces terminam
+          // com o mesmo valor e qual aparece na frente vira sorteio — daí os
+          // polígonos recortados, a variação conforme zoom/inclinação, e o
+          // fato de atingir igualmente o modelo de 502 mil faces, as caixas
+          // do carrinho e o anel do beacon.
+          //
+          // Sem teste de profundidade, a oclusão passa a ser resolvida só
+          // pelo descarte de faces traseiras (side: FrontSide). Num corpo
+          // fechado e aproximadamente convexo — que é o caso de um veículo —
+          // as faces frontais formam exatamente a superfície visível, sem
+          // sobreposição, então o depth buffer é dispensável.
+          side: THREE.FrontSide,
+          depthTest: false,
+          depthWrite: false,
         });
         if (DEBUG_LOG) {
           // eslint-disable-next-line no-console
@@ -363,10 +376,17 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     fill.position.set(0, 70, 40).normalize();
     this.scene.add(fill);
 
+    // depthTest/depthWrite desligados em TODOS os visuais desta camada — ver
+    // a explicação longa em prepareCarTemplate(): na escala de um veículo, a
+    // projeção do Mapbox não tem precisão de profundidade suficiente e as
+    // faces se recortam entre si. Vale igual pro beacon: foi ele, com a borda
+    // do anel rasgada, que denunciou que o defeito não era do modelo 3D.
+    const semDepth = { depthTest: false, depthWrite: false };
+
     this.idleRingGeo = new THREE.TorusGeometry(IDLE_RADIUS_M, IDLE_RADIUS_M * 0.12, 12, 32);
-    this.idleRingMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, transparent: true, opacity: 0.55 });
+    this.idleRingMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, transparent: true, opacity: 0.55, ...semDepth });
     this.idleCoreGeo = new THREE.IcosahedronGeometry(IDLE_RADIUS_M * 0.45, 0);
-    this.idleCoreMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR });
+    this.idleCoreMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, ...semDepth });
 
     // NÃO usar flatShading aqui: ele deriva a normal de cada face no shader
     // (dFdx/dFdy do vértice em view-space), e a matriz do Mercator é
@@ -382,18 +402,20 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       roughness: 0.6,
       emissive: CAR_BODY_COLOR,
       emissiveIntensity: 0.35, // não deixa o corpo escurecer demais em ângulo/luz ruim
+      ...semDepth,
     });
     this.carCabinGeo = new THREE.BoxGeometry(CAR_CABIN_WIDTH, CAR_CABIN_LENGTH, CAR_CABIN_HEIGHT);
     this.carCabinMat = new THREE.MeshStandardMaterial({
       color: CAR_CABIN_COLOR,
       metalness: 0.1,
       roughness: 0.45,
+      ...semDepth,
     });
     // Eixo do cilindro rotacionado pra X (lateral) — permite girar em
     // rotation.x pra "rolar" pra frente/trás sem precisar de outra transform.
     this.carWheelGeo = new THREE.CylinderGeometry(CAR_WHEEL_RADIUS, CAR_WHEEL_RADIUS, CAR_WHEEL_WIDTH, 14);
     this.carWheelGeo.rotateZ(Math.PI / 2);
-    this.carWheelMat = new THREE.MeshStandardMaterial({ color: CAR_WHEEL_COLOR, metalness: 0.15, roughness: 0.85 });
+    this.carWheelMat = new THREE.MeshStandardMaterial({ color: CAR_WHEEL_COLOR, metalness: 0.15, roughness: 0.85, ...semDepth });
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: map.getCanvas(),
