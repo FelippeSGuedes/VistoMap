@@ -206,16 +206,40 @@ function removeTechModelLayer(map: mapboxgl.Map, layerRef: MutableRefObject<Tech
   layerRef.current = null;
 }
 
-/** Vistoria atribuída/em andamento mais próxima do técnico — usada como "destino" da rota. */
+/**
+ * Vistoria que representa o que o técnico está fazendo AGORA — usada como
+ * "destino" da rota no mapa 3D.
+ *
+ * A ordem importa mais que a distância. Um técnico pode ter várias vistorias
+ * abertas ao mesmo tempo, em estados diferentes: uma em andamento no local
+ * onde ele está e outra já marcada como deslocamento para o próximo
+ * equipamento. Escolhendo só pela mais próxima (como era antes), a de
+ * deslocamento podia vencer e o painel mostrava o técnico dirigindo enquanto
+ * ele estava parado vistoriando.
+ *
+ * EM_VISTORIA ganha de tudo: significa que ele está fisicamente num local
+ * trabalhando, e ninguém vistoria e dirige ao mesmo tempo. Só entre vistorias
+ * do MESMO estado é que a distância desempata.
+ */
+const PRIORIDADE_SITUACAO: Record<string, number> = {
+  EM_VISTORIA: 0,
+  EM_DESLOCAMENTO: 1,
+  ATRIBUIDO: 2,
+};
+
 function resolveDestino(t: PainelMapaTecnico, vistorias: PainelMapaVistoria[]): PainelMapaVistoria | null {
   if (t.latitude == null || t.longitude == null) return null;
   let best: PainelMapaVistoria | null = null;
+  let bestPrio = Infinity;
   let bestD = Infinity;
   for (const v of vistorias) {
     if (v.tecnico_id !== t.users_id) continue;
-    if (v.situacao !== "ATRIBUIDO" && v.situacao !== "EM_DESLOCAMENTO" && v.situacao !== "EM_VISTORIA") continue;
+    const prio = PRIORIDADE_SITUACAO[v.situacao];
+    if (prio === undefined) continue;
     const d = haversineM({ lng: t.longitude, lat: t.latitude }, { lng: v.longitude, lat: v.latitude });
-    if (d < bestD) { bestD = d; best = v; }
+    if (prio < bestPrio || (prio === bestPrio && d < bestD)) {
+      bestPrio = prio; bestD = d; best = v;
+    }
   }
   return best;
 }
@@ -1271,14 +1295,6 @@ export default function PainelMapaPage() {
             if (route) routesParaLinha.push(route);
           }
           specs.push({ usersId: t.users_id, lng: t.longitude!, lat: t.latitude!, route });
-          // eslint-disable-next-line no-console
-          console.log("[vm-3d] spec do técnico", {
-            usersId: t.users_id,
-            nome: t.nome,
-            destinoEncontrado: !!destino,
-            destinoSituacaoId: destino?.situacao_id,
-            temRota: !!route,
-          });
         });
         tech3DLayerRef.current?.syncEntries(specs);
         updateRouteLineSource(map, routesParaLinha);

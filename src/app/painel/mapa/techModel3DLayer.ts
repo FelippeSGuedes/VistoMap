@@ -42,7 +42,9 @@ const TWEEN_MS = 800; // mesma duração do animateMarkerTo (page.tsx)
 const MODEL_COLOR = 0x00d4a0; // mesmo teal-neon usado no resto da identidade visual
 const IDLE_RADIUS_M = 10;
 
-const DEBUG_LOG = true;
+// Ligar só ao investigar a camada 3D — alguns destes logs disparam por
+// técnico a cada poll e poluem o console em produção.
+const DEBUG_LOG = false;
 
 // Dimensões do carrinho, em metros REAIS de carro de passeio — depois
 // multiplicadas por CAR_EXAGGERATION.
