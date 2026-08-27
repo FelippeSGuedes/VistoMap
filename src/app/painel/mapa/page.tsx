@@ -48,7 +48,6 @@ import {
   Globe,
   Info,
   Layers,
-  Map as MapIcon,
   MapPin,
   MapPinned,
   Navigation,
@@ -149,22 +148,24 @@ const TRAIL_SRC = "vm-trail-src";
 const TRAIL_LAYER = "vm-trail-layer";
 const BUILDINGS_LAYER = "vm-3d-buildings";
 
+// O antigo "Padrão" (key "dark") foi REMOVIDO: ele e o 3D já usavam o mesmo
+// estilo de mapa, e o 3D é um superconjunto — mesmo mapa, com prédios
+// extrudados, inclinação e a camada dos veículos. Manter os dois era oferecer
+// a mesma coisa duas vezes, uma delas pior. O 3D virou o padrão do painel.
 const LAYER_OPTIONS = [
-  // key "dark" mantido por compat; estilo agora é claro (Padrão = mapa claro)
-  { key: "dark" as const,      label: "Padrão",   style: "mapbox://styles/mapbox/light-v11" },
+  { key: "3d" as const,        label: "Padrão",   style: "mapbox://styles/mapbox/light-v11" },
   { key: "satellite" as const, label: "Satélite", style: "mapbox://styles/mapbox/satellite-v9" },
   { key: "hybrid" as const,    label: "Híbrido",  style: "mapbox://styles/mapbox/satellite-streets-v12" },
-  { key: "3d" as const,        label: "3D",       style: "mapbox://styles/mapbox/light-v11" },
 ] as const;
 type LayerKey = (typeof LAYER_OPTIONS)[number]["key"];
 
 const MAP_DARK_STYLE = "mapbox://styles/mapbox/dark-v11";
 
-// "Padrão" e "3D" usam mapa claro no light e mapa escuro no dark.
+// O padrão (3D) usa mapa claro no tema light e escuro no dark.
 // Satélite/Híbrido são imagens de satélite — não mudam com o tema.
 function mapStyleFor(key: LayerKey, isDark: boolean): string {
   const base = LAYER_OPTIONS.find((l) => l.key === key)!.style;
-  if ((key === "dark" || key === "3d") && isDark) return MAP_DARK_STYLE;
+  if (key === "3d" && isDark) return MAP_DARK_STYLE;
   return base;
 }
 
@@ -707,10 +708,10 @@ export default function PainelMapaPage() {
   const [data, setData] = useState<PainelMapaResponse | null>(null);
   const [instalacaoData, setInstalacaoData] = useState<PainelInstalacoesMapaResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeLayer, setActiveLayer] = useState<LayerKey>("dark");
+  const [activeLayer, setActiveLayer] = useState<LayerKey>("3d");
   // Tema lido apenas no init — o toggle no client-layout recarrega a página,
   // então o mapa sempre nasce no tema certo (sem setStyle reativo/flicker).
-  const activeLayerRef = useRef<LayerKey>("dark");
+  const activeLayerRef = useRef<LayerKey>("3d");
   useEffect(() => { activeLayerRef.current = activeLayer; }, [activeLayer]);
 
   // Seleção
@@ -827,10 +828,10 @@ export default function PainelMapaPage() {
   const fetchTrail = useCallback(async (usersId: number) => {
     const map = mapRef.current;
     if (!map?.loaded()) return;
-    // No modo 3D o rastro histórico (8h de GPS bruto, cheio de ruído/zigue-
-    // zague) some — ali o objetivo é mostrar só a rota atual limpa
-    // (origem→destino), não o histórico do dia inteiro por cima.
-    if (activeLayerRef.current === "3d") return;
+    // O rastro de 8h ficava bloqueado no 3D porque o histórico de GPS bruto
+    // (cheio de zigue-zague) poluía a vista inclinada, e o modo Padrão dava
+    // conta dele. Com o Padrão removido, bloquear aqui seria simplesmente
+    // apagar o recurso do painel — então ele volta a funcionar.
     try {
       const r = await api.get<{ coords: [number, number][] }>(
         `/painel/tecnico-trail?users_id=${usersId}&hours=8`
@@ -909,6 +910,17 @@ export default function PainelMapaPage() {
     // canvas height matches the container for a few consecutive ticks, then stop.
     const resize = () => map.resize();
     map.on("load", resize);
+
+    // O 3D agora é o modo padrão, então ele precisa ser montado já na carga
+    // inicial. Antes esse preparo só rodava em switchLayer(), porque o mapa
+    // sempre nascia no modo "Padrão" plano e o 3D era uma escolha do usuário.
+    map.on("load", () => {
+      if (activeLayerRef.current !== "3d") return;
+      map.setProjection("mercator");
+      map.easeTo({ pitch: 50, bearing: -17, duration: 0 });
+      add3DBuildings(map);
+      ensureRouteLayers(map);
+    });
     const ro = new ResizeObserver(resize);
     ro.observe(container);
 
@@ -1335,6 +1347,7 @@ export default function PainelMapaPage() {
           lng: t.longitude!,
           lat: t.latitude!,
           speedKmh: t.speed_kmh,
+          corHex: statusColor(t.status_operacional),
           route,
         });
       });
@@ -1938,8 +1951,7 @@ export default function PainelMapaPage() {
         style={{ bottom: 32, left: 308, ...GLASS, borderRadius: 12, padding: 3 }}
       >
         {LAYER_OPTIONS.map((opt) => {
-          const Icon = opt.key === "dark" ? MapIcon
-            : opt.key === "satellite" ? Globe
+          const Icon = opt.key === "satellite" ? Globe
             : opt.key === "hybrid" ? Layers
             : Box;
           const active = activeLayer === opt.key;

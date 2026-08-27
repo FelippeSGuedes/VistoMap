@@ -326,9 +326,35 @@ export interface TechEntrySpec {
   lat: number;
   /** Velocidade do GPS, km/h — alimenta a extrapolação entre posições. */
   speedKmh: number | null;
-  /** Presente = "carro seguindo rota"; null = "beacon parado". */
+  /** Cor do status operacional do técnico (o painel é dono da semântica). */
+  corHex: string;
+  /** Presente = "carro seguindo rota"; null = "pin parado". */
   route: RouteResult | null;
 }
+
+// ---------------------------------------------------------------------------
+// Pin do técnico parado.
+//
+// Com o modo 3D virando o padrão do painel, o marcador de quem está parado
+// deixa de ser um detalhe e passa a ser metade do que se vê no mapa — então
+// precisa estar no mesmo nível de acabamento da picape, não o anel simples
+// que existia antes.
+//
+// Anatomia, de baixo pra cima:
+//   - disco no chão, marcando o ponto exato;
+//   - anel de radar que se expande e some, em loop — chama o olho sem poluir;
+//   - haste vertical semitransparente: com o mapa inclinado, é ela que diz a
+//     que ponto do chão a cabeça flutuante pertence (sem isso o marcador
+//     "flutua" ambíguo sobre o mapa);
+//   - cabeça facetada com leve sobe-e-desce e giro lento.
+//
+// Tudo na cor do status operacional, que o painel já define (statusColor).
+// ---------------------------------------------------------------------------
+const PIN_RAIO_M = 4.2;
+const PIN_ALTURA_M = 11;
+const PIN_CABECA_R = 2.6;
+const PIN_RADAR_MS = 2600;
+const PIN_BOB_MS = 2400;
 
 // ---------------------------------------------------------------------------
 // Movimento: extrapolação por velocidade ("dead reckoning").
@@ -382,16 +408,43 @@ interface TechEntry {
   tweenStart: number;
 
   nome: string;
+  corHex: string;
   /** Etiqueta flutuante com o nome, reposicionada a cada frame. */
   label: mapboxgl.Marker | null;
   /** Última coordenada recebida — detecta se o poll trouxe posição nova. */
   ultimoLng?: number;
   ultimoLat?: number;
+  /** Partes animadas do pin parado (ver buildIdlePin). */
+  pinRadar?: THREE.Mesh;
+  pinCabeca?: THREE.Object3D;
 }
 
 /** "Brendon Henrique Barbosa" → "Brendon". Etiqueta precisa caber no mapa. */
 function primeiroNome(nome: string): string {
   return (nome ?? "").trim().split(/\s+/)[0] || "Técnico";
+}
+
+/**
+ * Libera geometria e material de um PIN parado.
+ *
+ * Só do pin: ele cria geometria/material próprios por técnico, porque a cor
+ * vem do status. Sem descartar ao trocar o visual, cada mudança de status
+ * vazaria buffers de GPU — e o status muda o tempo todo (parado ⇄ em
+ * operação ⇄ em vistoria).
+ *
+ * NUNCA chamar num clone do carro: os clones compartilham geometria e
+ * material com o template do módulo, e liberá-los apagaria o modelo pra
+ * todos os outros técnicos. Por isso o chamador só invoca isto quando sabe
+ * que o visual anterior era o pin.
+ */
+function descartaPin(raiz: THREE.Object3D): void {
+  raiz.traverse((o) => {
+    const malha = o as THREE.Mesh;
+    if (!malha.isMesh) return;
+    malha.geometry?.dispose();
+    const mats = Array.isArray(malha.material) ? malha.material : [malha.material];
+    mats.forEach((m) => m?.dispose());
+  });
 }
 
 export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
@@ -564,34 +617,78 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     return { object3d: group, wheels };
   }
 
-  private buildIdleBeacon(): THREE.Object3D {
+  /**
+   * Pin do técnico parado (ver a anatomia comentada junto das constantes
+   * PIN_*). Devolve o grupo e as partes que o render() anima.
+   *
+   * Nota de convenção, que já custou caro aqui: Z é o eixo VERTICAL neste
+   * embedding, não o Y do Three.js. CircleGeometry/RingGeometry já nascem no
+   * plano XY, que aqui é o chão — então deitam sozinhos, sem rotação. O
+   * cilindro da haste é a exceção: ele nasce ao longo do Y e precisa girar.
+   */
+  private buildIdlePin(corHex: string): {
+    object3d: THREE.Object3D;
+    radar: THREE.Mesh;
+    cabeca: THREE.Object3D;
+  } {
     const group = new THREE.Group();
-    // O beacon estava na convenção errada (Y como "cima"): o anel era
-    // rotacionado pra ficar EM PÉ e o núcleo era deslocado pro norte, não
-    // pra cima. Passava despercebido porque num mapa bem inclinado um anel
-    // vertical ainda parece redondo e "norte" cai pra cima na tela. Aqui Z
-    // é o eixo vertical, e TorusGeometry já nasce no plano XY — que é o
-    // chão. Ou seja: sem rotação nenhuma o anel deita sozinho.
-    const ring = new THREE.Mesh(this.idleRingGeo, this.idleRingMat);
-    group.add(ring);
-    const core = new THREE.Mesh(this.idleCoreGeo, this.idleCoreMat);
-    core.position.z = IDLE_RADIUS_M * 0.9;
-    group.add(core);
-    return group;
+    const cor = new THREE.Color(corHex);
+
+    const disco = new THREE.Mesh(
+      new THREE.CircleGeometry(PIN_RAIO_M * 0.55, 32),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.85, depthTest: true, depthWrite: true })
+    );
+    disco.position.z = 0.15;
+    group.add(disco);
+
+    const radar = new THREE.Mesh(
+      new THREE.RingGeometry(PIN_RAIO_M * 0.75, PIN_RAIO_M, 40),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.5, depthTest: true, depthWrite: false })
+    );
+    radar.position.z = 0.1;
+    group.add(radar);
+
+    const haste = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28, 0.28, PIN_ALTURA_M, 10),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.35, depthTest: true, depthWrite: false })
+    );
+    haste.rotation.x = Math.PI / 2; // cilindro nasce no eixo Y; aqui "cima" é Z
+    haste.position.z = PIN_ALTURA_M / 2;
+    group.add(haste);
+
+    const cabeca = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(PIN_CABECA_R, 1),
+      new THREE.MeshBasicMaterial({ color: cor, depthTest: true, depthWrite: true })
+    );
+    cabeca.position.z = PIN_ALTURA_M;
+    group.add(cabeca);
+
+    return { object3d: group, radar, cabeca };
   }
 
   /** Garante que o filho visual da entry bate com o kind atual (troca só quando muda). */
-  private ensureVisual(e: TechEntry): void {
+  private ensureVisual(e: TechEntry, corMudou = false): void {
     const wantCar = e.kind === "car";
-    if (wantCar === e.visualIsCar && e.visual) return;
-    if (e.visual) e.object3d.remove(e.visual);
+    // O pin parado é construído na cor do status, então uma mudança de status
+    // também exige reconstruir — não basta trocar entre carro e pin.
+    if (wantCar === e.visualIsCar && e.visual && !(corMudou && !wantCar)) return;
+    if (e.visual) {
+      e.object3d.remove(e.visual);
+      // Só o pin tem recursos próprios; o carro compartilha os do template.
+      if (!e.visualIsCar) descartaPin(e.visual);
+    }
     if (wantCar) {
       const { object3d, wheels } = this.buildCarModel();
       e.visual = object3d;
       e.wheels = wheels;
+      e.pinRadar = undefined;
+      e.pinCabeca = undefined;
     } else {
-      e.visual = this.buildIdleBeacon();
+      const { object3d, radar, cabeca } = this.buildIdlePin(e.corHex);
+      e.visual = object3d;
       e.wheels = null;
+      e.pinRadar = radar;
+      e.pinCabeca = cabeca;
     }
     e.visualIsCar = wantCar;
     e.object3d.add(e.visual);
@@ -620,6 +717,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     const e: TechEntry = {
       usersId: spec.usersId,
       nome: spec.nome,
+      corHex: spec.corHex,
       kind: spec.route ? "car" : "idle",
       object3d,
       visual: null,
@@ -649,10 +747,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private updateEntry(e: TechEntry, spec: TechEntrySpec): void {
     const newKind: "car" | "idle" = spec.route ? "car" : "idle";
     const routeChanged = e.route !== spec.route; // routeService devolve o MESMO objeto em cache; só muda por refetch
+    const corMudou = e.corHex !== spec.corHex;
     e.kind = newKind;
     e.route = spec.route;
     e.nome = spec.nome;
-    this.ensureVisual(e);
+    e.corHex = spec.corHex;
+    this.ensureVisual(e, corMudou);
     this.ensureLabel(e);
 
     // Posição REALMENTE nova? O poll roda a cada 5s, mas o celular só reporta
@@ -696,17 +796,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   /** Etiqueta flutuante com o nome; clicar seleciona o técnico. */
   private ensureLabel(e: TechEntry): void {
     if (!this.map) return;
-    if (e.kind !== "car") {
-      // Só quem está dirigindo ganha etiqueta: o técnico parado já tem o
-      // beacon e, no modo 3D, o painel lateral pra identificá-lo. Etiqueta
-      // em todo mundo vira poluição quando há muita gente em campo.
-      e.label?.remove();
-      e.label = null;
-      return;
-    }
+    // Etiqueta pra TODO mundo agora. Antes só quem dirigia tinha nome, porque
+    // o modo Padrão (com os pins 2D) cobria os parados. Com o 3D virando o
+    // padrão do painel, quem está parado ficaria anônimo — perda direta de
+    // informação em relação ao que o mapa mostrava antes.
     if (e.label) {
       const el = e.label.getElement().querySelector("[data-nome]");
       if (el && el.textContent !== primeiroNome(e.nome)) el.textContent = primeiroNome(e.nome);
+      const dot = e.label.getElement().querySelector("[data-cor]") as HTMLElement | null;
+      if (dot && dot.style.background !== e.corHex) dot.style.background = e.corHex;
       return;
     }
 
@@ -718,7 +816,8 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       "white-space:nowrap;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);" +
       "border:1px solid rgba(0,212,160,.55)";
     const ponto = document.createElement("span");
-    ponto.style.cssText = `width:6px;height:6px;border-radius:9999px;background:#00D4A0`;
+    ponto.setAttribute("data-cor", "");
+    ponto.style.cssText = `width:6px;height:6px;border-radius:9999px;background:${e.corHex}`;
     const nome = document.createElement("span");
     nome.setAttribute("data-nome", "");
     nome.textContent = primeiroNome(e.nome);
@@ -869,6 +968,26 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         y = e.fromXY.y + (e.toXY.y - e.fromXY.y) * frac;
         z = e.z;
         headingRad = null;
+
+        // Pin parado: anel de radar expandindo em loop e cabeça com leve
+        // sobe-e-desce. Mantém o marcador "vivo" sem depender de o técnico
+        // se mexer — importante agora que o 3D é o modo padrão e boa parte
+        // do mapa é gente parada.
+        if (e.pinRadar) {
+          const t = ((agora % PIN_RADAR_MS) / PIN_RADAR_MS);
+          const escalaRadar = 0.6 + t * 1.5;
+          e.pinRadar.scale.set(escalaRadar, escalaRadar, 1);
+          (e.pinRadar.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - t);
+        }
+        if (e.pinCabeca) {
+          const b = Math.sin((agora / PIN_BOB_MS) * Math.PI * 2);
+          e.pinCabeca.position.z = PIN_ALTURA_M + b * 0.9;
+          e.pinCabeca.rotation.z = (agora / 9000) % (Math.PI * 2);
+        }
+        anyTweenActive = true; // animação contínua do pin
+
+        const ll = new mapboxgl.MercatorCoordinate(x, y, z).toLngLat();
+        e.label?.setLngLat([ll.lng, ll.lat]);
       }
 
       const scale = new mapboxgl.MercatorCoordinate(x, y, z).meterInMercatorCoordinateUnits();
