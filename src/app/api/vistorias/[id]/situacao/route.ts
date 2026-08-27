@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { verifySessionJwt } from "@/lib/jwt";
 import { execute } from "@/lib/db";
-import { TABLE_FIELDS, SITUACAO_COLUMN } from "@/lib/glpi/constants";
+import {
+  TABLE_FIELDS,
+  SITUACAO_COLUMN,
+  SITUACAO_A_VISTORIAR,
+  SITUACAO_EM_VISTORIA,
+  SITUACAO_EM_DESLOCAMENTO,
+} from "@/lib/glpi/constants";
 import { auditInsert } from "@/lib/glpi/audit";
 import { getVistoria } from "@/lib/glpi/equipments";
 
@@ -55,6 +61,31 @@ export async function PATCH(
     }
     if (String(actorId) !== vistoria.tecnico.id) {
       return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
+    }
+
+    // "Em deslocamento" é um estado EXCLUSIVO: ninguém se desloca para dois
+    // equipamentos ao mesmo tempo. Sem esta limpeza, o técnico que marcava
+    // deslocamento pro equipamento A e depois pro B, sem concluir o A,
+    // deixava o A preso nesse estado indefinidamente — e o painel passava a
+    // mostrar o mesmo técnico indo para dois lugares (relatado em produção).
+    //
+    // Vale também ao INICIAR uma vistoria: se ele chegou e começou o
+    // trabalho, qualquer deslocamento pendente dele é resíduo.
+    //
+    // As vistorias afetadas voltam para "A Vistoriar", que com técnico
+    // atribuído é lido como ATRIBUÍDO (ver resolveSituacaoOperacional) — ou
+    // seja, continuam na fila dele, só deixam de fingir que ele está a
+    // caminho. Só o deslocamento é revertido; vistoria em andamento nunca é
+    // tocada, pra não destruir trabalho de campo legítimo.
+    if (situacao_id === SITUACAO_EM_DESLOCAMENTO || situacao_id === SITUACAO_EM_VISTORIA) {
+      await execute(
+        `UPDATE \`${TABLE_FIELDS}\`
+            SET \`${SITUACAO_COLUMN}\` = ?
+          WHERE users_id_vistoriadorafield = ?
+            AND \`${SITUACAO_COLUMN}\` = ?
+            AND items_id <> ?`,
+        [SITUACAO_A_VISTORIAR, actorId, SITUACAO_EM_DESLOCAMENTO, id]
+      );
     }
 
     await execute(
