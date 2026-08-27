@@ -1107,6 +1107,21 @@ export interface VistoriasRealizadasStats {
 }
 
 /**
+ * "É revisita?" — MESMA regra que a lista aplica por item (ver o mapeamento
+ * de `status` em fetchVistoriasRealizadas): conta como revisita quem está com
+ * a situação REVISITADO no GLPI **ou** com is_repeat marcado na aux.
+ *
+ * Existir em dois lugares com regras diferentes foi exatamente o bug: os
+ * cards contavam só por is_repeat, então equipamentos com situação
+ * "Revisitado" e is_repeat=0 eram somados como vistoriados e o card de
+ * revisitados ficava zerado. Dava, por exemplo, 311 vistoriados / 0
+ * revisitados onde o correto era 300 / 11 — e a diferença só aparecia ao
+ * filtrar por "Vistoriado", porque aí a contagem passa a ser do cliente,
+ * que usa a regra certa.
+ */
+const EH_REVISITA_SQL = `(f.\`${SITUACAO_COLUMN}\` = ${SITUACAO_REVISITADO} OR COALESCE(aux.is_repeat,0) = 1)`;
+
+/**
  * Contagens REAIS (sem LIMIT) pra /painel/realizadas — a lista em si é
  * paginada (fetchVistoriasRealizadas usa LIMIT/OFFSET), mas o card de
  * "resultados" não pode derivar de `items.length`: isso mostrava o limite
@@ -1142,8 +1157,8 @@ export async function fetchVistoriasRealizadasStats(
     `
       SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 0 THEN 1 ELSE 0 END) AS vistoriados,
-        SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitados,
+        SUM(CASE WHEN ${EH_REVISITA_SQL} THEN 0 ELSE 1 END) AS vistoriados,
+        SUM(CASE WHEN ${EH_REVISITA_SQL} THEN 1 ELSE 0 END) AS revisitados,
         SUM(CASE WHEN COALESCE(aux.project_status,'') = 'GERADO' THEN 1 ELSE 0 END) AS pdfs_gerados
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
