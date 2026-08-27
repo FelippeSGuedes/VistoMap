@@ -67,8 +67,24 @@ const CAR_CABIN_HEIGHT = 0.62 * CAR_EXAGGERATION;
 const CAR_WHEEL_RADIUS = 0.33 * CAR_EXAGGERATION;
 const CAR_WHEEL_WIDTH = 0.24 * CAR_EXAGGERATION;
 
-/** Comprimento final do veículo no mapa, em metros. */
-const CAR_TARGET_LENGTH_M = 3.9 * CAR_EXAGGERATION;
+// ---------------------------------------------------------------------------
+// Tamanho na tela.
+//
+// O veículo é modelado em tamanho REAL (uma picape de ~5m). Isso o deixa
+// proporcional à rua no zoom de operação, mas some quando o mapa é afastado:
+// a 5m de comprimento ele vira menos de um pixel numa visão de cidade, e aí
+// não dá pra achar o técnico.
+//
+// Solução padrão de marcador: a partir do momento em que o veículo ficaria
+// menor que CAR_MIN_PX na tela, ele para de encolher e passa a crescer em
+// metros na mesma proporção em que o zoom diminui — mantendo tamanho
+// constante em pixels. Perto = realista; longe = marcador sempre visível.
+// ---------------------------------------------------------------------------
+const CAR_REAL_LENGTH_M = 5;
+const CAR_MIN_PX = 46;
+
+/** Idem pro beacon do técnico parado (diâmetro do anel). */
+const IDLE_MIN_PX = 40;
 
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
 // continua no código como fallback: aparece enquanto os 17MB carregam e
@@ -128,7 +144,7 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
   // escala, isso continua certo.
   const size = new THREE.Vector3();
   new THREE.Box3().setFromObject(root).getSize(size);
-  root.scale.setScalar(CAR_TARGET_LENGTH_M / (size.y || 1));
+  root.scale.setScalar(CAR_REAL_LENGTH_M / (size.y || 1));
 
   // Ajuste de material. O car.glb é uma picape TEXTURIZADA (basecolor +
   // metallicRoughness + normal embutidos) e SEM baseColorFactor — ou seja,
@@ -619,8 +635,37 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
+  /**
+   * Quantos pixels de tela equivalem a 1 metro no zoom atual.
+   *
+   * Medido projetando dois pontos separados por 1 metro, em vez de aplicar a
+   * fórmula de metros-por-pixel na mão: usa só API pública e não depende de
+   * eu acertar a convenção de tamanho de tile do Mapbox.
+   */
+  private pixelsPorMetro(): number {
+    const map = this.map;
+    if (!map) return 1;
+    const c = map.getCenter();
+    const grausPorMetro = 1 / (111320 * Math.cos((c.lat * Math.PI) / 180));
+    const a = map.project([c.lng, c.lat]);
+    const b = map.project([c.lng + grausPorMetro, c.lat]);
+    return Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  }
+
+  /** Fator que impede o objeto de ficar menor que `minPx` na tela. */
+  private fatorTamanhoMinimo(comprimentoM: number, minPx: number, pxPorMetro: number): number {
+    const px = comprimentoM * pxPorMetro;
+    return px < minPx ? minPx / px : 1;
+  }
+
   render(gl: WebGLRenderingContext, matrix: number[]): void {
     let anyTweenActive = false;
+
+    // Uma medição por frame: o zoom é global e a latitude varia pouco dentro
+    // da viewport, então não compensa recalcular por técnico.
+    const pxPorMetro = this.pixelsPorMetro();
+    const fatorCarro = this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro);
+    const fatorBeacon = this.fatorTamanhoMinimo(IDLE_RADIUS_M * 2, IDLE_MIN_PX, pxPorMetro);
 
     // Prepara o estado de GL uma vez só; o laço abaixo desenha por objeto.
     //
@@ -714,9 +759,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       // no norte do Mercator. Então rotationZ(heading) puro já acerta:
       // heading 0 (norte) → frente em -Y = norte; heading 90° (leste) →
       // frente em +X = leste. Somar π aqui faria a picape andar de ré.
+      const fator = e.kind === "car" ? fatorCarro : fatorBeacon;
+      const escala = scale * fator;
+
       SCRATCH_MODELO
         .makeTranslation(x, y, z)
-        .multiply(SCRATCH_SCALE.makeScale(scale, scale, scale))
+        .multiply(SCRATCH_SCALE.makeScale(escala, escala, escala))
         .multiply(SCRATCH_ROT.makeRotationZ(headingRad ?? 0));
       this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
 
