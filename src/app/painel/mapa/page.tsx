@@ -4,7 +4,14 @@ import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { TechModel3DLayer, TECH_MODEL_LAYER_ID, type TechEntrySpec } from "./techModel3DLayer";
-import { getRouteFor, peekRoute, haversineM, type RouteResult } from "./routeService";
+import {
+  getRouteFor,
+  peekRoute,
+  haversineM,
+  projectOntoRoute,
+  routeAheadCoordinates,
+  type RouteResult,
+} from "./routeService";
 import { useAuthStore } from "@/store/auth";
 import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
@@ -274,15 +281,16 @@ function removeRouteLayers(map: mapboxgl.Map) {
   if (map.getSource(ROUTES_SRC)) map.removeSource(ROUTES_SRC);
 }
 
-function updateRouteLineSource(map: mapboxgl.Map, routes: RouteResult[]) {
+/** Recebe já os trechos À FRENTE de cada técnico (ver routeAheadCoordinates). */
+function updateRouteLineSource(map: mapboxgl.Map, trechos: [number, number][][]) {
   const src = map.getSource(ROUTES_SRC) as GeoJSONSource | undefined;
   if (!src) return;
   src.setData({
     type: "FeatureCollection",
-    features: routes.map((r) => ({
+    features: trechos.map((coords) => ({
       type: "Feature" as const,
       properties: {},
-      geometry: { type: "LineString" as const, coordinates: r.coordinates },
+      geometry: { type: "LineString" as const, coordinates: coords },
     })),
   });
 }
@@ -1272,7 +1280,7 @@ export default function PainelMapaPage() {
         ensureTechModelLayer(map, tech3DLayerRef);
 
         const specs: TechEntrySpec[] = [];
-        const routesParaLinha: RouteResult[] = [];
+        const trechosParaLinha: [number, number][][] = [];
         visible.forEach((t) => {
           const destino = resolveDestino(t, data.vistorias);
           let route: RouteResult | null = null;
@@ -1292,12 +1300,17 @@ export default function PainelMapaPage() {
               { lng: t.longitude!, lat: t.latitude! },
               { lng: destino.longitude, lat: destino.latitude }
             );
-            if (route) routesParaLinha.push(route);
+            if (route) {
+              // Só o caminho à frente: a posição do técnico é projetada na
+              // rota e o que ficou pra trás é descartado, como no Waze.
+              const { distAlongM } = projectOntoRoute(route, { lng: t.longitude!, lat: t.latitude! });
+              trechosParaLinha.push(routeAheadCoordinates(route, distAlongM));
+            }
           }
           specs.push({ usersId: t.users_id, lng: t.longitude!, lat: t.latitude!, route });
         });
         tech3DLayerRef.current?.syncEntries(specs);
-        updateRouteLineSource(map, routesParaLinha);
+        updateRouteLineSource(map, trechosParaLinha);
       }
 
       const seen = new Set<number>();

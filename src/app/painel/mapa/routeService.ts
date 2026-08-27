@@ -128,6 +128,44 @@ export function sampleRouteAt(route: RouteResult, distM: number): { lng: number;
   };
 }
 
+/**
+ * Coordenadas da rota a partir de `distM`, descartando o trecho já
+ * percorrido — o que sobra é só o caminho À FRENTE do técnico.
+ *
+ * É o comportamento de Waze/Maps: a linha mostra para onde você ainda vai,
+ * não por onde já passou. Sem isso o painel desenhava a perna inteira desde
+ * o ponto onde a rota foi calculada, e a parte de trás dava a impressão de
+ * um trajeto muito maior do que o deslocamento real em curso.
+ *
+ * O primeiro ponto é interpolado na posição exata do técnico, pra linha
+ * começar exatamente sob o veículo e não no próximo vértice da rota.
+ */
+export function routeAheadCoordinates(route: RouteResult, distM: number): [number, number][] {
+  const coords = route.coordinates;
+  if (coords.length < 2 || distM <= 0) return coords;
+
+  const line = lineString(coords);
+  const restante = Math.max(0, route.distanceM - distM);
+  if (restante < 1) return [coords[coords.length - 1], coords[coords.length - 1]];
+
+  const aqui = along(line, distM, { units: "meters" });
+  const inicio = aqui.geometry.coordinates as [number, number];
+
+  // Mantém só os vértices que ficam ADIANTE da posição atual. Percorre
+  // acumulando distância em vez de usar índice, porque os vértices da
+  // Directions API não são equidistantes.
+  const adiante: [number, number][] = [inicio];
+  let acumulado = 0;
+  for (let i = 1; i < coords.length; i++) {
+    acumulado += haversineM(
+      { lng: coords[i - 1][0], lat: coords[i - 1][1] },
+      { lng: coords[i][0], lat: coords[i][1] }
+    );
+    if (acumulado > distM) adiante.push(coords[i]);
+  }
+  return adiante.length >= 2 ? adiante : [inicio, coords[coords.length - 1]];
+}
+
 /** Comprimento total de uma rota recém-buscada, em metros (sanity check). */
 export function routeLengthM(route: RouteResult): number {
   return length(lineString(route.coordinates), { units: "meters" });
