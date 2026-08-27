@@ -201,9 +201,17 @@ function add3DBuildings(map: mapboxgl.Map) {
 
 /** Camada 3D (Three.js) — carro seguindo rota (em deslocamento) ou beacon
  * (parado/em vistoria) por técnico. Idempotente. */
-function ensureTechModelLayer(map: mapboxgl.Map, layerRef: MutableRefObject<TechModel3DLayer | null>) {
-  if (map.getLayer(TECH_MODEL_LAYER_ID)) return;
+function ensureTechModelLayer(
+  map: mapboxgl.Map,
+  layerRef: MutableRefObject<TechModel3DLayer | null>,
+  onSelect?: (usersId: number) => void
+) {
+  if (map.getLayer(TECH_MODEL_LAYER_ID)) {
+    if (layerRef.current && onSelect) layerRef.current.onSelect = onSelect;
+    return;
+  }
   const layer = new TechModel3DLayer();
+  layer.onSelect = onSelect;
   map.addLayer(layer);
   layerRef.current = layer;
 }
@@ -1307,20 +1315,44 @@ export default function PainelMapaPage() {
             { lng: destino.longitude, lat: destino.latitude }
           );
           if (route) {
-            // Só o caminho à frente: a posição do técnico é projetada na
-            // rota e o que ficou pra trás é descartado, como no Waze.
-            const { distAlongM } = projectOntoRoute(route, { lng: t.longitude!, lat: t.latitude! });
+            // Só o caminho à frente: o que ficou pra trás é descartado, como
+            // no Waze.
+            //
+            // O progresso vem da CAMADA 3D quando ela existe, não da projeção
+            // crua do GPS. A camada extrapola por velocidade e é monotônica;
+            // a projeção crua não é. Usando fontes diferentes, a linha
+            // encolhia e crescia de leve enquanto o carro seguia liso — agora
+            // linha e veículo consomem a rota exatamente juntos.
+            const doLayer = tech3DLayerRef.current?.progressoAtual(t.users_id);
+            const distAlongM =
+              doLayer ?? projectOntoRoute(route, { lng: t.longitude!, lat: t.latitude! }).distAlongM;
             trechosParaLinha.push(routeAheadCoordinates(route, distAlongM));
           }
         }
-        specs.push({ usersId: t.users_id, lng: t.longitude!, lat: t.latitude!, route });
+        specs.push({
+          usersId: t.users_id,
+          nome: t.nome,
+          lng: t.longitude!,
+          lat: t.latitude!,
+          speedKmh: t.speed_kmh,
+          route,
+        });
       });
 
       ensureRouteLayers(map);
       updateRouteLineSource(map, trechosParaLinha);
 
       if (in3D) {
-        ensureTechModelLayer(map, tech3DLayerRef);
+        // Clicar na etiqueta do carro abre o técnico, igual ao pin 2D — que
+        // fica escondido no 3D e, sem isto, deixava o modo 3D sem nenhuma
+        // forma de saber de quem é cada veículo.
+        ensureTechModelLayer(map, tech3DLayerRef, (usersId) => {
+          const tec = visible.find((v) => v.users_id === usersId);
+          if (!tec) return;
+          setSelectedTec(tec);
+          setSelectedVistoria(null);
+          setTrailUsersId(usersId);
+        });
         tech3DLayerRef.current?.syncEntries(specs);
       }
 

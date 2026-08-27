@@ -321,11 +321,42 @@ interface MercatorXY {
 
 export interface TechEntrySpec {
   usersId: number;
+  nome: string;
   lng: number;
   lat: number;
+  /** Velocidade do GPS, km/h — alimenta a extrapolação entre posições. */
+  speedKmh: number | null;
   /** Presente = "carro seguindo rota"; null = "beacon parado". */
   route: RouteResult | null;
 }
+
+// ---------------------------------------------------------------------------
+// Movimento: extrapolação por velocidade ("dead reckoning").
+//
+// Sem isso o carro dava um pulo de 800ms e ficava parado ~4s até o próximo
+// poll — o "anda-congela-anda" que tirava todo o realismo. E, pior, sempre
+// mostrava onde o técnico ESTEVE: o celular só reporta a cada 30m percorridos
+// (uns 3s a 40km/h) ou a cada 30s parado, e o painel ainda soma o próprio
+// ciclo de 5s.
+//
+// Agora o progresso na rota avança CONTINUAMENTE, quadro a quadro, usando a
+// velocidade que o próprio GPS já reporta. Quando chega posição nova, a
+// diferença é absorvida gradualmente (controle proporcional) em vez de
+// saltar. É a mesma ideia de navegação do Waze/Uber.
+//
+// A velocidade decai exponencialmente com o tempo desde a última posição
+// nova. Isso resolve sozinho o caso do técnico parar num semáforo: como o
+// filtro de distância do app para de emitir quando ele não anda, a idade
+// cresce, a velocidade estimada cai e o carro desacelera até parar — em vez
+// de sair viajando sozinho e depois ser puxado de volta.
+// ---------------------------------------------------------------------------
+
+/** Meia-vida da confiança na velocidade, em ms. */
+const SPEED_DECAY_TAU_MS = 7000;
+/** Quanto do erro de posição é corrigido por segundo (0..1 por segundo). */
+const CORRECTION_GAIN = 1.6;
+/** Acima disto (metros) não vale corrigir suave — salta (rota nova, teleporte). */
+const SNAP_ERROR_M = 200;
 
 interface TechEntry {
   usersId: number;
@@ -335,12 +366,32 @@ interface TechEntry {
   visualIsCar: boolean;
   wheels: THREE.Mesh[] | null; // só quando visual = carrinho — girados por distância percorrida
   route: RouteResult | null;
-  fromDistM: number; // progresso (metros) na rota — só kind="car"
-  toDistM: number;
+
+  /** Progresso EXIBIDO na rota (m). Avança todo frame; ver dead reckoning. */
+  distM: number;
+  /** Progresso medido na última posição de GPS recebida (m). */
+  alvoDistM: number;
+  /** Velocidade estimada, m/s — do GPS, com decaimento por idade. */
+  speedMps: number;
+  /** Quando chegou a última posição REALMENTE nova (performance.now()). */
+  ultimaPosicaoEm: number;
+
   fromXY: MercatorXY; // tween linear — kind="idle" (ou "car" sem rota resolvida ainda)
   toXY: MercatorXY;
   z: number;
   tweenStart: number;
+
+  nome: string;
+  /** Etiqueta flutuante com o nome, reposicionada a cada frame. */
+  label: mapboxgl.Marker | null;
+  /** Última coordenada recebida — detecta se o poll trouxe posição nova. */
+  ultimoLng?: number;
+  ultimoLat?: number;
+}
+
+/** "Brendon Henrique Barbosa" → "Brendon". Etiqueta precisa caber no mapa. */
+function primeiroNome(nome: string): string {
+  return (nome ?? "").trim().split(/\s+/)[0] || "Técnico";
 }
 
 export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
@@ -354,6 +405,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private renderer!: THREE.WebGLRenderer;
   private entries = new Map<number, TechEntry>();
   private loggedFirstRenderFor = new Set<number>();
+  private ultimoFrameEm = performance.now();
+
+  /** Callback do painel pra abrir o técnico ao clicar na etiqueta. */
+  onSelect?: (usersId: number) => void;
 
 
   // Geometria/material compartilhados entre todas as instâncias (procedural,
@@ -561,27 +616,33 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         pontosDaRota: spec.route?.coordinates?.length,
       });
     }
+    const agora = performance.now();
     const e: TechEntry = {
       usersId: spec.usersId,
+      nome: spec.nome,
       kind: spec.route ? "car" : "idle",
       object3d,
       visual: null,
       visualIsCar: false,
       wheels: null,
       route: spec.route,
-      fromDistM: 0,
-      toDistM: 0,
+      distM: 0,
+      alvoDistM: 0,
+      speedMps: Math.max(0, (spec.speedKmh ?? 0) / 3.6),
+      ultimaPosicaoEm: agora,
       fromXY: { x: m.x, y: m.y },
       toXY: { x: m.x, y: m.y },
       z: m.z ?? 0,
-      tweenStart: performance.now(),
+      tweenStart: agora,
+      label: null,
     };
     if (spec.route) {
       const { distAlongM } = projectOntoRoute(spec.route, { lng: spec.lng, lat: spec.lat });
-      e.fromDistM = distAlongM;
-      e.toDistM = distAlongM;
+      e.distM = distAlongM;
+      e.alvoDistM = distAlongM;
     }
     this.ensureVisual(e);
+    this.ensureLabel(e);
     return e;
   }
 
@@ -590,19 +651,35 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     const routeChanged = e.route !== spec.route; // routeService devolve o MESMO objeto em cache; só muda por refetch
     e.kind = newKind;
     e.route = spec.route;
+    e.nome = spec.nome;
     this.ensureVisual(e);
+    this.ensureLabel(e);
+
+    // Posição REALMENTE nova? O poll roda a cada 5s, mas o celular só reporta
+    // a cada 30m percorridos ou 30s parado — a maioria dos ciclos repete a
+    // mesma coordenada. Só um dado novo renova a confiança na velocidade;
+    // sem esta checagem, a idade zeraria a cada poll e o carro nunca
+    // desaceleraria ao parar.
+    const posicaoMudou =
+      Math.abs(spec.lng - (e.ultimoLng ?? NaN)) > 1e-7 ||
+      Math.abs(spec.lat - (e.ultimoLat ?? NaN)) > 1e-7;
+    if (posicaoMudou || e.ultimoLng == null) {
+      e.ultimaPosicaoEm = performance.now();
+      e.ultimoLng = spec.lng;
+      e.ultimoLat = spec.lat;
+      if (spec.speedKmh != null) e.speedMps = Math.max(0, spec.speedKmh / 3.6);
+    }
 
     if (newKind === "car" && spec.route) {
-      const frac = tweenFrac(e.tweenStart);
-      const interpolatedDist = e.fromDistM + (e.toDistM - e.fromDistM) * frac;
       const { distAlongM } = projectOntoRoute(spec.route, { lng: spec.lng, lat: spec.lat });
       if (routeChanged) {
-        e.fromDistM = distAlongM;
-        e.toDistM = distAlongM;
+        // Geometria nova: não há como comparar progresso entre rotas
+        // diferentes, então recomeça no ponto medido.
+        e.distM = distAlongM;
+        e.alvoDistM = distAlongM;
       } else {
-        e.fromDistM = interpolatedDist;
         // Progresso monotônico — nunca anda de ré por ruído de GPS.
-        e.toDistM = Math.max(interpolatedDist, distAlongM);
+        e.alvoDistM = Math.max(e.alvoDistM, distAlongM);
       }
     } else {
       const frac = tweenFrac(e.tweenStart);
@@ -612,8 +689,54 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       };
       const m = mapboxgl.MercatorCoordinate.fromLngLat([spec.lng, spec.lat], 0);
       e.toXY = { x: m.x, y: m.y };
+      e.tweenStart = performance.now();
     }
-    e.tweenStart = performance.now();
+  }
+
+  /** Etiqueta flutuante com o nome; clicar seleciona o técnico. */
+  private ensureLabel(e: TechEntry): void {
+    if (!this.map) return;
+    if (e.kind !== "car") {
+      // Só quem está dirigindo ganha etiqueta: o técnico parado já tem o
+      // beacon e, no modo 3D, o painel lateral pra identificá-lo. Etiqueta
+      // em todo mundo vira poluição quando há muita gente em campo.
+      e.label?.remove();
+      e.label = null;
+      return;
+    }
+    if (e.label) {
+      const el = e.label.getElement().querySelector("[data-nome]");
+      if (el && el.textContent !== primeiroNome(e.nome)) el.textContent = primeiroNome(e.nome);
+      return;
+    }
+
+    const el = document.createElement("div");
+    el.className = "vm-3d-label";
+    el.style.cssText =
+      "display:flex;align-items:center;gap:6px;padding:3px 9px;border-radius:9999px;" +
+      "background:rgba(9,22,22,.88);color:#fff;font:600 11px/1.2 system-ui,sans-serif;" +
+      "white-space:nowrap;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);" +
+      "border:1px solid rgba(0,212,160,.55)";
+    const ponto = document.createElement("span");
+    ponto.style.cssText = `width:6px;height:6px;border-radius:9999px;background:#00D4A0`;
+    const nome = document.createElement("span");
+    nome.setAttribute("data-nome", "");
+    nome.textContent = primeiroNome(e.nome);
+    el.append(ponto, nome);
+    el.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this.onSelect?.(e.usersId);
+    });
+
+    e.label = new mapboxgl.Marker({ element: el, anchor: "bottom", offset: [0, -18] })
+      .setLngLat([0, 0])
+      .addTo(this.map);
+  }
+
+  /** Progresso exibido (m) do técnico na rota — usado pra desenhar a linha em sincronia. */
+  progressoAtual(usersId: number): number | null {
+    const e = this.entries.get(usersId);
+    return e && e.kind === "car" ? e.distM : null;
   }
 
   /** Chamado a cada sync de técnicos (poll) — cria/atualiza/remove entradas. */
@@ -631,6 +754,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.entries.forEach((e, id) => {
       if (!seen.has(id)) {
         this.scene.remove(e.object3d);
+        e.label?.remove();
         this.entries.delete(id);
       }
     });
@@ -691,6 +815,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
     this.entries.forEach((e) => { e.object3d.visible = false; });
 
+    const agora = performance.now();
+    const dt = Math.min(0.25, Math.max(0, (agora - this.ultimoFrameEm) / 1000));
+    this.ultimoFrameEm = agora;
+
     this.entries.forEach((e) => {
       const frac = tweenFrac(e.tweenStart);
       if (frac < 1) anyTweenActive = true;
@@ -698,8 +826,30 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       let x: number, y: number, z: number, headingRad: number | null;
 
       if (e.kind === "car" && e.route) {
-        const distM = e.fromDistM + (e.toDistM - e.fromDistM) * frac;
-        const sample = sampleRouteAt(e.route, distM);
+        // DEAD RECKONING: avança sozinho na velocidade estimada e absorve o
+        // erro contra a última medição de forma gradual, em vez de saltar.
+        //
+        // A confiança na velocidade decai com a idade da última posição nova
+        // — é isso que faz o carro desacelerar até parar quando o técnico
+        // encosta, sem precisar esperar 30s pelo próximo report dizendo
+        // "velocidade zero".
+        const idade = agora - e.ultimaPosicaoEm;
+        const confianca = Math.exp(-idade / SPEED_DECAY_TAU_MS);
+        const erro = e.alvoDistM - e.distM;
+
+        if (Math.abs(erro) > SNAP_ERROR_M) {
+          e.distM = e.alvoDistM;
+        } else {
+          e.distM += e.speedMps * confianca * dt + erro * CORRECTION_GAIN * dt;
+          // Nunca passa do destino nem anda de ré.
+          e.distM = Math.max(0, Math.min(e.distM, e.route.distanceM));
+        }
+
+        // Enquanto o carro não alcançou a medição, ou ainda tem velocidade
+        // relevante, o mapa precisa continuar redesenhando.
+        if (Math.abs(erro) > 0.5 || e.speedMps * confianca > 0.2) anyTweenActive = true;
+
+        const sample = sampleRouteAt(e.route, e.distM);
         const m = mapboxgl.MercatorCoordinate.fromLngLat([sample.lng, sample.lat], 0);
         x = m.x;
         y = m.y;
@@ -709,9 +859,11 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         // Rodas giram conforme a distância real percorrida (não por tempo)
         // — para quando o técnico para, acelera quando o progresso acelera.
         if (e.wheels) {
-          const spin = (distM / CAR_WHEEL_RADIUS) % (Math.PI * 2);
+          const spin = (e.distM / CAR_WHEEL_RADIUS) % (Math.PI * 2);
           for (const wheel of e.wheels) wheel.rotation.x = spin;
         }
+
+        e.label?.setLngLat([sample.lng, sample.lat]);
       } else {
         x = e.fromXY.x + (e.toXY.x - e.fromXY.x) * frac;
         y = e.fromXY.y + (e.toXY.y - e.fromXY.y) * frac;
@@ -795,7 +947,10 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   }
 
   onRemove(): void {
-    this.entries.forEach((e) => this.scene.remove(e.object3d));
+    this.entries.forEach((e) => {
+      this.scene.remove(e.object3d);
+      e.label?.remove();
+    });
     this.entries.clear();
 
     this.idleRingGeo?.dispose();
