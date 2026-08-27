@@ -1080,6 +1080,9 @@ export default function PainelMapaPage() {
       map.setProjection("mercator"); // idem — reforça mesmo fora do 3D
       // Re-adiciona layers de vistorias perdidos com a troca de estilo
       if (lastDataRef.current) ensureVistoriaLayers(map, vistoriasFiltradasRef.current);
+      // Idem pra rota: setStyle descarta todas as layers, e a rota vale em
+      // qualquer modo (o próximo poll repopula os dados da linha).
+      ensureRouteLayers(map);
       // Re-adiciona trail se houver
       if (trailUsersId) fetchTrail(trailUsersId);
     });
@@ -1276,41 +1279,49 @@ export default function PainelMapaPage() {
       // só existe/atualiza no modo "3d"; nos outros modos o pin 2D
       // (SVG/HTML) criado abaixo já é suficiente e fica visível.
       const in3D = activeLayerRef.current === "3d";
+
+      // A ROTA vale em qualquer modo de mapa — é uma linha comum do Mapbox e
+      // não tem nada a ver com o 3D. Ela ficava dentro do bloco do 3D por
+      // acidente de implementação (nasceu junto com o carro), então em
+      // Padrão/Satélite/Híbrido nunca era desenhada. Só o VEÍCULO 3D
+      // continua restrito ao modo 3D; nos outros o pin 2D já dá conta.
+      const specs: TechEntrySpec[] = [];
+      const trechosParaLinha: [number, number][][] = [];
+      visible.forEach((t) => {
+        const destino = resolveDestino(t, data.vistorias);
+        let route: RouteResult | null = null;
+        // situacao_id 7 = SITUACAO_EM_DESLOCAMENTO (constants.ts, server-only —
+        // não dá pra importar aqui). O status_operacional do TÉCNICO
+        // (status_operacional==="em-operacao") não serve pra isso: ele vem de
+        // um dropdown legado (statusvistoriafield="Em campo") que fica ligado
+        // do momento da atribuição até a conclusão, sem distinguir "a
+        // caminho" de "chegou" — o sinal certo é a situação da PRÓPRIA
+        // vistoria de destino, setada quando o técnico escolhe a rota.
+        if (destino && destino.situacao_id === 7) {
+          route = peekRoute(t.users_id);
+          // Busca/atualiza em segundo plano — o próprio routeService decide
+          // se precisa ir à rede (cache por destino/desvio/TTL) ou não.
+          void getRouteFor(
+            t.users_id,
+            { lng: t.longitude!, lat: t.latitude! },
+            { lng: destino.longitude, lat: destino.latitude }
+          );
+          if (route) {
+            // Só o caminho à frente: a posição do técnico é projetada na
+            // rota e o que ficou pra trás é descartado, como no Waze.
+            const { distAlongM } = projectOntoRoute(route, { lng: t.longitude!, lat: t.latitude! });
+            trechosParaLinha.push(routeAheadCoordinates(route, distAlongM));
+          }
+        }
+        specs.push({ usersId: t.users_id, lng: t.longitude!, lat: t.latitude!, route });
+      });
+
+      ensureRouteLayers(map);
+      updateRouteLineSource(map, trechosParaLinha);
+
       if (in3D) {
         ensureTechModelLayer(map, tech3DLayerRef);
-
-        const specs: TechEntrySpec[] = [];
-        const trechosParaLinha: [number, number][][] = [];
-        visible.forEach((t) => {
-          const destino = resolveDestino(t, data.vistorias);
-          let route: RouteResult | null = null;
-          // situacao_id 7 = SITUACAO_EM_DESLOCAMENTO (constants.ts, server-only —
-          // não dá pra importar aqui). O status_operacional do TÉCNICO
-          // (status_operacional==="em-operacao") não serve pra isso: ele vem de
-          // um dropdown legado (statusvistoriafield="Em campo") que fica ligado
-          // do momento da atribuição até a conclusão, sem distinguir "a
-          // caminho" de "chegou" — o sinal certo é a situação da PRÓPRIA
-          // vistoria de destino, setada quando o técnico escolhe a rota.
-          if (destino && destino.situacao_id === 7) {
-            route = peekRoute(t.users_id);
-            // Busca/atualiza em segundo plano — o próprio routeService decide
-            // se precisa ir à rede (cache por destino/desvio/TTL) ou não.
-            void getRouteFor(
-              t.users_id,
-              { lng: t.longitude!, lat: t.latitude! },
-              { lng: destino.longitude, lat: destino.latitude }
-            );
-            if (route) {
-              // Só o caminho à frente: a posição do técnico é projetada na
-              // rota e o que ficou pra trás é descartado, como no Waze.
-              const { distAlongM } = projectOntoRoute(route, { lng: t.longitude!, lat: t.latitude! });
-              trechosParaLinha.push(routeAheadCoordinates(route, distAlongM));
-            }
-          }
-          specs.push({ usersId: t.users_id, lng: t.longitude!, lat: t.latitude!, route });
-        });
         tech3DLayerRef.current?.syncEntries(specs);
-        updateRouteLineSource(map, trechosParaLinha);
       }
 
       const seen = new Set<number>();
