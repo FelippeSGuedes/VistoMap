@@ -1005,7 +1005,16 @@ export async function fetchVistoriasRealizadas(
     params.push(q, q, q);
   }
 
-  const limit = Math.min(Math.max(filtros.limit ?? 100, 1), 300);
+  // Teto de 300 escondia registros: a tela /painel/realizadas pede 2000 e
+  // filtra/conta no cliente, mas recebia no máximo 300 — com 311 vistorias,
+  // 11 ficavam invisíveis na lista, e os cards com filtro (que contam sobre o
+  // que foi carregado) divergiam dos cards sem filtro (que contam no banco).
+  // Foi assim que o problema apareceu: 311 sem filtro contra 300 filtrando
+  // por "Vistoriado".
+  //
+  // Este teto vai precisar virar paginação de verdade quando a base crescer;
+  // por ora o conjunto é pequeno e carregar tudo é o que a tela espera.
+  const limit = Math.min(Math.max(filtros.limit ?? 100, 1), 5000);
   const offset = Math.max(filtros.offset ?? 0, 0);
 
   const rows = await query<RealizadaRow>(
@@ -1111,13 +1120,12 @@ export interface VistoriasRealizadasStats {
  * de `status` em fetchVistoriasRealizadas): conta como revisita quem está com
  * a situação REVISITADO no GLPI **ou** com is_repeat marcado na aux.
  *
- * Existir em dois lugares com regras diferentes foi exatamente o bug: os
- * cards contavam só por is_repeat, então equipamentos com situação
- * "Revisitado" e is_repeat=0 eram somados como vistoriados e o card de
- * revisitados ficava zerado. Dava, por exemplo, 311 vistoriados / 0
- * revisitados onde o correto era 300 / 11 — e a diferença só aparecia ao
- * filtrar por "Vistoriado", porque aí a contagem passa a ser do cliente,
- * que usa a regra certa.
+ * Alinhamento preventivo, não correção de bug observado: os cards contavam só
+ * por is_repeat e a lista usa as duas condições. Hoje isso não muda número
+ * nenhum (a base tem zero registros em cada uma das duas condições), mas ter
+ * a mesma pergunta respondida de dois jeitos em lugares diferentes é o tipo
+ * de coisa que diverge silenciosamente assim que aparecer a primeira
+ * revisita de verdade.
  */
 const EH_REVISITA_SQL = `(f.\`${SITUACAO_COLUMN}\` = ${SITUACAO_REVISITADO} OR COALESCE(aux.is_repeat,0) = 1)`;
 
