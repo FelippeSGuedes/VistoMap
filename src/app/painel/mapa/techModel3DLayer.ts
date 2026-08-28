@@ -1055,6 +1055,25 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.depthRange(0, 1);
 
+    // LIMPA O DEPTH BUFFER antes de desenhar.
+    //
+    // Sem isto, o que fica rente ao chão some: o Mapbox escreve a
+    // profundidade do terreno usando a faixa comprimida DELE, e nós
+    // devolvemos a faixa cheia acima. Os valores deixam de ser comparáveis e
+    // o rasterizador descarta o que está colado no solo — na prática, o disco
+    // do marcador desaparecia por completo e as PERNAS da figura saíam
+    // apagadas, enquanto o tronco (mais alto) passava.
+    //
+    // Com o buffer limpo, nossos objetos disputam profundidade só entre si:
+    // continuam sólidos e corretamente auto-ocluídos, e ficam sempre visíveis
+    // por cima do mapa — que é o comportamento certo pra um marcador, que não
+    // deve sumir atrás de prédio extrudado.
+    //
+    // O custo: camadas desenhadas DEPOIS da nossa perdem a referência de
+    // profundidade do mapa. Na prática é inofensivo aqui, porque a camada 3D
+    // é a última adicionada (ver a ordem em switchLayer).
+    this.renderer.clearDepth();
+
     this.entries.forEach((e) => { e.object3d.visible = false; });
 
     const agora = performance.now();
