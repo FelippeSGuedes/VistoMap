@@ -144,71 +144,6 @@ const POSTES_PROX_LAYER = "vm-postes-prox-layer";
 const VISTORIAS_SRC = "vm-vistorias-src";
 const VISTORIAS_POINTS = "vm-vistorias-points";
 const HEATMAP_LAYER = "vm-heatmap";
-/**
- * Limpa o rastro de GPS antes de desenhar.
- *
- * O rastro cru de 8h vira um emaranhado: parado, o GPS continua reportando e
- * cada leitura cai alguns metros ao lado da anterior, entao a linha fica indo
- * e voltando sobre si mesma dezenas de vezes no mesmo lugar. Foi exatamente
- * por isso que ele era bloqueado no modo 3D — e ao liberar (porque o modo
- * Padrao saiu) o emaranhado apareceu.
- *
- * Duas regras resolvem: descarta ponto que mal saiu do lugar (ruido de
- * parado) e corta salto absurdo (leitura errada de GPS, que desenhava um
- * risco atravessando o mapa).
- */
-const RASTRO_MIN_M = 25;        // abaixo disso e ruido de quem esta parado
-const RASTRO_SALTO_MAX_M = 1500; // acima disso, entre leituras, nao e deslocamento real
-/** Ida-e-volta maior que isto, retornando ao ponto de partida, e pico de GPS. */
-const RASTRO_PICO_M = 120;
-
-function metrosEntre(a: [number, number], b: [number, number]): number {
-  const R = 6371000;
-  const rad = (d: number) => (d * Math.PI) / 180;
-  const dLat = rad(b[1] - a[1]);
-  const dLng = rad(b[0] - a[0]);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-function limparRastro(coords: [number, number][]): [number, number][] {
-  if (coords.length < 3) return coords;
-
-  // PASSO 1 — remove PICOS. Este e o que desfaz o emaranhado do print: as
-  // linhas irradiando centenas de metros e voltando ao mesmo ponto nao sao
-  // deslocamento, sao leitura ruim de GPS. A assinatura e inconfundivel: sai
-  // longe do ponto anterior E volta pra perto dele no ponto seguinte. Um
-  // deslocamento de verdade nao volta.
-  //
-  // Filtro de distancia sozinho nao pega isso: cada perna do pico tem
-  // centenas de metros e passa como se fosse movimento legitimo.
-  const semPico: [number, number][] = [coords[0]];
-  for (let i = 1; i < coords.length - 1; i++) {
-    const ant = semPico[semPico.length - 1];
-    const atual = coords[i];
-    const prox = coords[i + 1];
-    const ida = metrosEntre(ant, atual);
-    const volta = metrosEntre(atual, prox);
-    const direto = metrosEntre(ant, prox);
-    if (ida > RASTRO_PICO_M && volta > RASTRO_PICO_M && direto < ida * 0.4) continue;
-    semPico.push(atual);
-  }
-  semPico.push(coords[coords.length - 1]);
-
-  // PASSO 2 — remove o adensamento de quem esta parado e saltos absurdos.
-  const out: [number, number][] = [semPico[0]];
-  for (let i = 1; i < semPico.length; i++) {
-    const d = metrosEntre(out[out.length - 1], semPico[i]);
-    if (d < RASTRO_MIN_M || d > RASTRO_SALTO_MAX_M) continue;
-    out.push(semPico[i]);
-  }
-  return out.length >= 2 ? out : coords.slice(0, 2);
-}
-
-const TRAIL_SRC = "vm-trail-src";
-const TRAIL_LAYER = "vm-trail-layer";
 const BUILDINGS_LAYER = "vm-3d-buildings";
 
 // O antigo "Padrão" (key "dark") foi REMOVIDO: ele e o 3D já usavam o mesmo
@@ -785,7 +720,9 @@ export default function PainelMapaPage() {
   // Seleção
   const [selectedTec, setSelectedTec] = useState<PainelMapaTecnico | null>(null);
   const [selectedVistoria, setSelectedVistoriaRaw] = useState<PainelMapaVistoria | null>(null);
-  const [trailUsersId, setTrailUsersId] = useState<number | null>(null);
+  // Marca quem esta selecionado na lista lateral. Nasceu como "quem tem
+  // rastro ligado"; o rastro saiu, a selecao ficou.
+  const [selecionadoNaLista, setSelecionadoNaLista] = useState<number | null>(null);
 
   // Postes próximos / detalhe completo / Street View — a partir do pino selecionado
   const [postesProximos, setPostesProximos] = useState<Poste[]>([]);
@@ -891,67 +828,7 @@ export default function PainelMapaPage() {
     return () => window.removeEventListener("mousemove", handler);
   }, []);
 
-  /* ── trail ─────────────────────────────────────────────────────────────── */
 
-  const fetchTrail = useCallback(async (usersId: number) => {
-    const map = mapRef.current;
-    if (!map?.loaded()) return;
-    // O rastro de 8h ficava bloqueado no 3D porque o histórico de GPS bruto
-    // (cheio de zigue-zague) poluía a vista inclinada, e o modo Padrão dava
-    // conta dele. Com o Padrão removido, bloquear aqui seria simplesmente
-    // apagar o recurso do painel — então ele volta a funcionar.
-    try {
-      const r = await api.get<{ coords: [number, number][] }>(
-        `/painel/tecnico-trail?users_id=${usersId}&hours=8`
-      );
-      const geojson: GeoJSON.Feature<GeoJSON.LineString> = {
-        type: "Feature",
-        properties: {},
-        geometry: { type: "LineString", coordinates: limparRastro(r.data.coords) },
-      };
-      if (map.getSource(TRAIL_SRC)) {
-        (map.getSource(TRAIL_SRC) as GeoJSONSource).setData(geojson);
-      } else {
-        // lineMetrics:true é obrigatório pra "line-gradient" funcionar (usa
-        // ["line-progress"], que só existe com métricas de linha habilitadas)
-        // — sem isso, addLayer joga uma exceção toda vez que o rastro é
-        // buscado (a cada 30s enquanto um técnico está selecionado).
-        map.addSource(TRAIL_SRC, { type: "geojson", data: geojson, lineMetrics: true });
-        map.addLayer({
-          id: TRAIL_LAYER,
-          type: "line",
-          source: TRAIL_SRC,
-          layout: { "line-cap": "round", "line-join": "round" },
-          paint: {
-            // Mais fino e em VIOLETA: o teal era o mesmo da rota, do veiculo e
-            // do pin, entao o rastro competia com tudo. Cor propria separa
-            // "por onde ele passou" de "pra onde ele vai".
-            "line-width": 2,
-            "line-gradient": [
-              "interpolate", ["linear"], ["line-progress"],
-              0, "rgba(139,92,246,0.0)",
-              0.4, "rgba(139,92,246,0.30)",
-              1, "rgba(139,92,246,0.70)",
-            ],
-          },
-        }, VISTORIAS_POINTS);
-      }
-    } catch { /* trail é não-crítico */ }
-  }, []);
-
-  const removeTrail = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (map.getLayer(TRAIL_LAYER)) map.removeLayer(TRAIL_LAYER);
-    if (map.getSource(TRAIL_SRC)) map.removeSource(TRAIL_SRC);
-  }, []);
-
-  useEffect(() => {
-    if (!trailUsersId) { removeTrail(); return; }
-    fetchTrail(trailUsersId);
-    const id = window.setInterval(() => fetchTrail(trailUsersId), 30_000);
-    return () => { window.clearInterval(id); removeTrail(); };
-  }, [trailUsersId, fetchTrail, removeTrail]);
 
   /* ── init map ───────────────────────────────────────────────────────────── */
 
@@ -1098,7 +975,7 @@ export default function PainelMapaPage() {
             el.addEventListener("click", () => {
               setSelectedTec(null);
               setSelectedVistoria(null);
-              setTrailUsersId(t.users_id);
+              setSelecionadoNaLista(t.users_id);
             });
             const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
               .setLngLat([t.longitude, t.latitude])
@@ -1148,7 +1025,6 @@ export default function PainelMapaPage() {
         map.once("style.load", () => {
           map.setProjection("mercator"); // setStyle reseta pra globe (default do estilo novo)
           if (lastDataRef.current) ensureVistoriaLayers(map, vistoriasFiltradasRef.current);
-          if (trailUsersId) fetchTrail(trailUsersId);
           add3DBuildings(map);
           ensureRouteLayers(map);
           ensureTechModelLayer(map, tech3DLayerRef);
@@ -1174,11 +1050,9 @@ export default function PainelMapaPage() {
       // Idem pra rota: setStyle descarta todas as layers, e a rota vale em
       // qualquer modo (o próximo poll repopula os dados da linha).
       ensureRouteLayers(map);
-      // Re-adiciona trail se houver
-      if (trailUsersId) fetchTrail(trailUsersId);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLayer, trailUsersId, fetchTrail]);
+  }, [activeLayer]);
 
   /* ── GL layer helpers ───────────────────────────────────────────────────── */
 
@@ -1435,7 +1309,7 @@ export default function PainelMapaPage() {
           if (!tec) return;
           setSelectedTec(tec);
           setSelectedVistoria(null);
-          setTrailUsersId(usersId);
+          setSelecionadoNaLista(usersId);
         });
         tech3DLayerRef.current?.syncEntries(specs);
       }
@@ -1457,7 +1331,7 @@ export default function PainelMapaPage() {
         el.addEventListener("click", () => {
           setSelectedTec(t);
           setSelectedVistoria(null);
-          setTrailUsersId(t.users_id);
+          setSelecionadoNaLista(t.users_id);
         });
         el.addEventListener("mouseenter", () => {
           setHoveredPos({ ...cursorRef.current });
@@ -1719,7 +1593,7 @@ export default function PainelMapaPage() {
                   const isOnl = m.bucket === "online";
                   const isInstalador = m.papel === "instalador";
                   const selected = isInstalador
-                    ? trailUsersId === m.instalador?.users_id
+                    ? selecionadoNaLista === m.instalador?.users_id
                     : selectedTec?.users_id === m.tecnico?.users_id;
                   const cor = isInstalador ? "#7C3AED" : "#00875F";
                   return (
@@ -1730,11 +1604,11 @@ export default function PainelMapaPage() {
                         if (isInstalador && m.instalador) {
                           setSelectedTec(null);
                           setSelectedVistoria(null);
-                          setTrailUsersId(m.instalador.users_id);
+                          setSelecionadoNaLista(m.instalador.users_id);
                         } else if (m.tecnico) {
                           setSelectedTec(m.tecnico);
                           setSelectedVistoria(null);
-                          setTrailUsersId(m.tecnico.users_id);
+                          setSelecionadoNaLista(m.tecnico.users_id);
                         }
                         if (m.latitude != null && m.longitude != null) {
                           mapRef.current?.flyTo({ center: [m.longitude, m.latitude], zoom: Math.max(14, mapRef.current.getZoom()), duration: 700 });
@@ -2174,7 +2048,7 @@ export default function PainelMapaPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setSelectedTec(null); setTrailUsersId(null); }}
+                  onClick={() => { setSelectedTec(null); setSelecionadoNaLista(null); }}
                   className="flex h-6 w-6 items-center justify-center rounded-lg"
                   style={{ color: "var(--vm-faint)" }}
                 >
@@ -2220,11 +2094,6 @@ export default function PainelMapaPage() {
                 ))}
               </div>
 
-              {trailUsersId === selectedTec.users_id && (
-                <p className="mt-2 text-[9.5px] font-medium" style={{ color: "#00B388" }}>
-                  ● rastro 8h ativo (atualiza 30s)
-                </p>
-              )}
             </div>
           </motion.div>
         )}
