@@ -63,8 +63,11 @@ interface Tecnico {
 
 // 7 = Em Deslocamento. Faltava aqui: cards nesse estado apareciam como "?"
 // cinza, sem rótulo nem cor, porque a situação existe no GLPI mas nunca tinha
-// sido mapeada nesta tela. Teal é o mesmo do mapa 3D — o analista vê a mesma
-// cor pro mesmo estado nas duas telas.
+// sido mapeada nesta tela.
+//
+// Rosa por definição do produto. Note que o MAPA usa outra convenção (lá rosa
+// é Atribuído e Em Deslocamento é teal) — as duas telas têm paletas próprias
+// de propósito, então não tente "alinhar" uma pela outra sem perguntar.
 const SITUACAO_LABEL: Record<number, string> = {
   0: "Indefinido", 1: "A Vistoriar", 2: "Em Vistoria", 3: "Vistoriado",
   4: "Ag. Revisita", 5: "Em Revisita", 6: "Revisitado",
@@ -73,7 +76,7 @@ const SITUACAO_LABEL: Record<number, string> = {
 const SITUACAO_COLOR: Record<number, string> = {
   0: "#9AA7B4", 1: "#F59E0B", 2: "#3B82F6", 3: "#00B388",
   4: "#F97316", 5: "#0EA5E9", 6: "#10B981",
-  7: "#00D4A0", 8: "#DC2626",
+  7: "#EC4899", 8: "#DC2626",
 };
 
 /**
