@@ -104,8 +104,8 @@ const PAINEL_ONLY_ASSETS = [
   "pndp.png",
   "dsccl.png",
   "dscclbl.png",
-  // Modelo 3D do tecnico parado no mapa do painel (2MB).
-  "person.glb",
+  // Modelo 3D do tecnico parado no mapa do painel (8.5MB).
+  "person1.glb",
 ];
 
 function copyOutToWww() {

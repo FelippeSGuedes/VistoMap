@@ -314,7 +314,7 @@ function preparePersonTemplate(root: THREE.Object3D): THREE.Object3D {
     const f = new THREE.Vector3();
     new THREE.Box3().setFromObject(root).getSize(f);
     // eslint-disable-next-line no-console
-    console.log(`[vm-3d] person.glb pronto — ${f.x.toFixed(1)} x ${f.y.toFixed(1)} x ${f.z.toFixed(1)} m`);
+    console.log(`[vm-3d] person1.glb pronto — ${f.x.toFixed(1)} x ${f.y.toFixed(1)} x ${f.z.toFixed(1)} m`);
   }
   return root;
 }
@@ -323,7 +323,7 @@ function loadPersonTemplateOnce(): Promise<THREE.Object3D> {
   if (sharedPersonPromise) return sharedPersonPromise;
   sharedPersonPromise = new Promise<THREE.Object3D>((resolve, reject) => {
     new GLTFLoader().load(
-      asset("/person.glb"),
+      asset("/person1.glb"),
       (gltf) => {
         sharedPersonTemplate = preparePersonTemplate(gltf.scene);
         resolve(sharedPersonTemplate);
@@ -429,11 +429,11 @@ export interface TechEntrySpec {
 // como funcionar) e cor aplicada por código, que é o que permite a figura
 // acompanhar o status do técnico em vez de ter cor fixa na textura.
 // ---------------------------------------------------------------------------
-// Altura do marcador. Capacete e largo (proporcao ~1.9 : 1), entao altura
-// modesta ja da uma silhueta larga o suficiente pra ler no mapa.
-const PERSON_ALTURA_M = 1.4;
-/** Amarelo de segurança — o que faz o objeto ser lido como "técnico". */
-const PERSON_COR = 0xf5b301;
+// Altura do marcador. person1.glb e uma FIGURA EM PE (proporcao 1 : 0.39 :
+// 0.36 no arquivo), diferente do capacete anterior que era mais largo que
+// alto. Um pouco acima do natural pra ter presenca ao lado da picape de 5 m
+// sem virar um gigante.
+const PERSON_ALTURA_M = 2.2;
 const USE_PERSON_MODEL = true;
 
 const PIN_BASE_R = 3.4;       // raio da plataforma hexagonal
@@ -676,7 +676,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         .catch((err) => {
           // Fica na cápsula simples — não quebra a tela.
           // eslint-disable-next-line no-console
-          console.error("[vm-3d] falha ao carregar person.glb, seguindo com o marcador simples", err);
+          console.error("[vm-3d] falha ao carregar person1.glb, seguindo com o marcador simples", err);
         });
     }
   }
@@ -770,17 +770,27 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         if (!malha.isMesh) return;
         // Material por técnico: é o que faz a figura acompanhar a cor do
         // status. O GLB veio sem material nenhum, então nada se perde.
-        // Capacete em AMARELO DE SEGURANÇA, não na cor do status.
+        // TEXTURA PRESERVADA. Diferente do modelo anterior (que vinha sem
+        // material nenhum e por isso era pintado), person1.glb traz basecolor
+        // e mapas próprios — sobrescrever a cor apagaria o modelo inteiro.
         //
-        // Pintado de teal/azul/âmbar ele virava uma forma abstrata colorida —
-        // ninguém lia "técnico". Amarelo é o que torna o objeto reconhecível
-        // na hora. O status não se perde: ele vive no disco, no pulso e no
-        // pontinho da etiqueta com o nome.
-        malha.material = new THREE.MeshStandardMaterial({
-          color: PERSON_COR,
-          metalness: 0,
-          roughness: 0.6,
-        });
+        // Só o metal é zerado: metalness alto sem environment map renderiza
+        // PRETO, e foi isso que custou várias rodadas com a picape. Com
+        // metalness 0 a superfície é dielétrica e não depende de reflexo pra
+        // ter cor. Os mapas de metal/rugosidade saem junto, senão a textura
+        // reintroduz metal pixel a pixel e o escalar não resolve.
+        //
+        // O status não se perde por não estar na figura: vive no disco, no
+        // pulso e no pontinho da etiqueta com o nome.
+        const m = malha.material as THREE.MeshStandardMaterial;
+        if (m && m.isMeshStandardMaterial) {
+          m.metalness = 0;
+          m.metalnessMap = null;
+          m.roughness = 0.7;
+          m.roughnessMap = null;
+          m.envMapIntensity = 0;
+          m.needsUpdate = true;
+        }
       });
     } else {
       figura = new THREE.Mesh(
