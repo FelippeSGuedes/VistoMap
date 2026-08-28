@@ -181,18 +181,66 @@ function distanciaM(a: FilaItem, b: FilaItem): number {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-/** Rua predominante do bloco — rótulo que o analista reconhece. */
+/**
+ * Rua predominante do bloco — quando existe.
+ *
+ * O endereço só é preenchido DURANTE a vistoria (o app detecta e grava no
+ * formulário). Pendentes são, por definição, as que ainda não foram
+ * vistoriadas: nelas o campo vem da importação inicial e com frequência é
+ * lixo — "0", vazio, ou só um número. Por isso o valor é validado antes de
+ * virar rótulo, senão o bloco aparece como "0 e redondezas".
+ */
 function ruaPredominante(items: FilaItem[]): string {
   const cont = new Map<string, number>();
   for (const i of items) {
     // Endereço vem como "Rua X,numero,UF,CEP" — só o primeiro trecho serve.
     const rua = (i.endereco ?? "").split(",")[0].trim();
-    if (rua) cont.set(rua, (cont.get(rua) ?? 0) + 1);
+    // Descarta o que não é nome de rua: vazio, só dígitos/pontuação, ou
+    // curto demais pra identificar qualquer coisa.
+    if (rua.length < 4 || !/[a-zà-ú]{3}/i.test(rua)) continue;
+    cont.set(rua, (cont.get(rua) ?? 0) + 1);
   }
   let melhor = "";
   let max = 0;
   for (const [rua, n] of cont) if (n > max) { melhor = rua; max = n; }
   return melhor;
+}
+
+/**
+ * Rótulo geográfico de recurso: em que parte do município o bloco está.
+ *
+ * Diferente do endereço, a coordenada SEMPRE existe nas pendências, então
+ * este rótulo nunca falha. "Região nordeste · 28 vistorias" diz ao analista
+ * que conhece a cidade exatamente o que ele precisa saber pra decidir quem
+ * atende.
+ */
+function regiaoNoMunicipio(
+  bloco: FilaItem[],
+  centroMunicipio: { lat: number; lng: number },
+  raioMunicipioM: number
+): string {
+  const lat = bloco.reduce((s, i) => s + (i.latitude ?? 0), 0) / bloco.length;
+  const lng = bloco.reduce((s, i) => s + (i.longitude ?? 0), 0) / bloco.length;
+
+  const dLat = lat - centroMunicipio.lat;
+  const dLng = lng - centroMunicipio.lng;
+  const dist = Math.hypot(dLat, dLng);
+
+  // Perto do centro geográfico não faz sentido dizer "norte" ou "sul" — o
+  // limiar é relativo ao tamanho do município, não um número fixo.
+  const limiarCentro = raioMunicipioM > 0 ? 0.25 : 0;
+  if (raioMunicipioM > 0) {
+    const distRel = dist / (raioMunicipioM / 111320);
+    if (distRel < limiarCentro) return "Região central";
+  }
+
+  const ang = (Math.atan2(dLat, dLng) * 180) / Math.PI; // 0 = leste, cresce anti-horário
+  const octantes = [
+    "Região leste", "Região nordeste", "Região norte", "Região noroeste",
+    "Região oeste", "Região sudoeste", "Região sul", "Região sudeste",
+  ];
+  const idx = Math.round(((ang + 360) % 360) / 45) % 8;
+  return octantes[idx];
 }
 
 /**
@@ -204,6 +252,16 @@ function ruaPredominante(items: FilaItem[]): string {
 function agruparPorProximidade(items: FilaItem[], alvo: number): BlocoProximidade[] {
   const comCoord = items.filter((i) => i.latitude != null && i.longitude != null);
   const semCoord = items.filter((i) => i.latitude == null || i.longitude == null);
+
+  // Centro e raio do município, pra nomear os blocos por região.
+  const centroMun = {
+    lat: comCoord.reduce((s, i) => s + (i.latitude ?? 0), 0) / (comCoord.length || 1),
+    lng: comCoord.reduce((s, i) => s + (i.longitude ?? 0), 0) / (comCoord.length || 1),
+  };
+  const centroItem = { latitude: centroMun.lat, longitude: centroMun.lng } as FilaItem;
+  const raioMun = comCoord.length
+    ? Math.max(...comCoord.map((i) => distanciaM(centroItem, i)))
+    : 0;
 
   const livres = new Set(comCoord);
   const blocos: BlocoProximidade[] = [];
@@ -232,10 +290,11 @@ function agruparPorProximidade(items: FilaItem[], alvo: number): BlocoProximidad
     const centro = { latitude: latC, longitude: lngC } as FilaItem;
     const raioM = Math.round(Math.max(...bloco.map((i) => distanciaM(centro, i))));
 
+    // Rua quando o endereço presta; senão a região, que sempre existe.
     const rua = ruaPredominante(bloco);
     blocos.push({
       id: `b${blocos.length}`,
-      rotulo: rua ? `${rua} e redondezas` : `Bloco ${blocos.length + 1}`,
+      rotulo: rua ? `${rua} e redondezas` : regiaoNoMunicipio(bloco, centroMun, raioMun),
       items: bloco,
       raioM,
       semCoordenada: false,
