@@ -272,6 +272,73 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
   return root;
 }
 
+// ---------------------------------------------------------------------------
+// Template do person.glb — mesmo padrão do carro: módulo, não instância, pra
+// não rebaixar/reprocessar a cada troca de estilo de mapa.
+// ---------------------------------------------------------------------------
+let sharedPersonTemplate: THREE.Object3D | null = null;
+let sharedPersonPromise: Promise<THREE.Object3D> | null = null;
+
+function preparePersonTemplate(root: THREE.Object3D): THREE.Object3D {
+  // ORIENTAÇÃO POR MEDIÇÃO, não por convenção. O glTF manda Y pra cima, mas
+  // este arquivo veio do Meshy com a maior dimensão em Z (1.90 contra 1.02 em
+  // Y) — ou seja, já está Z-up, que por acaso é o eixo vertical do embedding
+  // do Mapbox. Aplicar a rotação padrão aqui deitaria a figura. Como não dá
+  // pra ver o modelo daqui, o eixo mais longo é tratado como altura: acerta
+  // nos dois casos e evita a rodada de tentativa e erro que a picape custou.
+  const bruto = new THREE.Box3().setFromObject(root);
+  const dim = new THREE.Vector3();
+  bruto.getSize(dim);
+  if (dim.y > dim.z) root.rotation.x = Math.PI / 2; // era Y-up de verdade
+
+  root.updateMatrixWorld(true);
+  const cx = new THREE.Box3().setFromObject(root);
+  const tam = new THREE.Vector3();
+  cx.getSize(tam);
+  root.scale.setScalar(PERSON_ALTURA_M / (tam.z || 1));
+
+  // Assenta a base no chão: o modelo vem centrado na origem, então metade
+  // dele ficaria enterrada abaixo do plano do mapa.
+  root.updateMatrixWorld(true);
+  const cx2 = new THREE.Box3().setFromObject(root);
+  root.position.z -= cx2.min.z;
+
+  root.traverse((o) => {
+    const malha = o as THREE.Mesh;
+    if (!malha.isMesh) return;
+    // Sem NORMAL no arquivo, a iluminação não tem o que calcular e a figura
+    // sai chapada/preta. Calcular aqui é barato e roda uma vez só.
+    if (!malha.geometry.getAttribute("normal")) malha.geometry.computeVertexNormals();
+  });
+
+  if (DEBUG_LOG) {
+    const f = new THREE.Vector3();
+    new THREE.Box3().setFromObject(root).getSize(f);
+    // eslint-disable-next-line no-console
+    console.log(`[vm-3d] person.glb pronto — ${f.x.toFixed(1)} x ${f.y.toFixed(1)} x ${f.z.toFixed(1)} m`);
+  }
+  return root;
+}
+
+function loadPersonTemplateOnce(): Promise<THREE.Object3D> {
+  if (sharedPersonPromise) return sharedPersonPromise;
+  sharedPersonPromise = new Promise<THREE.Object3D>((resolve, reject) => {
+    new GLTFLoader().load(
+      asset("/person.glb"),
+      (gltf) => {
+        sharedPersonTemplate = preparePersonTemplate(gltf.scene);
+        resolve(sharedPersonTemplate);
+      },
+      undefined,
+      (err) => {
+        sharedPersonPromise = null;
+        reject(err);
+      }
+    );
+  });
+  return sharedPersonPromise;
+}
+
 function loadCarTemplateOnce(): Promise<THREE.Object3D> {
   if (sharedCarPromise) return sharedCarPromise;
   sharedCarPromise = new Promise<THREE.Object3D>((resolve, reject) => {
@@ -349,6 +416,23 @@ export interface TechEntrySpec {
 //
 // Tudo na cor do status operacional, que o painel já define (statusColor).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Modelo do técnico parado (person.glb).
+//
+// Substitui o "farol de operação" anterior (plataforma hexagonal + coluna de
+// luz + núcleo girando + anel orbital): cinco elementos animados num marcador
+// viravam ficção científica num painel operacional. Aqui a figura carrega o
+// significado e o cenário em volta é mínimo — um disco no chão pra ancorar e
+// um pulso discreto pra localizar de longe.
+//
+// O GLB vem SEM material e SEM NORMAIS (só POSITION). Ambos são resolvidos no
+// carregamento: normais calculadas na hora (sem elas a iluminação não tem
+// como funcionar) e cor aplicada por código, que é o que permite a figura
+// acompanhar o status do técnico em vez de ter cor fixa na textura.
+// ---------------------------------------------------------------------------
+const PERSON_ALTURA_M = 2.4;
+const USE_PERSON_MODEL = true;
+
 const PIN_BASE_R = 3.4;       // raio da plataforma hexagonal
 const PIN_COLUNA_H = 9;       // altura da coluna de luz
 const PIN_NUCLEO_Z = 10.6;    // altura do núcleo flutuante
@@ -573,6 +657,25 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
           console.error("[vm-3d] falha ao carregar car.glb, seguindo com o carrinho geométrico", err);
         });
     }
+
+    if (USE_PERSON_MODEL && !sharedPersonTemplate) {
+      loadPersonTemplateOnce()
+        .then(() => {
+          // Troca quem já estava com o marcador provisório.
+          this.entries.forEach((e) => {
+            if (e.kind !== "car") {
+              e.visualIsCar = true; // força ensureVisual a reconstruir o pin
+              this.ensureVisual(e);
+            }
+          });
+          this.map?.triggerRepaint();
+        })
+        .catch((err) => {
+          // Fica na cápsula simples — não quebra a tela.
+          // eslint-disable-next-line no-console
+          console.error("[vm-3d] falha ao carregar person.glb, seguindo com o marcador simples", err);
+        });
+    }
   }
 
   private buildCarModel(): { object3d: THREE.Object3D; wheels: THREE.Mesh[] } {
@@ -631,80 +734,53 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   } {
     const group = new THREE.Group();
     const cor = new THREE.Color(corHex);
-    const claro = cor.clone().lerp(new THREE.Color(0xffffff), 0.45);
 
-    // Plataforma hexagonal. O hexágono é uma escolha de vocabulário: remete a
-    // célula/rede, que é o domínio do equipamento vistoriado, e dá um
-    // silhueta reconhecível de cima — diferente de mais um círculo genérico.
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(PIN_BASE_R, PIN_BASE_R * 1.12, 0.55, 6),
-      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.92 })
+    // Disco no chão: ancora a figura num ponto exato. Sem ele o modelo
+    // "flutua" ambíguo quando o mapa está inclinado.
+    const disco = new THREE.Mesh(
+      new THREE.CircleGeometry(1.5, 28),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.9 })
     );
-    base.rotation.x = Math.PI / 2; // cilindro nasce no eixo Y; aqui "cima" é Z
-    base.position.z = 0.28;
-    group.add(base);
+    disco.position.z = 0.05;
+    group.add(disco);
 
-    const aro = new THREE.Mesh(
-      new THREE.RingGeometry(PIN_BASE_R * 1.2, PIN_BASE_R * 1.34, 6),
-      new THREE.MeshBasicMaterial({ color: claro, transparent: true, opacity: 0.75, depthWrite: false })
+    // UM pulso, discreto — o suficiente pra localizar de longe sem virar
+    // enfeite. A versão anterior tinha dois pulsos, coluna de luz, núcleo
+    // girando e anel orbital: virou ruído.
+    const pulso = new THREE.Mesh(
+      new THREE.RingGeometry(1.35, 1.5, 36),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.5, depthWrite: false })
     );
-    aro.position.z = 0.06;
-    group.add(aro);
+    pulso.position.z = 0.04;
+    group.add(pulso);
 
-    // DOIS pulsos defasados em meio ciclo: sempre há um anel se expandindo,
-    // sem o "vazio" entre repetições que um pulso só deixa.
-    const pulsos = [0, 1].map(() => {
-      const p = new THREE.Mesh(
-        new THREE.RingGeometry(PIN_BASE_R * 0.9, PIN_BASE_R, 44),
-        new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.5, depthWrite: false })
+    // A figura. Enquanto o GLB não chega, um marcador simples segura o lugar
+    // — não some nem pisca quando o modelo termina de carregar.
+    let figura: THREE.Object3D;
+    if (sharedPersonTemplate) {
+      figura = sharedPersonTemplate.clone(true);
+      figura.traverse((o) => {
+        const malha = o as THREE.Mesh;
+        if (!malha.isMesh) return;
+        // Material por técnico: é o que faz a figura acompanhar a cor do
+        // status. O GLB veio sem material nenhum, então nada se perde.
+        malha.material = new THREE.MeshStandardMaterial({
+          color: cor,
+          metalness: 0,
+          roughness: 0.75,
+        });
+      });
+    } else {
+      figura = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.55, 1.1, 4, 12),
+        new THREE.MeshStandardMaterial({ color: cor, metalness: 0, roughness: 0.8 })
       );
-      p.position.z = 0.05;
-      group.add(p);
-      return p;
-    });
+      figura.rotation.x = Math.PI / 2;
+      figura.position.z = 1.2;
+    }
+    group.add(figura);
 
-    // Coluna de luz: cone invertido (largo embaixo, estreito em cima) com
-    // mistura ADITIVA, que soma luz em vez de cobrir — é o que dá aparência
-    // de facho em vez de "cilindro de plástico". Resolve a leitura no mapa
-    // inclinado: liga a cabeça flutuante ao ponto exato do chão.
-    const coluna = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.75, 2.3, PIN_COLUNA_H, 18, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: claro,
-        transparent: true,
-        opacity: 0.22,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
-    );
-    coluna.rotation.x = Math.PI / 2;
-    coluna.position.z = PIN_COLUNA_H / 2 + 0.5;
-    group.add(coluna);
-
-    // Núcleo octaédrico: facetas planas pegam a luz de forma diferente
-    // conforme gira, então ele "cintila" sozinho sem precisar de shader.
-    const nucleo = new THREE.Mesh(
-      new THREE.OctahedronGeometry(PIN_NUCLEO_R, 0),
-      new THREE.MeshBasicMaterial({ color: claro })
-    );
-    nucleo.position.z = PIN_NUCLEO_Z;
-    group.add(nucleo);
-
-    // Anel orbital inclinado — o elemento que faz o marcador parecer ATIVO
-    // e não apenas desenhado. A inclinação evita que ele suma quando visto
-    // de cima, que é o que aconteceria com um anel deitado.
-    const orbita = new THREE.Group();
-    const aroOrbital = new THREE.Mesh(
-      new THREE.TorusGeometry(PIN_ORBITA_R, 0.14, 8, 40),
-      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.9, depthWrite: false })
-    );
-    orbita.add(aroOrbital);
-    orbita.rotation.x = 1.15;
-    orbita.position.z = PIN_NUCLEO_Z;
-    group.add(orbita);
-
-    return { object3d: group, pulsos, nucleo, orbita, coluna };
+    return { object3d: group, pulsos: [pulso], nucleo: figura, orbita: group, coluna: pulso };
   }
 
   /** Garante que o filho visual da entry bate com o kind atual (troca só quando muda). */
@@ -1021,32 +1097,19 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         // Pulsos defasados em meio ciclo: some quando expande, e a opacidade
         // cai com o quadrado do avanço pra sumir rápido no fim e não deixar
         // um anel largo e pálido pairando.
-        e.pinPulsos?.forEach((p, i) => {
-          const t = (((agora / PIN_PULSO_MS) + i * 0.5) % 1);
-          const s = 0.75 + t * 2.1;
-          p.scale.set(s, s, 1);
-          (p.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - t) * (1 - t);
+        // Um pulso só, saindo do disco e sumindo. Discreto de proposito:
+        // a figura e que informa, o pulso so ajuda a localizar de longe.
+        e.pinPulsos?.forEach((pl) => {
+          const t = (agora / PIN_PULSO_MS) % 1;
+          const sc = 1 + t * 2.4;
+          pl.scale.set(sc, sc, 1);
+          (pl.material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - t) * (1 - t);
         });
 
-        if (e.pinNucleo) {
-          const b = Math.sin((agora / PIN_BOB_MS) * Math.PI * 2);
-          e.pinNucleo.position.z = PIN_NUCLEO_Z + b * 0.8;
-          // Gira nos dois eixos: só em Z, um octaedro visto de cima parece
-          // parado, porque a silhueta se repete a cada 90°.
-          e.pinNucleo.rotation.z = (agora / 4200) % (Math.PI * 2);
-          e.pinNucleo.rotation.x = (agora / 7300) % (Math.PI * 2);
-        }
-        if (e.pinOrbita) {
-          const b = Math.sin((agora / PIN_BOB_MS) * Math.PI * 2);
-          e.pinOrbita.position.z = PIN_NUCLEO_Z + b * 0.8; // acompanha o núcleo
-          e.pinOrbita.rotation.z = -(agora / 3100) % (Math.PI * 2);
-        }
-        if (e.pinColuna) {
-          // Respiro sutil na coluna, defasado do núcleo pra não pulsar tudo
-          // junto (o que ficaria mecânico).
-          const r = 0.18 + 0.10 * (0.5 + 0.5 * Math.sin((agora / 3400) * Math.PI * 2));
-          (e.pinColuna.material as THREE.MeshBasicMaterial).opacity = r;
-        }
+        // A figura fica PARADA de proposito — ela representa alguem parado.
+        // Girar ou flutuar o modelo daria a leitura errada, alem de ter sido
+        // exatamente o excesso que fez a versao anterior parecer enfeite.
+
         anyTweenActive = true; // animação contínua do pin
 
         const ll = new mapboxgl.MercatorCoordinate(x, y, z).toLngLat();
