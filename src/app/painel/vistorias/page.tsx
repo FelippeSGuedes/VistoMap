@@ -152,6 +152,110 @@ function ordenarItens(items: FilaItem[], ordem: OrdemItem, asc: boolean): FilaIt
   });
 }
 
+/* ── Blocos por proximidade ───────────────────────────────────────────────
+   Ordem alfabética de equipamento não tem relação nenhuma com geografia:
+   selecionar 30 itens rolando a lista entrega ao técnico 30 pontos espalhados
+   pela cidade, e ele ziguezagueia o dia inteiro. O lote fica certo no número
+   e errado no formato.
+
+   Aqui as pendências são agrupadas por PROXIMIDADE ENTRE ELAS — não em
+   relação ao técnico, cuja posição é circunstancial (pode estar em casa). O
+   analista atribui um bloco inteiro e o técnico recebe uma rota coerente. */
+
+interface BlocoProximidade {
+  id: string;
+  rotulo: string;
+  items: FilaItem[];
+  raioM: number;
+  semCoordenada: boolean;
+}
+
+function distanciaM(a: FilaItem, b: FilaItem): number {
+  const R = 6371000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad((b.latitude ?? 0) - (a.latitude ?? 0));
+  const dLng = rad((b.longitude ?? 0) - (a.longitude ?? 0));
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.latitude ?? 0)) * Math.cos(rad(b.latitude ?? 0)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+/** Rua predominante do bloco — rótulo que o analista reconhece. */
+function ruaPredominante(items: FilaItem[]): string {
+  const cont = new Map<string, number>();
+  for (const i of items) {
+    // Endereço vem como "Rua X,numero,UF,CEP" — só o primeiro trecho serve.
+    const rua = (i.endereco ?? "").split(",")[0].trim();
+    if (rua) cont.set(rua, (cont.get(rua) ?? 0) + 1);
+  }
+  let melhor = "";
+  let max = 0;
+  for (const [rua, n] of cont) if (n > max) { melhor = rua; max = n; }
+  return melhor;
+}
+
+/**
+ * Agrupamento guloso por vizinho mais próximo: parte de um item e vai puxando
+ * o mais perto ainda livre até fechar o tamanho alvo. Simples e determinístico
+ * — não precisa de biblioteca de clusterização, e com algumas centenas de
+ * itens por município o custo é irrelevante.
+ */
+function agruparPorProximidade(items: FilaItem[], alvo: number): BlocoProximidade[] {
+  const comCoord = items.filter((i) => i.latitude != null && i.longitude != null);
+  const semCoord = items.filter((i) => i.latitude == null || i.longitude == null);
+
+  const livres = new Set(comCoord);
+  const blocos: BlocoProximidade[] = [];
+
+  while (livres.size > 0) {
+    const semente = livres.values().next().value as FilaItem;
+    livres.delete(semente);
+    const bloco: FilaItem[] = [semente];
+
+    while (bloco.length < alvo && livres.size > 0) {
+      let maisPerto: FilaItem | null = null;
+      let menor = Infinity;
+      for (const cand of livres) {
+        // Distância ao item mais recente do bloco: encadeia por vizinhança,
+        // que é o que produz um traçado compacto de rota.
+        const d = distanciaM(bloco[bloco.length - 1], cand);
+        if (d < menor) { menor = d; maisPerto = cand; }
+      }
+      if (!maisPerto) break;
+      livres.delete(maisPerto);
+      bloco.push(maisPerto);
+    }
+
+    const latC = bloco.reduce((s, i) => s + (i.latitude ?? 0), 0) / bloco.length;
+    const lngC = bloco.reduce((s, i) => s + (i.longitude ?? 0), 0) / bloco.length;
+    const centro = { latitude: latC, longitude: lngC } as FilaItem;
+    const raioM = Math.round(Math.max(...bloco.map((i) => distanciaM(centro, i))));
+
+    const rua = ruaPredominante(bloco);
+    blocos.push({
+      id: `b${blocos.length}`,
+      rotulo: rua ? `${rua} e redondezas` : `Bloco ${blocos.length + 1}`,
+      items: bloco,
+      raioM,
+      semCoordenada: false,
+    });
+  }
+
+  if (semCoord.length > 0) {
+    // Sem coordenada não dá pra agrupar por distância — vão pro fim, num bloco
+    // próprio e rotulado como tal, em vez de sumir da tela.
+    blocos.push({
+      id: "sem-coord",
+      rotulo: "Sem localização registrada",
+      items: semCoord,
+      raioM: 0,
+      semCoordenada: true,
+    });
+  }
+  return blocos;
+}
+
 function ordenarGrupos(grupos: GrupoMunicipio[], ordem: OrdemGrupo, asc: boolean): GrupoMunicipio[] {
   const sinal = asc ? 1 : -1;
   return [...grupos].sort((a, b) => {
@@ -459,6 +563,10 @@ function MunicipioDetailDrawer({
   const [visivel, setVisivel] = useState(CHUNK);
   const [ordem, setOrdem] = useState<OrdemItem>("equipamento");
   const [asc, setAsc] = useState(true);
+  // Agrupado é o padrão: é o modo que produz lote com rota coerente.
+  const [porProximidade, setPorProximidade] = useState(true);
+  const [tamanhoBloco, setTamanhoBloco] = useState(30);
+  const [blocoAberto, setBlocoAberto] = useState<string | null>(null);
 
   // Reseta busca/paginação ao trocar de município
   useEffect(() => {
@@ -485,6 +593,11 @@ function MunicipioDetailDrawer({
   // inteiro. Antes marcava o município todo mesmo com busca ativa, o que
   // tornava a busca inútil pra seleção em lote — justamente o caso em que ela
   // mais serve ("filtra CAM-P-A-04, marca esses").
+  const blocos = useMemo(
+    () => (porProximidade ? agruparPorProximidade(filtrados, tamanhoBloco) : []),
+    [porProximidade, filtrados, tamanhoBloco]
+  );
+
   const ids = filtrados.map((i) => i.id);
   const checkedCount = ids.filter((id) => selecionados.has(id)).length;
   const allChecked = checkedCount === ids.length && ids.length > 0;
@@ -607,6 +720,42 @@ function MunicipioDetailDrawer({
                   ordenação, "os 25 mais antigos" ou "os 50 primeiros do
                   município" viram dois cliques. */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPorProximidade((v) => !v)}
+                  className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-bold transition hover:brightness-95"
+                  style={{
+                    color: porProximidade ? "#fff" : C.inkSoft,
+                    background: porProximidade ? C.brand : "transparent",
+                    border: `1px solid ${porProximidade ? C.brand : C.line}`,
+                  }}
+                >
+                  {porProximidade ? "Por proximidade" : "Lista simples"}
+                </button>
+                {porProximidade && (
+                  <>
+                    <span className="text-[11px] font-semibold" style={{ color: C.faint }}>Blocos de</span>
+                    {[15, 30, 50].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setTamanhoBloco(n)}
+                        className="h-7 rounded-lg px-2 text-[11px] font-semibold transition hover:bg-black/5"
+                        style={{
+                          color: tamanhoBloco === n ? C.brandDeep : C.inkSoft,
+                          border: `1px solid ${tamanhoBloco === n ? C.brandLine : C.line}`,
+                          background: tamanhoBloco === n ? "rgba(0,179,136,0.08)" : "transparent",
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {!porProximidade && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold" style={{ color: C.faint }}>Ordenar</span>
                 {(Object.keys(ORDEM_ITEM_LABEL) as OrdemItem[]).map((k) => (
                   <button
@@ -639,6 +788,7 @@ function MunicipioDetailDrawer({
                   </button>
                 ))}
               </div>
+              )}
             </div>
 
             {/* Lista de vistorias */}
@@ -648,7 +798,67 @@ function MunicipioDetailDrawer({
                   Nenhuma vistoria para “{q}”.
                 </p>
               )}
-              {filtrados.slice(0, visivel).map((item) => (
+
+              {/* Modo blocos: colapsados por padrão — é isso que troca uma
+                  lista de centenas de linhas por uma dezena de blocos, e
+                  elimina a rolagem longa. */}
+              {porProximidade && blocos.map((b) => {
+                const idsBloco = b.items.map((i) => i.id);
+                const selNoBloco = idsBloco.filter((id) => selecionados.has(id)).length;
+                const todoSel = selNoBloco === idsBloco.length && idsBloco.length > 0;
+                const aberto = blocoAberto === b.id;
+                return (
+                  <div key={b.id} className="rounded-xl" style={{ border: `1px solid ${todoSel ? C.brandLine : C.line}`, background: todoSel ? "rgba(0,179,136,0.05)" : C.surface }}>
+                    <div className="flex items-center gap-2 p-3">
+                      <button
+                        type="button"
+                        onClick={() => onToggleAll(idsBloco)}
+                        className="shrink-0"
+                        title={todoSel ? "Desmarcar bloco" : "Marcar bloco inteiro"}
+                      >
+                        {todoSel ? (
+                          <CheckSquare className="h-4 w-4" style={{ color: C.brand }} />
+                        ) : (
+                          <Square className="h-4 w-4" style={{ color: C.faint }} />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBlocoAberto(aberto ? null : b.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="truncate text-[12.5px] font-semibold" style={{ color: C.ink }}>
+                          {b.rotulo}
+                        </p>
+                        <p className="text-[11px]" style={{ color: C.muted }}>
+                          {b.items.length} vistorias
+                          {!b.semCoordenada && ` · raio ~${b.raioM < 1000 ? `${b.raioM} m` : `${(b.raioM / 1000).toFixed(1)} km`}`}
+                          {selNoBloco > 0 && !todoSel && ` · ${selNoBloco} selecionadas`}
+                        </p>
+                      </button>
+                      <span className="text-[11px] font-semibold" style={{ color: C.faint }}>
+                        {aberto ? "−" : "+"}
+                      </span>
+                    </div>
+                    {aberto && (
+                      <div className="space-y-2 border-t p-2" style={{ borderColor: C.lineSoft }}>
+                        {b.items.map((item) => (
+                          <EquipamentoRow
+                            key={item.id}
+                            item={item}
+                            checked={selecionados.has(item.id)}
+                            onToggle={() => onToggleItem(item.id)}
+                            onAtribuir={() => onAtribuirItem(item)}
+                            onEditar={() => onEditar(item)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {!porProximidade && filtrados.slice(0, visivel).map((item) => (
                 <EquipamentoRow
                   key={item.id}
                   item={item}
@@ -658,7 +868,7 @@ function MunicipioDetailDrawer({
                   onEditar={() => onEditar(item)}
                 />
               ))}
-              {visivel < filtrados.length && (
+              {!porProximidade && visivel < filtrados.length && (
                 <button
                   type="button"
                   onClick={() => setVisivel((v) => v + CHUNK)}
