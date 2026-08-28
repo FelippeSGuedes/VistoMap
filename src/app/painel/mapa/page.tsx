@@ -157,26 +157,52 @@ const HEATMAP_LAYER = "vm-heatmap";
  * parado) e corta salto absurdo (leitura errada de GPS, que desenhava um
  * risco atravessando o mapa).
  */
-const RASTRO_MIN_M = 25;       // abaixo disso e ruido de quem esta parado
-const RASTRO_SALTO_MAX_M = 5000; // acima disso e leitura errada, nao deslocamento
+const RASTRO_MIN_M = 25;        // abaixo disso e ruido de quem esta parado
+const RASTRO_SALTO_MAX_M = 1500; // acima disso, entre leituras, nao e deslocamento real
+/** Ida-e-volta maior que isto, retornando ao ponto de partida, e pico de GPS. */
+const RASTRO_PICO_M = 120;
+
+function metrosEntre(a: [number, number], b: [number, number]): number {
+  const R = 6371000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b[1] - a[1]);
+  const dLng = rad(b[0] - a[0]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
 
 function limparRastro(coords: [number, number][]): [number, number][] {
-  if (coords.length < 2) return coords;
-  const metros = (a: [number, number], b: [number, number]) => {
-    const R = 6371000;
-    const rad = (d: number) => (d * Math.PI) / 180;
-    const dLat = rad(b[1] - a[1]);
-    const dLng = rad(b[0] - a[0]);
-    const h =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-  };
-  const out: [number, number][] = [coords[0]];
-  for (let i = 1; i < coords.length; i++) {
-    const d = metros(out[out.length - 1], coords[i]);
+  if (coords.length < 3) return coords;
+
+  // PASSO 1 — remove PICOS. Este e o que desfaz o emaranhado do print: as
+  // linhas irradiando centenas de metros e voltando ao mesmo ponto nao sao
+  // deslocamento, sao leitura ruim de GPS. A assinatura e inconfundivel: sai
+  // longe do ponto anterior E volta pra perto dele no ponto seguinte. Um
+  // deslocamento de verdade nao volta.
+  //
+  // Filtro de distancia sozinho nao pega isso: cada perna do pico tem
+  // centenas de metros e passa como se fosse movimento legitimo.
+  const semPico: [number, number][] = [coords[0]];
+  for (let i = 1; i < coords.length - 1; i++) {
+    const ant = semPico[semPico.length - 1];
+    const atual = coords[i];
+    const prox = coords[i + 1];
+    const ida = metrosEntre(ant, atual);
+    const volta = metrosEntre(atual, prox);
+    const direto = metrosEntre(ant, prox);
+    if (ida > RASTRO_PICO_M && volta > RASTRO_PICO_M && direto < ida * 0.4) continue;
+    semPico.push(atual);
+  }
+  semPico.push(coords[coords.length - 1]);
+
+  // PASSO 2 — remove o adensamento de quem esta parado e saltos absurdos.
+  const out: [number, number][] = [semPico[0]];
+  for (let i = 1; i < semPico.length; i++) {
+    const d = metrosEntre(out[out.length - 1], semPico[i]);
     if (d < RASTRO_MIN_M || d > RASTRO_SALTO_MAX_M) continue;
-    out.push(coords[i]);
+    out.push(semPico[i]);
   }
   return out.length >= 2 ? out : coords.slice(0, 2);
 }
