@@ -61,13 +61,19 @@ interface Tecnico {
   status_operacional: string;
 }
 
+// 7 = Em Deslocamento. Faltava aqui: cards nesse estado apareciam como "?"
+// cinza, sem rótulo nem cor, porque a situação existe no GLPI mas nunca tinha
+// sido mapeada nesta tela. Teal é o mesmo do mapa 3D — o analista vê a mesma
+// cor pro mesmo estado nas duas telas.
 const SITUACAO_LABEL: Record<number, string> = {
   0: "Indefinido", 1: "A Vistoriar", 2: "Em Vistoria", 3: "Vistoriado",
-  4: "Ag. Revisita", 5: "Em Revisita", 6: "Revisitado", 8: "Devolvida",
+  4: "Ag. Revisita", 5: "Em Revisita", 6: "Revisitado",
+  7: "Em Deslocamento", 8: "Devolvida",
 };
 const SITUACAO_COLOR: Record<number, string> = {
   0: "#9AA7B4", 1: "#F59E0B", 2: "#3B82F6", 3: "#00B388",
-  4: "#F97316", 5: "#0EA5E9", 6: "#10B981", 8: "#DC2626",
+  4: "#F97316", 5: "#0EA5E9", 6: "#10B981",
+  7: "#00D4A0", 8: "#DC2626",
 };
 
 /**
@@ -114,6 +120,7 @@ const SITUACAO_BG: Partial<Record<number, { light: string; dark: string }>> = {
   1: { light: "/avistoriarlaranja.png", dark: "/avistoriarlaranjablack.png" }, // A Vistoriar
   2: { light: "/avistoriarazul.png", dark: "/avistoriarazulblack.png" }, // Em Vistoria
   3: { light: "/vistoriadoverde.png", dark: "/vistoriadoverdeblack.png" }, // Vistoriado
+  7: { light: "/dsccl.png", dark: "/dscclbl.png" }, // Em Deslocamento
 };
 
 function bgDoEstado(estado: EstadoCard) {
@@ -557,6 +564,7 @@ export default function CentralVistoriasPage() {
             <option value="PENDENTE">Pendentes</option>
             <option value="1">A Vistoriar (sem técnico)</option>
             <option value="ATRIBUIDO">{ATRIBUIDO_LABEL}</option>
+            <option value="7">{SITUACAO_LABEL[7]}</option>
             <option value="2">{SITUACAO_LABEL[2]}</option>
             <option value="3">{SITUACAO_LABEL[3]}</option>
             <option value="4">{SITUACAO_LABEL[4]}</option>
@@ -659,11 +667,13 @@ export default function CentralVistoriasPage() {
                         Reatribuir
                       </button>
                     )}
-                    {/* Desatribuir só aparece pra ATRIBUÍDO (A_VISTORIAR + já
-                        tem técnico, ainda não começou) — item com progresso
-                        real (situação 3/6/8 etc.) usa Reatribuir/Devolver,
-                        que preservam o histórico em vez de zerar. */}
-                    {v.situacao_id === 1 && v.tecnico_nome && (
+                    {/* Desatribuir aparece enquanto o técnico ainda NÃO
+                        começou o trabalho de campo: ATRIBUÍDO (A_VISTORIAR +
+                        tem técnico) e EM DESLOCAMENTO (a caminho, nada
+                        registrado ainda). Item com progresso real (situação
+                        3/6/8 etc.) usa Reatribuir/Devolver, que preservam o
+                        histórico em vez de zerar. */}
+                    {(v.situacao_id === 1 || v.situacao_id === 7) && v.tecnico_nome && (
                       <button
                         type="button"
                         onClick={() => setDesatribuindo(v)}

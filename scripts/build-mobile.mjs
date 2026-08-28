@@ -96,6 +96,14 @@ const PAINEL_ONLY_ASSETS = [
   "cardconbla.png",
   "visrealizwht.png",
   "visrealizbl.png",
+  // 2026-08-28: fundos dos cards da Central de Vistorias (Atribuído,
+  // Pendente, Em Deslocamento) — 12MB somados, só painel.
+  "atrcl.png",
+  "atrbl.png",
+  "pndcl.png",
+  "pndp.png",
+  "dsccl.png",
+  "dscclbl.png",
 ];
 
 function copyOutToWww() {
