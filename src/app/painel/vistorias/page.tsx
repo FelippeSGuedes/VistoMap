@@ -102,6 +102,65 @@ const COR_ATRIBUIDO = "#EC4899";
 
 const CHUNK = 25;
 
+/* ── Ordenação ────────────────────────────────────────────────────────────
+   A fila nasceu sempre na mesma ordem (município A→Z, itens na ordem que o
+   banco devolveu), o que obriga a rolar procurando. Ordenar é o que permite
+   trazer pro topo exatamente o lote que se quer atribuir. */
+
+type OrdemItem = "equipamento" | "data" | "tecnico";
+type OrdemGrupo = "municipio" | "total" | "semAtribuicao";
+
+const ORDEM_ITEM_LABEL: Record<OrdemItem, string> = {
+  equipamento: "Equipamento",
+  data: "Data",
+  tecnico: "Técnico",
+};
+const ORDEM_GRUPO_LABEL: Record<OrdemGrupo, string> = {
+  municipio: "Município",
+  total: "Pendentes",
+  semAtribuicao: "Sem técnico",
+};
+
+/** Compara textos em pt-BR e trata vazio como "vai pro fim" nos dois sentidos. */
+function cmpTexto(a: string, b: string): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" });
+}
+
+function ordenarItens(items: FilaItem[], ordem: OrdemItem, asc: boolean): FilaItem[] {
+  const sinal = asc ? 1 : -1;
+  return [...items].sort((a, b) => {
+    if (ordem === "data") {
+      // Sem data vai sempre pro fim, independente do sentido: são os itens
+      // que ainda não têm quando acontecer, e não ajudam em nenhum extremo.
+      const da = a.dataVistoria ? new Date(a.dataVistoria).getTime() : null;
+      const db = b.dataVistoria ? new Date(b.dataVistoria).getTime() : null;
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return (da - db) * sinal;
+    }
+    if (ordem === "tecnico") {
+      return cmpTexto(a.tecnico?.nome ?? "", b.tecnico?.nome ?? "") * sinal;
+    }
+    // "numeric" no comparador faz CAM-P-A-9 vir antes de CAM-P-A-10, que é o
+    // que se espera de código de equipamento — a ordem alfabética pura
+    // colocaria o 10 antes do 9.
+    return cmpTexto(a.equipamento, b.equipamento) * sinal;
+  });
+}
+
+function ordenarGrupos(grupos: GrupoMunicipio[], ordem: OrdemGrupo, asc: boolean): GrupoMunicipio[] {
+  const sinal = asc ? 1 : -1;
+  return [...grupos].sort((a, b) => {
+    if (ordem === "total") return (a.total - b.total) * sinal;
+    if (ordem === "semAtribuicao") return (a.semAtribuicao - b.semAtribuicao) * sinal;
+    return cmpTexto(a.municipio, b.municipio) * sinal;
+  });
+}
+
 // ─── EquipamentoRow ──────────────────────────────────────────────────────
 function EquipamentoRow({
   item,
@@ -398,6 +457,8 @@ function MunicipioDetailDrawer({
 }) {
   const [q, setQ] = useState("");
   const [visivel, setVisivel] = useState(CHUNK);
+  const [ordem, setOrdem] = useState<OrdemItem>("equipamento");
+  const [asc, setAsc] = useState(true);
 
   // Reseta busca/paginação ao trocar de município
   useEffect(() => {
@@ -408,17 +469,23 @@ function MunicipioDetailDrawer({
   const filtrados = useMemo(() => {
     if (!grupo) return [];
     const t = q.trim().toLowerCase();
-    if (!t) return grupo.items;
-    return grupo.items.filter(
-      (i) =>
-        i.equipamento.toLowerCase().includes(t) ||
-        i.glpiId.toLowerCase().includes(t) ||
-        (i.endereco ?? "").toLowerCase().includes(t) ||
-        (i.tecnico?.nome ?? "").toLowerCase().includes(t)
-    );
-  }, [grupo, q]);
+    const base = !t
+      ? grupo.items
+      : grupo.items.filter(
+          (i) =>
+            i.equipamento.toLowerCase().includes(t) ||
+            i.glpiId.toLowerCase().includes(t) ||
+            (i.endereco ?? "").toLowerCase().includes(t) ||
+            (i.tecnico?.nome ?? "").toLowerCase().includes(t)
+        );
+    return ordenarItens(base, ordem, asc);
+  }, [grupo, q, ordem, asc]);
 
-  const ids = grupo?.items.map((i) => i.id) ?? [];
+  // ATENÇÃO: os ids do "selecionar todos" são os FILTRADOS, não os do grupo
+  // inteiro. Antes marcava o município todo mesmo com busca ativa, o que
+  // tornava a busca inútil pra seleção em lote — justamente o caso em que ela
+  // mais serve ("filtra CAM-P-A-04, marca esses").
+  const ids = filtrados.map((i) => i.id);
   const checkedCount = ids.filter((id) => selecionados.has(id)).length;
   const allChecked = checkedCount === ids.length && ids.length > 0;
 
@@ -512,6 +579,7 @@ function MunicipioDetailDrawer({
                 <button
                   type="button"
                   onClick={() => onToggleAll(ids)}
+                  title={q ? "Marca só os itens do filtro atual" : "Marca todos deste município"}
                   className="flex h-9 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-semibold transition hover:bg-black/5"
                   style={{ color: C.inkSoft, border: `1px solid ${C.line}` }}
                 >
@@ -520,7 +588,7 @@ function MunicipioDetailDrawer({
                   ) : (
                     <Square className="h-3.5 w-3.5" />
                   )}
-                  {allChecked ? "Desmarcar" : "Todos"}
+                  {allChecked ? "Desmarcar" : q ? `Todos (${ids.length})` : "Todos"}
                 </button>
                 <button
                   type="button"
@@ -531,6 +599,45 @@ function MunicipioDetailDrawer({
                   <UserPlus className="h-3.5 w-3.5" strokeWidth={2.3} />
                   Atribuir todos
                 </button>
+              </div>
+
+              {/* Ordenação + seleção em lote.
+                  Marcar os N primeiros existe pra evitar o pior caso relatado:
+                  rolar a lista inteira clicando um por um. Combinado com a
+                  ordenação, "os 25 mais antigos" ou "os 50 primeiros do
+                  município" viram dois cliques. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold" style={{ color: C.faint }}>Ordenar</span>
+                {(Object.keys(ORDEM_ITEM_LABEL) as OrdemItem[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => (ordem === k ? setAsc((v) => !v) : (setOrdem(k), setAsc(true)))}
+                    className="flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold transition hover:bg-black/5"
+                    style={{
+                      color: ordem === k ? C.brandDeep : C.inkSoft,
+                      border: `1px solid ${ordem === k ? C.brandLine : C.line}`,
+                      background: ordem === k ? "rgba(0,179,136,0.08)" : "transparent",
+                    }}
+                  >
+                    {ORDEM_ITEM_LABEL[k]}
+                    {ordem === k && (asc ? "↑" : "↓")}
+                  </button>
+                ))}
+                <span className="mx-1 h-4 w-px" style={{ background: C.line }} />
+                <span className="text-[11px] font-semibold" style={{ color: C.faint }}>Marcar</span>
+                {[10, 25, 50].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    disabled={filtrados.length === 0}
+                    onClick={() => onToggleAll(filtrados.slice(0, n).map((i) => i.id).filter((id) => !selecionados.has(id)))}
+                    className="h-7 rounded-lg px-2 text-[11px] font-semibold transition hover:bg-black/5 disabled:opacity-40"
+                    style={{ color: C.inkSoft, border: `1px solid ${C.line}` }}
+                  >
+                    +{n}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -908,6 +1015,8 @@ export default function FilaVistoriasPage() {
   const [filtroAtrib, setFiltroAtrib] = useState<FiltroAtrib>("todos");
   const [dateRange, setDateRange] = useState<DateRange>({ de: null, ate: null });
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [ordemGrupo, setOrdemGrupo] = useState<OrdemGrupo>("municipio");
+  const [ascGrupo, setAscGrupo] = useState(true);
 
   // Detalhe (drawer de município) — guarda o NOME para sobreviver a reloads
   const [detalheNome, setDetalheNome] = useState<string | null>(null);
@@ -1010,9 +1119,15 @@ export default function FilaVistoriasPage() {
           atribuidas,
           percentAtribuido,
         };
-      })
-      .sort((a, b) => a.municipio.localeCompare(b.municipio, "pt-BR"));
+      });
   }, [filtrados]);
+
+  // Ordenação dos cards de município — separada do agrupamento pra trocar a
+  // ordem não recalcular os grupos inteiros a cada clique.
+  const gruposOrdenados = useMemo(
+    () => ordenarGrupos(grupos, ordemGrupo, ascGrupo),
+    [grupos, ordemGrupo, ascGrupo]
+  );
 
   // Grupo aberto no drawer de detalhe (derivado → sempre fresco)
   const detalheGrupo = useMemo(
@@ -1416,8 +1531,36 @@ export default function FilaVistoriasPage() {
         </div>
       )}
       {grupos.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-[11.5px] font-semibold" style={{ color: C.faint }}>Ordenar por</span>
+          {(Object.keys(ORDEM_GRUPO_LABEL) as OrdemGrupo[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() =>
+                ordemGrupo === k
+                  ? setAscGrupo((v) => !v)
+                  : // Contagens começam DECRESCENTES: quem pergunta "onde tem
+                    // mais pendência?" quer o maior primeiro. Já município
+                    // começa A→Z, que é como se procura um nome.
+                    (setOrdemGrupo(k), setAscGrupo(k === "municipio"))
+              }
+              className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-semibold transition hover:bg-black/5"
+              style={{
+                color: ordemGrupo === k ? C.brandDeep : C.inkSoft,
+                border: `1px solid ${ordemGrupo === k ? C.brandLine : C.line}`,
+                background: ordemGrupo === k ? "rgba(0,179,136,0.08)" : "transparent",
+              }}
+            >
+              {ORDEM_GRUPO_LABEL[k]}
+              {ordemGrupo === k && (ascGrupo ? "↑" : "↓")}
+            </button>
+          ))}
+        </div>
+      )}
+      {grupos.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {grupos.map((grupo) => (
+          {gruposOrdenados.map((grupo) => (
             <MunicipioCard
               key={grupo.municipio}
               grupo={grupo}
