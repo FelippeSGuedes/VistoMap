@@ -886,7 +886,14 @@ function MunicipioDetailDrawer({
                         onClick={() => setBlocoAberto(aberto ? null : b.id)}
                         className="min-w-0 flex-1 text-left"
                       >
-                        <p className="truncate text-[12.5px] font-semibold" style={{ color: C.ink }}>
+                        {/* Caixa alta + espaçamento: trata o rótulo como
+                            etiqueta de seção, não como texto corrido — a
+                            leitura em varredura fica mais rápida quando há
+                            uma dezena de blocos empilhados. */}
+                        <p
+                          className="truncate text-[11.5px] font-bold"
+                          style={{ color: C.ink, textTransform: "uppercase", letterSpacing: "0.05em" }}
+                        >
                           {b.rotulo}
                         </p>
                         <p className="text-[11px]" style={{ color: C.muted }}>
