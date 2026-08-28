@@ -144,6 +144,43 @@ const POSTES_PROX_LAYER = "vm-postes-prox-layer";
 const VISTORIAS_SRC = "vm-vistorias-src";
 const VISTORIAS_POINTS = "vm-vistorias-points";
 const HEATMAP_LAYER = "vm-heatmap";
+/**
+ * Limpa o rastro de GPS antes de desenhar.
+ *
+ * O rastro cru de 8h vira um emaranhado: parado, o GPS continua reportando e
+ * cada leitura cai alguns metros ao lado da anterior, entao a linha fica indo
+ * e voltando sobre si mesma dezenas de vezes no mesmo lugar. Foi exatamente
+ * por isso que ele era bloqueado no modo 3D — e ao liberar (porque o modo
+ * Padrao saiu) o emaranhado apareceu.
+ *
+ * Duas regras resolvem: descarta ponto que mal saiu do lugar (ruido de
+ * parado) e corta salto absurdo (leitura errada de GPS, que desenhava um
+ * risco atravessando o mapa).
+ */
+const RASTRO_MIN_M = 25;       // abaixo disso e ruido de quem esta parado
+const RASTRO_SALTO_MAX_M = 5000; // acima disso e leitura errada, nao deslocamento
+
+function limparRastro(coords: [number, number][]): [number, number][] {
+  if (coords.length < 2) return coords;
+  const metros = (a: [number, number], b: [number, number]) => {
+    const R = 6371000;
+    const rad = (d: number) => (d * Math.PI) / 180;
+    const dLat = rad(b[1] - a[1]);
+    const dLng = rad(b[0] - a[0]);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  };
+  const out: [number, number][] = [coords[0]];
+  for (let i = 1; i < coords.length; i++) {
+    const d = metros(out[out.length - 1], coords[i]);
+    if (d < RASTRO_MIN_M || d > RASTRO_SALTO_MAX_M) continue;
+    out.push(coords[i]);
+  }
+  return out.length >= 2 ? out : coords.slice(0, 2);
+}
+
 const TRAIL_SRC = "vm-trail-src";
 const TRAIL_LAYER = "vm-trail-layer";
 const BUILDINGS_LAYER = "vm-3d-buildings";
@@ -175,6 +212,7 @@ function readDarkTheme(): boolean {
 }
 
 function add3DBuildings(map: mapboxgl.Map) {
+  const isDark = readDarkTheme();
   const apply = () => {
     if (map.getLayer(BUILDINGS_LAYER)) return;
     try {
@@ -186,12 +224,16 @@ function add3DBuildings(map: mapboxgl.Map) {
         type: "fill-extrusion",
         minzoom: 13,
         paint: {
-          "fill-extrusion-color": "#091616",
+          // Cor por TEMA. #091616 foi escolhido pro tema escuro; com o 3D
+          // virando o modo padrao, no tema claro ele enchia o mapa de blocos
+          // pretos — o "fica preto quando chega perto" relatado (predios so
+          // aparecem a partir do zoom 13).
+          "fill-extrusion-color": isDark ? "#091616" : "#C9D2D6",
           "fill-extrusion-height": [
             "interpolate", ["linear"], ["zoom"], 13, 0, 15.05, ["get", "height"],
           ],
           "fill-extrusion-base": ["get", "min_height"],
-          "fill-extrusion-opacity": 0.72,
+          "fill-extrusion-opacity": isDark ? 0.72 : 0.55,
         },
       });
     } catch { /* composite source pode não existir no estilo atual */ }
@@ -839,7 +881,7 @@ export default function PainelMapaPage() {
       const geojson: GeoJSON.Feature<GeoJSON.LineString> = {
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates: r.data.coords },
+        geometry: { type: "LineString", coordinates: limparRastro(r.data.coords) },
       };
       if (map.getSource(TRAIL_SRC)) {
         (map.getSource(TRAIL_SRC) as GeoJSONSource).setData(geojson);
@@ -855,12 +897,15 @@ export default function PainelMapaPage() {
           source: TRAIL_SRC,
           layout: { "line-cap": "round", "line-join": "round" },
           paint: {
-            "line-width": 3,
+            // Mais fino e em VIOLETA: o teal era o mesmo da rota, do veiculo e
+            // do pin, entao o rastro competia com tudo. Cor propria separa
+            // "por onde ele passou" de "pra onde ele vai".
+            "line-width": 2,
             "line-gradient": [
               "interpolate", ["linear"], ["line-progress"],
-              0, "rgba(0,200,150,0.0)",
-              0.4, "rgba(0,200,150,0.40)",
-              1, "rgba(0,200,150,0.92)",
+              0, "rgba(139,92,246,0.0)",
+              0.4, "rgba(139,92,246,0.30)",
+              1, "rgba(139,92,246,0.70)",
             ],
           },
         }, VISTORIAS_POINTS);
