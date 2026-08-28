@@ -280,16 +280,15 @@ let sharedPersonTemplate: THREE.Object3D | null = null;
 let sharedPersonPromise: Promise<THREE.Object3D> | null = null;
 
 function preparePersonTemplate(root: THREE.Object3D): THREE.Object3D {
-  // ORIENTAÇÃO POR MEDIÇÃO, não por convenção. O glTF manda Y pra cima, mas
-  // este arquivo veio do Meshy com a maior dimensão em Z (1.90 contra 1.02 em
-  // Y) — ou seja, já está Z-up, que por acaso é o eixo vertical do embedding
-  // do Mapbox. Aplicar a rotação padrão aqui deitaria a figura. Como não dá
-  // pra ver o modelo daqui, o eixo mais longo é tratado como altura: acerta
-  // nos dois casos e evita a rodada de tentativa e erro que a picape custou.
-  const bruto = new THREE.Box3().setFromObject(root);
-  const dim = new THREE.Vector3();
-  bruto.getSize(dim);
-  if (dim.y > dim.z) root.rotation.x = Math.PI / 2; // era Y-up de verdade
+  // Convenção glTF padrão: Y pra cima → Z pra cima (vertical do Mapbox).
+  //
+  // Aqui eu tinha tentado adivinhar a orientação com a heurística "o eixo mais
+  // longo é a altura". Ela deitou o capacete, e por um motivo instrutivo: a
+  // regra vale pra uma PESSOA, mas um capacete é MAIS LARGO QUE ALTO — o eixo
+  // mais longo dele é um diâmetro horizontal. Medir a caixa não diz qual eixo
+  // é "cima"; só a convenção do formato diz. As dimensões do arquivo
+  // (1.44 x 1.02 x 1.90) batem com Y-up: altura 1.02, footprint 1.44 x 1.90.
+  root.rotation.x = Math.PI / 2;
 
   root.updateMatrixWorld(true);
   const cx = new THREE.Box3().setFromObject(root);
@@ -430,7 +429,11 @@ export interface TechEntrySpec {
 // como funcionar) e cor aplicada por código, que é o que permite a figura
 // acompanhar o status do técnico em vez de ter cor fixa na textura.
 // ---------------------------------------------------------------------------
-const PERSON_ALTURA_M = 2.4;
+// Altura do marcador. Capacete e largo (proporcao ~1.9 : 1), entao altura
+// modesta ja da uma silhueta larga o suficiente pra ler no mapa.
+const PERSON_ALTURA_M = 1.4;
+/** Amarelo de segurança — o que faz o objeto ser lido como "técnico". */
+const PERSON_COR = 0xf5b301;
 const USE_PERSON_MODEL = true;
 
 const PIN_BASE_R = 3.4;       // raio da plataforma hexagonal
@@ -441,7 +444,7 @@ const PIN_ORBITA_R = 3.0;
 const PIN_PULSO_MS = 2800;    // ciclo de um pulso de radar
 const PIN_BOB_MS = 2600;      // sobe-e-desce do núcleo
 /** Diâmetro de referência do pin pro piso de tamanho em pixels. */
-const PIN_FOOTPRINT_M = PIN_BASE_R * 2.4;
+const PIN_FOOTPRINT_M = 2.8; // largura real do pin (capacete + disco)
 
 // ---------------------------------------------------------------------------
 // Movimento: extrapolação por velocidade ("dead reckoning").
@@ -738,7 +741,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // Disco no chão: ancora a figura num ponto exato. Sem ele o modelo
     // "flutua" ambíguo quando o mapa está inclinado.
     const disco = new THREE.Mesh(
-      new THREE.CircleGeometry(1.5, 28),
+      new THREE.CircleGeometry(1.1, 28),
       new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.9 })
     );
     disco.position.z = 0.05;
@@ -747,9 +750,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // UM pulso, discreto — o suficiente pra localizar de longe sem virar
     // enfeite. A versão anterior tinha dois pulsos, coluna de luz, núcleo
     // girando e anel orbital: virou ruído.
+    // Anel começa FORA do disco: antes ele nascia exatamente na borda (mesmo
+    // raio), então a fase inicial — a mais opaca — ficava escondida atrás do
+    // disco e o efeito parecia não existir.
     const pulso = new THREE.Mesh(
-      new THREE.RingGeometry(1.35, 1.5, 36),
-      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.5, depthWrite: false })
+      new THREE.RingGeometry(1.2, 1.4, 40),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.6, depthWrite: false })
     );
     pulso.position.z = 0.04;
     group.add(pulso);
@@ -764,10 +770,16 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         if (!malha.isMesh) return;
         // Material por técnico: é o que faz a figura acompanhar a cor do
         // status. O GLB veio sem material nenhum, então nada se perde.
+        // Capacete em AMARELO DE SEGURANÇA, não na cor do status.
+        //
+        // Pintado de teal/azul/âmbar ele virava uma forma abstrata colorida —
+        // ninguém lia "técnico". Amarelo é o que torna o objeto reconhecível
+        // na hora. O status não se perde: ele vive no disco, no pulso e no
+        // pontinho da etiqueta com o nome.
         malha.material = new THREE.MeshStandardMaterial({
-          color: cor,
+          color: PERSON_COR,
           metalness: 0,
-          roughness: 0.75,
+          roughness: 0.6,
         });
       });
     } else {
@@ -1101,9 +1113,11 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         // a figura e que informa, o pulso so ajuda a localizar de longe.
         e.pinPulsos?.forEach((pl) => {
           const t = (agora / PIN_PULSO_MS) % 1;
-          const sc = 1 + t * 2.4;
+          const sc = 1 + t * 2.6;
           pl.scale.set(sc, sc, 1);
-          (pl.material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - t) * (1 - t);
+          // Queda LINEAR, não quadrática: ao quadrado o anel já estava quase
+          // transparente na metade do ciclo, e o efeito passava despercebido.
+          (pl.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - t);
         });
 
         // A figura fica PARADA de proposito — ela representa alguem parado.
