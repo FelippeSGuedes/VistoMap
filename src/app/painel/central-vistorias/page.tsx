@@ -70,12 +70,62 @@ const SITUACAO_COLOR: Record<number, string> = {
   4: "#F97316", 5: "#0EA5E9", 6: "#10B981", 8: "#DC2626",
 };
 
-/** Fundo por situação (só as 3 mais frequentes) — claro/escuro. */
+/**
+ * ESTADO do card — o que o analista enxerga, que não é a mesma coisa que a
+ * situação crua do GLPI.
+ *
+ * "Atribuído" não existe como situação: é A Vistoriar QUE JÁ TEM TÉCNICO. A
+ * distinção importa na operação — uma pendência sem dono e uma pendência já
+ * despachada exigem ações diferentes — mas o GLPI guarda as duas no mesmo
+ * número. Derivar aqui evita inventar um estado no banco só pra isso.
+ */
+type EstadoCard = number | "ATRIBUIDO";
+
+function estadoDaVistoria(situacaoId: number, temTecnico: boolean): EstadoCard {
+  return situacaoId === 1 && temTecnico ? "ATRIBUIDO" : situacaoId;
+}
+
+const ATRIBUIDO_LABEL = "Atribuído";
+const ATRIBUIDO_COLOR = "#8B5CF6"; // roxo
+const ATRIBUIDO_BG = { light: "/atrcl.png", dark: "/atrbl.png" };
+
+/**
+ * PENDENTE é um AGRUPAMENTO, não um estado: tudo que ainda não foi concluído
+ * (não vistoriado nem revisitado). Serve pro analista perguntar "o que falta?"
+ * sem ter que somar quatro filtros na cabeça. Por isso ele só existe no
+ * filtro — nenhum card é rotulado "Pendente", cada um mostra seu estado real.
+ */
+const PENDENTE_COLOR = "#D4A017"; // amarelo dourado
+const PENDENTE_BG = { light: "/pndcl.png", dark: "/pndp.png" };
+const SITUACOES_CONCLUIDAS = new Set([3, 6]); // Vistoriado, Revisitado
+function ehPendente(situacaoId: number): boolean {
+  return !SITUACOES_CONCLUIDAS.has(situacaoId);
+}
+
+/**
+ * Estados pendentes que não têm identidade visual própria herdam a do
+ * "pendente" (dourado). Ag. Revisita e Indefinido caem aqui; Devolvida NÃO,
+ * porque vermelho ali é alerta e trocar por dourado esconderia a gravidade.
+ */
+const SITUACOES_VISUAL_PENDENTE = new Set([0, 4]);
+
+/** Fundo por estado — claro/escuro. */
 const SITUACAO_BG: Partial<Record<number, { light: string; dark: string }>> = {
   1: { light: "/avistoriarlaranja.png", dark: "/avistoriarlaranjablack.png" }, // A Vistoriar
   2: { light: "/avistoriarazul.png", dark: "/avistoriarazulblack.png" }, // Em Vistoria
   3: { light: "/vistoriadoverde.png", dark: "/vistoriadoverdeblack.png" }, // Vistoriado
 };
+
+function bgDoEstado(estado: EstadoCard) {
+  if (estado === "ATRIBUIDO") return ATRIBUIDO_BG;
+  if (SITUACOES_VISUAL_PENDENTE.has(estado)) return PENDENTE_BG;
+  return SITUACAO_BG[estado];
+}
+function corDoEstado(estado: EstadoCard) {
+  if (estado === "ATRIBUIDO") return ATRIBUIDO_COLOR;
+  if (SITUACOES_VISUAL_PENDENTE.has(estado)) return PENDENTE_COLOR;
+  return SITUACAO_COLOR[estado] ?? "#9AA7B4";
+}
 
 /** Cor + fundo translúcido consistentes nos dois temas (opacidade absorve o contraste). */
 function tint(hex: string, alpha: number) {
@@ -96,9 +146,9 @@ function tintOnCard(hex: string, alpha: number) {
   return `linear-gradient(${tint(hex, alpha)}, ${tint(hex, alpha)}), var(--vm-card)`;
 }
 
-function SituacaoBadge({ id }: { id: number }) {
-  const label = SITUACAO_LABEL[id] ?? "?";
-  const color = SITUACAO_COLOR[id] ?? "#9AA7B4";
+function SituacaoBadge({ estado }: { estado: EstadoCard }) {
+  const label = estado === "ATRIBUIDO" ? ATRIBUIDO_LABEL : (SITUACAO_LABEL[estado] ?? "?");
+  const color = corDoEstado(estado);
   return (
     <span
       className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold"
@@ -226,7 +276,9 @@ export default function CentralVistoriasPage() {
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
-  const [filtroSit, setFiltroSit] = useState<number | "">("");
+  // Valor do filtro: número = situação crua; "ATRIBUIDO" e "PENDENTE" são
+  // conceitos derivados (ver estadoDaVistoria/ehPendente).
+  const [filtroSit, setFiltroSit] = useState<string>("");
 
   // Cancelar
   const [cancelando, setCancelando] = useState<Vistoria | null>(null);
@@ -287,7 +339,19 @@ export default function CentralVistoriasPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtradas = useMemo(() => vistorias.filter((v) => {
-    if (filtroSit !== "" && v.situacao_id !== filtroSit) return false;
+    if (filtroSit === "PENDENTE") {
+      if (!ehPendente(v.situacao_id)) return false;
+    } else if (filtroSit === "ATRIBUIDO") {
+      if (estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) !== "ATRIBUIDO") return false;
+    } else if (filtroSit === "1") {
+      // "A Vistoriar" agora significa SEM técnico: com técnico, o card é
+      // Atribuído e tem filtro próprio. Sem esta exclusão os dois filtros
+      // devolveriam os mesmos itens e "A Vistoriar" deixaria de responder
+      // "o que ainda não tem dono?", que é justamente pra isso que serve.
+      if (estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) !== 1) return false;
+    } else if (filtroSit !== "" && v.situacao_id !== Number(filtroSit)) {
+      return false;
+    }
     const q = busca.toLowerCase();
     return (
       v.equipamento.toLowerCase().includes(q) ||
@@ -483,14 +547,22 @@ export default function CentralVistoriasPage() {
         <div className="relative">
           <select
             value={filtroSit}
-            onChange={(e) => setFiltroSit(e.target.value === "" ? "" : Number(e.target.value))}
+            onChange={(e) => setFiltroSit(e.target.value)}
             className="appearance-none rounded-xl py-2 pl-3 pr-8 text-[13px] outline-none focus:border-[#00B388]"
             style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
           >
             <option value="">Todas situações</option>
-            {Object.entries(SITUACAO_LABEL).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
+            {/* Pendente primeiro: é a pergunta mais frequente do analista
+                ("o que falta?") e agrupa tudo que não foi concluído. */}
+            <option value="PENDENTE">Pendentes</option>
+            <option value="1">A Vistoriar (sem técnico)</option>
+            <option value="ATRIBUIDO">{ATRIBUIDO_LABEL}</option>
+            <option value="2">{SITUACAO_LABEL[2]}</option>
+            <option value="3">{SITUACAO_LABEL[3]}</option>
+            <option value="4">{SITUACAO_LABEL[4]}</option>
+            <option value="5">{SITUACAO_LABEL[5]}</option>
+            <option value="6">{SITUACAO_LABEL[6]}</option>
+            <option value="8">{SITUACAO_LABEL[8]}</option>
           </select>
           <ChevronDown
             className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
@@ -514,9 +586,10 @@ export default function CentralVistoriasPage() {
       ) : (
         <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
           {filtradas.map((v) => {
-            const cor = SITUACAO_COLOR[v.situacao_id] ?? "#9AA7B4";
+            const estado = estadoDaVistoria(v.situacao_id, !!v.tecnico_nome);
+            const cor = corDoEstado(estado);
             const semAcoes = !v.tecnico_nome && v.situacao_id <= 1;
-            const bg = SITUACAO_BG[v.situacao_id];
+            const bg = bgDoEstado(estado);
             return (
               <div
                 key={v.id}
@@ -556,7 +629,7 @@ export default function CentralVistoriasPage() {
                         {v.municipio ?? "—"}
                       </p>
                     </div>
-                    <SituacaoBadge id={v.situacao_id} />
+                    <SituacaoBadge estado={estado} />
                   </div>
 
                   {/* técnico + data */}
