@@ -97,7 +97,6 @@ interface GrupoMunicipio {
 type FiltroTipo = "todos" | "nova" | "revisita";
 /** "atribuido" só se aplica dentro do bucket A_VISTORIAR — já tem técnico,
  *  aguardando ele iniciar (mesmo conceito do pin rosa "Atribuído" do mapa). */
-type FiltroAtrib = "todos" | "sem" | "atribuido";
 const COR_ATRIBUIDO = "#EC4899";
 
 const CHUNK = 25;
@@ -108,7 +107,7 @@ const CHUNK = 25;
    trazer pro topo exatamente o lote que se quer atribuir. */
 
 type OrdemItem = "equipamento" | "data" | "tecnico";
-type OrdemGrupo = "municipio" | "total" | "semAtribuicao";
+type OrdemGrupo = "municipio" | "total";
 
 const ORDEM_ITEM_LABEL: Record<OrdemItem, string> = {
   equipamento: "Equipamento",
@@ -118,7 +117,6 @@ const ORDEM_ITEM_LABEL: Record<OrdemItem, string> = {
 const ORDEM_GRUPO_LABEL: Record<OrdemGrupo, string> = {
   municipio: "Município",
   total: "Pendentes",
-  semAtribuicao: "Sem técnico",
 };
 
 /** Compara textos em pt-BR e trata vazio como "vai pro fim" nos dois sentidos. */
@@ -319,7 +317,6 @@ function ordenarGrupos(grupos: GrupoMunicipio[], ordem: OrdemGrupo, asc: boolean
   const sinal = asc ? 1 : -1;
   return [...grupos].sort((a, b) => {
     if (ordem === "total") return (a.total - b.total) * sinal;
-    if (ordem === "semAtribuicao") return (a.semAtribuicao - b.semAtribuicao) * sinal;
     return cmpTexto(a.municipio, b.municipio) * sinal;
   });
 }
@@ -545,20 +542,12 @@ function MunicipioCard({
         </span>
       </div>
 
-      {/* Barra de progresso de atribuição (cor única neutra) */}
+      {/* Sem barra de progresso de atribuição: a tela só lista o que NÃO tem
+          dono, então ela seria sempre 0% e os chips de "atribuídas" sempre
+          zero — ruído que finge informação. Sobra o que ainda varia. */}
       <div className="px-4 pt-3">
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full"
-          style={{ background: "var(--vm-border-soft)" }}
-        >
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${grupo.percentAtribuido}%`, background: C.brand }}
-          />
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-          <StatChip icon={UserCheck} value={grupo.atribuidas} label="atribuídas" />
-          <StatChip icon={UserPlus} value={grupo.semAtribuicao} label="a atribuir" />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <StatChip icon={UserPlus} value={grupo.total} label="a atribuir" />
           {grupo.revisitas > 0 && (
             <StatChip icon={RotateCw} value={grupo.revisitas} label="revisitas" />
           )}
@@ -712,7 +701,7 @@ function MunicipioDetailDrawer({
                       {grupo.municipio}
                     </h2>
                     <p className="text-[11.5px]" style={{ color: C.muted }}>
-                      {grupo.total} pendentes · {grupo.atribuidas} atribuídas
+                      {grupo.total} a atribuir
                       {grupo.revisitas > 0 ? ` · ${grupo.revisitas} revisitas` : ""}
                     </p>
                   </div>
@@ -1288,7 +1277,6 @@ export default function FilaVistoriasPage() {
   const [filtroMunicipio, setFiltroMunicipio] = useState("");
   const [filtroTecnico, setFiltroTecnico] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
-  const [filtroAtrib, setFiltroAtrib] = useState<FiltroAtrib>("todos");
   const [dateRange, setDateRange] = useState<DateRange>({ de: null, ate: null });
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [ordemGrupo, setOrdemGrupo] = useState<OrdemGrupo>("municipio");
@@ -1317,7 +1305,16 @@ export default function FilaVistoriasPage() {
         painelService.fetchFila({ status: "A_VISTORIAR", limit: 10000 }),
         painelService.fetchFila({ status: "AGUARDANDO_REVISITA", limit: 10000 }),
       ]);
-      setItems([...aVistoriar, ...aguardando]);
+      // PENDENTE = ainda SEM DONO. Item já atribuído sai daqui: a decisão do
+      // analista nesta tela é "quem faz?", e isso já foi respondido. Quem
+      // precisa acompanhar/mexer no que já tem técnico usa a Central de
+      // Vistorias, onde "Atribuído" tem estado e filtro próprios.
+      //
+      // O corte é na origem, e não só na exibição, pra contadores, KPIs e
+      // agrupamento falarem todos do mesmo conjunto — número de card que não
+      // bate com a lista foi problema real aqui (ver o teto de 300 em
+      // /painel/realizadas).
+      setItems([...aVistoriar, ...aguardando].filter((i) => !i.tecnico));
     } finally {
       setLoading(false);
     }
@@ -1338,8 +1335,6 @@ export default function FilaVistoriasPage() {
       if (filtroTecnico && String(i.tecnico?.id) !== filtroTecnico) return false;
       if (filtroTipo === "nova" && i.isRepeat) return false;
       if (filtroTipo === "revisita" && !i.isRepeat) return false;
-      if (filtroAtrib === "sem" && i.tecnico) return false;
-      if (filtroAtrib === "atribuido" && !(i.status === "A_VISTORIAR" && i.tecnico)) return false;
       if (!dentroDoRange(i.dataVistoria, dateRange)) return false;
       if (!q) return true;
       return (
@@ -1349,7 +1344,7 @@ export default function FilaVistoriasPage() {
         (i.endereco ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, query, filtroMunicipio, filtroTecnico, filtroTipo, filtroAtrib, dateRange]);
+  }, [items, query, filtroMunicipio, filtroTecnico, filtroTipo, dateRange]);
 
   // Contadores das pílulas de tipo/atribuição — sobre o total (não sobre
   // `filtrados`), mesmo padrão do Mapa Tempo Real pras pílulas de situação.
@@ -1421,7 +1416,6 @@ export default function FilaVistoriasPage() {
     () => ({
       total: filtrados.length,
       revisitas: filtrados.filter((i) => i.isRepeat).length,
-      semAtrib: filtrados.filter((i) => !i.tecnico).length,
       municipios: grupos.length,
     }),
     [filtrados, grupos]
@@ -1431,7 +1425,6 @@ export default function FilaVistoriasPage() {
     filtroMunicipio ||
     filtroTecnico ||
     filtroTipo !== "todos" ||
-    filtroAtrib !== "todos" ||
     dateRange.de ||
     dateRange.ate
   );
@@ -1552,7 +1545,6 @@ export default function FilaVistoriasPage() {
           {[
             { label: "Total na fila", value: kpis.total, icon: Layers, accent: "#6EE7C7" },
             { label: "Municípios", value: kpis.municipios, icon: MapPin, accent: "#A5B4FC" },
-            { label: "A atribuir", value: kpis.semAtrib, icon: UserPlus, accent: "#93C5FD" },
             { label: "Revisitas", value: kpis.revisitas, icon: RotateCw, accent: "#CBD5E1" },
           ].map((k) => (
             <div
@@ -1634,7 +1626,6 @@ export default function FilaVistoriasPage() {
                   filtroMunicipio,
                   filtroTecnico,
                   filtroTipo !== "todos",
-                  filtroAtrib !== "todos",
                 ].filter(Boolean).length
               }
             </span>
@@ -1724,39 +1715,6 @@ export default function FilaVistoriasPage() {
                 ))}
               </div>
 
-              <div
-                className="flex overflow-hidden rounded-xl"
-                style={{ border: "1px solid var(--vm-border)" }}
-              >
-                {(["todos", "sem", "atribuido"] as FiltroAtrib[]).map((v) => {
-                  const active = filtroAtrib === v;
-                  const cor = v === "atribuido" ? COR_ATRIBUIDO : C.brandDeep;
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setFiltroAtrib(v)}
-                      className="flex h-8 items-center gap-1 px-3 text-[11px] font-semibold transition"
-                      style={{
-                        background: active ? `${cor}1A` : "transparent",
-                        color: active ? cor : "var(--vm-muted-b)",
-                      }}
-                    >
-                      {v === "todos" ? "Todos" : v === "sem" ? "A atribuir" : "Atribuído"}
-                      <span
-                        className="rounded-full px-1.5 text-[9.5px] font-bold tabular-nums"
-                        style={{
-                          background: active ? `${cor}29` : "var(--vm-fill-2)",
-                          color: active ? cor : "var(--vm-faint)",
-                        }}
-                      >
-                        {contagemAtrib[v]}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
               {temFiltros && (
                 <button
                   type="button"
@@ -1764,7 +1722,6 @@ export default function FilaVistoriasPage() {
                     setFiltroMunicipio("");
                     setFiltroTecnico("");
                     setFiltroTipo("todos");
-                    setFiltroAtrib("todos");
                     setDateRange({ de: null, ate: null });
                   }}
                   className="ml-auto flex h-8 items-center gap-1 rounded-xl px-2.5 text-[11px] font-medium transition hover:bg-black/5"
