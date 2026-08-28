@@ -40,7 +40,6 @@ export const TECH_MODEL_LAYER_ID = "vm-tech-3d-model";
 
 const TWEEN_MS = 800; // mesma duração do animateMarkerTo (page.tsx)
 const MODEL_COLOR = 0x00d4a0; // mesmo teal-neon usado no resto da identidade visual
-const IDLE_RADIUS_M = 10;
 
 // Ligar só ao investigar a camada 3D — alguns destes logs disparam por
 // técnico a cada poll e poluem o console em produção.
@@ -350,11 +349,15 @@ export interface TechEntrySpec {
 //
 // Tudo na cor do status operacional, que o painel já define (statusColor).
 // ---------------------------------------------------------------------------
-const PIN_RAIO_M = 4.2;
-const PIN_ALTURA_M = 11;
-const PIN_CABECA_R = 2.6;
-const PIN_RADAR_MS = 2600;
-const PIN_BOB_MS = 2400;
+const PIN_BASE_R = 3.4;       // raio da plataforma hexagonal
+const PIN_COLUNA_H = 9;       // altura da coluna de luz
+const PIN_NUCLEO_Z = 10.6;    // altura do núcleo flutuante
+const PIN_NUCLEO_R = 1.9;
+const PIN_ORBITA_R = 3.0;
+const PIN_PULSO_MS = 2800;    // ciclo de um pulso de radar
+const PIN_BOB_MS = 2600;      // sobe-e-desce do núcleo
+/** Diâmetro de referência do pin pro piso de tamanho em pixels. */
+const PIN_FOOTPRINT_M = PIN_BASE_R * 2.4;
 
 // ---------------------------------------------------------------------------
 // Movimento: extrapolação por velocidade ("dead reckoning").
@@ -415,8 +418,10 @@ interface TechEntry {
   ultimoLng?: number;
   ultimoLat?: number;
   /** Partes animadas do pin parado (ver buildIdlePin). */
-  pinRadar?: THREE.Mesh;
-  pinCabeca?: THREE.Object3D;
+  pinPulsos?: THREE.Mesh[];
+  pinNucleo?: THREE.Object3D;
+  pinOrbita?: THREE.Object3D;
+  pinColuna?: THREE.Mesh;
 }
 
 /** "Brendon Henrique Barbosa" → "Brendon". Etiqueta precisa caber no mapa. */
@@ -466,10 +471,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
 
   // Geometria/material compartilhados entre todas as instâncias (procedural,
   // barato de reusar; só descartados no onRemove).
-  private idleRingGeo!: THREE.TorusGeometry;
-  private idleRingMat!: THREE.MeshBasicMaterial;
-  private idleCoreGeo!: THREE.IcosahedronGeometry;
-  private idleCoreMat!: THREE.MeshBasicMaterial;
 
   private carBodyGeo!: THREE.BoxGeometry;
   private carBodyMat!: THREE.MeshStandardMaterial;
@@ -508,11 +509,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // Com a transformação na matriz da câmera, o depth buffer volta a
     // funcionar e é ele que dá a auto-oclusão correta do veículo.
     const semDepth = { depthTest: true, depthWrite: true };
-
-    this.idleRingGeo = new THREE.TorusGeometry(IDLE_RADIUS_M, IDLE_RADIUS_M * 0.12, 12, 32);
-    this.idleRingMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, transparent: true, opacity: 0.55, ...semDepth });
-    this.idleCoreGeo = new THREE.IcosahedronGeometry(IDLE_RADIUS_M * 0.45, 0);
-    this.idleCoreMat = new THREE.MeshBasicMaterial({ color: MODEL_COLOR, ...semDepth });
 
     // NÃO usar flatShading aqui: ele deriva a normal de cada face no shader
     // (dFdx/dFdy do vértice em view-space), e a matriz do Mercator é
@@ -628,42 +624,87 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
    */
   private buildIdlePin(corHex: string): {
     object3d: THREE.Object3D;
-    radar: THREE.Mesh;
-    cabeca: THREE.Object3D;
+    pulsos: THREE.Mesh[];
+    nucleo: THREE.Object3D;
+    orbita: THREE.Object3D;
+    coluna: THREE.Mesh;
   } {
     const group = new THREE.Group();
     const cor = new THREE.Color(corHex);
+    const claro = cor.clone().lerp(new THREE.Color(0xffffff), 0.45);
 
-    const disco = new THREE.Mesh(
-      new THREE.CircleGeometry(PIN_RAIO_M * 0.55, 32),
-      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.85, depthTest: true, depthWrite: true })
+    // Plataforma hexagonal. O hexágono é uma escolha de vocabulário: remete a
+    // célula/rede, que é o domínio do equipamento vistoriado, e dá um
+    // silhueta reconhecível de cima — diferente de mais um círculo genérico.
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(PIN_BASE_R, PIN_BASE_R * 1.12, 0.55, 6),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.92 })
     );
-    disco.position.z = 0.15;
-    group.add(disco);
+    base.rotation.x = Math.PI / 2; // cilindro nasce no eixo Y; aqui "cima" é Z
+    base.position.z = 0.28;
+    group.add(base);
 
-    const radar = new THREE.Mesh(
-      new THREE.RingGeometry(PIN_RAIO_M * 0.75, PIN_RAIO_M, 40),
-      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.5, depthTest: true, depthWrite: false })
+    const aro = new THREE.Mesh(
+      new THREE.RingGeometry(PIN_BASE_R * 1.2, PIN_BASE_R * 1.34, 6),
+      new THREE.MeshBasicMaterial({ color: claro, transparent: true, opacity: 0.75, depthWrite: false })
     );
-    radar.position.z = 0.1;
-    group.add(radar);
+    aro.position.z = 0.06;
+    group.add(aro);
 
-    const haste = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.28, PIN_ALTURA_M, 10),
-      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.35, depthTest: true, depthWrite: false })
+    // DOIS pulsos defasados em meio ciclo: sempre há um anel se expandindo,
+    // sem o "vazio" entre repetições que um pulso só deixa.
+    const pulsos = [0, 1].map(() => {
+      const p = new THREE.Mesh(
+        new THREE.RingGeometry(PIN_BASE_R * 0.9, PIN_BASE_R, 44),
+        new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.5, depthWrite: false })
+      );
+      p.position.z = 0.05;
+      group.add(p);
+      return p;
+    });
+
+    // Coluna de luz: cone invertido (largo embaixo, estreito em cima) com
+    // mistura ADITIVA, que soma luz em vez de cobrir — é o que dá aparência
+    // de facho em vez de "cilindro de plástico". Resolve a leitura no mapa
+    // inclinado: liga a cabeça flutuante ao ponto exato do chão.
+    const coluna = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.75, 2.3, PIN_COLUNA_H, 18, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: claro,
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
     );
-    haste.rotation.x = Math.PI / 2; // cilindro nasce no eixo Y; aqui "cima" é Z
-    haste.position.z = PIN_ALTURA_M / 2;
-    group.add(haste);
+    coluna.rotation.x = Math.PI / 2;
+    coluna.position.z = PIN_COLUNA_H / 2 + 0.5;
+    group.add(coluna);
 
-    const cabeca = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(PIN_CABECA_R, 1),
-      new THREE.MeshBasicMaterial({ color: cor, depthTest: true, depthWrite: true })
+    // Núcleo octaédrico: facetas planas pegam a luz de forma diferente
+    // conforme gira, então ele "cintila" sozinho sem precisar de shader.
+    const nucleo = new THREE.Mesh(
+      new THREE.OctahedronGeometry(PIN_NUCLEO_R, 0),
+      new THREE.MeshBasicMaterial({ color: claro })
     );
-    cabeca.position.z = PIN_ALTURA_M;
-    group.add(cabeca);
+    nucleo.position.z = PIN_NUCLEO_Z;
+    group.add(nucleo);
 
-    return { object3d: group, radar, cabeca };
+    // Anel orbital inclinado — o elemento que faz o marcador parecer ATIVO
+    // e não apenas desenhado. A inclinação evita que ele suma quando visto
+    // de cima, que é o que aconteceria com um anel deitado.
+    const orbita = new THREE.Group();
+    const aroOrbital = new THREE.Mesh(
+      new THREE.TorusGeometry(PIN_ORBITA_R, 0.14, 8, 40),
+      new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: 0.9, depthWrite: false })
+    );
+    orbita.add(aroOrbital);
+    orbita.rotation.x = 1.15;
+    orbita.position.z = PIN_NUCLEO_Z;
+    group.add(orbita);
+
+    return { object3d: group, pulsos, nucleo, orbita, coluna };
   }
 
   /** Garante que o filho visual da entry bate com o kind atual (troca só quando muda). */
@@ -681,14 +722,18 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       const { object3d, wheels } = this.buildCarModel();
       e.visual = object3d;
       e.wheels = wheels;
-      e.pinRadar = undefined;
-      e.pinCabeca = undefined;
+      e.pinPulsos = undefined;
+      e.pinNucleo = undefined;
+      e.pinOrbita = undefined;
+      e.pinColuna = undefined;
     } else {
-      const { object3d, radar, cabeca } = this.buildIdlePin(e.corHex);
+      const { object3d, pulsos, nucleo, orbita, coluna } = this.buildIdlePin(e.corHex);
       e.visual = object3d;
       e.wheels = null;
-      e.pinRadar = radar;
-      e.pinCabeca = cabeca;
+      e.pinPulsos = pulsos;
+      e.pinNucleo = nucleo;
+      e.pinOrbita = orbita;
+      e.pinColuna = coluna;
     }
     e.visualIsCar = wantCar;
     e.object3d.add(e.visual);
@@ -890,7 +935,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // da viewport, então não compensa recalcular por técnico.
     const pxPorMetro = this.pixelsPorMetro();
     const fatorCarro = this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro);
-    const fatorBeacon = this.fatorTamanhoMinimo(IDLE_RADIUS_M * 2, IDLE_MIN_PX, pxPorMetro);
+    const fatorBeacon = this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro);
 
     // Prepara o estado de GL uma vez só; o laço abaixo desenha por objeto.
     //
@@ -973,16 +1018,34 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         // sobe-e-desce. Mantém o marcador "vivo" sem depender de o técnico
         // se mexer — importante agora que o 3D é o modo padrão e boa parte
         // do mapa é gente parada.
-        if (e.pinRadar) {
-          const t = ((agora % PIN_RADAR_MS) / PIN_RADAR_MS);
-          const escalaRadar = 0.6 + t * 1.5;
-          e.pinRadar.scale.set(escalaRadar, escalaRadar, 1);
-          (e.pinRadar.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - t);
-        }
-        if (e.pinCabeca) {
+        // Pulsos defasados em meio ciclo: some quando expande, e a opacidade
+        // cai com o quadrado do avanço pra sumir rápido no fim e não deixar
+        // um anel largo e pálido pairando.
+        e.pinPulsos?.forEach((p, i) => {
+          const t = (((agora / PIN_PULSO_MS) + i * 0.5) % 1);
+          const s = 0.75 + t * 2.1;
+          p.scale.set(s, s, 1);
+          (p.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - t) * (1 - t);
+        });
+
+        if (e.pinNucleo) {
           const b = Math.sin((agora / PIN_BOB_MS) * Math.PI * 2);
-          e.pinCabeca.position.z = PIN_ALTURA_M + b * 0.9;
-          e.pinCabeca.rotation.z = (agora / 9000) % (Math.PI * 2);
+          e.pinNucleo.position.z = PIN_NUCLEO_Z + b * 0.8;
+          // Gira nos dois eixos: só em Z, um octaedro visto de cima parece
+          // parado, porque a silhueta se repete a cada 90°.
+          e.pinNucleo.rotation.z = (agora / 4200) % (Math.PI * 2);
+          e.pinNucleo.rotation.x = (agora / 7300) % (Math.PI * 2);
+        }
+        if (e.pinOrbita) {
+          const b = Math.sin((agora / PIN_BOB_MS) * Math.PI * 2);
+          e.pinOrbita.position.z = PIN_NUCLEO_Z + b * 0.8; // acompanha o núcleo
+          e.pinOrbita.rotation.z = -(agora / 3100) % (Math.PI * 2);
+        }
+        if (e.pinColuna) {
+          // Respiro sutil na coluna, defasado do núcleo pra não pulsar tudo
+          // junto (o que ficaria mecânico).
+          const r = 0.18 + 0.10 * (0.5 + 0.5 * Math.sin((agora / 3400) * Math.PI * 2));
+          (e.pinColuna.material as THREE.MeshBasicMaterial).opacity = r;
         }
         anyTweenActive = true; // animação contínua do pin
 
@@ -1072,10 +1135,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     });
     this.entries.clear();
 
-    this.idleRingGeo?.dispose();
-    this.idleRingMat?.dispose();
-    this.idleCoreGeo?.dispose();
-    this.idleCoreMat?.dispose();
     this.carBodyGeo?.dispose();
     this.carBodyMat?.dispose();
     this.carCabinGeo?.dispose();
