@@ -122,6 +122,17 @@ export default function ValidacaoCPFLPage() {
     void carregar();
   }, []);
 
+  // ?etapa=AGUARDANDO permite que o botão do e-mail de lembrete caia direto na
+  // tela já filtrada. Lido de window em vez de useSearchParams de propósito:
+  // useSearchParams exige fronteira de Suspense no app router e derruba o
+  // build estático — aqui não vale o custo, é só um parâmetro de entrada.
+  useEffect(() => {
+    const alvo = new URLSearchParams(window.location.search).get("etapa");
+    if (alvo === "AGUARDANDO" || alvo === "APROVADA" || alvo === "REPROVADA") {
+      setEtapa(alvo);
+    }
+  }, []);
+
   const municipios = useMemo(
     () => Array.from(new Set(items.map((i) => i.municipio).filter((m) => m && m !== "—"))).sort(),
     [items]

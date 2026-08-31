@@ -1,5 +1,6 @@
 import "server-only";
 import { lerAssetPublic, type MailAttachment } from "@/lib/email";
+import { htmlLembretePendenciaCPFL } from "@/lib/emailPendenciaCpfl";
 
 /**
  * Template corporativo premium do e-mail de boas-vindas (Sistema GIOC · Nansen).
@@ -170,6 +171,51 @@ export async function montarEmailBoasVindas(
 </table>
 </body>
 </html>`;
+
+  return { html, attachments };
+}
+
+/* ── Lembrete de pendências CPFL ────────────────────────────────────────── */
+
+export interface EmailPendenciaCPFLParams {
+  quantidade: number;
+  url: string;
+}
+
+/**
+ * Monta o lembrete semanal de pendências CPFL. A marcação vive em
+ * emailPendenciaCpfl.ts (função pura) para poder ser gerada fora do Next na
+ * conferência da prévia — aqui fica só a leitura dos assets e os anexos inline.
+ *
+ * A ilustração é cardpendencialtz.png. Se ela não estiver em public/, o e-mail
+ * sai sem figura em vez de quebrar (mesma tolerância dos outros assets).
+ */
+export async function montarEmailPendenciaCPFL(
+  p: EmailPendenciaCPFLParams
+): Promise<EmailMontado> {
+  const [header, ilustracao, card] = await Promise.all([
+    lerAssetPublic("header.png"),
+    lerAssetPublic("cardpendencialtz.png"),
+    lerAssetPublic("card.png"),
+  ]);
+
+  const attachments: MailAttachment[] = [];
+  if (header) attachments.push({ filename: "header.png", content: header, cid: "gioc-header" });
+  if (ilustracao)
+    attachments.push({
+      filename: "cardpendencialtz.png",
+      content: ilustracao,
+      cid: "gioc-pendencia",
+    });
+  if (card) attachments.push({ filename: "card.png", content: card, cid: "gioc-card" });
+
+  const html = htmlLembretePendenciaCPFL({
+    quantidade: p.quantidade,
+    url: p.url,
+    cidHeader: header ? "gioc-header" : null,
+    cidIlustracao: ilustracao ? "gioc-pendencia" : null,
+    cidCard: card ? "gioc-card" : null,
+  });
 
   return { html, attachments };
 }
