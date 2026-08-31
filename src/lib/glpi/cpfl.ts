@@ -35,6 +35,7 @@ import {
   VALIDADOR_CPFL_STATUS_COLUMN,
   VALIDADOR_CPFL_USER_COLUMN,
 } from "./constants";
+import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 
 /** Etapa da vistoria no ciclo da concessionária. */
 export type EtapaCPFL = "AGUARDANDO" | "APROVADA" | "REPROVADA";
@@ -60,6 +61,8 @@ export interface VistoriaCPFL {
   etapa: EtapaCPFL;
   pendencia: string | null;
   tecnico: { id: number; nome: string } | null;
+  /** Técnico que não existe mais em glpi_users (saiu da empresa). */
+  tecnicoDesligado: boolean;
   dataVistoria: string | null;
   dataEnvio: string | null;
   dataAprovacao: string | null;
@@ -208,6 +211,19 @@ export async function fetchVistoriasCPFL(
 
   const agora = Date.now();
 
+  // Técnico purgado do GLPI: o nome real ainda está no histórico. Resolve em
+  // lote (uma vez por processo, ver usuariosRemovidos) para não mostrar id cru.
+  const idsSemCadastro = rows
+    .filter(
+      (r) =>
+        Number(r.tecnico_id) > 0 &&
+        r.tecnico_firstname == null &&
+        r.tecnico_realname == null &&
+        r.tecnico_name == null
+    )
+    .map((r) => Number(r.tecnico_id));
+  const nomesRecuperados = await nomesDeUsuariosRemovidos(idsSemCadastro);
+
   return rows.map((r): VistoriaCPFL => {
     const etapa = etapaDoStatus(r.status_id);
     const envio = parseData(r.data_envio);
@@ -221,12 +237,12 @@ export async function fetchVistoriasCPFL(
     const temTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
     // Parte da base aponta para usuário que não existe mais em glpi_users
     // (conferido 2026-08-31: 177 das 307 aguardando referenciam o id 11, que
-    // foi removido). Dizer "removido" é honesto; um traço mudo faria parecer
-    // que a vistoria nunca teve técnico, que é coisa diferente.
+    // foi purgado). Mostrar o nome recuperado do histórico; um traço mudo
+    // faria parecer que a vistoria nunca teve técnico, que é coisa diferente.
     const semCadastro =
       r.tecnico_firstname == null && r.tecnico_realname == null && r.tecnico_name == null;
     const nome = semCadastro
-      ? `Usuário #${Number(r.tecnico_id)} (removido)`
+      ? nomesRecuperados.get(Number(r.tecnico_id)) ?? "Técnico desligado"
       : `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
         r.tecnico_name ||
         "—";
@@ -240,6 +256,7 @@ export async function fetchVistoriasCPFL(
       etapa,
       pendencia: limpa(r.pendencia),
       tecnico: temTecnico ? { id: Number(r.tecnico_id), nome } : null,
+      tecnicoDesligado: temTecnico && semCadastro,
       dataVistoria: limpa(r.data_vistoria),
       dataEnvio: limpa(r.data_envio),
       dataAprovacao: limpa(r.data_aprovacao),

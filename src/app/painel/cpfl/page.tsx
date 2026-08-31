@@ -400,6 +400,17 @@ function CardCPFL({ v, onPdf }: { v: VistoriaCPFL; onPdf: () => void }) {
         <span className="flex items-center gap-1">
           <User className="h-3 w-3 shrink-0" />
           {v.tecnico?.nome ?? <span style={{ color: "var(--vm-faint)" }}>sem técnico</span>}
+          {/* Marcador discreto: o nome é o que importa, mas o analista precisa
+              saber que não adianta procurar essa pessoa no GLPI. */}
+          {v.tecnicoDesligado && (
+            <span
+              className="rounded px-1 py-px text-[9.5px] font-semibold uppercase tracking-wide"
+              style={{ background: "var(--vm-tile-2)", color: "var(--vm-faint)" }}
+              title="Usuário não existe mais no GLPI — nome recuperado do histórico"
+            >
+              desligado
+            </span>
+          )}
         </span>
       </div>
 

@@ -365,6 +365,7 @@ export interface VistoriaCPFL {
   etapa: EtapaCPFL;
   pendencia: string | null;
   tecnico: { id: number; nome: string } | null;
+  tecnicoDesligado: boolean;
   dataVistoria: string | null;
   dataEnvio: string | null;
   dataAprovacao: string | null;
