@@ -85,7 +85,19 @@ const CAR_REAL_LENGTH_M = 5;
 const CAR_MIN_PX = 46;
 
 /** Idem pro beacon do técnico parado (diâmetro do anel). */
-const IDLE_MIN_PX = 130;
+/**
+ * A figura do tecnico tem TAMANHO CONSTANTE NA TELA, nao um piso.
+ *
+ * O piso ("nao deixe ficar menor que X") funciona pra picape, que tem tamanho
+ * realista de veiculo: de perto ela fica proporcional a rua, que e o certo. Mas
+ * a figura e um MARCADOR, nao um objeto em escala — com piso, de perto ela
+ * crescia ate ficar gigantesca (nada segurava o limite superior) e de longe o
+ * teto de ampliacao a deixava minuscula. Os dois extremos reclamados.
+ *
+ * Marcador de mapa tem tamanho fixo em pixels, e e isso que se faz aqui: a
+ * figura ocupa sempre ~IDLE_ALVO_PX de altura na tela, em qualquer zoom.
+ */
+const IDLE_ALVO_PX = 110;
 /**
  * Teto de ampliacao da figura — ver fatorTamanhoMinimo().
  *
@@ -94,7 +106,7 @@ const IDLE_MIN_PX = 130;
  * medicao feita na posicao de cada tecnico, o fator ja sai correto e o teto
  * volta a ser so uma trava de seguranca contra valores extremos.
  */
-const PIN_MAX_FATOR = 40;
+const PIN_MAX_FATOR = 500;
 
 
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
@@ -1096,6 +1108,23 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   }
 
   /**
+   * Fator que mantem o objeto com altura CONSTANTE na tela (`alvoPx`),
+   * independente do zoom — comportamento de marcador.
+   *
+   * Diferente do piso abaixo, este tambem ENCOLHE quando o objeto ficaria
+   * grande demais. E o que faltava: nada segurava o limite superior, e de
+   * perto a figura virava um gigante.
+   *
+   * Os limites existem so contra valor absurdo em zoom extremo, onde a
+   * projecao ja nao e confiavel.
+   */
+  private fatorTamanhoFixo(alturaM: number, alvoPx: number, pxPorMetro: number): number {
+    const px = alturaM * pxPorMetro;
+    if (px <= 0) return 1;
+    return Math.max(0.15, Math.min(alvoPx / px, PIN_MAX_FATOR));
+  }
+
+  /**
    * Fator que impede o objeto de ficar menor que `minPx` na tela.
    *
    * `maxFator` existe por causa de objeto ALTO. Pra picape, que e baixa e
@@ -1358,7 +1387,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       const fator =
         e.kind === "car"
           ? this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro)
-          : this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro, PIN_MAX_FATOR);
+          : this.fatorTamanhoFixo(PIN_FOOTPRINT_M, IDLE_ALVO_PX, pxPorMetro);
       const escala = scale * fator;
 
       // Etiqueta acima da CABECA, nao no meio do corpo.
