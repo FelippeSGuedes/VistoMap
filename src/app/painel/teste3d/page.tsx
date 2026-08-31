@@ -1,26 +1,15 @@
 "use client";
 
 /**
- * Página de teste ISOLADA do pipeline 3D (Three.js dentro do Mapbox).
+ * Página de teste ISOLADA de orientação de modelo 3D no Mapbox.
  *
- * Existe porque depurar o veículo 3D dentro de /painel/mapa ficou inviável:
- * cada tentativa dependia de um técnico real em deslocamento, de rota
- * resolvida, de poll, e de um deploy de ~5min pra ver o resultado. Aqui o
- * cenário é fixo e mínimo.
+ * Existe porque acertar orientação por dedução já custou várias rodadas neste
+ * projeto (a picape andou de ré, o capacete deitou). Ver as variantes LADO A
+ * LADO num cenário fixo responde em um print o que a dedução erra repetidas
+ * vezes.
  *
- * Desenha lado a lado, no mesmo frame e com a MESMA matriz:
- *   - um CUBO de 12m, geometria trivial, cor sólida;
- *   - o car.glb.
- *
- * Isso separa de uma vez as duas hipóteses que sobraram: se o cubo sai
- * inteiro e a picape não, o problema é do modelo; se os dois se
- * estilhaçam, é do pipeline (framebuffer/estado de GL).
- *
- * Chaves na URL, todas combináveis:
- *   ?fbo=0    não reassocia o framebuffer do Mapbox após resetState()
- *   ?depth=0  DESLIGA depthTest/depthWrite (ligados por padrão)
- *   ?luz=1    usa material PBR com iluminação em vez de cor chapada
- *   ?reset=0  não chama resetState() (deixa o estado do Mapbox como está)
+ * Mostra o mesmo modelo quatro vezes, cada um com uma rotação de base
+ * diferente, alinhados de oeste pra leste e rotulados A/B/C/D.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -32,16 +21,23 @@ import "mapbox-gl/dist/mapbox-gl.css";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 const CENTRO: [number, number] = [-44.1470146, -19.9553592];
-const LADO_M = 12;
-const LAYER_ID = "vm-teste-3d";
+const LAYER_ID = "vm-teste-orientacao";
+const ALTURA_M = 12; // exagerado de proposito: aqui o que importa e a POSE
+const ESPACO_M = 25;
 
-/** Metros → offset em graus, pra posicionar os dois objetos lado a lado. */
+const VARIANTES = [
+  { id: "A", rot: [0, 0, 0], desc: "sem rotacao (modelo como veio)" },
+  { id: "B", rot: [Math.PI / 2, 0, 0], desc: "X +90 (convencao glTF Y-up)" },
+  { id: "C", rot: [-Math.PI / 2, 0, 0], desc: "X -90" },
+  { id: "D", rot: [Math.PI / 2, 0, Math.PI], desc: "X +90 e Z 180" },
+] as const;
+
 function desloca(lng: number, lat: number, leste: number): [number, number] {
-  const mPorGrauLng = 111320 * Math.cos((lat * Math.PI) / 180);
-  return [lng + leste / mPorGrauLng, lat];
+  const mPorGrau = 111320 * Math.cos((lat * Math.PI) / 180);
+  return [lng + leste / mPorGrau, lat];
 }
 
-class LayerTeste implements mapboxgl.CustomLayerInterface {
+class LayerOrientacao implements mapboxgl.CustomLayerInterface {
   id = LAYER_ID;
   type = "custom" as const;
   renderingMode = "3d" as const;
@@ -50,12 +46,9 @@ class LayerTeste implements mapboxgl.CustomLayerInterface {
   private camera = new THREE.Camera();
   private scene = new THREE.Scene();
   private renderer!: THREE.WebGLRenderer;
-  private objetos: Array<{ obj: THREE.Object3D; lng: number; lat: number }> = [];
+  private itens: Array<{ obj: THREE.Object3D; lng: number; lat: number }> = [];
 
-  constructor(
-    private opts: { fbo: boolean; depth: boolean; luz: boolean; reset: boolean },
-    private onLog: (s: string) => void
-  ) {}
+  constructor(private onLog: (s: string) => void) {}
 
   onAdd(map: mapboxgl.Map, gl: WebGLRenderingContext): void {
     this.map = map;
@@ -69,99 +62,74 @@ class LayerTeste implements mapboxgl.CustomLayerInterface {
     sol.position.set(0, -70, 100).normalize();
     this.scene.add(sol);
 
-    const comum = { depthTest: this.opts.depth, depthWrite: this.opts.depth };
-
-    // Cubo de referência — geometria trivial. Se ELE sair recortado, o
-    // problema não tem nada a ver com o modelo importado.
-    const matCubo = this.opts.luz
-      ? new THREE.MeshStandardMaterial({ color: 0x00d4a0, metalness: 0, roughness: 0.8, ...comum })
-      : new THREE.MeshBasicMaterial({ color: 0x00d4a0, ...comum });
-    const cubo = new THREE.Mesh(new THREE.BoxGeometry(LADO_M, LADO_M, LADO_M), matCubo);
-    cubo.position.z = LADO_M / 2;
-    const grupoCubo = new THREE.Group();
-    grupoCubo.add(cubo);
-    grupoCubo.matrixAutoUpdate = false;
-    this.scene.add(grupoCubo);
-    this.objetos.push({ obj: grupoCubo, lng: CENTRO[0], lat: CENTRO[1] });
-    this.onLog("cubo adicionado");
-
-    const [lngCarro, latCarro] = desloca(CENTRO[0], CENTRO[1], 40);
     new GLTFLoader().load(
-      asset("/car.glb"),
+      asset("/person1.glb"),
       (gltf) => {
-        const raiz = gltf.scene;
-        raiz.rotation.x = Math.PI / 2;
-        raiz.updateMatrixWorld(true);
-        const tam = new THREE.Vector3();
-        new THREE.Box3().setFromObject(raiz).getSize(tam);
-        raiz.scale.setScalar(LADO_M / (tam.y || 1));
+        VARIANTES.forEach((v, i) => {
+          const clone = gltf.scene.clone(true);
+          clone.rotation.set(v.rot[0], v.rot[1], v.rot[2]);
+          clone.updateMatrixWorld(true);
 
-        raiz.traverse((o) => {
-          const malha = o as THREE.Mesh;
-          if (!malha.isMesh) return;
-          const mats = Array.isArray(malha.material) ? malha.material : [malha.material];
-          malha.material = mats.map((mt) => {
-            const src = mt as THREE.MeshStandardMaterial;
-            if (this.opts.luz) {
-              src.metalness = 0; src.metalnessMap = null;
-              src.roughness = 0.8; src.roughnessMap = null;
-              src.normalMap = null;
-              src.depthTest = this.opts.depth; src.depthWrite = this.opts.depth;
-              src.needsUpdate = true;
-              return src;
+          // Escala pela MAIOR dimensao apos a rotacao — aqui nao interessa
+          // qual eixo e "altura", so caber igual pra comparar as poses.
+          const cx = new THREE.Box3().setFromObject(clone);
+          const t = new THREE.Vector3();
+          cx.getSize(t);
+          clone.scale.setScalar(ALTURA_M / Math.max(t.x, t.y, t.z));
+
+          clone.traverse((o) => {
+            const m = o as THREE.Mesh;
+            if (!m.isMesh) return;
+            if (!m.geometry.getAttribute("normal")) m.geometry.computeVertexNormals();
+            const mat = m.material as THREE.MeshStandardMaterial;
+            if (mat?.isMeshStandardMaterial) {
+              mat.metalness = 0;
+              mat.metalnessMap = null;
+              mat.roughness = 0.7;
+              mat.needsUpdate = true;
             }
-            return new THREE.MeshBasicMaterial({
-              map: src.map ?? null,
-              color: src.map ? 0xffffff : src.color.clone(),
-              side: THREE.DoubleSide, // malha do Tripo não é watertight
-              ...comum,
-            });
-          })[0] as THREE.Material;
-        });
+          });
 
-        const grupo = new THREE.Group();
-        grupo.add(raiz);
-        grupo.matrixAutoUpdate = false;
-        this.scene.add(grupo);
-        this.objetos.push({ obj: grupo, lng: lngCarro, lat: latCarro });
-        this.onLog(`car.glb ok (${tam.x.toFixed(2)}x${tam.y.toFixed(2)}x${tam.z.toFixed(2)} orig)`);
+          const grupo = new THREE.Group();
+          grupo.matrixAutoUpdate = false;
+          grupo.add(clone);
+          this.scene.add(grupo);
+          const [lng, lat] = desloca(CENTRO[0], CENTRO[1], (i - 1.5) * ESPACO_M);
+          this.itens.push({ obj: grupo, lng, lat });
+        });
+        this.onLog(`person1.glb carregado — ${VARIANTES.length} variantes`);
         map.triggerRepaint();
       },
       undefined,
-      (e) => this.onLog("ERRO car.glb: " + String(e))
+      (e) => this.onLog("ERRO ao carregar: " + String(e))
     );
   }
 
   render(gl: WebGLRenderingContext, matrix: number[]): void {
     const fbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
-    if (this.opts.reset) this.renderer.resetState();
-    if (this.opts.fbo) gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    this.renderer.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     this.renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.depthRange(0, 1);
+    this.renderer.clearDepth();
 
-    // A transformação vai na matriz da CÂMERA, não na do objeto. Posicionar
-    // o objeto em Mercator (~0.29) com escala ~2.6e-8 entrega ao shader uma
-    // matriz float32 cujo incremento representável (~3e-8) é maior que boa
-    // parte do próprio objeto — os vértices colapsam numa grade grosseira.
-    // Compondo na projeção, os vértices ficam em metros e o offset enorme é
-    // resolvido em float64 na CPU. Cada objeto é desenhado no seu próprio
-    // passe, com sua própria matriz.
-    for (const { obj } of this.objetos) obj.visible = false;
-
-    for (const { obj, lng, lat } of this.objetos) {
+    for (const { obj } of this.itens) obj.visible = false;
+    for (const { obj, lng, lat } of this.itens) {
       const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], 0);
       const s = m.meterInMercatorCoordinateUnits();
-      const modelo = new THREE.Matrix4()
-        .makeTranslation(m.x, m.y, m.z ?? 0)
-        .multiply(new THREE.Matrix4().makeScale(s, s, s));
-      this.camera.projectionMatrix.fromArray(matrix).multiply(modelo);
-
+      // Transformacao na matriz da CAMERA (precisao) — ver techModel3DLayer.
+      this.camera.projectionMatrix
+        .fromArray(matrix)
+        .multiply(
+          new THREE.Matrix4()
+            .makeTranslation(m.x, m.y, m.z ?? 0)
+            .multiply(new THREE.Matrix4().makeScale(s, s, s))
+        );
       obj.visible = true;
       this.renderer.render(this.scene, this.camera);
       obj.visible = false;
     }
-
-    for (const { obj } of this.objetos) obj.visible = true;
+    for (const { obj } of this.itens) obj.visible = true;
   }
 
   onRemove(): void {
@@ -169,24 +137,9 @@ class LayerTeste implements mapboxgl.CustomLayerInterface {
   }
 }
 
-export default function Teste3D() {
+export default function TesteOrientacao() {
   const elRef = useRef<HTMLDivElement | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const [opts, setOpts] = useState({ fbo: true, depth: false, luz: false, reset: true });
-
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    setOpts({
-      fbo: q.get("fbo") !== "0",
-      // Profundidade LIGADA por padrão, igual à produção. Ela nasceu
-      // desligada aqui por descuido, e isso custou uma rodada de diagnóstico:
-      // a página parecia quebrada (dava pra ver dentro do carro, e de cima
-      // ele aparecia pelo chassi) quando na verdade era só o padrão errado.
-      depth: q.get("depth") !== "0",
-      luz: q.get("luz") === "1",
-      reset: q.get("reset") !== "0",
-    });
-  }, []);
 
   useEffect(() => {
     if (!TOKEN || !elRef.current) return;
@@ -195,8 +148,8 @@ export default function Teste3D() {
       container: elRef.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: CENTRO,
-      zoom: 18,
-      pitch: 60,
+      zoom: 18.5,
+      pitch: 55,
       antialias: true,
       attributionControl: false,
     });
@@ -204,11 +157,22 @@ export default function Teste3D() {
     map.on("style.load", () => {
       map.setProjection("mercator");
       if (!map.getLayer(LAYER_ID)) {
-        map.addLayer(new LayerTeste(opts, (s) => setLogs((l) => [...l, s])));
+        map.addLayer(new LayerOrientacao((s) => setLogs((l) => [...l, s])));
       }
+      VARIANTES.forEach((v, i) => {
+        const [lng, lat] = desloca(CENTRO[0], CENTRO[1], (i - 1.5) * ESPACO_M);
+        const el = document.createElement("div");
+        el.textContent = v.id;
+        el.style.cssText =
+          "width:22px;height:22px;border-radius:9999px;background:#00B388;color:#fff;" +
+          "font:700 12px/22px system-ui;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.3)";
+        new mapboxgl.Marker({ element: el, anchor: "top", offset: [0, 6] })
+          .setLngLat([lng, lat])
+          .addTo(map);
+      });
     });
     return () => map.remove();
-  }, [opts]);
+  }, []);
 
   if (!TOKEN) return <div className="p-6">NEXT_PUBLIC_MAPBOX_TOKEN ausente.</div>;
 
@@ -216,13 +180,14 @@ export default function Teste3D() {
     <div className="relative h-screen w-full">
       <div ref={elRef} className="h-full w-full" />
       <div className="absolute left-3 top-3 rounded-lg bg-white/95 p-3 font-mono text-xs shadow-lg">
-        <div className="mb-1 font-bold">teste 3D isolado</div>
-        <div>cubo 12m (teal) · picape 40m a leste</div>
-        <div className="mt-1">
-          fbo={String(opts.fbo)} depth={String(opts.depth)} luz={String(opts.luz)} reset={String(opts.reset)}
-        </div>
-        <div className="mt-2 text-[10px] leading-relaxed text-neutral-600">
-          ?fbo=0 · ?depth=0 · ?luz=1 · ?reset=0
+        <div className="mb-1 font-bold">orientação do person1.glb</div>
+        {VARIANTES.map((v) => (
+          <div key={v.id}>
+            <b>{v.id}</b> — {v.desc}
+          </div>
+        ))}
+        <div className="mt-2 text-[10px] text-neutral-600">
+          Qual está EM PÉ e de frente? Gire e incline o mapa pra conferir.
         </div>
         {logs.map((l, i) => (
           <div key={i} className="mt-1 text-[10px] text-emerald-700">{l}</div>
