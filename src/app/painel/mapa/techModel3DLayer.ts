@@ -129,6 +129,7 @@ const CAR_UNLIT = true;
 const SCRATCH_SCALE = new THREE.Matrix4();
 const SCRATCH_ROT = new THREE.Matrix4();
 const SCRATCH_MODELO = new THREE.Matrix4();
+const SCRATCH_ROT2 = new THREE.Matrix4();
 
 // ---------------------------------------------------------------------------
 // Template do car.glb — MÓDULO, não instância.
@@ -1060,6 +1061,26 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   render(gl: WebGLRenderingContext, matrix: number[]): void {
     let anyTweenActive = false;
 
+    // BILLBOARD da figura parada: bearing e pitch do mapa.
+    //
+    // A figura ESTA em pe — verificado na pagina de comparacao. O que se ve
+    // como "deitada" e ENCURTAMENTO DE PERSPECTIVA: em pitch 55 a altura dela
+    // na tela cai pra ~57% da real (cos 55°). Ela esta vertical e aparece
+    // esmagada.
+    //
+    // Fazer a figura encarar a camera devolve a altura cheia. Rz(bearing)
+    // alinha no plano horizontal; Rx(+(90°-pitch)) inclina o topo NA DIRECAO
+    // da camera, que fica num angulo de elevacao de (90° - pitch).
+    //
+    // HISTORICO, pra nao se repetir: implementei isso, errei o SINAL do Rx
+    // (aparecia de cabeca pra baixo), corrigi o sinal, e entao removi o
+    // recurso INTEIRO junto com o problema — jogando fora a versao ja
+    // corrigida. O sinal atual foi validado numericamente em pitch
+    // 0/30/50/60/85: a frente da figura bate com a direcao da camera em
+    // todos, e o topo nunca inverte.
+    const bearingRad = ((this.map?.getBearing() ?? 0) * Math.PI) / 180;
+    const pitchRad = ((this.map?.getPitch() ?? 0) * Math.PI) / 180;
+
     // A medição de pixels-por-metro é POR TÉCNICO (ver o laço abaixo), não
     // uma por frame no centro do mapa como era antes. O argumento de então —
     // "o zoom é global e a latitude varia pouco" — ignorava a PERSPECTIVA:
@@ -1270,17 +1291,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       // Billboard SO na figura, nunca no grupo inteiro: disco e pulso
       // precisam continuar deitados no chao. Por isso a rotacao vai num
       // suporte que envolve so o modelo (ver buildIdlePin).
-      // A FIGURA TEM ORIENTACAO FIXA — nao segue a camera.
-      //
-      // Passei por duas versoes de billboard aqui: inclinar pelo pitch (a
-      // figura deitava em alguns angulos) e girar pelo bearing (ela mudava de
-      // orientacao ao rotacionar o mapa). Cada elemento que reage a camera e
-      // mais uma chance de inverter em algum angulo, e o ganho — encarar quem
-      // olha — e pequeno perto do defeito que produz.
-      //
-      // Fixa, ela nunca vira de cabeca pra baixo nem deita, em nenhum estilo
-      // de mapa nem inclinacao. Sobra o encurtamento natural da perspectiva,
-      // que e discreto e correto: e o que acontece com qualquer objeto real.
+      // Billboard SO na figura, nunca no grupo: disco e pulso precisam
+      // continuar deitados no chao. Por isso a rotacao vai no suporte que
+      // envolve apenas o modelo (ver buildIdlePin).
+      if (e.kind !== "car" && e.pinNucleo) {
+        e.pinNucleo.matrix
+          .makeRotationZ(bearingRad)
+          .multiply(SCRATCH_ROT2.makeRotationX(Math.PI / 2 - pitchRad));
+        e.pinNucleo.matrixWorldNeedsUpdate = true;
+      }
       this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
 
       e.object3d.visible = true;
