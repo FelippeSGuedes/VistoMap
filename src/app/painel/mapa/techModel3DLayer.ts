@@ -86,8 +86,15 @@ const CAR_MIN_PX = 46;
 
 /** Idem pro beacon do técnico parado (diâmetro do anel). */
 const IDLE_MIN_PX = 64;
-/** Teto de ampliacao da figura — ver fatorTamanhoMinimo(). */
-const PIN_MAX_FATOR = 5;
+/**
+ * Teto de ampliacao da figura — ver fatorTamanhoMinimo().
+ *
+ * Era 5, o que deixava quem estava longe quase invisivel. O teto baixo era
+ * remendo pra distorcao de medir pixels-por-metro no centro do mapa; com a
+ * medicao feita na posicao de cada tecnico, o fator ja sai correto e o teto
+ * volta a ser so uma trava de seguranca contra valores extremos.
+ */
+const PIN_MAX_FATOR = 40;
 
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
 // continua no código como fallback: aparece enquanto os 17MB carregam e
@@ -1020,13 +1027,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
    * fórmula de metros-por-pixel na mão: usa só API pública e não depende de
    * eu acertar a convenção de tamanho de tile do Mapbox.
    */
-  private pixelsPorMetro(): number {
+  private pixelsPorMetroEm(lng: number, lat: number): number {
     const map = this.map;
     if (!map) return 1;
-    const c = map.getCenter();
-    const grausPorMetro = 1 / (111320 * Math.cos((c.lat * Math.PI) / 180));
-    const a = map.project([c.lng, c.lat]);
-    const b = map.project([c.lng + grausPorMetro, c.lat]);
+    const grausPorMetro = 1 / (111320 * Math.cos((lat * Math.PI) / 180));
+    const a = map.project([lng, lat]);
+    const b = map.project([lng + grausPorMetro, lat]);
     return Math.hypot(b.x - a.x, b.y - a.y) || 1;
   }
 
@@ -1054,9 +1060,13 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   render(gl: WebGLRenderingContext, matrix: number[]): void {
     let anyTweenActive = false;
 
-    // Uma medição por frame: o zoom é global e a latitude varia pouco dentro
-    // da viewport, então não compensa recalcular por técnico.
-    const pxPorMetro = this.pixelsPorMetro();
+    // A medição de pixels-por-metro é POR TÉCNICO (ver o laço abaixo), não
+    // uma por frame no centro do mapa como era antes. O argumento de então —
+    // "o zoom é global e a latitude varia pouco" — ignorava a PERSPECTIVA:
+    // com o mapa inclinado, um metro perto da base da tela ocupa muitos
+    // pixels e perto do horizonte ocupa pouquíssimos. Usando o valor do
+    // centro pra todos, quem estava longe encolhia até quase sumir e quem
+    // estava perto crescia demais. Pareciam dois bugs; era um só.
 
     // BILLBOARD da figura: bearing e pitch do mapa, lidos uma vez por frame.
     //
@@ -1084,8 +1094,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // rumo real da rota, nao pra camera.
     const bearingRad = ((this.map?.getBearing() ?? 0) * Math.PI) / 180;
     const pitchRad = ((this.map?.getPitch() ?? 0) * Math.PI) / 180;
-    const fatorCarro = this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro);
-    const fatorBeacon = this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro, PIN_MAX_FATOR);
 
     // Prepara o estado de GL uma vez só; o laço abaixo desenha por objeto.
     //
@@ -1137,6 +1145,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       if (frac < 1) anyTweenActive = true;
 
       let x: number, y: number, z: number, headingRad: number | null;
+      let lngAtual: number, latAtual: number;
 
       if (e.kind === "car" && e.route) {
         // DEAD RECKONING: avança sozinho na velocidade estimada e absorve o
@@ -1167,6 +1176,8 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         x = m.x;
         y = m.y;
         z = m.z ?? 0;
+        lngAtual = sample.lng;
+        latAtual = sample.lat;
         headingRad = sample.headingRad;
 
         // Rodas giram conforme a distância real percorrida (não por tempo)
@@ -1208,6 +1219,8 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         anyTweenActive = true; // animação contínua do pin
 
         const ll = new mapboxgl.MercatorCoordinate(x, y, z).toLngLat();
+        lngAtual = ll.lng;
+        latAtual = ll.lat;
         e.label?.setLngLat([ll.lng, ll.lat]);
       }
 
@@ -1253,7 +1266,14 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       // no norte do Mercator. Então rotationZ(heading) puro já acerta:
       // heading 0 (norte) → frente em -Y = norte; heading 90° (leste) →
       // frente em +X = leste. Somar π aqui faria a picape andar de ré.
-      const fator = e.kind === "car" ? fatorCarro : fatorBeacon;
+      // map.project() aplica a projecao inteira, inclusive o pitch, entao
+      // medir na posicao DESTE tecnico da o fator certo pra ele. Sao duas
+      // projecoes por tecnico por frame: irrelevante pra um punhado deles.
+      const pxPorMetro = this.pixelsPorMetroEm(lngAtual, latAtual);
+      const fator =
+        e.kind === "car"
+          ? this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro)
+          : this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro, PIN_MAX_FATOR);
       const escala = scale * fator;
 
       SCRATCH_MODELO
