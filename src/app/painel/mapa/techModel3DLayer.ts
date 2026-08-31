@@ -85,7 +85,7 @@ const CAR_REAL_LENGTH_M = 5;
 const CAR_MIN_PX = 46;
 
 /** Idem pro beacon do técnico parado (diâmetro do anel). */
-const IDLE_MIN_PX = 40;
+const IDLE_MIN_PX = 64;
 
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
 // continua no código como fallback: aparece enquanto os 17MB carregam e
@@ -119,6 +119,7 @@ const CAR_UNLIT = true;
 const SCRATCH_SCALE = new THREE.Matrix4();
 const SCRATCH_ROT = new THREE.Matrix4();
 const SCRATCH_MODELO = new THREE.Matrix4();
+const SCRATCH_ROT2 = new THREE.Matrix4();
 
 // ---------------------------------------------------------------------------
 // Template do car.glb — MÓDULO, não instância.
@@ -444,7 +445,8 @@ const PIN_ORBITA_R = 3.0;
 const PIN_PULSO_MS = 2800;    // ciclo de um pulso de radar
 const PIN_BOB_MS = 2600;      // sobe-e-desce do núcleo
 /** Diâmetro de referência do pin pro piso de tamanho em pixels. */
-const PIN_FOOTPRINT_M = 2.8; // largura real do pin (capacete + disco)
+/** Referencia do piso em pixels: a ALTURA da figura, que e o que se ve. */
+const PIN_FOOTPRINT_M = PERSON_ALTURA_M;
 
 // ---------------------------------------------------------------------------
 // Movimento: extrapolação por velocidade ("dead reckoning").
@@ -800,9 +802,15 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       figura.rotation.x = Math.PI / 2;
       figura.position.z = 1.2;
     }
-    group.add(figura);
+    // Suporte que recebe o billboard. A figura fica DENTRO dele pra nao
+    // perder a rotacao de base do template (glTF Y-up → Z-up), e o suporte
+    // tem a matriz montada na mao a cada frame em render().
+    const suporte = new THREE.Group();
+    suporte.matrixAutoUpdate = false;
+    suporte.add(figura);
+    group.add(suporte);
 
-    return { object3d: group, pulsos: [pulso], nucleo: figura, orbita: group, coluna: pulso };
+    return { object3d: group, pulsos: [pulso], nucleo: suporte, orbita: group, coluna: pulso };
   }
 
   /** Garante que o filho visual da entry bate com o kind atual (troca só quando muda). */
@@ -1032,6 +1040,25 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // Uma medição por frame: o zoom é global e a latitude varia pouco dentro
     // da viewport, então não compensa recalcular por técnico.
     const pxPorMetro = this.pixelsPorMetro();
+
+    // BILLBOARD da figura: bearing e pitch do mapa, lidos uma vez por frame.
+    //
+    // Uma figura EM PE vista de uma camera inclinada olhando pra baixo aparece
+    // encurtada — o efeito de "meio deitado" relatado. Nao e defeito do
+    // modelo: acontece com qualquer objeto vertical em mapa inclinado. A
+    // solucao padrao pra marcador de personagem e faze-lo encarar a camera.
+    //
+    // Rz(bearing) gira a figura pra ficar de frente no plano horizontal
+    // (verificado: com bearing 0 a frente do modelo, +Y local, ja aponta pro
+    // sul, que e de onde a camera olha). Rx(-(90°-pitch)) inclina o topo na
+    // direcao da camera: em pitch 90 (horizonte) fica em pe, em pitch 0
+    // (vista de cima) deita de frente pra tela — que e exatamente o que se
+    // quer ver de cima.
+    //
+    // Nao vale pro CARRO: ele e um veiculo sobre a rua, e precisa apontar pro
+    // rumo real da rota, nao pra camera.
+    const bearingRad = ((this.map?.getBearing() ?? 0) * Math.PI) / 180;
+    const pitchRad = ((this.map?.getPitch() ?? 0) * Math.PI) / 180;
     const fatorCarro = this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro);
     const fatorBeacon = this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro);
 
@@ -1208,6 +1235,16 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         .makeTranslation(x, y, z)
         .multiply(SCRATCH_SCALE.makeScale(escala, escala, escala))
         .multiply(SCRATCH_ROT.makeRotationZ(headingRad ?? 0));
+
+      // Billboard SO na figura, nunca no grupo inteiro: disco e pulso
+      // precisam continuar deitados no chao. Por isso a rotacao vai num
+      // suporte que envolve so o modelo (ver buildIdlePin).
+      if (e.kind !== "car" && e.pinNucleo) {
+        e.pinNucleo.matrix
+          .makeRotationZ(bearingRad)
+          .multiply(SCRATCH_ROT2.makeRotationX(-(Math.PI / 2 - pitchRad)));
+        e.pinNucleo.matrixWorldNeedsUpdate = true;
+      }
       this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
 
       e.object3d.visible = true;
