@@ -96,6 +96,9 @@ const IDLE_MIN_PX = 64;
  */
 const PIN_MAX_FATOR = 40;
 
+/** Inclinar a figura pra encarar a camera. Ver o comentario em render(). */
+const PIN_BILLBOARD_INCLINA = false;
+
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
 // continua no código como fallback: aparece enquanto os 17MB carregam e
 // fica permanentemente se o download falhar. Virar `false` aqui volta pro
@@ -1285,9 +1288,17 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       // precisam continuar deitados no chao. Por isso a rotacao vai num
       // suporte que envolve so o modelo (ver buildIdlePin).
       if (e.kind !== "car" && e.pinNucleo) {
-        e.pinNucleo.matrix
-          .makeRotationZ(bearingRad)
-          .multiply(SCRATCH_ROT2.makeRotationX(Math.PI / 2 - pitchRad));
+        e.pinNucleo.matrix.makeRotationZ(bearingRad);
+        // A INCLINACAO fica desligada por padrao. Ela e matematicamente
+        // correta (verificada em pitch 0/30/50/60/85) e faz a figura encarar
+        // a camera de fato, mas custa caro quando erra: em pitch 50 ela
+        // inclina 40°, e qualquer desalinhamento vira "boneco deitado" — o
+        // defeito mais reclamado aqui. Sem ela a figura fica SEMPRE vertical,
+        // apenas virando pra quem olha: sobra o encurtamento natural da
+        // perspectiva, que e discreto, e some o modo de falha grave.
+        if (PIN_BILLBOARD_INCLINA) {
+          e.pinNucleo.matrix.multiply(SCRATCH_ROT2.makeRotationX(Math.PI / 2 - pitchRad));
+        }
         e.pinNucleo.matrixWorldNeedsUpdate = true;
       }
       this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
