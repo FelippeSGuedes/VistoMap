@@ -659,7 +659,16 @@ export default function CentralVistoriasPage() {
 
                   {/* ações */}
                   <div className="mt-auto flex items-center gap-1.5 pt-3" style={{ borderTop: "1px solid var(--vm-border-soft)" }}>
-                    {v.tecnico_nome && (
+                    {/* Reatribuir só enquanto AINDA HÁ trabalho pela frente.
+                        O técnico continua gravado no equipamento depois da
+                        vistoria terminar, então "tem técnico" sozinho fazia o
+                        botão aparecer em item já finalizado — e reatribuir
+                        chama reatribuirVistoria(), que joga a situação de
+                        volta pra A Vistoriar. Ou seja: um clique desfazia uma
+                        vistoria concluída. Em VISTORIADO/REVISITADO a ação
+                        certa é Devolver (logo abaixo), que preserva o
+                        histórico. */}
+                    {v.tecnico_nome && !SITUACOES_CONCLUIDAS.has(v.situacao_id) && (
                       <button
                         type="button"
                         onClick={() => { setReatrib(v); setNovoTecnico(""); setMotivo(""); }}
@@ -673,9 +682,8 @@ export default function CentralVistoriasPage() {
                     {/* Desatribuir aparece enquanto o técnico ainda NÃO
                         começou o trabalho de campo: ATRIBUÍDO (A_VISTORIAR +
                         tem técnico) e EM DESLOCAMENTO (a caminho, nada
-                        registrado ainda). Item com progresso real (situação
-                        3/6/8 etc.) usa Reatribuir/Devolver, que preservam o
-                        histórico em vez de zerar. */}
+                        registrado ainda). Item já concluído usa Devolver, que
+                        preserva o histórico em vez de zerar. */}
                     {(v.situacao_id === 1 || v.situacao_id === 7) && v.tecnico_nome && (
                       <button
                         type="button"
@@ -687,7 +695,7 @@ export default function CentralVistoriasPage() {
                         Desatribuir
                       </button>
                     )}
-                    {(v.situacao_id === 3 || v.situacao_id === 6) && (
+                    {SITUACOES_CONCLUIDAS.has(v.situacao_id) && (
                       <button
                         type="button"
                         onClick={() => {
