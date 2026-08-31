@@ -179,10 +179,6 @@ export default function ValidacaoCPFLPage() {
             <h1 className="text-[22px] font-bold leading-tight" style={{ color: "var(--vm-text)" }}>
               Validação CPFL
             </h1>
-            <p className="mt-1 text-[12px]" style={{ color: "var(--vm-muted)" }}>
-              O que já foi enviado à concessionária e o que ela decidiu · a decisão é
-              registrada por ela no GLPI, esta tela só acompanha
-            </p>
           </div>
           <button
             type="button"
