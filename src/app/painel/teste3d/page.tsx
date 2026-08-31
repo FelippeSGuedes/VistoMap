@@ -140,6 +140,9 @@ class LayerOrientacao implements mapboxgl.CustomLayerInterface {
 export default function TesteOrientacao() {
   const elRef = useRef<HTMLDivElement | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  // Camera ao vivo: e o dado que faltava pra correlacionar "nesse angulo ela
+  // deita" com um numero, em vez de deduzir.
+  const [cam, setCam] = useState({ pitch: 0, bearing: 0, zoom: 0 });
 
   useEffect(() => {
     if (!TOKEN || !elRef.current) return;
@@ -154,6 +157,18 @@ export default function TesteOrientacao() {
       attributionControl: false,
     });
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    const lerCamera = () =>
+      setCam({
+        pitch: Math.round(map.getPitch() * 10) / 10,
+        bearing: Math.round(map.getBearing() * 10) / 10,
+        zoom: Math.round(map.getZoom() * 100) / 100,
+      });
+    lerCamera();
+    map.on("move", lerCamera);
+    map.on("rotate", lerCamera);
+    map.on("pitch", lerCamera);
+
     map.on("style.load", () => {
       map.setProjection("mercator");
       if (!map.getLayer(LAYER_ID)) {
@@ -186,8 +201,15 @@ export default function TesteOrientacao() {
             <b>{v.id}</b> — {v.desc}
           </div>
         ))}
-        <div className="mt-2 text-[10px] text-neutral-600">
-          Qual está EM PÉ e de frente? Gire e incline o mapa pra conferir.
+        <div className="mt-2 rounded bg-neutral-900 p-2 text-[11px] text-white">
+          <div className="mb-1 font-bold text-emerald-400">câmera</div>
+          <div>inclinação (pitch): <b>{cam.pitch}°</b></div>
+          <div>rotação (bearing): <b>{cam.bearing}°</b></div>
+          <div>zoom: <b>{cam.zoom}</b></div>
+        </div>
+        <div className="mt-2 text-[10px] leading-relaxed text-neutral-600">
+          Qual está EM PÉ e de frente? Ctrl + arrastar muda inclinação e
+          rotação — me diga os números do ângulo em que der problema.
         </div>
         {logs.map((l, i) => (
           <div key={i} className="mt-1 text-[10px] text-emerald-700">{l}</div>
