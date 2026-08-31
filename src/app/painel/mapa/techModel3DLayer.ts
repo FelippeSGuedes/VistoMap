@@ -85,7 +85,7 @@ const CAR_REAL_LENGTH_M = 5;
 const CAR_MIN_PX = 46;
 
 /** Idem pro beacon do técnico parado (diâmetro do anel). */
-const IDLE_MIN_PX = 90;
+const IDLE_MIN_PX = 130;
 /**
  * Teto de ampliacao da figura — ver fatorTamanhoMinimo().
  *
@@ -445,6 +445,18 @@ export interface TechEntrySpec {
 // alto. Um pouco acima do natural pra ter presenca ao lado da picape de 5 m
 // sem virar um gigante.
 const PERSON_ALTURA_M = 3.6;
+
+// ── Efeitos do veiculo em deslocamento ──────────────────────────────────────
+/** Altura do teto do car.glb, em metros, na escala usada aqui. */
+const CAR_TETO_M = CAR_REAL_LENGTH_M * 0.41;
+/** Meia-vida do giroflex, em ms (liga/desliga). */
+const GIROFLEX_MS = 700;
+/** Ciclo do halo no chao, em ms. */
+const HALO_MS = 1800;
+/** Inclinacao maxima nas curvas, em radianos (~9°). */
+const ROLL_MAX = 0.16;
+/** Quanto de rumo por segundo satura a inclinacao (rad/s). */
+const ROLL_SENSIB = 1.2;
 const USE_PERSON_MODEL = true;
 
 const PIN_BASE_R = 3.4;       // raio da plataforma hexagonal
@@ -493,6 +505,10 @@ interface TechEntry {
   visual: THREE.Object3D | null; // filho atual (carrinho ou beacon)
   visualIsCar: boolean;
   wheels: THREE.Mesh[] | null; // só quando visual = carrinho — girados por distância percorrida
+  carHalo?: THREE.Mesh;      // halo pulsante no chao
+  carGiroflex?: THREE.Mesh;  // luz piscando no teto
+  headingAnterior?: number;  // pra medir a taxa de curva
+  rollAtual: number;         // inclinacao suavizada nas curvas
   route: RouteResult | null;
 
   /** Progresso EXIBIDO na rota (m). Avança todo frame; ver dead reckoning. */
@@ -693,7 +709,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     }
   }
 
-  private buildCarModel(): { object3d: THREE.Object3D; wheels: THREE.Mesh[] } {
+  private buildCarModel(): {
+    object3d: THREE.Object3D;
+    wheels: THREE.Mesh[];
+    halo?: THREE.Mesh;
+    giroflex?: THREE.Mesh;
+  } {
     // car.glb quando já carregou; o carrinho geométrico abaixo é o
     // placeholder durante o download e o fallback se ele falhar. As rodas
     // animadas são só do carrinho — no modelo importado elas fazem parte
@@ -703,7 +724,35 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       console.log(`[vm-3d] visual do carro: ${sharedCarTemplate ? "car.glb" : "fallback geométrico"}`);
     }
     if (sharedCarTemplate) {
-      return { object3d: sharedCarTemplate.clone(true), wheels: [] };
+      // O veiculo vai dentro de um grupo junto com os efeitos, pra eles
+      // acompanharem posicao e rumo sem precisar de sincronizacao propria.
+      const grupo = new THREE.Group();
+      grupo.add(sharedCarTemplate.clone(true));
+
+      // HALO no chao: da presenca ao veiculo em movimento e ajuda a achar o
+      // ponto exato dele quando o mapa esta inclinado.
+      const halo = new THREE.Mesh(
+        new THREE.RingGeometry(CAR_REAL_LENGTH_M * 0.45, CAR_REAL_LENGTH_M * 0.62, 40),
+        new THREE.MeshBasicMaterial({
+          color: MODEL_COLOR,
+          transparent: true,
+          opacity: 0.45,
+          depthWrite: false,
+        })
+      );
+      halo.position.z = 0.06;
+      grupo.add(halo);
+
+      // GIROFLEX no teto: reforca "veiculo de servico em deslocamento" e e o
+      // que mais chama o olho num mapa cheio.
+      const giroflex = new THREE.Mesh(
+        new THREE.SphereGeometry(CAR_REAL_LENGTH_M * 0.055, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0xff3b30 })
+      );
+      giroflex.position.set(0, CAR_REAL_LENGTH_M * 0.05, CAR_TETO_M);
+      grupo.add(giroflex);
+
+      return { object3d: grupo, wheels: [], halo, giroflex };
     }
 
     const group = new THREE.Group();
@@ -835,9 +884,11 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       if (!e.visualIsCar) descartaPin(e.visual);
     }
     if (wantCar) {
-      const { object3d, wheels } = this.buildCarModel();
+      const { object3d, wheels, halo, giroflex } = this.buildCarModel();
       e.visual = object3d;
       e.wheels = wheels;
+      e.carHalo = halo;
+      e.carGiroflex = giroflex;
       e.pinPulsos = undefined;
       e.pinNucleo = undefined;
       e.pinOrbita = undefined;
@@ -846,6 +897,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       const { object3d, pulsos, nucleo, orbita, coluna } = this.buildIdlePin(e.corHex);
       e.visual = object3d;
       e.wheels = null;
+      // Limpa os efeitos do carro: senao a animacao continuaria mexendo em
+      // objetos ja removidos da cena quando o tecnico para.
+      e.carHalo = undefined;
+      e.carGiroflex = undefined;
+      e.rollAtual = 0;
+      e.headingAnterior = undefined;
       e.pinPulsos = pulsos;
       e.pinNucleo = nucleo;
       e.pinOrbita = orbita;
@@ -884,6 +941,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       visual: null,
       visualIsCar: false,
       wheels: null,
+      rollAtual: 0,
       route: spec.route,
       distM: 0,
       alvoDistM: 0,
@@ -1182,6 +1240,38 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         }
 
         e.label?.setLngLat([sample.lng, sample.lat]);
+
+        // HALO: expande e some em loop, ancorando o veiculo no chao.
+        if (e.carHalo) {
+          const t = (agora % HALO_MS) / HALO_MS;
+          const sc = 0.85 + t * 0.9;
+          e.carHalo.scale.set(sc, sc, 1);
+          (e.carHalo.material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - t);
+        }
+        // GIROFLEX: pisca em onda, nao em liga/desliga seco — o corte duro
+        // fica mecanico e cansa numa tela que fica aberta o dia inteiro.
+        if (e.carGiroflex) {
+          const b0 = 0.5 + 0.5 * Math.sin((agora / GIROFLEX_MS) * Math.PI * 2);
+          const mat = e.carGiroflex.material as THREE.MeshBasicMaterial;
+          mat.transparent = true;
+          mat.opacity = 0.25 + 0.75 * b0;
+          const sc = 0.85 + 0.35 * b0;
+          e.carGiroflex.scale.setScalar(sc);
+        }
+
+        // INCLINACAO NAS CURVAS: proporcional a taxa de mudanca de rumo.
+        // Suavizada, senao o ruido da rota faz o veiculo tremer.
+        if (headingRad != null) {
+          if (e.headingAnterior != null && dt > 0) {
+            let d = headingRad - e.headingAnterior;
+            while (d > Math.PI) d -= Math.PI * 2;
+            while (d < -Math.PI) d += Math.PI * 2;
+            const taxa = d / dt;
+            const alvo = Math.max(-1, Math.min(1, taxa / ROLL_SENSIB)) * ROLL_MAX;
+            e.rollAtual += (alvo - e.rollAtual) * Math.min(1, dt * 4);
+          }
+          e.headingAnterior = headingRad;
+        }
       } else {
         x = e.fromXY.x + (e.toXY.x - e.fromXY.x) * frac;
         y = e.fromXY.y + (e.toXY.y - e.fromXY.y) * frac;
@@ -1286,7 +1376,8 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       SCRATCH_MODELO
         .makeTranslation(x, y, z)
         .multiply(SCRATCH_SCALE.makeScale(escala, escala, escala))
-        .multiply(SCRATCH_ROT.makeRotationZ(headingRad ?? 0));
+        .multiply(SCRATCH_ROT.makeRotationZ(headingRad ?? 0))
+        .multiply(SCRATCH_ROT2.makeRotationY(e.rollAtual));
 
       // Billboard SO na figura, nunca no grupo inteiro: disco e pulso
       // precisam continuar deitados no chao. Por isso a rotacao vai num
