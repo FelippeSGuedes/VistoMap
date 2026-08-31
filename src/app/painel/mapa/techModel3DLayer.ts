@@ -96,8 +96,6 @@ const IDLE_MIN_PX = 64;
  */
 const PIN_MAX_FATOR = 40;
 
-/** Inclinar a figura pra encarar a camera. Ver o comentario em render(). */
-const PIN_BILLBOARD_INCLINA = false;
 
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
 // continua no código como fallback: aparece enquanto os 17MB carregam e
@@ -131,7 +129,6 @@ const CAR_UNLIT = true;
 const SCRATCH_SCALE = new THREE.Matrix4();
 const SCRATCH_ROT = new THREE.Matrix4();
 const SCRATCH_MODELO = new THREE.Matrix4();
-const SCRATCH_ROT2 = new THREE.Matrix4();
 
 // ---------------------------------------------------------------------------
 // Template do car.glb — MÓDULO, não instância.
@@ -1071,33 +1068,6 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // centro pra todos, quem estava longe encolhia até quase sumir e quem
     // estava perto crescia demais. Pareciam dois bugs; era um só.
 
-    // BILLBOARD da figura: bearing e pitch do mapa, lidos uma vez por frame.
-    //
-    // Uma figura EM PE vista de uma camera inclinada olhando pra baixo aparece
-    // encurtada — o efeito de "meio deitado" relatado. Nao e defeito do
-    // modelo: acontece com qualquer objeto vertical em mapa inclinado. A
-    // solucao padrao pra marcador de personagem e faze-lo encarar a camera.
-    //
-    // Rz(bearing) gira a figura pra ficar de frente no plano horizontal
-    // (verificado: com bearing 0 a frente do modelo, +Y local, ja aponta pro
-    // sul, que e de onde a camera olha).
-    //
-    // Rx(+(90°-pitch)) inclina o topo NA DIRECAO da camera. O sinal importa e
-    // eu ja errei ele: a camera fica acima e atras do alvo, num angulo de
-    // elevacao de (90° - pitch), entao a frente da figura (+Y local) tem que
-    // apontar pra (0, cos elev, sin elev) — o que exige alpha POSITIVO. Com
-    // o sinal invertido ela inclinava pro lado oposto, e no pitch padrao de
-    // 50° isso dava 80° de erro: aparecia deitada ou de cabeca pra baixo.
-    //
-    // Confere nos extremos: pitch 90 (horizonte) → alpha 0, figura em pe;
-    // pitch 0 (vista de cima) → alpha 90°, frente virada pro ceu, que e de
-    // onde a camera olha.
-    //
-    // Nao vale pro CARRO: ele e um veiculo sobre a rua, e precisa apontar pro
-    // rumo real da rota, nao pra camera.
-    const bearingRad = ((this.map?.getBearing() ?? 0) * Math.PI) / 180;
-    const pitchRad = ((this.map?.getPitch() ?? 0) * Math.PI) / 180;
-
     // Prepara o estado de GL uma vez só; o laço abaixo desenha por objeto.
     //
     // resetState() do Three.js zera bastante coisa que o Mapbox tinha
@@ -1287,20 +1257,17 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       // Billboard SO na figura, nunca no grupo inteiro: disco e pulso
       // precisam continuar deitados no chao. Por isso a rotacao vai num
       // suporte que envolve so o modelo (ver buildIdlePin).
-      if (e.kind !== "car" && e.pinNucleo) {
-        e.pinNucleo.matrix.makeRotationZ(bearingRad);
-        // A INCLINACAO fica desligada por padrao. Ela e matematicamente
-        // correta (verificada em pitch 0/30/50/60/85) e faz a figura encarar
-        // a camera de fato, mas custa caro quando erra: em pitch 50 ela
-        // inclina 40°, e qualquer desalinhamento vira "boneco deitado" — o
-        // defeito mais reclamado aqui. Sem ela a figura fica SEMPRE vertical,
-        // apenas virando pra quem olha: sobra o encurtamento natural da
-        // perspectiva, que e discreto, e some o modo de falha grave.
-        if (PIN_BILLBOARD_INCLINA) {
-          e.pinNucleo.matrix.multiply(SCRATCH_ROT2.makeRotationX(Math.PI / 2 - pitchRad));
-        }
-        e.pinNucleo.matrixWorldNeedsUpdate = true;
-      }
+      // A FIGURA TEM ORIENTACAO FIXA — nao segue a camera.
+      //
+      // Passei por duas versoes de billboard aqui: inclinar pelo pitch (a
+      // figura deitava em alguns angulos) e girar pelo bearing (ela mudava de
+      // orientacao ao rotacionar o mapa). Cada elemento que reage a camera e
+      // mais uma chance de inverter em algum angulo, e o ganho — encarar quem
+      // olha — e pequeno perto do defeito que produz.
+      //
+      // Fixa, ela nunca vira de cabeca pra baixo nem deita, em nenhum estilo
+      // de mapa nem inclinacao. Sobra o encurtamento natural da perspectiva,
+      // que e discreto e correto: e o que acontece com qualquer objeto real.
       this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
 
       e.object3d.visible = true;
