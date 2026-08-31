@@ -85,7 +85,7 @@ const CAR_REAL_LENGTH_M = 5;
 const CAR_MIN_PX = 46;
 
 /** Idem pro beacon do técnico parado (diâmetro do anel). */
-const IDLE_MIN_PX = 64;
+const IDLE_MIN_PX = 90;
 /**
  * Teto de ampliacao da figura — ver fatorTamanhoMinimo().
  *
@@ -443,7 +443,7 @@ export interface TechEntrySpec {
 // 0.36 no arquivo), diferente do capacete anterior que era mais largo que
 // alto. Um pouco acima do natural pra ter presenca ao lado da picape de 5 m
 // sem virar um gigante.
-const PERSON_ALTURA_M = 2.2;
+const PERSON_ALTURA_M = 3.6;
 const USE_PERSON_MODEL = true;
 
 const PIN_BASE_R = 3.4;       // raio da plataforma hexagonal
@@ -1195,6 +1195,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
         lngAtual = ll.lng;
         latAtual = ll.lat;
         e.label?.setLngLat([ll.lng, ll.lat]);
+
       }
 
       const scale = new mapboxgl.MercatorCoordinate(x, y, z).meterInMercatorCoordinateUnits();
@@ -1248,6 +1249,18 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
           ? this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro)
           : this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro, PIN_MAX_FATOR);
       const escala = scale * fator;
+
+      // Etiqueta acima da CABECA, nao no meio do corpo.
+      //
+      // O deslocamento era fixo em 18px, mas o marcador e ancorado no ponto
+      // do CHAO e a figura cresce pra cima a partir dele — a etiqueta pousava
+      // no meio do tronco. Figura pequena com uma tarja escura atravessada no
+      // meio le como "deitado"/"avacalhado". A altura na tela muda com zoom e
+      // distancia, entao o deslocamento tem que ser calculado.
+      if (e.label) {
+        const alturaPx = e.kind === "car" ? 26 : PERSON_ALTURA_M * fator * pxPorMetro;
+        e.label.setOffset([0, -(Math.min(alturaPx, 220) + 8)]);
+      }
 
       SCRATCH_MODELO
         .makeTranslation(x, y, z)
