@@ -57,13 +57,26 @@ export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
   tipollfield: "plugin_fields_tipollfielddropdowns_id",
 };
 
-/** Status do plugin: 1=Pendente (inicial), 3=Aprovado, 4=Reprovado, 5=Em análise. */
+/**
+ * Status do plugin: 1=Pendente (inicial), 3=Aprovado, 4=Reprovado,
+ * 5=Em análise, 6=AGUARDANDO VISTORIA.
+ *
+ * 3/4 são a decisão da CONCESSIONÁRIA, registrada por ela direto no GLPI —
+ * o VistoMap só lê (ver src/lib/glpi/cpfl.ts). Não confundir com a aprovação
+ * INTERNA do analista (aprovarVistoria), que deixa o status em 5 e marca
+ * aux.approval_status.
+ */
 export const STATUS_VISTORIA_PENDENTE = 1;
 export const STATUS_VISTORIA_APROVADO = 3;
 export const STATUS_VISTORIA_REPROVADO = 4;
 export const STATUS_VISTORIA_EM_ANALISE = 5;
-/** Pendência: 1 = "Pendência CPFL". */
+export const STATUS_VISTORIA_AGUARDANDO_VISTORIA = 6;
+
+/** Pendência: 1 = "Pendência CPFL", 2 = "Pendência Nansen", 3 = "Sem Pendências". */
 export const PENDENCIA_CPFL = 1;
+export const PENDENCIA_NANSEN = 2;
+export const PENDENCIA_SEM = 3;
+export const TABLE_PENDENCIA = "glpi_plugin_fields_pendnciafielddropdowns";
 
 /**
  * Situação operacional da vistoria (campo separado de statusvistoria).
@@ -146,7 +159,12 @@ export const INSTALACAO_INSTALADOR_COLUMN = "users_id_instaladorfield";
 export const INSTALACAO_EMPRESA_COLUMN = "plugin_fields_empresafielddropdowns_id";
 export const TABLE_EMPRESA = "glpi_plugin_fields_empresafielddropdowns";
 
-/** Validador CPFL — nome + aprovado/rejeitado, já existiam, nunca usados. */
+/**
+ * Validador CPFL — nome + aprovado/rejeitado. Lidos (instalacoes.ts, cpfl.ts),
+ * nunca escritos pelo VistoMap. Na base estão vazios: 0 de 4599 registros
+ * usam o dropdown (conferido 2026-08-31) — por isso a etapa da CPFL sai de
+ * `statusvistoria`, não daqui.
+ */
 export const VALIDADOR_CPFL_STATUS_COLUMN = "plugin_fields_validaocpflfielddropdowns_id";
 export const VALIDADOR_CPFL_USER_COLUMN = "users_id_validadorcpflfield";
 export const TABLE_VALIDACAO_CPFL = "glpi_plugin_fields_validaocpflfielddropdowns";

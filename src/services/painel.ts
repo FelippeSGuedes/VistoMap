@@ -351,6 +351,75 @@ export async function fetchStatus(): Promise<PainelStatus> {
   return api.get<PainelStatus>("/painel/status").then((r) => r.data);
 }
 
+/* ── Validação da concessionária (CPFL) ─────────────────────────────────── */
+
+export type EtapaCPFL = "AGUARDANDO" | "APROVADA" | "REPROVADA";
+
+/** Espelha `VistoriaCPFL` de @/lib/glpi/cpfl (server-only, não importável aqui). */
+export interface VistoriaCPFL {
+  id: number;
+  glpiId: string;
+  equipamento: string;
+  municipio: string;
+  endereco: string | null;
+  etapa: EtapaCPFL;
+  pendencia: string | null;
+  tecnico: { id: number; nome: string } | null;
+  dataVistoria: string | null;
+  dataEnvio: string | null;
+  dataAprovacao: string | null;
+  diasAguardando: number | null;
+  motivo: string | null;
+  pdfPath: string | null;
+  validacaoCpfl: string | null;
+  validadorCpfl: string | null;
+}
+
+export interface CPFLStats {
+  total: number;
+  aguardando: number;
+  aprovadas: number;
+  reprovadas: number;
+  aguardandoMais30d: number;
+}
+
+export interface CPFLFilters {
+  etapa?: EtapaCPFL;
+  municipio?: string;
+  tecnico_id?: number;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CPFLResponse {
+  items: VistoriaCPFL[];
+  stats: CPFLStats;
+}
+
+const EMPTY_CPFL_STATS: CPFLStats = {
+  total: 0,
+  aguardando: 0,
+  aprovadas: 0,
+  reprovadas: 0,
+  aguardandoMais30d: 0,
+};
+
+export async function fetchCPFL(filters: CPFLFilters = {}): Promise<CPFLResponse> {
+  const p = new URLSearchParams();
+  if (filters.etapa) p.set("etapa", filters.etapa);
+  if (filters.municipio) p.set("municipio", filters.municipio);
+  if (filters.tecnico_id != null) p.set("tecnico_id", String(filters.tecnico_id));
+  if (filters.q) p.set("q", filters.q);
+  if (filters.limit != null) p.set("limit", String(filters.limit));
+  if (filters.offset != null) p.set("offset", String(filters.offset));
+  const url = `/painel/cpfl${p.toString() ? `?${p}` : ""}`;
+  return tryReal(
+    api.get<CPFLResponse>(url).then((r) => r.data),
+    { items: [], stats: EMPTY_CPFL_STATS }
+  );
+}
+
 export const painelService = {
   fetchStats,
   fetchTecnicos,
@@ -365,4 +434,5 @@ export const painelService = {
   reprovarVistoria,
   fetchRealizadas,
   fetchStatus,
+  fetchCPFL,
 };

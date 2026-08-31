@@ -24,6 +24,7 @@ import {
   Search,
   Settings,
   ShieldAlert,
+  ShieldCheck,
   Sun,
   Undo2,
   UserPlus,
@@ -78,6 +79,7 @@ const VISTORIAS_GROUP = [
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },
   { href: "/painel/devolucoes",          label: "Devoluções",           icon: Undo2,          roles: ALL_ROLES },
   { href: "/painel/rejeitadas",          label: "Vistorias Rejeitadas", icon: Ban,            roles: ALL_ROLES },
+  { href: "/painel/cpfl",                label: "Validação CPFL",       icon: ShieldCheck,    roles: ALL_ROLES },
 ];
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
