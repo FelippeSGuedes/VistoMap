@@ -7,18 +7,20 @@
  * conferida antes de disparar) sem duplicar a marcação — duplicar seria
  * garantir que a prévia e o e-mail real divergissem com o tempo.
  *
- * Header, rodapé e barra inferior são os mesmos do e-mail de boas-vindas; só
- * o miolo muda.
+ * Header e rodapé são o header.png e o card.png já usados no e-mail de
+ * boas-vindas — NÃO tocar neles aqui, são imagens prontas, renderizadas como
+ * estão. Só o miolo (título, mensagem, ilustração, caixa informativa, botão,
+ * texto de suporte) é gerado por este arquivo.
  *
  * Decisões de compatibilidade (e-mail ≠ web):
  *  - Tudo table-based com estilo inline; <style> no head só pras media queries
  *    (Gmail respeita, Outlook desktop ignora ambos e cai no layout de tabela).
  *  - O botão tem par VML pro Outlook (roundrect) — sem isso ele vira um link
  *    de texto sem área de clique decente.
- *  - Gradientes têm bgcolor/background sólido de fallback: Outlook não lê
+ *  - Gradiente do botão tem background sólido de fallback: Outlook não lê
  *    linear-gradient e sem o fallback o texto branco sumiria em fundo branco.
  *  - O preheader escondido controla a linha de resumo da caixa de entrada —
- *    sem ele, o cliente mostra "Lembrete! Há 307..." cortado de qualquer jeito.
+ *    sem ele, o cliente mostra um corte aleatório do corpo.
  */
 
 const AZUL = "#003E91";
@@ -81,36 +83,6 @@ function linhaInfo(
     </td></tr>`;
 }
 
-/**
- * Passo do fluxo: círculo numerado com linhas conectoras dos dois lados.
- * As linhas das pontas ficam transparentes — o truque de sempre pra desenhar
- * uma "timeline" só com tabela, que é o que sobrevive no Outlook.
- */
-function passo(
-  numero: number,
-  titulo: string,
-  detalheHtml: string,
-  primeiro: boolean,
-  ultimo: boolean
-): string {
-  const linha = (visivel: boolean) =>
-    `<td valign="middle"><div style="height:2px;background:${visivel ? BORDA_AZUL : "transparent"};font-size:0;line-height:0;">&nbsp;</div></td>`;
-  return `
-    <td class="col-stack" width="33%" valign="top" style="width:33%;padding:0 4px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          ${linha(!primeiro)}
-          <td width="34" style="width:34px;">
-            <div style="width:32px;height:32px;border-radius:50%;background:${AZUL};background-image:linear-gradient(135deg,${AZUL},${AZUL_CLARO});text-align:center;line-height:32px;color:#ffffff;font-family:${FONTE};font-size:14px;font-weight:700;">${numero}</div>
-          </td>
-          ${linha(!ultimo)}
-        </tr>
-      </table>
-      <div style="font-family:${FONTE};font-size:13px;font-weight:700;color:${AZUL_ESCURO};margin-top:10px;text-align:center;">${titulo}</div>
-      <div style="font-family:${FONTE};font-size:11.5px;line-height:1.5;color:${CINZA_LABEL};margin-top:3px;text-align:center;">${detalheHtml}</div>
-    </td>`;
-}
-
 export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
   const n = Math.max(0, Math.floor(p.quantidade));
   const plural = n === 1 ? "Projeto" : "Projetos";
@@ -146,7 +118,6 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
     .col-stack{display:block !important;width:100% !important;text-align:center !important}
     .ilustra-td{padding:24px 0 0 0 !important}
     .btn-acessar{width:100% !important}
-    .metrica-num{font-size:44px !important}
     .padded{padding-left:24px !important;padding-right:24px !important}
   }
 </style>
@@ -166,35 +137,38 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
         <!-- Cartão branco -->
         <tr><td style="background:#ffffff;border-radius:20px 20px 0 0;box-shadow:0 10px 40px rgba(10,31,68,0.06);overflow:hidden;">
 
-          <!-- Header -->
+          <!-- Header — header.png, sem alteração -->
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="line-height:0">${imgHeader}</td></tr></table>
 
           <!-- Corpo -->
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-            <tr><td class="padded" style="padding:42px 44px 0 44px;">
+            <tr><td class="padded" style="padding:46px 44px 0 44px;">
 
-              <!-- Eyebrow -->
+              <!-- 1. Título + sino discreto -->
               <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-                <td style="background:${TINTA_AZUL};border:1px solid ${BORDA_AZUL};border-radius:999px;padding:7px 16px;">
-                  <span style="font-family:${FONTE};font-size:11px;font-weight:700;color:${AZUL};text-transform:uppercase;letter-spacing:.14em;">&#9200;&nbsp; Lembrete semanal</span>
+                <td valign="middle" style="font-family:${FONTE};font-size:36px;font-weight:700;color:${AZUL_ESCURO};line-height:1.1;letter-spacing:-0.02em;">Lembrete!</td>
+                <td valign="middle" style="padding-left:12px;">
+                  <div style="width:34px;height:34px;border-radius:50%;background:${TINTA_AZUL};border:1px solid ${BORDA_AZUL};text-align:center;line-height:34px;font-size:16px;">&#128276;</div>
                 </td>
               </tr></table>
+              <div style="width:44px;height:4px;background:${VERDE};border-radius:2px;margin:16px 0 24px 0;font-size:0;line-height:0;">&nbsp;</div>
 
-              <!-- Título + mensagem + ilustração -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;">
+              <!-- 2. Mensagem principal + 4. Ilustração -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td class="col-stack" valign="middle" style="vertical-align:middle;">
-                    <div style="font-family:${FONTE};font-size:36px;font-weight:700;color:${AZUL_ESCURO};line-height:1.1;letter-spacing:-0.02em;">Lembrete!</div>
-                    <div style="width:44px;height:4px;background:${VERDE};border-radius:2px;margin:16px 0 22px 0;font-size:0;line-height:0;">&nbsp;</div>
-
-                    <div style="font-family:${FONTE};font-size:20px;font-weight:700;line-height:1.45;color:${TEXTO};">
-                      Há <span style="color:${AZUL};">${n}&nbsp;<span style="color:${VERDE};">${plural}</span></span>
+                    <div style="font-family:${FONTE};font-size:23px;font-weight:700;line-height:1.4;color:${TEXTO};">
+                      Há <span style="color:${AZUL};">${n}&nbsp;<span style="color:${VERDE};">${plural}</span></span><br />
                       com <span style="color:${AZUL_ESCURO};">Pendência&nbsp;CPFL</span> para análise.
                     </div>
 
-                    <p style="margin:14px 0 0 0;font-family:${FONTE};font-size:14.5px;line-height:1.7;color:${TEXTO};">
-                      Acesse o <b>Sistema GIOC</b> para revisar e realizar a análise dos projetos
-                      pendentes para <b style="color:${VERDE};">Aprovado</b> ou
+                    <!-- 3. Texto explicativo -->
+                    <p style="margin:18px 0 0 0;font-family:${FONTE};font-size:14.5px;line-height:1.7;color:${TEXTO};">
+                      Existem projetos pendentes aguardando sua análise no <b>Sistema GIOC</b>.
+                    </p>
+                    <p style="margin:10px 0 0 0;font-family:${FONTE};font-size:14.5px;line-height:1.7;color:${TEXTO};">
+                      Acesse o Sistema GIOC para revisar os projetos e realizar a análise necessária,
+                      classificando cada solicitação como <b style="color:${VERDE};">Aprovado</b> ou
                       <b style="color:${VERMELHO};">Reprovado</b>.
                     </p>
                   </td>
@@ -202,54 +176,14 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
                 </tr>
               </table>
 
-              <!-- Banda métrica: o número é o e-mail inteiro; o resto orbita ele -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:32px 0 0 0;">
-                <tr><td bgcolor="${AZUL_ESCURO}" style="background:${AZUL_ESCURO};background-image:linear-gradient(120deg,${AZUL_ESCURO} 0%,#12305E 55%,${AZUL} 100%);border-radius:16px;padding:26px 30px;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-                    <td class="col-stack" valign="middle">
-                      <span class="metrica-num" style="font-family:${FONTE};font-size:54px;font-weight:700;color:#ffffff;line-height:1;letter-spacing:-0.02em;">${n}</span>
-                      <span style="font-family:${FONTE};font-size:20px;font-weight:700;color:${VERDE};">&nbsp;&nbsp;${plural.toLowerCase()}</span>
-                      <div style="font-family:${FONTE};font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);margin-top:8px;letter-spacing:.02em;">aguardando análise da concessionária</div>
-                    </td>
-                    <td class="col-stack" width="180" valign="middle" align="right" style="width:180px;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" align="right"><tr>
-                        <td style="border:1px solid rgba(255,255,255,0.22);border-radius:12px;padding:12px 18px;background:rgba(255,255,255,0.06);">
-                          <div style="font-family:${FONTE};font-size:10.5px;font-weight:700;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:.12em;">Decisão</div>
-                          <div style="font-family:${FONTE};font-size:14px;font-weight:700;margin-top:4px;">
-                            <span style="color:${VERDE};">&#10003; Aprovar</span>
-                            <span style="color:rgba(255,255,255,0.4);">&nbsp;/&nbsp;</span>
-                            <span style="color:#FF7A6E;">&#10005; Reprovar</span>
-                          </div>
-                        </td>
-                      </tr></table>
-                    </td>
-                  </tr></table>
-                </td></tr>
-              </table>
-
-              <!-- Fluxo em 3 passos -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0 0 0;">
-                <tr>
-                  ${passo(1, "Acesse o GIOC", "pelo botão abaixo, já filtrado", true, false)}
-                  ${passo(2, "Revise cada projeto", "documentação e PDF da vistoria", false, false)}
-                  ${passo(
-                    3,
-                    "Registre a decisão",
-                    `<b style="color:${VERDE};">Aprovado</b> ou <b style="color:${VERMELHO};">Reprovado</b>`,
-                    false,
-                    true
-                  )}
-                </tr>
-              </table>
-
-              <!-- Caixa informativa -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0 0 0;">
+              <!-- 5. Caixa informativa -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:34px 0 0 0;">
                 <tr><td style="background:#ffffff;border:1px solid ${BORDA_AZUL};border-radius:16px;box-shadow:0 3px 12px rgba(10,31,68,0.05);padding:22px 26px;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                    ${linhaInfo("&#128196;", "Pendências", `<span style="color:${AZUL};">${qtd}</span>`, true)}
+                    ${linhaInfo("&#128193;", "Pendências", `<span style="color:${AZUL};">${qtd}</span>`, true)}
                     ${linhaInfo("&#127970;", "Cliente", `<span style="color:${AZUL};">CPFL</span>`, false)}
                     ${linhaInfo(
-                      "&#9888;&#65039;",
+                      "&#128337;",
                       "Ação necessária",
                       `Análise para <span style="color:${VERDE};">Aprovado</span> ou <span style="color:${VERMELHO};">Reprovado</span>`,
                       false
@@ -258,37 +192,35 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
                 </td></tr>
               </table>
 
-              <!-- Botão (VML pro Outlook, <a> arredondado pro resto) -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:34px 0 8px 0;"><tr><td align="center">
+              <!-- 6. Botão (VML pro Outlook, <a> arredondado pro resto) -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:34px 0 6px 0;"><tr><td align="center">
                 <!--[if mso]>
                 <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${urlSegura}" style="height:58px;v-text-anchor:middle;width:380px;" arcsize="24%" fillcolor="${AZUL}" stroke="f">
                   <w:anchorlock/>
-                  <center style="color:#ffffff;font-family:Segoe UI,Arial,sans-serif;font-size:15.5px;font-weight:700;">VERIFICAR PENDÊNCIAS &#8594;</center>
+                  <center style="color:#ffffff;font-family:Segoe UI,Arial,sans-serif;font-size:15.5px;font-weight:700;">ACESSAR O SISTEMA GIOC &#8594;</center>
                 </v:roundrect>
                 <![endif]-->
                 <!--[if !mso]><!-->
                 <a href="${urlSegura}" class="btn-acessar" style="display:inline-block;width:380px;max-width:82%;height:58px;line-height:58px;background:${AZUL};background-image:linear-gradient(90deg,${AZUL},${AZUL_CLARO});border-radius:14px;color:#ffffff;font-family:${FONTE};font-size:15.5px;font-weight:700;text-decoration:none;text-align:center;box-shadow:0 8px 22px rgba(0,62,145,0.28);">
-                  VERIFICAR PENDÊNCIAS&nbsp;&nbsp;&#8594;
+                  ACESSAR O SISTEMA GIOC&nbsp;&nbsp;&#8594;
                 </a>
                 <!--<![endif]-->
-                <div style="font-family:${FONTE};font-size:12px;color:${CINZA_LABEL};margin-top:12px;">O link abre a lista já filtrada pelos projetos pendentes.</div>
               </td></tr></table>
 
-              <!-- Suporte -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;">
-                <tr><td style="border-top:1px solid ${DIVISOR};padding-top:22px;font-family:${FONTE};font-size:13.5px;line-height:1.6;color:${TEXTO};">
-                  &#127911;&nbsp; Caso tenha dúvidas ou necessite de <a href="mailto:comunicacao.ami@nansen.com.br" style="color:${AZUL};font-weight:700;text-decoration:none;">suporte</a>, entre em contato com nossa equipe.
+              <!-- 7. Texto de suporte -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:30px;">
+                <tr><td style="border-top:1px solid ${DIVISOR};padding-top:22px;font-family:${FONTE};font-size:13px;line-height:1.6;color:${CINZA_LABEL};">
+                  Em caso de dúvidas ou necessidade de suporte, entre em contato com nossa equipe.
                 </td></tr>
               </table>
 
-              <!-- Encerramento -->
-              <p style="margin:26px 0 0 0;font-family:${FONTE};font-size:14px;line-height:1.6;color:${TEXTO};">
+              <p style="margin:18px 0 0 0;font-family:${FONTE};font-size:13px;line-height:1.6;color:${CINZA_LABEL};">
                 Atenciosamente,<br /><b style="color:${AZUL_ESCURO};">Equipe Sistemas GIOC</b>
               </p>
 
             </td></tr>
 
-            <!-- Rodapé institucional (card.png) -->
+            <!-- Rodapé institucional — card.png, sem alteração -->
             <tr><td style="padding:30px 0 0 0;line-height:0;">${imgCard}</td></tr>
           </table>
 
@@ -296,9 +228,9 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
 
         <!-- Barra azul-marinho inferior -->
         <tr><td bgcolor="${AZUL_ESCURO}" style="background:${AZUL_ESCURO};border-radius:0 0 20px 20px;padding:20px 28px;">
-          <div style="font-family:${FONTE};font-size:11.5px;line-height:1.6;color:rgba(255,255,255,0.72);">
-            &#128737;&#65039;&nbsp; Este é um e-mail automático. Não responda esta mensagem.<br />
-            © Nansen • Todos os direitos reservados.
+          <div style="font-family:${FONTE};font-size:11.5px;line-height:1.7;color:rgba(255,255,255,0.72);text-transform:uppercase;letter-spacing:.04em;">
+            E-mail automático<br />
+            Favor não responder
           </div>
         </td></tr>
 
