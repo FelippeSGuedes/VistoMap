@@ -86,6 +86,8 @@ const CAR_MIN_PX = 46;
 
 /** Idem pro beacon do técnico parado (diâmetro do anel). */
 const IDLE_MIN_PX = 64;
+/** Teto de ampliacao da figura — ver fatorTamanhoMinimo(). */
+const PIN_MAX_FATOR = 5;
 
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
 // continua no código como fallback: aparece enquanto os 17MB carregam e
@@ -1028,10 +1030,25 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     return Math.hypot(b.x - a.x, b.y - a.y) || 1;
   }
 
-  /** Fator que impede o objeto de ficar menor que `minPx` na tela. */
-  private fatorTamanhoMinimo(comprimentoM: number, minPx: number, pxPorMetro: number): number {
+  /**
+   * Fator que impede o objeto de ficar menor que `minPx` na tela.
+   *
+   * `maxFator` existe por causa de objeto ALTO. Pra picape, que e baixa e
+   * deitada, ampliar sem limite e inofensivo: ela cresce no plano do chao.
+   * Uma figura EM PE ampliada 30x vira uma torre de dezenas de metros subindo
+   * pelo ceu — foi o "gigantesco" relatado. O teto sacrifica visibilidade num
+   * zoom de cidade inteira, onde individuo nao se distingue mesmo, pra nao
+   * produzir monstruosidade no caminho.
+   */
+  private fatorTamanhoMinimo(
+    comprimentoM: number,
+    minPx: number,
+    pxPorMetro: number,
+    maxFator = Infinity
+  ): number {
     const px = comprimentoM * pxPorMetro;
-    return px < minPx ? minPx / px : 1;
+    if (px >= minPx) return 1;
+    return Math.min(minPx / px, maxFator);
   }
 
   render(gl: WebGLRenderingContext, matrix: number[]): void {
@@ -1050,17 +1067,25 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     //
     // Rz(bearing) gira a figura pra ficar de frente no plano horizontal
     // (verificado: com bearing 0 a frente do modelo, +Y local, ja aponta pro
-    // sul, que e de onde a camera olha). Rx(-(90°-pitch)) inclina o topo na
-    // direcao da camera: em pitch 90 (horizonte) fica em pe, em pitch 0
-    // (vista de cima) deita de frente pra tela — que e exatamente o que se
-    // quer ver de cima.
+    // sul, que e de onde a camera olha).
+    //
+    // Rx(+(90°-pitch)) inclina o topo NA DIRECAO da camera. O sinal importa e
+    // eu ja errei ele: a camera fica acima e atras do alvo, num angulo de
+    // elevacao de (90° - pitch), entao a frente da figura (+Y local) tem que
+    // apontar pra (0, cos elev, sin elev) — o que exige alpha POSITIVO. Com
+    // o sinal invertido ela inclinava pro lado oposto, e no pitch padrao de
+    // 50° isso dava 80° de erro: aparecia deitada ou de cabeca pra baixo.
+    //
+    // Confere nos extremos: pitch 90 (horizonte) → alpha 0, figura em pe;
+    // pitch 0 (vista de cima) → alpha 90°, frente virada pro ceu, que e de
+    // onde a camera olha.
     //
     // Nao vale pro CARRO: ele e um veiculo sobre a rua, e precisa apontar pro
     // rumo real da rota, nao pra camera.
     const bearingRad = ((this.map?.getBearing() ?? 0) * Math.PI) / 180;
     const pitchRad = ((this.map?.getPitch() ?? 0) * Math.PI) / 180;
     const fatorCarro = this.fatorTamanhoMinimo(CAR_REAL_LENGTH_M, CAR_MIN_PX, pxPorMetro);
-    const fatorBeacon = this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro);
+    const fatorBeacon = this.fatorTamanhoMinimo(PIN_FOOTPRINT_M, IDLE_MIN_PX, pxPorMetro, PIN_MAX_FATOR);
 
     // Prepara o estado de GL uma vez só; o laço abaixo desenha por objeto.
     //
@@ -1242,7 +1267,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       if (e.kind !== "car" && e.pinNucleo) {
         e.pinNucleo.matrix
           .makeRotationZ(bearingRad)
-          .multiply(SCRATCH_ROT2.makeRotationX(-(Math.PI / 2 - pitchRad)));
+          .multiply(SCRATCH_ROT2.makeRotationX(Math.PI / 2 - pitchRad));
         e.pinNucleo.matrixWorldNeedsUpdate = true;
       }
       this.camera.projectionMatrix.fromArray(matrix).multiply(SCRATCH_MODELO);
