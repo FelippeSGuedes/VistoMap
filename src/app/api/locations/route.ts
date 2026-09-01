@@ -31,6 +31,16 @@ export async function POST(req: NextRequest) {
     accuracy_meters?: number | null;
     speed_kmh?: number | null;
     battery_level?: number | null;
+    // Formato CRU do plugin @capgo/background-geolocation, usado quando o
+    // POST vem direto do código nativo (StartOptions.url em
+    // useLocationReporter.ts) em vez do caminho JS de sempre — o nativo não
+    // sabe montar o payload enriquecido (não lê bateria, manda velocidade em
+    // m/s). Sem isso esses pings cairiam no "obrigatórios ausentes" e o
+    // ganho de robustez contra processo morto em segundo plano não valeria
+    // nada.
+    accuracy?: number | null;
+    speed?: number | null; // m/s, não km/h
+    source?: string;
   };
   try {
     body = await req.json();
@@ -38,7 +48,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "JSON inválido" }, { status: 400 });
   }
 
-  const { latitude, longitude, accuracy_meters, speed_kmh, battery_level } = body;
+  const { latitude, longitude } = body;
+  const accuracy_meters =
+    body.accuracy_meters ?? (body.accuracy != null ? body.accuracy : null);
+  const speed_kmh =
+    body.speed_kmh ?? (body.speed != null ? Math.round(body.speed * 3.6) : null);
+  const battery_level = body.battery_level ?? null;
   if (typeof latitude !== "number" || typeof longitude !== "number") {
     return NextResponse.json(
       { message: "latitude e longitude são obrigatórios (number)" },
