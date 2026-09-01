@@ -15,6 +15,7 @@ import {
   User,
 } from "lucide-react";
 import { authService } from "@/services/auth";
+import { deriveAndStoreHash, markUnlockedToday } from "@/services/lock";
 import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
 import type { AuthSession, Modulo } from "@/types";
@@ -93,6 +94,10 @@ export default function LoginPage() {
     setError(null);
     try {
       const next = await authService.login(values);
+      // Login novo já conta como "destravado hoje" — trava diária (Fase 3a)
+      // só cobra confirmação de novo a partir de amanhã.
+      await deriveAndStoreHash(values.senha);
+      markUnlockedToday();
       if (lembrar) {
         window.localStorage.setItem(REMEMBER_KEY, values.login.trim());
       } else {

@@ -10,9 +10,11 @@ import { usePushRegistration } from "@/hooks/usePushRegistration";
 import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useOtaUpdate } from "@/hooks/useOtaUpdate";
+import { useLockScreen } from "@/hooks/useLockScreen";
 import { useDevolucaoWatcher } from "@/hooks/useDevolucaoWatcher";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
 import { OtaUpdateOverlay } from "@/components/feedback/OtaUpdateOverlay";
+import { LockScreenOverlay } from "@/components/feedback/LockScreenOverlay";
 import { DevolucaoModal } from "@/components/vistorias/DevolucaoModal";
 import { DevolucaoBanner } from "@/components/vistorias/DevolucaoBanner";
 
@@ -29,6 +31,12 @@ import { DevolucaoBanner } from "@/components/vistorias/DevolucaoBanner";
 function OtaUpdateMount() {
   const session = useAuthStore((s) => s.session);
   useOtaUpdate(!!session);
+  return null;
+}
+
+function LockScreenMount() {
+  const session = useAuthStore((s) => s.session);
+  useLockScreen(!!session);
   return null;
 }
 
@@ -132,8 +140,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <TecnicoNotificationsMount />
       <OfflineSyncMount />
       <DevolucaoMount />
+      <LockScreenMount />
       <OfflineIndicator />
       <OtaUpdateOverlay />
+      <LockScreenOverlay />
       {children}
     </>
   );

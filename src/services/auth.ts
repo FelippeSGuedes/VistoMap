@@ -1,4 +1,5 @@
 import { api, setAuthToken } from "./api";
+import { clearLock } from "./lock";
 import type { AuthSession } from "@/types";
 
 export interface LoginInput {
@@ -63,6 +64,9 @@ export async function loginAdmin(input: PainelLoginInput): Promise<AuthSession> 
 
 export function logout() {
   persist(null);
+  // Hash local da trava diária não pode sobreviver a troca de usuário no
+  // mesmo aparelho (aparelhos de campo às vezes são compartilhados).
+  clearLock();
 }
 
 export const authService = { login, loginAdmin, logout, loadSession };
