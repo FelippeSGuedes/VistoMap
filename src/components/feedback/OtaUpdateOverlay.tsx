@@ -67,7 +67,9 @@ export function OtaUpdateOverlay() {
     return Math.min(99, Math.max(progresso, creep));
   }, [phase, progresso, creep]);
 
-  const visivel = phase !== "idle";
+  // "pausada" (trava de loop) tem tratamento próprio, pequeno e não-bloqueante
+  // — ver o bloco no fim do componente. Não entra no fluxo de tela cheia.
+  const visivel = phase !== "idle" && phase !== "pausada";
   const erro = phase === "erro";
   const concluido = phase === "concluido";
 
@@ -398,6 +400,31 @@ export function OtaUpdateOverlay() {
             className="pointer-events-none absolute inset-x-0 bottom-0 h-36"
             style={{ background: "linear-gradient(to top, rgba(1,12,8,0.65), transparent)" }}
           />
+        </motion.div>
+      )}
+
+      {/* Aviso pequeno de "pausada" — nunca bloqueia a tela nem impede o
+          técnico de usar o app; só existe pra ele não achar que nada tá
+          acontecendo (ver OtaPhase.pausada em store/ota.ts). */}
+      {phase === "pausada" && (
+        <motion.div
+          key="ota-paused-toast"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 16 }}
+          transition={{ duration: 0.3 }}
+          className="fixed inset-x-4 z-[190] flex items-center gap-2.5 rounded-2xl px-4 py-3 shadow-lg"
+          style={{
+            bottom: "max(env(safe-area-inset-bottom), 16px)",
+            background: "rgba(11,20,17,0.94)",
+            backdropFilter: "blur(8px)",
+            border: "1px solid rgba(77,255,136,0.25)",
+          }}
+        >
+          <CloudUpload className="h-4 w-4 shrink-0" style={{ color: "#4DFF88" }} strokeWidth={2} />
+          <p className="text-[12px] leading-snug text-white/90">
+            Atualização disponível — sinal instável agora, vamos tentar de novo em instantes.
+          </p>
         </motion.div>
       )}
     </AnimatePresence>

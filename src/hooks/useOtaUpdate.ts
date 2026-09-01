@@ -244,6 +244,14 @@ export function useOtaUpdate(enabled: boolean) {
           console.warn(
             `[useOtaUpdate] Versão ${manifest.version} falhou ${attempt.count}x nos últimos 10min — pausando tentativas.`
           );
+          // Visível (aviso pequeno, não bloqueia o app) em vez de silencioso —
+          // sem isso o técnico não tinha nenhum sinal de que o app sabia da
+          // atualização e ia tentar de novo sozinho, e "resetar os dados"
+          // virava o único jeito de sentir que fez alguma coisa.
+          useOtaStore.getState().pausada(manifest.version);
+          window.setTimeout(() => {
+            if (useOtaStore.getState().phase === "pausada") useOtaStore.getState().reset();
+          }, 6_000);
           return;
         }
 
@@ -281,10 +289,25 @@ export function useOtaUpdate(enabled: boolean) {
           /* list() indisponível/travou — segue pro download */
         }
 
-        // 3b. Se não tinha baixado ainda, baixa com progresso real. Timeout
-        // generoso (16MB numa rede ruim pode demorar), mas NUNCA infinito —
-        // é exatamente isso que deixava o técnico preso na tela cheia sem
-        // conseguir usar o app.
+        // 3b. Se não tinha baixado ainda, baixa com progresso real.
+        //
+        // BUG (relatado por técnico de campo, 2026-09-01): update "demora
+        // muito, às vezes não puxa, tem que resetar os dados". Causa: este
+        // timeout era 60_000ms (60s), calibrado pra bundle de ~16MB — os
+        // bundles reais hoje pesam 37-61MB (conferido nos publicados pelo CI
+        // nesta mesma data). Em sinal fraco de campo, 60s não é tempo
+        // suficiente pra baixar 40-60MB de jeito NENHUM — o download falhava
+        // por timeout genuíno (não "rede quebrou", só "não deu tempo"),
+        // disparava a trava de loop (OTA_ATTEMPT_MAX) depois de só 2
+        // tentativas, e o app ficava 10min sem sequer tentar de novo — daí
+        // "às vezes não puxa" e o hábito de resetar os dados (que zera a
+        // trava, mas também apaga a fila offline com vistorias não
+        // sincronizadas — risco que o técnico provavelmente não percebe).
+        //
+        // 5min é generoso o bastante pra 60MB mesmo em sinal ruim, mas ainda
+        // finito — nunca volta a ser o "trava pra sempre" que esse timeout
+        // existia pra evitar.
+        const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
         if (!bundle) {
           try {
             progressHandle = (await Updater.addListener?.("download", (e) => {
@@ -297,7 +320,7 @@ export function useOtaUpdate(enabled: boolean) {
           }
           bundle = await withTimeout(
             Updater.download({ url: manifest.url, version: manifest.version }),
-            60_000,
+            DOWNLOAD_TIMEOUT_MS,
             "Updater.download()"
           );
         }
