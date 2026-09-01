@@ -13,8 +13,10 @@
   --amber: #ffd166;
   --deep: #073b4c;
   --steel: #e5e7eb;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* fallback pra --safe-area-inset-* injetada pelo SystemBars (Capacitor 8)
+     em WebView Android mais antigo, onde env() nativo ainda não existe */
+  --safe-top: env(safe-area-inset-top, var(--safe-area-inset-top, 0px));
+  --safe-bottom: env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px));
 }
 
 .dark {
