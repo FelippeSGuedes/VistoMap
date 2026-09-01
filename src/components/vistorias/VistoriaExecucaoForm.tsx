@@ -216,8 +216,13 @@ export function VistoriaExecucaoForm({
     setDetectingAddress(true);
     setAddressError(null);
     try {
-      // Pega GPS atual do técnico (não usa o do poste — endereço é onde ele tá fisicamente).
-      const pos = geoForAddress.position ?? (await geoForAddress.refresh());
+      // Pega GPS atual do técnico (não usa o do poste — endereço é onde ele tá
+      // fisicamente). SEMPRE via refresh(): `geoForAddress.position` pode vir
+      // semeado do cache module-scope de useGeolocation.ts com uma leitura de
+      // OUTRO ponto/tela (mesma causa do bug de Mudar Poste puxando o último
+      // ponto vistoriado). refresh() já tem cache de 5s próprio, então não
+      // reconsulta hardware à toa em sequência — só quando a leitura é velha.
+      const pos = await geoForAddress.refresh();
       if (!pos) {
         setAddressError("Sem GPS — autorize a localização.");
         return;

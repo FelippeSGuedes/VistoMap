@@ -102,11 +102,22 @@ export function MudarPosteFlow({
 
   // Ao entrar no picker: tenta GPS primeiro (mais confiável que coord do GLPI).
   // Fallback para coords da vistoria APENAS se forem válidas (não nulas/zero).
+  //
+  // BUG (relatado por técnico de campo, 2026-09-01): sob sinal ruim, às vezes
+  // puxava o ÚLTIMO ponto vistoriado em vez do atual. Causa: `geo.position`
+  // é semeado no mount do hook a partir de um cache MODULE-SCOPE
+  // (useGeolocation.ts) compartilhado por todo o app — se o técnico tinha
+  // acabado de vistoriar outro ponto (ou o app rodou GPS em qualquer outra
+  // tela), `geo.position` já vem preenchido com ESSA leitura antiga, e o `??`
+  // pulava `geo.refresh()` inteiro — nunca pedia uma leitura nova ao GPS.
+  // `refresh()` sozinho já tem cache de 5s (evita reconsulta redundante em
+  // sequência), então chamar ele sempre é seguro e força hardware real
+  // sempre que a última leitura não for daquele instante.
   useEffect(() => {
     if (step !== "picker") return;
     if (postes.fetched) return;
     const run = async () => {
-      const fresh = geo.position ?? (await geo.refresh());
+      const fresh = await geo.refresh();
       const hasStoredCoords = latAtual && lngAtual && (latAtual !== 0 || lngAtual !== 0);
       const lat = fresh?.lat ?? (hasStoredCoords ? latAtual : null);
       const lng = fresh?.lng ?? (hasStoredCoords ? lngAtual : null);
