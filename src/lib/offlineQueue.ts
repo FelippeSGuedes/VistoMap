@@ -184,7 +184,23 @@ export interface DrainResult {
 
 /**
  * Processa fila — chama o executor pra cada operacao pendente em ordem.
- * Retorna stats. Para na 1a falha de rede (assume offline volta).
+ * Retorna stats. Continua tentando as demais ops mesmo se uma falhar.
+ *
+ * BUG (relatado por técnico de campo, 2026-09-01): vistorias finalizadas
+ * levando horas pra sincronizar. Causa: até aqui, a 1a falha de rede dava
+ * `break` no laço inteiro — se o item MAIS ANTIGO da fila estivesse preso
+ * (vídeo grande em sinal fraco, ou timeout ocasional), TODO item mais novo
+ * atrás dele ficava esperando, mesmo sendo pequeno e perfeitamente capaz de
+ * ir embora numa janela de sinal boa. `navigator.onLine` já filtra o caso de
+ * offline "de verdade" antes de chamar drainQueue (ver runDrain em
+ * syncRunner.ts) — o `break` aqui só servia pra bloquear os itens saudáveis
+ * atrás de um item ruim isolado, que é exatamente o sintoma reportado.
+ *
+ * Sem `break`: cada op tem sua própria chance a cada ciclo, independente do
+ * destino das outras. Ainda seguro em offline real — `fetch` falha rápido
+ * sem servidor pra responder, então percorrer a fila inteira offline é
+ * barato; MAX_ATTEMPTS(20) continua sendo o limite por item antes da
+ * quarentena.
  */
 export async function drainQueue(
   executor: (op: QueuedOperation) => Promise<void>
@@ -217,8 +233,9 @@ export async function drainQueue(
         cur.lastError = msg;
         await db.put(STORE_QUEUE, cur);
       }
-      if (isNet) break; // para o drain; retoma no próximo trigger/online
-      failed++;
+      if (!isNet) failed++;
+      // isNet → NÃO conta como falha definitiva nem para o laço; a op
+      // volta pra pending e as próximas da fila ainda são tentadas.
     }
   }
   return { ok, failed, remaining: (await pending()).length };
