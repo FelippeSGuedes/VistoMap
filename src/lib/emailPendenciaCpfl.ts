@@ -38,6 +38,44 @@ const VERMELHO = "#D92D20";
 
 const FONTE = "'Segoe UI',Arial,sans-serif";
 
+/**
+ * Tile de gradiente azul (mesmo tom do botão) usado nos ícones. Substitui os
+ * emoji (📁🏢🕑🔔) — cada cliente de e-mail desenha emoji com a própria paleta
+ * nativa (pasta amarela, sino dourado no Windows), e isso batia contra a
+ * identidade azul/verde. Aqui o "ícone" é geometria pura (divs com cor sólida
+ * dentro de <table>), então herda a cor de verdade e sobrevive ao Outlook
+ * (Word engine), que não renderiza emoji colorido nem SVG de forma confiável.
+ */
+const GRADIENTE_TILE = `background:${AZUL};background-image:linear-gradient(135deg,${AZUL},${AZUL_CLARO});`;
+
+/** Tile de ícone: quadrado arredondado em gradiente + glifo branco centralizado. */
+function tileIcone(glifoHtml: string, tamanho = 36): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="${tamanho}" height="${tamanho}" style="width:${tamanho}px;height:${tamanho}px;${GRADIENTE_TILE}border-radius:11px;box-shadow:0 4px 10px rgba(0,62,145,0.24);"><tr>
+    <td align="center" valign="middle" style="width:${tamanho}px;height:${tamanho}px;">${glifoHtml}</td>
+  </tr></table>`;
+}
+
+/** Glifo "lista" (Pendências): três barras brancas, a do meio mais curta. */
+const GLIFO_LISTA = `<table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr><td align="center">
+  <div style="width:16px;height:2px;line-height:2px;font-size:0;background:#ffffff;border-radius:1px;">&nbsp;</div>
+  <div style="width:11px;height:2px;line-height:2px;font-size:0;background:#ffffff;border-radius:1px;margin-top:4px;">&nbsp;</div>
+  <div style="width:16px;height:2px;line-height:2px;font-size:0;background:#ffffff;border-radius:1px;margin-top:4px;">&nbsp;</div>
+</td></tr></table>`;
+
+/** Glifo "identidade" (Cliente): ponto sólido branco. */
+const GLIFO_PONTO = `<div style="width:13px;height:13px;line-height:13px;font-size:0;background:#ffffff;border-radius:50%;margin:0 auto;">&nbsp;</div>`;
+
+/** Glifo "avançar" (Ação necessária): triângulo branco via border-trick — sem transform, sem clip-path, funciona em qualquer cliente. */
+const GLIFO_SETA = `<table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr><td align="center">
+  <div style="width:0;height:0;border-top:6px solid transparent;border-bottom:6px solid transparent;border-left:9px solid #ffffff;font-size:0;line-height:0;">&nbsp;</div>
+</td></tr></table>`;
+
+/** Glifo "alerta" (badge ao lado de "Lembrete!"): traço + ponto, como um "!" minimalista. */
+const GLIFO_ALERTA = `<table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr><td align="center">
+  <div style="width:3px;height:11px;line-height:11px;font-size:0;background:#ffffff;border-radius:1.5px;margin:0 auto;">&nbsp;</div>
+  <div style="width:3px;height:3px;line-height:3px;font-size:0;background:#ffffff;border-radius:50%;margin:3px auto 0 auto;">&nbsp;</div>
+</td></tr></table>`;
+
 export interface HtmlPendenciaCPFLParams {
   /** Quantidade de projetos aguardando análise da CPFL. */
   quantidade: number;
@@ -62,20 +100,18 @@ export function escaparHtml(s: string): string {
 
 /** Linha da caixa informativa: tile de ícone + rótulo pequeno + valor forte. */
 function linhaInfo(
-  icone: string,
+  glifoHtml: string,
   rotulo: string,
   valorHtml: string,
   primeira: boolean
 ): string {
-  const borda = primeira ? "" : `border-top:1px solid ${DIVISOR};padding-top:16px;`;
-  const respiro = primeira ? "padding-bottom:16px;" : "";
+  const borda = primeira ? "" : `border-top:1px solid ${DIVISOR};padding-top:18px;`;
+  const respiro = primeira ? "padding-bottom:18px;" : "";
   return `
     <tr><td style="${borda}${respiro}">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
-        <td valign="middle" width="44" style="width:44px;">
-          <div style="width:34px;height:34px;border-radius:9px;background:${TINTA_AZUL};border:1px solid ${BORDA_AZUL};text-align:center;line-height:34px;font-size:15px;">${icone}</div>
-        </td>
-        <td valign="middle">
+        <td valign="middle" width="48" style="width:48px;">${tileIcone(glifoHtml)}</td>
+        <td valign="middle" style="padding-left:2px;">
           <div style="font-family:${FONTE};font-size:11px;font-weight:700;color:${CINZA_LABEL};text-transform:uppercase;letter-spacing:.1em;">${rotulo}</div>
           <div style="font-family:${FONTE};font-size:16.5px;font-weight:700;color:${AZUL_ESCURO};margin-top:3px;">${valorHtml}</div>
         </td>
@@ -147,9 +183,7 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
               <!-- 1. Título + sino discreto -->
               <table role="presentation" cellpadding="0" cellspacing="0"><tr>
                 <td valign="middle" style="font-family:${FONTE};font-size:36px;font-weight:700;color:${AZUL_ESCURO};line-height:1.1;letter-spacing:-0.02em;">Lembrete!</td>
-                <td valign="middle" style="padding-left:12px;">
-                  <div style="width:34px;height:34px;border-radius:50%;background:${TINTA_AZUL};border:1px solid ${BORDA_AZUL};text-align:center;line-height:34px;font-size:16px;">&#128276;</div>
-                </td>
+                <td valign="middle" style="padding-left:14px;">${tileIcone(GLIFO_ALERTA, 34)}</td>
               </tr></table>
               <div style="width:44px;height:4px;background:${VERDE};border-radius:2px;margin:16px 0 24px 0;font-size:0;line-height:0;">&nbsp;</div>
 
@@ -180,10 +214,10 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:34px 0 0 0;">
                 <tr><td style="background:#ffffff;border:1px solid ${BORDA_AZUL};border-radius:16px;box-shadow:0 3px 12px rgba(10,31,68,0.05);padding:22px 26px;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                    ${linhaInfo("&#128193;", "Pendências", `<span style="color:${AZUL};">${qtd}</span>`, true)}
-                    ${linhaInfo("&#127970;", "Cliente", `<span style="color:${AZUL};">CPFL</span>`, false)}
+                    ${linhaInfo(GLIFO_LISTA, "Pendências", `<span style="color:${AZUL};">${qtd}</span>`, true)}
+                    ${linhaInfo(GLIFO_PONTO, "Cliente", `<span style="color:${AZUL};">CPFL</span>`, false)}
                     ${linhaInfo(
-                      "&#128337;",
+                      GLIFO_SETA,
                       "Ação necessária",
                       `Análise para <span style="color:${VERDE};">Aprovado</span> ou <span style="color:${VERMELHO};">Reprovado</span>`,
                       false
@@ -193,7 +227,7 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
               </table>
 
               <!-- 6. Botão (VML pro Outlook, <a> arredondado pro resto) -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:34px 0 6px 0;"><tr><td align="center">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:46px 0 0 0;"><tr><td align="center">
                 <!--[if mso]>
                 <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${urlSegura}" style="height:58px;v-text-anchor:middle;width:380px;" arcsize="24%" fillcolor="${AZUL}" stroke="f">
                   <w:anchorlock/>
@@ -205,11 +239,12 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
                   ACESSAR O SISTEMA GIOC&nbsp;&nbsp;&#8594;
                 </a>
                 <!--<![endif]-->
+                <div style="font-family:${FONTE};font-size:12px;color:${CINZA_LABEL};margin-top:14px;">O link abre a lista já filtrada pelos projetos com pendência CPFL.</div>
               </td></tr></table>
 
               <!-- 7. Texto de suporte -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:30px;">
-                <tr><td style="border-top:1px solid ${DIVISOR};padding-top:22px;font-family:${FONTE};font-size:13px;line-height:1.6;color:${CINZA_LABEL};">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:40px;">
+                <tr><td style="border-top:1px solid ${DIVISOR};padding-top:24px;font-family:${FONTE};font-size:13px;line-height:1.6;color:${CINZA_LABEL};">
                   Em caso de dúvidas ou necessidade de suporte, entre em contato com nossa equipe.
                 </td></tr>
               </table>
