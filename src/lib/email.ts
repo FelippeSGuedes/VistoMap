@@ -16,6 +16,8 @@ export interface MailAttachment {
 
 export interface SendMailInput {
   to: string;
+  /** Lista de destinatários ocultos entre si — usar pra listas de distribuição externas. */
+  bcc?: string[];
   subject: string;
   html: string;
   attachments?: MailAttachment[];
@@ -59,6 +61,7 @@ export async function sendMail(
     await transporter.sendMail({
       from: `"Sistemas GIOC" <${user}>`,
       to: input.to,
+      bcc: input.bcc,
       subject: input.subject,
       html: input.html,
       attachments: input.attachments,

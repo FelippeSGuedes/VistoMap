@@ -23,6 +23,7 @@
 import { query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
+  PENDENCIA_CPFL,
   STATUS_VISTORIA_APROVADO,
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
@@ -319,4 +320,26 @@ export async function fetchCPFLStats(
   }
 
   return stats;
+}
+
+/**
+ * Contagem usada pelo e-mail de lembrete — de propósito, é o MESMO critério
+ * (dropdown "Pendências" = Pendência CPFL) que o botão do e-mail usa pra
+ * filtrar o GLPI (id_search_option 76695, conferido contra Search::getDatas
+ * em 2026-08-31). `fetchCPFLStats().aguardando` conta por outro campo
+ * (Status Vistoria = Em análise) — hoje os dois batem (307 = 307, depois do
+ * reset dos 4 equipamentos de teste em 2026-09-01), mas são campos
+ * preenchidos independentemente e já divergiram antes (307 vs 311). Contar
+ * aqui pelo mesmo critério do link é o que garante que o número do e-mail
+ * NUNCA diga uma coisa diferente do que a pessoa vê ao clicar.
+ */
+export async function fetchContagemPendenciaCPFL(): Promise<number> {
+  const [row] = await query<{ total: number }>(
+    `SELECT COUNT(*) AS total
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      WHERE ne.is_deleted = 0
+        AND f.plugin_fields_pendnciafielddropdowns_id = ${PENDENCIA_CPFL}`
+  );
+  return Number(row?.total ?? 0);
 }
