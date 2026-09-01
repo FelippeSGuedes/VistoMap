@@ -38,7 +38,12 @@ const DESTINATARIOS_CPFL = [
   "charles.alves@cpfl.com.br",
   "pablocoelho@cpfl.com.br",
   "anderson.fraga@cpfl.com.br",
-  "felippe.guedes@cpfl.com.br",
+  // Domínio errado no envio original (2026-09-01): não existe
+  // felippe.guedes@cpfl.com.br, e a mensagem provavelmente voltou (bounce)
+  // pro remetente em vez de chegar. É o endereço Nansen do usuário — mantido
+  // de propósito na lista de disparo real (não só nas prévias manuais) pra
+  // ele acompanhar os envios semanais e notar qualquer erro.
+  "felippe.guedes@nansen.com.br",
 ];
 
 const URL_GLPI_PENDENCIAS =
