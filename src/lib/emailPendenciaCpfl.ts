@@ -80,6 +80,23 @@ export function escaparHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * URL pra usar em href de e-mail: codifica colchetes antes de escapar
+ * entidades HTML.
+ *
+ * Achado com o link real do botão não reagindo a clique: `[` e `]` são
+ * válidos numa query string comum (é assim que o GLPI monta filtro de busca
+ * — `criteria[0][field]=...`), mas o sanitizador de link do Gmail (e
+ * possivelmente outros) DESCARTA o atributo href inteiro quando encontra
+ * colchete cru — não dá erro, o link simplesmente some, exatamente como "sem
+ * reação alguma, parece que não tem link". `encodeURI` sozinho não resolve
+ * porque preserva colchete (trata como caractere reservado da sintaxe da
+ * URL), por isso o replace dedicado.
+ */
+export function escaparUrl(s: string): string {
+  return escaparHtml(String(s).replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
+}
+
 /** Linha da caixa informativa: emoji solto + rótulo pequeno + valor forte. */
 function linhaInfo(
   emoji: string,
@@ -105,7 +122,7 @@ export function htmlLembretePendenciaCPFL(p: HtmlPendenciaCPFLParams): string {
   const n = Math.max(0, Math.floor(p.quantidade));
   const plural = n === 1 ? "Projeto" : "Projetos";
   const qtd = `${n} ${plural}`;
-  const urlSegura = escaparHtml(p.url);
+  const urlSegura = escaparUrl(p.url);
 
   const imgHeader = p.cidHeader
     ? `<img src="cid:${p.cidHeader}" width="700" alt="Sistema GIOC" style="display:block;width:100%;max-width:700px;height:auto;border:0;border-radius:20px 20px 0 0" />`
