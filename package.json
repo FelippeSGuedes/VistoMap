@@ -9,6 +9,7 @@
     "build:mobile": "node scripts/build-mobile.mjs",
     "publish:mobile": "node scripts/publish-mobile.mjs",
     "apk": "node scripts/apk.mjs",
+    "aab": "node scripts/aab.mjs",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"

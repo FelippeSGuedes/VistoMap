@@ -14,9 +14,12 @@ Wrapper Capacitor do app tecnico (`/app`). Carrega
    - `mobile/android/local.properties` aponta pro SDK
    - `gradle.properties` aponta `org.gradle.java.home` pro JBR
 2. **Plugins instalados** (capacitor.config.ts):
-   - `@capacitor-community/background-geolocation`
+   - `@capgo/background-geolocation` (migrado de `@capacitor-community/background-geolocation`
+     em 2026-09-01 — o antigo parou na v1.2.26, sem release pra Capacitor 8)
+   - `@capgo/capacitor-updater` (atualização OTA do bundle web, ver seção abaixo)
    - `@capacitor/push-notifications`
    - `@capacitor/app`
+   - `@capacitor/filesystem`
 
 ## Build APK debug (ja funciona — para sideload teste)
 
@@ -28,46 +31,61 @@ cd mobile/android
 
 Instala via `adb install` ou copia o APK pro celular + abre o arquivo.
 
-## Build APK release (para distribuir)
+## Build APK release (para distribuir fora da Play Store — sideload)
 
-1. Gera keystore (1 vez, guarda bem — perda = nao da pra atualizar APK):
+A assinatura já está permanentemente configurada em
+`mobile/android/app/build.gradle` (atrás de um guard `hasKeystoreConfig` —
+sem o arquivo abaixo, o build de debug continua funcionando normal, só o de
+release fica sem assinar). Só falta o arquivo local:
+
+1. Gera keystore (1 vez, guarda bem — perda = não dá pra atualizar o app
+   assinado nunca mais, nem na Play Store):
    ```bash
    keytool -genkey -v -keystore vistomap-release.keystore \
      -alias vistomap -keyalg RSA -keysize 2048 -validity 10000
    ```
-2. Cria `mobile/android/keystore.properties` (NAO commitar):
+2. Cria `mobile/android/keystore.properties` (NAO commitar — já está no
+   `.gitignore`):
    ```properties
    storeFile=../vistomap-release.keystore
    storePassword=SENHA_KEYSTORE
    keyAlias=vistomap
    keyPassword=SENHA_KEY
    ```
-3. Edita `mobile/android/app/build.gradle` adicionando `signingConfigs`:
-   ```gradle
-   android {
-     signingConfigs {
-       release {
-         def kp = new Properties()
-         kp.load(new FileInputStream(rootProject.file('keystore.properties')))
-         storeFile file(kp.storeFile)
-         storePassword kp.storePassword
-         keyAlias kp.keyAlias
-         keyPassword kp.keyPassword
-       }
-     }
-     buildTypes {
-       release {
-         signingConfig signingConfigs.release
-         minifyEnabled false
-       }
-     }
-   }
-   ```
-4. Build:
+3. Build (`npx cap sync android` primeiro — sem isso o bundle web empacotado
+   pode ficar desatualizado em relação ao código atual):
    ```bash
-   cd mobile/android && ./gradlew assembleRelease
+   node scripts/build-mobile.mjs
+   cd mobile && npx cap sync android
+   cd android && ./gradlew assembleRelease
    # Output: app/build/outputs/apk/release/app-release.apk
    ```
+   Ou, mais simples, o mesmo comando de baixo sem o `bundleRelease` no fim —
+   por ora ainda não existe um `npm run apk:release` que encadeia isso, use
+   os passos acima.
+
+## Build AAB (Play Store)
+
+A Play Store exige **Android App Bundle (`.aab`)** pra apps novos — não
+aceita mais `.apk` no upload. A assinatura é a MESMA do release acima (mesmo
+`keystore.properties`, reaproveitada automaticamente pelo Gradle — não
+precisa de nenhuma configuração extra pro bundle).
+
+```bash
+npm run aab
+```
+
+Encadeia `build-mobile.mjs` → `cap sync android` → `gradlew bundleRelease`
+num comando só (mesmo padrão do `npm run apk`, que gera o APK de debug).
+Falha cedo, com mensagem clara, se `mobile/android/keystore.properties` não
+existir — um bundle sem assinatura não serve pra nada no Play Console.
+
+Saída: `mobile/android/app/build/outputs/bundle/release/app-release.aab`.
+
+Antes de subir, confira a assinatura:
+```bash
+jarsigner -verify -verbose -certs mobile/android/app/build/outputs/bundle/release/app-release.aab
+```
 
 ## Setup Push notifications (FCM)
 
@@ -107,15 +125,24 @@ Instala via `adb install` ou copia o APK pro celular + abre o arquivo.
   { "users_id": 2, "title": "Nova vistoria", "body": "AER-S-GE-042", "data": { "url": "/app/vistorias/42" } }
   ```
 
-## Atualizar app web sem republicar APK
+## Atualizar app web sem republicar APK/AAB (OTA)
 
-Como Capacitor usa `server.url`, qualquer push pro git que atualiza `/app`
-fica disponivel instantaneamente nos APKs ja instalados. So precisa
-republicar APK quando:
+O app roda em modo **bundle local** (o front-end vai embutido no APK,
+`mobile/www`, e abre 100% offline — não é `server.url` mais). Atualização
+sem reinstalar é feita por OTA via `@capgo/capacitor-updater`: um push pro
+`main` que toque `src/**`/`public/**`/`mobile/**` (fora de
+`src/app/painel/**` e `src/app/api/**`) dispara o workflow
+`publish-ota.yml` sozinho, que builda e publica um bundle novo; o app checa
+`/ota/latest.json` no cold-start e baixa/aplica sozinho (ver
+`src/hooks/useOtaUpdate.ts`).
 
-- Adiciona/atualiza plugin Capacitor
-- Muda permissao Android
-- Muda config nativa (icone, splash, package)
+Só precisa gerar e distribuir um APK/AAB novo quando:
+
+- Adiciona/atualiza plugin Capacitor (a API nativa muda — código JS que
+  chama o método novo só pode ir por OTA depois que o plugin novo já
+  estiver instalado, senão quebra em quem ainda tem o app antigo)
+- Muda permissão Android
+- Muda config nativa (ícone, splash, package, SDK/AGP/Gradle)
 
 ## Estrutura
 
