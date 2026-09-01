@@ -7,8 +7,11 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.1'
-        classpath 'com.google.gms:google-services:4.4.0'
+        // AGP 8.13.0 = versao usada pelo proprio template do @capacitor/android@8.5.1
+        // (conferido no pacote publicado, nao adivinhado) — exige Gradle 8.13+
+        // (ver gradle-wrapper.properties) e JDK 17+ (JBR local esta em 21, ok).
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.google.gms:google-services:4.5.0'
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
