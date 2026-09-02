@@ -52,10 +52,31 @@ export async function verifyPassword(senha: string): Promise<boolean> {
   }
 }
 
+/**
+ * BUG (achado em teste real, 2026-09-02): sessão de ANTES da trava diária
+ * existir sobrevive ao cold-start via loadSession()/hydrate() (services/auth.ts) —
+ * nunca passa pelo onSubmit do LoginPage de novo enquanto o token não expirar,
+ * então deriveAndStoreHash() nunca roda e HASH_KEY nunca é gravado. Gating
+ * nesta função em "hash existe?" fazia esses aparelhos NUNCA travarem.
+ * Gating em LAST_UNLOCK_KEY em vez disso: ausência de registro de
+ * desbloqueio (sessão antiga OU primeiro login) conta igual a "precisa
+ * travar hoje" — LockScreenOverlay decide como confirmar com base em
+ * hasLocalHash() (ver função abaixo).
+ */
 export function shouldShowLockToday(): boolean {
   try {
-    if (!window.localStorage.getItem(HASH_KEY)) return false;
     return window.localStorage.getItem(LAST_UNLOCK_KEY) !== todayStr();
+  } catch {
+    return false;
+  }
+}
+
+/** true = já tem hash local pra comparar rápido; false = sessão anterior à
+ * trava (ou primeiro login neste aparelho) — precisa confirmar contra o
+ * backend uma vez pra semear o hash (ver LockScreenOverlay). */
+export function hasLocalHash(): boolean {
+  try {
+    return !!window.localStorage.getItem(HASH_KEY);
   } catch {
     return false;
   }

@@ -18,7 +18,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Eye, EyeOff, Fingerprint, Loader2, Lock, ShieldCheck } from "lucide-react";
 import { useLockStore } from "@/store/lock";
 import { useOtaStore } from "@/store/ota";
+import { useAuthStore } from "@/store/auth";
+import { authService } from "@/services/auth";
 import {
+  deriveAndStoreHash,
+  hasLocalHash,
   isBiometricAvailable,
   markUnlockedToday,
   verifyBiometric,
@@ -33,6 +37,8 @@ export function LockScreenOverlay() {
   const locked = useLockStore((s) => s.locked);
   const unlock = useLockStore((s) => s.unlock);
   const otaPhase = useOtaStore((s) => s.phase);
+  const session = useAuthStore((s) => s.session);
+  const setSession = useAuthStore((s) => s.setSession);
 
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +61,38 @@ export function LockScreenOverlay() {
 
   const onSubmit = async (values: FormValues) => {
     setError(null);
-    const ok = await verifyPassword(values.senha);
-    if (!ok) {
-      setError("Senha incorreta.");
-      return;
+
+    if (hasLocalHash()) {
+      const ok = await verifyPassword(values.senha);
+      if (!ok) {
+        setError("Senha incorreta.");
+        return;
+      }
+    } else {
+      // Sessão de ANTES da trava diária existir (ou primeiro login neste
+      // aparelho) — ainda não tem hash local pra comparar. Confirma contra
+      // o mesmo endpoint da tela de login (é o único jeito de validar a
+      // senha sem tê-la guardado em texto puro) e semeia o hash local a
+      // partir daqui; da próxima vez cai no caminho rápido acima.
+      if (!session) {
+        setError("Sessão expirada — faça login novamente.");
+        return;
+      }
+      try {
+        const next = await authService.login({ login: session.tecnico.email, senha: values.senha });
+        await deriveAndStoreHash(values.senha);
+        setSession(next);
+      } catch (err) {
+        const semResposta = !(err as { response?: unknown })?.response;
+        setError(
+          semResposta
+            ? "Sem conexão — não foi possível confirmar agora. Tente novamente."
+            : "Senha incorreta."
+        );
+        return;
+      }
     }
+
     markUnlockedToday();
     unlock();
   };
