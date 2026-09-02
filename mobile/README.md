@@ -17,6 +17,8 @@ Wrapper Capacitor do app tecnico (`/app`). Carrega
    - `@capgo/background-geolocation` (migrado de `@capacitor-community/background-geolocation`
      em 2026-09-01 — o antigo parou na v1.2.26, sem release pra Capacitor 8)
    - `@capgo/capacitor-updater` (atualização OTA do bundle web, ver seção abaixo)
+   - `@capgo/capacitor-native-biometric` (trava diária — desbloqueio por
+     digital/face, ver `src/services/lock.ts`)
    - `@capacitor/push-notifications`
    - `@capacitor/app`
    - `@capacitor/filesystem`

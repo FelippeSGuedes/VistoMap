@@ -103,14 +103,65 @@ export function clearLock(): void {
 }
 
 /**
- * Feature-detection da biometria nativa — hoje sempre indisponível (o
- * plugin só entra na Fase 3b do build nativo). Centralizado aqui pra
- * LockScreenOverlay não precisar mudar quando a Fase 3b ligar de verdade.
+ * Biometria nativa (Fase 3b) — mesmo padrão getCapacitor() de
+ * useOtaUpdate.ts/useLocationReporter.ts (acesso dinâmico via
+ * window.Capacitor.Plugins, não import direto do pacote).
+ *
+ * IMPORTANTE (ver README do @capgo/capacitor-native-biometric): verifyIdentity()
+ * é conveniência local, não é a fronteira de segurança real — aqui ela só
+ * decide se a trava DIÁRIA local libera mais rápido; a autenticação de
+ * verdade continua sendo a sessão JWT do backend, inalterada por isso. Por
+ * isso não usamos getCredentials/setCredentials do plugin (não guardamos
+ * login/senha atrás da biometria) — só a confirmação "é você mesmo".
  */
-export async function isBiometricAvailable(): Promise<boolean> {
-  return false;
+interface NativeBiometricAvailability {
+  isAvailable: boolean;
 }
 
+interface NativeBiometricPlugin {
+  isAvailable: () => Promise<NativeBiometricAvailability>;
+  verifyIdentity: (opts: { reason?: string; title?: string; subtitle?: string }) => Promise<void>;
+}
+
+interface CapacitorBridge {
+  isNativePlatform?: () => boolean;
+  Plugins?: { NativeBiometric?: NativeBiometricPlugin };
+}
+
+function getCapacitor(): CapacitorBridge | null {
+  if (typeof window === "undefined") return null;
+  return (window as Window & { Capacitor?: CapacitorBridge }).Capacitor ?? null;
+}
+
+/** true = hardware presente E biometria cadastrada no aparelho. */
+export async function isBiometricAvailable(): Promise<boolean> {
+  try {
+    const cap = getCapacitor();
+    if (!cap?.isNativePlatform?.()) return false;
+    const plugin = cap.Plugins?.NativeBiometric;
+    if (!plugin) return false;
+    const result = await plugin.isAvailable();
+    return !!result?.isAvailable;
+  } catch {
+    return false;
+  }
+}
+
+/** Qualquer falha nativa (cancelou, sem biometria, hardware indisponível)
+ * cai pra false — LockScreenOverlay volta pro caminho de senha, nunca
+ * trava o técnico fora do app por causa disso. */
 export async function verifyBiometric(): Promise<boolean> {
-  return false;
+  try {
+    const cap = getCapacitor();
+    if (!cap?.isNativePlatform?.()) return false;
+    const plugin = cap.Plugins?.NativeBiometric;
+    if (!plugin) return false;
+    await plugin.verifyIdentity({
+      reason: "Confirme sua identidade para continuar usando o VistoMap",
+      title: "Verificação diária de segurança",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

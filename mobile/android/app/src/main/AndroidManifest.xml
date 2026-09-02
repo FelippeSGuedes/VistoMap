@@ -51,6 +51,11 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Biometria (trava diária) — o AAR do @capgo/capacitor-native-biometric
+         não declara isso sozinho (confirmado no manifest do plugin), então
+         precisa vir daqui. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <!-- GPS hardware feature -->
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 </manifest>
