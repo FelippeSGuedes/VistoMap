@@ -82,6 +82,19 @@ interface CapacitorBridge {
         ) => void
       ) => Promise<void>;
       stop: () => Promise<void>;
+      /**
+       * BUG do plugin (achado em teste real, 2026-09-02): start({requestPermissions:true})
+       * só garante a permissão de localização em PRIMEIRO plano (alias "location")
+       * — o método start() nunca checa/pede "backgroundLocation" (confirmado lendo
+       * o Java do plugin: esse alias só é pedido dentro de requestPermissions(),
+       * nunca dentro de start()). Em aparelho que já tinha a localização normal
+       * concedida de antes, start() pulava reto pro serviço sem NUNCA pedir
+       * "permitir o tempo todo" — o diálogo simplesmente não aparecia. Por isso
+       * chamamos isto explicitamente antes de start(), ver mais abaixo.
+       */
+      requestPermissions?: (opts?: {
+        permissions?: ("location" | "backgroundLocation" | "notification")[];
+      }) => Promise<Record<string, string>>;
     };
   };
 }
@@ -183,43 +196,69 @@ export function useLocationReporter() {
       // arvore de render (tela de erro do Next.js) mesmo com o GPS nativo
       // funcionando por baixo. Mesma cautela que o codigo antigo ja tinha
       // pra addWatcher() por um motivo parecido.
-      try {
-        Promise.resolve(
-          BG.start(
-            {
-              backgroundMessage:
-                "VistoMap rastreando sua localizacao em tempo real",
-              backgroundTitle: "Rastreamento ativo",
-              requestPermissions: true,
-              stale: false,
-              distanceFilter: 30,
-              url: endpoint,
-              headers: { Authorization: `Bearer ${session!.token}` },
-            },
-            (loc, err) => {
-              if (err) {
-                console.warn("[useLocationReporter] BG erro:", err);
-                return;
+      const iniciarWatcher = () => {
+        try {
+          Promise.resolve(
+            BG.start(
+              {
+                backgroundMessage:
+                  "VistoMap rastreando sua localizacao em tempo real",
+                backgroundTitle: "Rastreamento ativo",
+                // false: já pedimos "location" + "backgroundLocation" explicitamente
+                // logo abaixo (ver comentário no tipo do plugin, no topo do arquivo).
+                requestPermissions: false,
+                stale: false,
+                distanceFilter: 30,
+                url: endpoint,
+                headers: { Authorization: `Bearer ${session!.token}` },
+              },
+              (loc, err) => {
+                if (err) {
+                  console.warn("[useLocationReporter] BG erro:", err);
+                  return;
+                }
+                if (!loc) return;
+                void (async () => {
+                  const battery = await getBatteryLevel();
+                  await postLocation({
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                    accuracy_meters: loc.accuracy ?? null,
+                    speed_kmh:
+                      loc.speed != null ? Math.round(loc.speed * 3.6) : null,
+                    battery_level: battery,
+                  });
+                })();
               }
-              if (!loc) return;
-              void (async () => {
-                const battery = await getBatteryLevel();
-                await postLocation({
-                  latitude: loc.latitude,
-                  longitude: loc.longitude,
-                  accuracy_meters: loc.accuracy ?? null,
-                  speed_kmh:
-                    loc.speed != null ? Math.round(loc.speed * 3.6) : null,
-                  battery_level: battery,
-                });
-              })();
-            }
+            )
+          ).catch((e) => {
+            console.error("[useLocationReporter] BG.start falhou:", e);
+          });
+        } catch (e) {
+          console.error("[useLocationReporter] BG.start exception:", e);
+        }
+      };
+
+      // Pede "location" (primeiro plano) + "backgroundLocation" explicitamente
+      // ANTES de start() — ver o comentário longo no tipo BackgroundGeolocation
+      // no topo do arquivo: start({requestPermissions:true}) sozinho NUNCA pede
+      // "permitir o tempo todo" quando a localização normal já estava concedida
+      // de antes, então o diálogo de segundo plano simplesmente não aparecia.
+      if (BG.requestPermissions) {
+        try {
+          Promise.resolve(
+            BG.requestPermissions({ permissions: ["location", "backgroundLocation"] })
           )
-        ).catch((e) => {
-          console.error("[useLocationReporter] BG.start falhou:", e);
-        });
-      } catch (e) {
-        console.error("[useLocationReporter] BG.start exception:", e);
+            .catch((e) => {
+              console.warn("[useLocationReporter] requestPermissions falhou:", e);
+            })
+            .finally(iniciarWatcher);
+        } catch (e) {
+          console.error("[useLocationReporter] requestPermissions exception:", e);
+          iniciarWatcher();
+        }
+      } else {
+        iniciarWatcher();
       }
 
       return () => {
