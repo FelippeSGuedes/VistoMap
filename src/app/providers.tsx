@@ -34,9 +34,19 @@ function OtaUpdateMount() {
   return null;
 }
 
+/**
+ * Trava diária é uma feature do app técnico nativo (Play Store) — não faz
+ * sentido no /painel (dashboard administrativo acessado por navegador
+ * normal, sem biometria de aparelho). BUG (achado 2026-09): faltava a
+ * mesma exclusão de /painel que DevolucaoMount/TecnicoNotificationsMount
+ * já tinham — a trava chegou a aparecer pedindo senha pra quem estava só
+ * navegando no painel.
+ */
 function LockScreenMount() {
   const session = useAuthStore((s) => s.session);
-  useLockScreen(!!session);
+  const pathname = usePathname();
+  const isPainel = pathname?.startsWith("/painel") ?? false;
+  useLockScreen(!!session && !isPainel);
   return null;
 }
 

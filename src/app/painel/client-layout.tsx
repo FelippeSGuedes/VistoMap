@@ -37,6 +37,11 @@ import type { SessionRole } from "@/types";
 import PainelAlertas from "@/components/painel/PainelAlertas";
 import PainelWebPush from "@/components/painel/PainelWebPush";
 
+// Rotas de /painel acessíveis sem sessão — login (óbvio) e páginas legais
+// públicas (política de privacidade, exigida pela Play Store, não deve
+// pedir login pra quem só quer ler).
+const PUBLIC_PAINEL_PATHS = ["/painel/login", "/painel/privacidade"];
+
 // Escopo de acesso por papel — admin vê tudo; moderador é admin menos
 // Cancelar (botão, não rota) e Status; leitura só as telas de visualização
 // combinadas com o usuário (ver PAGE_ROLES abaixo para o guard de rota).
@@ -306,6 +311,7 @@ export default function PainelClientLayout({ children }: { children: React.React
 
   useEffect(() => {
     if (!hydrated) return;
+    if (PUBLIC_PAINEL_PATHS.includes(pathname ?? "")) return;
     if (!session || !isPainelRole(session.role)) {
       router.replace("/painel/login");
       return;
@@ -319,7 +325,7 @@ export default function PainelClientLayout({ children }: { children: React.React
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, session, pathname, router]);
 
-  if (pathname === "/painel/login") return <>{children}</>;
+  if (PUBLIC_PAINEL_PATHS.includes(pathname ?? "")) return <>{children}</>;
   if (!hydrated) return null;
   if (!session || !isPainelRole(session.role)) return null;
   const currentAllowed = rolesForPath(pathname);
