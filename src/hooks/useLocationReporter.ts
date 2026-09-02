@@ -13,11 +13,39 @@
  *   Throttled em background, suspende com tela bloqueada.
  *
  * Detecta runtime via window.Capacitor.isNativePlatform().
+ *
+ * Migrado de @capacitor-community/background-geolocation (parado na v1.2.26,
+ * sem release pra Capacitor 8) pra @capgo/background-geolocation — bump
+ * obrigatório junto da subida de API 36/Capacitor 8 pra Play Store. O nome
+ * do plugin em runtime continua "BackgroundGeolocation" (mesmo
+ * window.Capacitor.Plugins.BackgroundGeolocation de antes), mas o método
+ * mudou de addWatcher()/removeWatcher() (retornava um id de watcher) pra
+ * start()/stop() (sem id — só um método pra parar, ponto). Confirmado lendo
+ * o .d.ts real do pacote publicado, não por suposição de compatibilidade.
+ *
+ * Entrega nativa redundante (2026-09-01): além do callback JS de sempre
+ * (postLocation via fetch), passa `url`+`headers` pro plugin — o código
+ * NATIVO passa a fazer o POST diretamente pro mesmo endpoint, em paralelo,
+ * sem depender do WebView estar vivo. Fabricantes como Xiaomi/MIUI e
+ * Samsung matam processo de app em segundo plano de forma bem mais agressiva
+ * que o Android puro; o foreground service (que já existia, é o que mostra
+ * a notificação "Rastreamento ativo") tem proteção bem mais forte contra
+ * isso do que um processo de WebView comum — se o sistema matar o WebView,
+ * o serviço nativo continua rodando (START_STICKY) e reenviando posição
+ * sozinho, então o técnico não some do mapa.
+ *
+ * O ping nativo vem no formato cru do plugin (accuracy/speed em m/s, sem
+ * bateria — só o JS sabe ler bateria), não no formato enriquecido que
+ * postLocation() monta — por isso o backend (/api/locations) aceita os dois
+ * formatos. Duplicidade quando as duas vias estão vivas ao mesmo tempo é
+ * aceitável: a tabela de rastreamento não precisa de deduplicação, é sinal
+ * de saude, não de bug.
  */
 
 import { useEffect, useRef } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useExpedienteStore } from "@/store/expediente";
+import { useLocationPrimingStore } from "@/store/locationPriming";
 import { API_BASE } from "@/services/api";
 
 const INTERVAL_MS = 30_000;
@@ -31,26 +59,29 @@ interface CapacitorBridge {
   isNativePlatform?: () => boolean;
   Plugins?: {
     BackgroundGeolocation?: {
-      addWatcher: (
+      start: (
         opts: {
           backgroundMessage?: string;
           backgroundTitle?: string;
           requestPermissions?: boolean;
           stale?: boolean;
           distanceFilter?: number;
+          /** Entrega nativa direta pro backend — ver comentário no topo do arquivo. */
+          url?: string;
+          headers?: Record<string, string>;
         },
         cb: (
-          loc: {
+          loc?: {
             latitude: number;
             longitude: number;
             accuracy: number;
             speed: number | null;
-            time: number;
-          } | null,
-          err?: { code: string; message: string }
+            time: number | null;
+          },
+          err?: { code?: string; message: string }
         ) => void
-      ) => Promise<string>;
-      removeWatcher: (opts: { id: string }) => Promise<void>;
+      ) => Promise<void>;
+      stop: () => Promise<void>;
     };
   };
 }
@@ -76,8 +107,8 @@ export function useLocationReporter() {
   const { session } = useAuthStore();
   const expediente = useExpedienteStore((s) => s.expediente);
   const refreshExpediente = useExpedienteStore((s) => s.refresh);
+  const primingAcknowledged = useLocationPrimingStore((s) => s.acknowledged);
   const intervalRef = useRef<number | null>(null);
-  const watcherIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (session?.token) {
@@ -130,60 +161,72 @@ export function useLocationReporter() {
     const cap = getCapacitor();
     const isNative = cap?.isNativePlatform?.() ?? false;
 
+    // "Declaração em destaque" exigida pelo Google Play antes do pedido de
+    // ACCESS_BACKGROUND_LOCATION — mostra a LocationPrimingOverlay e sai;
+    // o efeito reexecuta sozinho quando `primingAcknowledged` virar true
+    // (está na dependency array abaixo), e aí sim chama BG.start().
+    if (isNative && !primingAcknowledged) {
+      useLocationPrimingStore.getState().solicitar();
+      return;
+    }
+
     // ─────── Modo native: BackgroundGeolocation ───────
     if (isNative && cap?.Plugins?.BackgroundGeolocation) {
       const BG = cap.Plugins.BackgroundGeolocation;
       console.log("[useLocationReporter] Modo nativo: BackgroundGeolocation");
+      // Promise.resolve(...) normaliza o retorno de start()/stop(): a
+      // tipagem do plugin declara Promise<void>, mas achado em campo
+      // (2026-09-01, log real de dispositivo): o bridge do Capacitor pra
+      // metodos com callback nem sempre devolve algo com .catch encadeavel
+      // de verdade em runtime — encadear .catch() direto ali quebrava com
+      // "TypeError: e.start(...).catch is not a function", derrubando a
+      // arvore de render (tela de erro do Next.js) mesmo com o GPS nativo
+      // funcionando por baixo. Mesma cautela que o codigo antigo ja tinha
+      // pra addWatcher() por um motivo parecido.
       try {
-        // addWatcher do @capacitor-community/background-geolocation v1.x
-        // retorna string sincrona OU Promise<string> dependendo da versao.
-        // Promise.resolve normaliza ambos.
-        const watcherReturn = BG.addWatcher(
-          {
-            backgroundMessage:
-              "VistoMap rastreando sua localizacao em tempo real",
-            backgroundTitle: "Rastreamento ativo",
-            requestPermissions: true,
-            stale: false,
-            distanceFilter: 30,
-          },
-          async (loc, err) => {
-            if (err) {
-              console.warn("[useLocationReporter] BG erro:", err);
-              return;
+        Promise.resolve(
+          BG.start(
+            {
+              backgroundMessage:
+                "VistoMap rastreando sua localizacao em tempo real",
+              backgroundTitle: "Rastreamento ativo",
+              requestPermissions: true,
+              stale: false,
+              distanceFilter: 30,
+              url: endpoint,
+              headers: { Authorization: `Bearer ${session!.token}` },
+            },
+            (loc, err) => {
+              if (err) {
+                console.warn("[useLocationReporter] BG erro:", err);
+                return;
+              }
+              if (!loc) return;
+              void (async () => {
+                const battery = await getBatteryLevel();
+                await postLocation({
+                  latitude: loc.latitude,
+                  longitude: loc.longitude,
+                  accuracy_meters: loc.accuracy ?? null,
+                  speed_kmh:
+                    loc.speed != null ? Math.round(loc.speed * 3.6) : null,
+                  battery_level: battery,
+                });
+              })();
             }
-            if (!loc) return;
-            const battery = await getBatteryLevel();
-            await postLocation({
-              latitude: loc.latitude,
-              longitude: loc.longitude,
-              accuracy_meters: loc.accuracy ?? null,
-              speed_kmh:
-                loc.speed != null ? Math.round(loc.speed * 3.6) : null,
-              battery_level: battery,
-            });
-          }
-        );
-        Promise.resolve(watcherReturn)
-          .then((id) => {
-            if (typeof id === "string") watcherIdRef.current = id;
-          })
-          .catch((e) => {
-            console.error("[useLocationReporter] addWatcher falhou:", e);
-          });
+          )
+        ).catch((e) => {
+          console.error("[useLocationReporter] BG.start falhou:", e);
+        });
       } catch (e) {
-        console.error("[useLocationReporter] addWatcher exception:", e);
+        console.error("[useLocationReporter] BG.start exception:", e);
       }
 
       return () => {
-        if (watcherIdRef.current && BG.removeWatcher) {
-          try {
-            const r = BG.removeWatcher({ id: watcherIdRef.current });
-            Promise.resolve(r).catch(() => {});
-          } catch {
-            /* ignore */
-          }
-          watcherIdRef.current = null;
+        try {
+          Promise.resolve(BG.stop()).catch(() => {});
+        } catch {
+          /* ignore */
         }
       };
     }
@@ -247,5 +290,5 @@ export function useLocationReporter() {
       if (intervalRef.current != null) window.clearInterval(intervalRef.current);
       if (wakeLock) wakeLock.release().catch(() => {});
     };
-  }, [expediente?.emAndamento, session?.token, refreshExpediente]);
+  }, [expediente?.emAndamento, session?.token, refreshExpediente, primingAcknowledged]);
 }

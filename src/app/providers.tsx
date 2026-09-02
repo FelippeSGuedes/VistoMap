@@ -15,6 +15,7 @@ import { useDevolucaoWatcher } from "@/hooks/useDevolucaoWatcher";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
 import { OtaUpdateOverlay } from "@/components/feedback/OtaUpdateOverlay";
 import { LockScreenOverlay } from "@/components/feedback/LockScreenOverlay";
+import { LocationPrimingOverlay } from "@/components/feedback/LocationPrimingOverlay";
 import { DevolucaoModal } from "@/components/vistorias/DevolucaoModal";
 import { DevolucaoBanner } from "@/components/vistorias/DevolucaoBanner";
 
@@ -154,6 +155,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <OfflineIndicator />
       <OtaUpdateOverlay />
       <LockScreenOverlay />
+      <LocationPrimingOverlay />
       {children}
     </>
   );
