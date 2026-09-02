@@ -89,6 +89,51 @@ Antes de subir, confira a assinatura:
 jarsigner -verify -verbose -certs mobile/android/app/build/outputs/bundle/release/app-release.aab
 ```
 
+## Primeira submissão Play Store
+
+Checklist do que já está pronto no código vs. o que só existe fora dele
+(Play Console, contas externas). Combinado com o usuário em 2026-09:
+publicar em **teste interno** (até 100 testadores por e-mail, nunca
+aparece em busca pública, sem revisão do Google) — não vira produção
+pública.
+
+**Já pronto no código:**
+- [x] API 36 / compileSdk 36 (Fase 0)
+- [x] AAB assinado via `npm run aab` (Fase 1)
+- [x] Edge-to-edge — `SystemBars` automático do Capacitor 8 + fallback
+      `env(safe-area-inset-*)` (Fase 2)
+- [x] Trava diária local + biometria nativa, biometria tentando primeiro
+      com fallback pra senha após 3 falhas (Fase 3a/3b)
+- [x] `versionCode`/`versionName` finais (Fase 4)
+
+**Fora do código — responsabilidade do usuário no Play Console:**
+- [ ] Criar a track de **Teste interno**, subir o `.aab`, adicionar
+      e-mails dos técnicos como testadores
+- [ ] Política de privacidade (URL pública)
+- [ ] Formulário de Data Safety
+- [ ] Ícone, screenshots, feature graphic
+- [ ] Classificação etária
+- [ ] Restringir as chaves do Mapbox e do Google Maps por
+      pacote (`br.com.nansen.vistomap`) + SHA-1 do certificado de
+      assinatura, nos respectivos consoles — hoje são chaves públicas
+      (client-side por natureza), sem essa restrição qualquer um que
+      extrair o APK pode usar a cota
+
+**Pendências de segurança levantadas em 2026-09, não bloqueiam o
+lançamento em teste interno, avaliar depois:**
+- [ ] `Failed to rename temp file to final destination` — erro nativo
+      intermitente no download OTA (`@capgo/capacitor-updater`),
+      reproduzido em teste real; já tem timeout de 5min + trava de loop
+      que evita bloquear o técnico, mas a causa raiz não foi corrigida
+- [ ] `minifyEnabled false` no `buildTypes.release` — código nativo
+      Android hoje sem R8/ofuscação; ligar é de graça, mas precisa de
+      um passo de teste depois (pode quebrar plugin que usa reflection)
+- [ ] Detecção de root/jailbreak (`@capgo/capacitor-is-root`, recomendado
+      pelo próprio README do plugin de biometria — `verifyIdentity()`
+      pode ser burlado via Frida/Xposed em aparelho rooteado)
+- [ ] Play Integrity API — confirma no backend que quem chama a API é
+      uma cópia genuína do app, não uma versão clonada/repassada
+
 ## Setup Push notifications (FCM)
 
 1. Cria projeto no [Firebase Console](https://console.firebase.google.com/)
@@ -118,6 +163,8 @@ jarsigner -verify -verbose -certs mobile/android/app/build/outputs/bundle/releas
 | POST_NOTIFICATIONS | push (Android 13+) |
 | WAKE_LOCK | mantem CPU ativa durante ping |
 | RECEIVE_BOOT_COMPLETED | re-inicia servico apos reboot |
+| CAMERA / RECORD_AUDIO | getUserMedia no WebView (VideoRecorderSheet) |
+| USE_BIOMETRIC | trava diaria — digital/face (Fase 3b) |
 
 ## Endpoints backend
 
