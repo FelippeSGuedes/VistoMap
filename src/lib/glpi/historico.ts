@@ -8,6 +8,7 @@ import {
   TABLE_NE,
   TABLE_STATUS_VISTORIA,
 } from "./constants";
+import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 
 // situaodavistoriafield: 3=Vistoriado, 6=Revisitado — mesma prioridade 1 que
 // resolveAdminStatus() já usa em painel.ts e que fetchVistoriasRealizadas()
@@ -219,9 +220,16 @@ export async function fetchHistoricoAnalytics(
   );
 
   /* ── Ranking técnicos ──────────────────────────────────────── */
+  // LEFT JOIN de propósito (era INNER): um técnico purgado do GLPI (ver
+  // usuariosRemovidos.ts) sumia do ranking por completo, mesmo tendo
+  // vistorias reais no período — não só sem nome, o trabalho dele
+  // desaparecia da estatística inteira. Agrupa por
+  // users_id_vistoriadorafield (sempre presente) em vez de u.id (nulo
+  // quando o usuário não existe mais).
   const tecRows = await query<{
-    id: number;
-    name: string;
+    tecnico_id: number;
+    id: number | null;
+    name: string | null;
     firstname: string | null;
     realname: string | null;
     total: number;
@@ -230,22 +238,24 @@ export async function fetchHistoricoAnalytics(
     cidades: number;
   }>(
     `
-      SELECT u.id, u.name, u.firstname, u.realname,
+      SELECT f.users_id_vistoriadorafield AS tecnico_id,
+             u.id, u.name, u.firstname, u.realname,
              COUNT(*) AS total,
              SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
              SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas,
              COUNT(DISTINCT TRIM(f.municipiofield)) AS cidades
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
-        INNER JOIN glpi_users u ON u.id = f.users_id_vistoriadorafield
+        LEFT JOIN glpi_users u ON u.id = f.users_id_vistoriadorafield
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
         LEFT JOIN \`${TABLE_AUX}\` aux
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
+         AND f.users_id_vistoriadorafield > 0
          AND (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
-       GROUP BY u.id
+       GROUP BY f.users_id_vistoriadorafield
        ORDER BY total DESC
        LIMIT 50
     `,
@@ -340,20 +350,29 @@ export async function fetchHistoricoAnalytics(
   const mediaMin = (arr: number[]): number | null =>
     arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
 
+  // Técnico purgado do GLPI (u.id nulo, ver LEFT JOIN acima) — recupera o
+  // nome do histórico em vez de deixar o ranking sem nome nenhum.
+  const idsSemCadastroRanking = tecRows
+    .filter((r) => r.id == null)
+    .map((r) => Number(r.tecnico_id));
+  const nomesRecuperadosRanking = await nomesDeUsuariosRemovidos(idsSemCadastroRanking);
+
   const rankingTecnicos = tecRows.map((r) => ({
-    id: r.id,
+    id: r.tecnico_id,
     nome:
-      `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.name,
+      r.id == null
+        ? nomesRecuperadosRanking.get(r.tecnico_id) ?? "Técnico desligado"
+        : `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.name || "—",
     total: Number(r.total) || 0,
     aprovadas: Number(r.aprovadas) || 0,
     revisitas: Number(r.revisitas) || 0,
     cidades: Number(r.cidades) || 0,
     kmPercorrido:
-      kmPorTecnico.get(r.id) != null
-        ? Math.round((kmPorTecnico.get(r.id) ?? 0) * 10) / 10
+      kmPorTecnico.get(r.tecnico_id) != null
+        ? Math.round((kmPorTecnico.get(r.tecnico_id) ?? 0) * 10) / 10
         : undefined,
-    tempoDeslocamentoMedioMin: mediaMin(tempoMap.get(r.id)?.desloc ?? []),
-    slaExecucaoMedioMin: mediaMin(tempoMap.get(r.id)?.sla ?? []),
+    tempoDeslocamentoMedioMin: mediaMin(tempoMap.get(r.tecnico_id)?.desloc ?? []),
+    slaExecucaoMedioMin: mediaMin(tempoMap.get(r.tecnico_id)?.sla ?? []),
   }));
 
   /* ── Motivos de reprovação (classificados) ───────────────────── */

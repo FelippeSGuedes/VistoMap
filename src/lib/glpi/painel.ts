@@ -24,6 +24,7 @@ import {
   TABLE_STATUS_VISTORIA,
   TABLE_USERS,
 } from "./constants";
+import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import type {
   AdminStatus,
   PainelStats,
@@ -459,10 +460,26 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
     [SITUACAO_AGUARDANDO_REVISITA, SITUACAO_EM_REVISITA]
   );
 
+  // Técnico purgado do GLPI (ver usuariosRemovidos.ts) — recupera o nome do
+  // histórico em vez de mostrar "—", que dá a entender que não teve técnico.
+  const idsSemCadastro = rows
+    .filter(
+      (r) =>
+        Number(r.tecnico_id) > 0 &&
+        r.tecnico_firstname == null &&
+        r.tecnico_realname == null &&
+        r.tecnico_name == null
+    )
+    .map((r) => Number(r.tecnico_id));
+  const nomesRecuperados = await nomesDeUsuariosRemovidos(idsSemCadastro);
+
   return rows.map((r) => {
     const prioridade: VistoriaPriority = "MEDIA"; // sem fonte real ainda
+    const semCadastro =
+      r.tecnico_firstname == null && r.tecnico_realname == null && r.tecnico_name == null;
     const tecnicoNome = r.tecnico_id
-      ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
+      ? (semCadastro ? nomesRecuperados.get(Number(r.tecnico_id)) : null) ||
+        `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
         r.tecnico_name ||
         "—"
       : undefined;
@@ -612,12 +629,28 @@ export async function fetchFilaVistorias(
     params
   );
 
+  // Técnico purgado do GLPI (ver usuariosRemovidos.ts) — recupera o nome do
+  // histórico em vez de mostrar "—", que dá a entender que não teve técnico.
+  const idsSemCadastro = rows
+    .filter(
+      (r) =>
+        Number(r.tecnico_id) > 0 &&
+        r.tecnico_firstname == null &&
+        r.tecnico_realname == null &&
+        r.tecnico_name == null
+    )
+    .map((r) => Number(r.tecnico_id));
+  const nomesRecuperados = await nomesDeUsuariosRemovidos(idsSemCadastro);
+
   const items: FilaItem[] = rows.map((r) => {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
     const status = resolveAdminStatus(r.status_name, isRepeat, hasTecnico, r.situacao_id);
+    const semCadastro =
+      r.tecnico_firstname == null && r.tecnico_realname == null && r.tecnico_name == null;
     const tecnicoNome = hasTecnico
-      ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
+      ? (semCadastro ? nomesRecuperados.get(Number(r.tecnico_id)) : null) ||
+        `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
         r.tecnico_name ||
         "—"
       : null;
@@ -1069,13 +1102,31 @@ export async function fetchVistoriasRealizadas(
     return Number.isFinite(n) && n !== 0 ? n : null;
   };
 
+  // Técnico purgado do GLPI (ver usuariosRemovidos.ts) — recupera o nome do
+  // histórico em vez de mostrar "—", que dá a entender que não teve técnico.
+  const idsSemCadastro = rows
+    .filter(
+      (r) =>
+        Number(r.tecnico_id) > 0 &&
+        r.tecnico_firstname == null &&
+        r.tecnico_realname == null &&
+        r.tecnico_name == null
+    )
+    .map((r) => Number(r.tecnico_id));
+  const nomesRecuperados = await nomesDeUsuariosRemovidos(idsSemCadastro);
+
   const items = rows.map((r): VistoriaRealizada => {
     const isRepeat = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
     const isRevisitado = Number(r.situacao_id) === 6 || isRepeat;
     const status: VistoriaRealizada["status"] = isRevisitado ? "REVISITADO" : "VISTORIADO";
+    const semCadastro =
+      r.tecnico_firstname == null && r.tecnico_realname == null && r.tecnico_name == null;
     const tecnicoNome = hasTecnico
-      ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() || r.tecnico_name || "—"
+      ? (semCadastro ? nomesRecuperados.get(Number(r.tecnico_id)) : null) ||
+        `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
+        r.tecnico_name ||
+        "—"
       : null;
     const ps = (r.project_status ?? "PENDENTE").toUpperCase();
     return {
@@ -1445,11 +1496,27 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
     };
   });
 
+  // Técnico purgado do GLPI (ver usuariosRemovidos.ts) — recupera o nome do
+  // histórico em vez de deixar o pin do mapa sem nome de técnico.
+  const idsSemCadastroMapa = vistoriasRows
+    .filter(
+      (r) =>
+        Number(r.tecnico_id) > 0 &&
+        r.tecnico_firstname == null &&
+        r.tecnico_realname == null &&
+        r.tecnico_username == null
+    )
+    .map((r) => Number(r.tecnico_id));
+  const nomesRecuperadosMapa = await nomesDeUsuariosRemovidos(idsSemCadastroMapa);
+
   const vistorias: PainelMapaVistoria[] = vistoriasRows.map((r) => {
     const isRevisita = Number(r.is_repeat) === 1;
     const hasTecnico = r.tecnico_id != null && Number(r.tecnico_id) > 0;
+    const semCadastro =
+      r.tecnico_firstname == null && r.tecnico_realname == null && r.tecnico_username == null;
     const tecnicoNome = hasTecnico
-      ? `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
+      ? (semCadastro ? nomesRecuperadosMapa.get(Number(r.tecnico_id)) : null) ||
+        `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() ||
         r.tecnico_username ||
         null
       : null;
@@ -1499,7 +1566,7 @@ export interface CentralVistoria {
 }
 
 export async function listCentralVistorias(): Promise<CentralVistoria[]> {
-  return query<CentralVistoria>(
+  const rows = await query<CentralVistoria>(
     `SELECT
        ne.id,
        ne.name                                           AS equipamento,
@@ -1538,6 +1605,20 @@ export async function listCentralVistorias(): Promise<CentralVistoria[]> {
          ELSE 9
        END,
        ne.name ASC`
+  );
+
+  // Técnico purgado do GLPI (ver usuariosRemovidos.ts) — recupera o nome do
+  // histórico em vez de deixar tecnico_nome nulo/em branco na tela.
+  const idsSemCadastro = rows
+    .filter((r) => Number(r.tecnico_id) > 0 && r.tecnico_nome == null)
+    .map((r) => Number(r.tecnico_id));
+  const nomesRecuperados = await nomesDeUsuariosRemovidos(idsSemCadastro);
+  if (nomesRecuperados.size === 0) return rows;
+
+  return rows.map((r) =>
+    r.tecnico_nome == null && r.tecnico_id != null && nomesRecuperados.has(r.tecnico_id)
+      ? { ...r, tecnico_nome: nomesRecuperados.get(r.tecnico_id)! }
+      : r
   );
 }
 
