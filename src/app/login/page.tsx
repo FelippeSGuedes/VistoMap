@@ -38,6 +38,7 @@ export default function LoginPage() {
   const { setSession, hydrated, session, logout } = useAuthStore();
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deviceNaoLiberado, setDeviceNaoLiberado] = useState(false);
   const [lembrar, setLembrar] = useState(false);
   // Sessão recém-autenticada com os dois módulos — aguardando escolha.
   const [escolhaPendente, setEscolhaPendente] = useState<AuthSession | null>(null);
@@ -92,6 +93,7 @@ export default function LoginPage() {
 
   const onSubmit = async (values: FormValues) => {
     setError(null);
+    setDeviceNaoLiberado(false);
     try {
       const next = await authService.login(values);
       // Login novo já conta como "destravado hoje" — trava diária (Fase 3a)
@@ -111,9 +113,13 @@ export default function LoginPage() {
       }
       entrarNoModulo(next, modulos[0]);
     } catch (err) {
+      const data = (err as { response?: { data?: { message?: string; code?: string } } })
+        ?.response?.data;
+      if (data?.code === "DEVICE_NOT_BOUND") {
+        setDeviceNaoLiberado(true);
+      }
       setError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message ??
+        data?.message ??
           (err instanceof Error ? err.message : "Não foi possível autenticar. Verifique suas credenciais.")
       );
     }
@@ -290,6 +296,14 @@ export default function LoginPage() {
               className="mt-4 rounded-2xl border border-red-300/40 bg-red-500/12 px-3 py-2 text-sm text-red-100"
             >
               {error}
+              {deviceNaoLiberado && (
+                <a
+                  href="/liberar-acesso"
+                  className="mt-1.5 block font-semibold text-brand-emerald underline underline-offset-2"
+                >
+                  Ativar este aparelho agora
+                </a>
+              )}
             </motion.div>
           )}
 

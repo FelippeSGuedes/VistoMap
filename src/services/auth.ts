@@ -1,5 +1,6 @@
 import { api, setAuthToken } from "./api";
 import { clearLock } from "./lock";
+import { getDeviceId } from "@/lib/device";
 import type { AuthSession } from "@/types";
 
 export interface LoginInput {
@@ -14,7 +15,8 @@ export interface PainelLoginInput {
 
 const SESSION_KEY = "vistomap.session";
 
-function persist(session: AuthSession | null) {
+/** Exportada pra /liberar-acesso reaproveitar (login automático pós-ativação, sem passar por authService.login()). */
+export function persist(session: AuthSession | null) {
   if (typeof window === "undefined") return;
   if (session) {
     window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -42,11 +44,13 @@ export function loadSession(): AuthSession | null {
   return null;
 }
 
-/** Login do app técnico — autentica por e-mail. */
+/** Login do app técnico — autentica por e-mail. Envia deviceId (vínculo de aparelho, ver /liberar-acesso). */
 export async function login(input: LoginInput): Promise<AuthSession> {
+  const deviceId = await getDeviceId();
   const res = await api.post<AuthSession>("/auth/login", {
     login: input.login,
     senha: input.senha,
+    deviceId,
   });
   persist(res.data);
   return res.data;

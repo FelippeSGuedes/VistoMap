@@ -25,6 +25,7 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  Smartphone,
   Sun,
   Undo2,
   UserPlus,
@@ -72,6 +73,7 @@ const CONFIG_GROUP = [
   { href: "/painel/configuracoes/notificacoes",  label: "Notificações",   icon: Bell,     roles: ADMIN_MOD },
   { href: "/painel/configuracoes/colaboradores", label: "Colaboradores",  icon: Users,    roles: ADMIN_MOD },
   { href: "/painel/configuracoes/novo",          label: "Novo Colaborador", icon: UserPlus, roles: ADMIN_ONLY },
+  { href: "/painel/configuracoes/dispositivos",  label: "Dispositivos",   icon: Smartphone, roles: ADMIN_ONLY },
 ];
 const CONFIG_HREFS = new Set(CONFIG_GROUP.map((i) => i.href));
 

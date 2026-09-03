@@ -9,11 +9,13 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
-    implementation project(':capgo-background-geolocation')
-    implementation project(':capgo-capacitor-updater')
     implementation project(':capacitor-app')
+    implementation project(':capacitor-device')
     implementation project(':capacitor-filesystem')
     implementation project(':capacitor-push-notifications')
+    implementation project(':capgo-background-geolocation')
+    implementation project(':capgo-capacitor-native-biometric')
+    implementation project(':capgo-capacitor-updater')
 
 }
 
