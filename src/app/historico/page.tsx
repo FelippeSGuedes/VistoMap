@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * /historico — Histórico operacional enterprise.
- * KPIs agregados, timeline cronológica, municípios atendidos.
- * Mock por enquanto; backend real virá em PR futuro (endpoint
- * /api/historico que agrega audit table + GLPI).
+ * /historico — Histórico operacional PESSOAL do técnico logado.
+ * KPIs agregados, timeline cronológica, municípios atendidos — tudo
+ * escopado pelo técnico da sessão (GET /api/historico, nunca mock).
  */
 
 import { motion } from "framer-motion";
@@ -16,9 +15,9 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock,
-  Filter,
   FileText,
   History,
+  Loader2,
   MapPin,
   Route,
   RotateCw,
@@ -30,8 +29,31 @@ import {
 } from "lucide-react";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { useAuthStore } from "@/store/auth";
-import { MOCK_HISTORICO } from "@/utils/mock";
+import { fetchHistoricoResumo } from "@/services/historico";
 import type { HistoricoEntry, HistoricoSummary } from "@/types";
+
+const SUMMARY_VAZIO: HistoricoSummary = {
+  periodo: { inicio: "—", fim: "—" },
+  vistoriasEnviadas: 0,
+  vistoriasEntregues: 0,
+  aprovadas: 0,
+  reprovadas: 0,
+  revisitas: 0,
+  pdfsGerados: 0,
+  rotasExecutadas: 0,
+  tempoOperacionalHoras: 0,
+  distanciaPercorridaKm: 0,
+  municipiosAtendidos: [],
+  timeline: [],
+};
+
+/** 7d/30d/90d têm dia fixo; "all" não tem um denominador único — sem média. */
+function diasDoPeriodo(periodo: string): number | null {
+  if (periodo === "7d") return 7;
+  if (periodo === "30d") return 30;
+  if (periodo === "90d") return 90;
+  return null;
+}
 
 /* ── helpers ───────────────────────────────────────────────────────── */
 
@@ -97,13 +119,11 @@ const KPIS: Array<{
   key: keyof Pick<
     HistoricoSummary,
     | "vistoriasEnviadas"
-    | "vistoriasEntregues"
     | "aprovadas"
     | "reprovadas"
     | "revisitas"
     | "pdfsGerados"
     | "rotasExecutadas"
-    | "sincronizacoes"
   >;
   label: string;
   icon: typeof CheckCircle2;
@@ -111,9 +131,9 @@ const KPIS: Array<{
   pill: string;
 }> = [
   { key: "vistoriasEnviadas", label: "Enviadas", icon: ClipboardCheck, hex: "#6366F1", pill: "#EEF2FF" },
-  { key: "vistoriasEntregues", label: "Entregues", icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5" },
   { key: "aprovadas", label: "Aprovadas", icon: ShieldCheck, hex: "#00B388", pill: "#ECFDF5" },
-  { key: "reprovadas", label: "Revisitas", icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7" },
+  { key: "reprovadas", label: "Reprovadas", icon: XCircle, hex: "#EF4444", pill: "#FEF2F2" },
+  { key: "revisitas", label: "Revisitas", icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7" },
   { key: "pdfsGerados", label: "PDFs", icon: FileText, hex: "#063B3B", pill: "rgba(6,59,59,0.06)" },
   { key: "rotasExecutadas", label: "Rotas", icon: Route, hex: "#6366F1", pill: "#EEF2FF" },
 ];
@@ -131,11 +151,35 @@ export default function HistoricoPage() {
   const router = useRouter();
   const { hydrated, session } = useAuthStore();
   const [periodo, setPeriodo] = useState<string>("7d");
-  const [summary] = useState<HistoricoSummary>(MOCK_HISTORICO);
+  const [summary, setSummary] = useState<HistoricoSummary>(SUMMARY_VAZIO);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     if (hydrated && !session) router.replace("/login");
   }, [hydrated, session, router]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelado = false;
+    setLoading(true);
+    setErro(null);
+    fetchHistoricoResumo(periodo as "7d" | "30d" | "90d" | "all")
+      .then((data) => {
+        if (!cancelado) setSummary(data);
+      })
+      .catch(() => {
+        if (!cancelado) setErro("Não foi possível carregar o histórico agora.");
+      })
+      .finally(() => {
+        if (!cancelado) setLoading(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [session, periodo]);
+
+  const diasPeriodo = diasDoPeriodo(periodo);
 
   const groupedByDay = useMemo(() => {
     const map = new Map<string, HistoricoEntry[]>();
@@ -198,13 +242,12 @@ export default function HistoricoPage() {
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: "#B0BAC5" }}>
               Período
             </p>
-            <button
-              type="button"
-              className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-brand-emerald"
-            >
-              <Filter className="h-3 w-3" />
-              Customizar
-            </button>
+            {loading && (
+              <span className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-brand-emerald">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Carregando…
+              </span>
+            )}
           </div>
           <div
             className="flex items-center gap-1 rounded-full p-1"
@@ -284,12 +327,16 @@ export default function HistoricoPage() {
             />
             <MiniMetric
               icon={<RefreshCcw className="h-3 w-3" />}
-              value={`${summary.sincronizacoes}`}
-              label="Syncs"
+              value={`${summary.rotasExecutadas}`}
+              label="Rotas"
             />
             <MiniMetric
               icon={<TimerReset className="h-3 w-3" />}
-              value={`${Math.round(summary.tempoOperacionalHoras / 7)}h/dia`}
+              value={
+                diasPeriodo
+                  ? `${(summary.vistoriasEnviadas / diasPeriodo).toFixed(1)}/dia`
+                  : "—"
+              }
               label="Média diária"
             />
           </div>
@@ -354,6 +401,11 @@ export default function HistoricoPage() {
               boxShadow: "0 1px 0 rgba(255,255,255,0.6) inset",
             }}
           >
+            {summary.municipiosAtendidos.length === 0 && !loading && (
+              <p className="text-[11px] font-medium" style={{ color: "#A0ACBA" }}>
+                Nenhum município concluído neste período.
+              </p>
+            )}
             {summary.municipiosAtendidos.map((m, i) => (
               <motion.span
                 key={m}
@@ -385,6 +437,14 @@ export default function HistoricoPage() {
               <Sparkles className="h-3 w-3" /> {summary.timeline.length} eventos
             </span>
           </div>
+          {summary.timeline.length === 0 && !loading && (
+            <div
+              className="rounded-2xl p-4 text-center text-[11.5px] font-medium"
+              style={{ background: "rgba(255,255,255,0.85)", color: "#A0ACBA" }}
+            >
+              Nenhum evento registrado neste período.
+            </div>
+          )}
           <div className="space-y-4">
             {groupedByDay.map(([dia, events]) => (
               <div key={dia}>
@@ -461,11 +521,12 @@ export default function HistoricoPage() {
           </div>
         </section>
 
-        {/* nota: dados mock */}
-        <p className="mt-2 flex items-center gap-1.5 text-center text-[10.5px] font-medium" style={{ color: "#A0ACBA" }}>
-          <Clock className="h-3 w-3" />
-          Histórico atual baseado em dados mock — endpoint real em breve.
-        </p>
+        {erro && (
+          <p className="mt-2 flex items-center gap-1.5 justify-center rounded-2xl bg-red-50 px-3 py-2 text-center text-[11px] font-medium text-red-600">
+            <Clock className="h-3 w-3" />
+            {erro}
+          </p>
+        )}
       </main>
 
       <BottomNav />

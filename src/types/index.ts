@@ -560,7 +560,6 @@ export interface HistoricoSummary {
   tempoOperacionalHoras: number;
   distanciaPercorridaKm: number;
   municipiosAtendidos: string[];
-  sincronizacoes: number;
   timeline: HistoricoEntry[];
 }
 
