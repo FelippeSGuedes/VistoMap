@@ -38,6 +38,14 @@ class FileManager:
     def ensure_dir(path: Path) -> None:
         """Cria o diretório (e pais) se ainda não existir."""
         path.mkdir(parents=True, exist_ok=True)
+        # setgid (2000) + grupo com escrita (775): permite que o container
+        # do painel (gid 33, ver docker-compose.gioc.yml) apague o
+        # projeto.pdf ao cancelar uma vistoria, mesmo o worker rodando
+        # como root e o diretório pai já tendo o grupo certo por herança.
+        try:
+            path.chmod(0o2775)
+        except OSError:
+            logger.warning("Não foi possível ajustar permissões de %s", path)
         logger.debug("Diretório garantido: %s", path)
 
     @staticmethod

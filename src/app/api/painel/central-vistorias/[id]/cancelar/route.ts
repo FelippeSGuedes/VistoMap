@@ -15,6 +15,13 @@ const UPLOAD_PATH =
   process.env.GLPI_UPLOAD_PATH ??
   "/var/www/html/glpi/plugins/vistomapprojetos/uploads";
 
+// Mesmo volume que a aba nativa "VistoMap - Projetos" do GLPI lê pra achar
+// o projeto.pdf (front/view.php do plugin). Sem apagar aqui, o PDF antigo
+// sobrevive no disco e a aba recria "Em análise" sozinha na próxima vez que
+// alguém só ABRIR a página — showProjectTab()/getOrCreateRecord() dispara
+// isso automaticamente, sem precisar clicar em nada (achado em 2026-09-03).
+const FILES_PATH = process.env.GLPI_FILES_PATH ?? "/files";
+
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
@@ -49,6 +56,12 @@ export async function POST(
   const dir = path.join(UPLOAD_PATH, folder);
   try {
     await fs.rm(dir, { recursive: true, force: true });
+  } catch { /* pasta pode não existir */ }
+
+  // Remove o projeto.pdf da aba nativa do GLPI — ver comentário no FILES_PATH.
+  const projetoDir = path.join(FILES_PATH, folder);
+  try {
+    await fs.rm(projetoDir, { recursive: true, force: true });
   } catch { /* pasta pode não existir */ }
 
   void auditInsert({

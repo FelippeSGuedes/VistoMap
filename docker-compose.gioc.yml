@@ -61,6 +61,11 @@ services:
     container_name: vistomap-painel
     restart: unless-stopped
     # Mesmo motivo do tecnico: acesso de escrita ao volume /uploads (GLPI 33:33).
+    # /files virou rw em 2026-09-03: cancelar/route.ts precisa apagar o
+    # projeto.pdf antigo ao cancelar uma vistoria (senao a aba nativa
+    # "VistoMap - Projetos" do GLPI recria "Em analise" sozinha so de alguem
+    # abrir a pagina). Diretorios sob /files sao 2775 grupo 33 (setgid) —
+    # ver worker/file_manager.py ensure_dir().
     group_add:
       - "33"
     ports:
@@ -75,7 +80,7 @@ services:
       - NEXT_PUBLIC_USE_BASE_PATH=false
     volumes:
       - /data/glpi/plugins/vistomapprojetos/uploads:/uploads
-      - /data/glpi/plugins/vistomapprojetos/files:/files:ro
+      - /data/glpi/plugins/vistomapprojetos/files:/files
       # FCM service account JSON (lazy lido pelo /api/painel/push/send)
       - /etc/vistomap/firebase-service-account.json:/etc/vistomap/firebase-service-account.json:ro
     networks:
