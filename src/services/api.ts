@@ -85,6 +85,30 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && typeof window !== "undefined") {
       setAuthToken(null);
     }
+    // Só reporta falha de rede/timeout (sem resposta) ou erro inesperado do
+    // servidor (5xx) — 4xx é fluxo normal (validação, 401, 404 etc.) já
+    // tratado pelo caller, reportar isso encheria o log de "erro" que não é.
+    const status = error.response?.status;
+    const url = error.config?.url ?? "";
+    // Nunca reporta falha do PRÓPRIO endpoint de report — senão um /errors
+    // fora do ar vira um loop infinito de tentativa de reportar a falha dele.
+    if ((!status || status >= 500) && !url.includes("/errors")) {
+      // Import tardio pra evitar dependência circular (reportClientError usa
+      // este mesmo `api`) — só roda no browser, nunca durante SSR/build.
+      if (typeof window !== "undefined") {
+        import("@/lib/reportClientError")
+          .then(({ reportClientError }) => {
+            const rota = url || "desconhecida";
+            const msg = error.code === "ECONNABORTED" || error.message.includes("timeout")
+              ? `Timeout: ${error.message}`
+              : status
+              ? `HTTP ${status}: ${error.message}`
+              : `Falha de rede: ${error.message}`;
+            reportClientError(msg, rota, { status: status ?? null, code: error.code });
+          })
+          .catch(() => {});
+      }
+    }
     return Promise.reject(error);
   }
 );

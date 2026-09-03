@@ -11,6 +11,7 @@ import { useVistoriaWatcher } from "@/hooks/useVistoriaWatcher";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useOtaUpdate } from "@/hooks/useOtaUpdate";
 import { useLockScreen } from "@/hooks/useLockScreen";
+import { useErrorReporter } from "@/hooks/useErrorReporter";
 import { useDevolucaoWatcher } from "@/hooks/useDevolucaoWatcher";
 import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
 import { OtaUpdateOverlay } from "@/components/feedback/OtaUpdateOverlay";
@@ -53,6 +54,12 @@ function LockScreenMount() {
 
 function LocationReporterMount() {
   useLocationReporter();
+  return null;
+}
+
+/** Sempre ativo — captura de erro não depende de sessão/rota (Fase 4). */
+function ErrorReporterMount() {
+  useErrorReporter();
   return null;
 }
 
@@ -145,6 +152,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <ErrorReporterMount />
       <OtaUpdateMount />
       <LocationReporterMount />
       <PushRegistrationMount />
