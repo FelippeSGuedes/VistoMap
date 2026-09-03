@@ -1557,6 +1557,14 @@ export async function listCentralVistorias(): Promise<CentralVistoria[]> {
  * nunca era tocado aqui, então um projeto que já tinha ido a
  * análise/aprovação ficava órfão com status "in_review"/"approved" mesmo
  * com a vistoria zerada (casos reais: CAM-P-A-405/511/622/695).
+ *
+ * Achado em produção (2026-09-03): os campos preenchidos pelo técnico ao
+ * finalizar (RSRP, motivo, observação) também nunca eram limpos — o
+ * equipamento voltava pra fila "A Vistoriar" mas continuava com dados de
+ * RSRP/motivo/observação da vistoria cancelada, como se já tivesse sido
+ * vistoriado. Dados de CADASTRO do poste (endereço, município, altura,
+ * material, coordenadas) são preservados de propósito — não são
+ * resultado da vistoria, vêm da importação do equipamento.
  */
 export async function cancelarVistoria(vistoriaId: number): Promise<void> {
   await execute(
@@ -1566,7 +1574,11 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
             plugin_fields_pendnciafielddropdowns_id       = 0,
             users_id_vistoriadorafield                    = 0,
             datadavistoriafield                           = NULL,
-            dataenvioconcessionriafield                   = NULL
+            dataenvioconcessionriafield                   = NULL,
+            rsrpifield                                    = NULL,
+            rsrpllfield                                   = NULL,
+            motivofield                                   = NULL,
+            observaofield                                 = NULL
       WHERE items_id = ?`,
     [SITUACAO_A_VISTORIAR, STATUS_VISTORIA_PENDENTE, vistoriaId]
   );
