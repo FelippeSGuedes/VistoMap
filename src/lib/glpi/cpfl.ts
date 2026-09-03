@@ -343,3 +343,26 @@ export async function fetchContagemPendenciaCPFL(): Promise<number> {
   );
   return Number(row?.total ?? 0);
 }
+
+/**
+ * Mesma contagem de fetchContagemPendenciaCPFL(), quebrada por município —
+ * pro mini-mapa "Pendentes CPFL" do dashboard principal (widget Top
+ * Técnicos turbinado). Estado atual, sem recorte de período (pendência é
+ * "ainda não resolvida agora", não um evento datado).
+ */
+export async function fetchPendentesCpflPorMunicipio(): Promise<
+  Array<{ municipio: string; total: number }>
+> {
+  const rows = await query<{ municipio: string; total: number }>(
+    `SELECT TRIM(f.municipiofield) AS municipio, COUNT(*) AS total
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      WHERE ne.is_deleted = 0
+        AND f.plugin_fields_pendnciafielddropdowns_id = ${PENDENCIA_CPFL}
+        AND f.municipiofield IS NOT NULL
+        AND TRIM(f.municipiofield) <> ''
+      GROUP BY TRIM(f.municipiofield)
+      ORDER BY total DESC`
+  );
+  return rows.map((r) => ({ municipio: r.municipio, total: Number(r.total) || 0 }));
+}

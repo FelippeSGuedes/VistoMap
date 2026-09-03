@@ -12,7 +12,9 @@ import {
   ArrowUp,
   Ban,
   Building2,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   Clock,
   FileText,
@@ -31,7 +33,11 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
-import type { HistoricoAnalytics } from "@/services/painel";
+import type {
+  HistoricoAnalytics,
+  TopTecnicosDashboard,
+  TopTecnicosPeriodo,
+} from "@/services/painel";
 import { getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import type { PainelMapaResponse, PainelMapaTecnico } from "@/types/painel-mapa";
@@ -101,6 +107,13 @@ function choroRamp(): [string, string, string] {
   return dashDark()
     ? ["#2E7D5B", "#00B388", "#22E0A6"] // dark: verdes vivos que destacam no escuro
     : ["#7bc49a", "#3f9468", "#1a6b3c"];
+}
+// Rampa própria do mapa "Pendentes CPFL" — âmbar/vermelho (alerta), de
+// propósito bem distinta do verde de progresso do Top Municípios.
+function choroRampPendencia(): [string, string, string] {
+  return dashDark()
+    ? ["#7A4A0F", "#D97706", "#FBBF24"]
+    : ["#FDE3B0", "#F59E0B", "#B45309"];
 }
 
 const STATUS_DOT: Record<TecnicoAtivo["status"], string> = {
@@ -1248,6 +1261,240 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   WIDGET 06 — Pendentes CPFL: mesmo mecanismo do mapa de Top Municípios
+   (mesma fonte GeoJSON, mesma malha), mas com rampa âmbar/vermelho e sem
+   recorte de período — pendência é "ainda aberta agora", não um evento
+   datado. Ver fetchPendentesCpflPorMunicipio() (cpfl.ts).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+interface PendentesCpflMapWidgetProps {
+  itens: Array<{ municipio: string; total: number }>;
+}
+
+function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const markersRef   = useRef<mapboxgl.Marker[]>([]);
+  const fillExprRef  = useRef<mapboxgl.Expression | null>(null);
+  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
+  const [geoLoaded,  setGeoLoaded] = useState(false);
+  const token        = getMapboxToken();
+
+  const totalGlobal = itens.reduce((s, m) => s + m.total, 0);
+  const top5 = itens.slice(0, 5);
+
+  /* Effect 1 — mapa base + carrega GeoJSON (idêntico ao Top Municípios) */
+  useEffect(() => {
+    if (!containerRef.current || !token) return;
+    let alive = true;
+    injectStyle(
+      "vm-dash-pend-css",
+      ".vm-dash-pend .mapboxgl-ctrl-logo,.vm-dash-pend .mapboxgl-ctrl-attrib{display:none!important}",
+    );
+    injectStyle("vm-noc-css", NOC_CSS);
+    mapboxgl.accessToken = token;
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/empty-v9",
+      center: [-48.5, -22.0] as [number, number],
+      zoom: 5.6,
+      interactive: false,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+
+    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
+    ro.observe(containerRef.current);
+
+    map.on("load", async () => {
+      map.resize();
+      map.addLayer({ id: "vm-pend-bg", type: "background", paint: { "background-color": dashMapBg() } });
+      try {
+        const res = await fetch(SP_GEOJSON_URL);
+        const geoJSON = await res.json() as {
+          type: string;
+          features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
+        };
+        if (!alive) return;
+
+        geoRef.current = geoJSON;
+
+        map.addSource("vm-pend-sp", { type: "geojson", data: geoJSON as never });
+        map.addLayer({
+          id: "vm-pend-fill", type: "fill", source: "vm-pend-sp",
+          paint: { "fill-color": choroEmpty(), "fill-opacity": 1 },
+        });
+        map.addLayer({
+          id: "vm-pend-line", type: "line", source: "vm-pend-sp",
+          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
+        });
+
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const f of geoJSON.features) {
+          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
+          const rings = g.type === "Polygon"
+            ? [g.coordinates[0] as number[][]]
+            : (g.coordinates as number[][][][]).map(p => p[0]);
+          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
+        }
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: 14, animate: false });
+          const z = map.getZoom();
+          map.setMinZoom(z);
+          map.setMaxZoom(z);
+        }
+
+        setGeoLoaded(true);
+      } catch {
+        /* GeoJSON load failure is silent — widget degrades gracefully */
+      }
+    });
+
+    return () => {
+      alive = false;
+      ro.disconnect();
+      markersRef.current.forEach(mk => mk.remove());
+      markersRef.current = [];
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Effect 2 — coloriza fill (âmbar/vermelho) + pins com a contagem pendente */
+  useEffect(() => {
+    const map = mapRef.current;
+    const geo = geoRef.current;
+    if (!map || !map.isStyleLoaded() || !geo || !itens.length) return;
+
+    const lookup = new Map(itens.map(m => [normalizeStr(m.municipio), m.total]));
+    const enriched = {
+      ...geo,
+      features: geo.features.map(f => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
+        },
+      })),
+    };
+
+    (map.getSource("vm-pend-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
+    const topVal = Math.max(...itens.map(m => m.total), 2);
+    const midVal = Math.max(Math.round(topVal / 2), 1);
+    const [rlo, rmd, rhi] = choroRampPendencia();
+    const fillExpr: mapboxgl.Expression = [
+      "case", [">", ["get", "total"], 0],
+      ["interpolate", ["linear"], ["get", "total"], 1, rlo, midVal, rmd, topVal, rhi],
+      choroEmpty(),
+    ];
+    fillExprRef.current = fillExpr;
+    map.setPaintProperty("vm-pend-fill", "fill-color", fillExpr);
+
+    markersRef.current.forEach(mk => mk.remove());
+    markersRef.current = [];
+
+    for (const feature of enriched.features) {
+      const total = Number(feature.properties.total ?? 0);
+      if (total === 0) continue;
+
+      const name = String((feature.properties as Record<string, unknown>).name ?? "");
+      const item = itens.find(m => normalizeStr(m.municipio) === normalizeStr(name));
+      if (!item) continue;
+
+      const coords = featureCentroid(feature.geometry);
+      if (!coords) continue;
+
+      const el = document.createElement("div");
+      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#F59E0B,#B45309);box-shadow:0 2px 10px rgba(217,119,6,0.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:ui-sans-serif;border:2px solid rgba(255,255,255,0.75);cursor:default";
+      el.textContent = String(item.total);
+
+      const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
+        .setLngLat(coords)
+        .addTo(map);
+      markersRef.current.push(mk);
+    }
+  }, [itens, geoLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Card className="h-full">
+      <div style={{ height: 3, background: "linear-gradient(90deg,#F59E0B,#D97706,#B45309)", flexShrink: 0 }} />
+      <div className="flex items-center justify-between px-5 pt-3.5 pb-2.5">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: "linear-gradient(135deg,rgba(245,158,11,0.15),rgba(180,83,9,0.12))", border: "1px solid rgba(245,158,11,0.20)" }}
+          >
+            <ShieldAlert className="h-3.5 w-3.5 text-[#B45309]" strokeWidth={2} />
+          </div>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Pendentes CPFL</span>
+            <span className="text-[9.5px] text-[var(--vm-faint)]">aguardando validação{totalGlobal > 0 ? ` · ${totalGlobal} postes` : ""}</span>
+          </div>
+        </div>
+        <span
+          className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold text-[#B45309]"
+          style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.18)" }}
+        >
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#F59E0B]" />
+          agora
+        </span>
+      </div>
+      <div ref={containerRef} className="vm-dash-pend h-[200px] w-full shrink-0" />
+      <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
+        {top5.length === 0 && (
+          <li className="px-2 py-6 text-center text-[11px] font-medium text-[var(--vm-faint)]">
+            Nenhuma pendência CPFL em aberto.
+          </li>
+        )}
+        {top5.map((m, i) => {
+          const maxTotal = top5[0]?.total ?? 1;
+          const pct = maxTotal > 0 ? (m.total / maxTotal) * 100 : 0;
+          return (
+            <motion.li
+              key={m.municipio}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.06 * i, duration: 0.35 }}
+              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-amber-100)]"
+              style={{ borderLeft: "2px solid transparent" }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.borderLeftColor = "#F59E0B";
+                const mp = mapRef.current;
+                if (mp?.isStyleLoaded() && fillExprRef.current) {
+                  mp.setPaintProperty("vm-pend-fill", "fill-color", fillExprRef.current);
+                }
+              }}
+            >
+              <span
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
+                style={{ background: "rgba(245,158,11,0.16)", color: "#B45309" }}
+              >
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between gap-1">
+                  <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
+                  <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.total}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: i === 0 ? "linear-gradient(90deg,#F59E0B,#B45309)" : "linear-gradient(90deg,#FBBF77,#F59E0B)" }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
+                  />
+                </div>
+              </div>
+            </motion.li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    WIDGET 07 — Revisitas: SP map background + highlight problem areas
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -1485,6 +1732,29 @@ export default function PainelOverviewPage() {
     return () => { alive = false; clearInterval(poll); };
   }, []);
 
+  // Top Técnicos turbinado — período PRÓPRIO do widget (Hoje/Semana/30d/
+  // Personalizado), independente do fetchHistorico(30) fixo acima. Poll
+  // totalmente isolado, mesmo motivo do bloco de instalação: zero
+  // interferência se essa chamada atrasar ou falhar.
+  const [topTecsPeriodo, setTopTecsPeriodo] = useState<TopTecnicosPeriodo>("mes");
+  const [topTecsCustomInicio, setTopTecsCustomInicio] = useState("");
+  const [topTecsCustomFim, setTopTecsCustomFim] = useState("");
+  const [topTecsDash, setTopTecsDash] = useState<TopTecnicosDashboard | null>(null);
+  const [topTecsLoading, setTopTecsLoading] = useState(true);
+  useEffect(() => {
+    if (topTecsPeriodo === "personalizado" && (!topTecsCustomInicio || !topTecsCustomFim)) return;
+    let alive = true;
+    setTopTecsLoading(true);
+    const load = () =>
+      painelService
+        .fetchTopTecnicosDashboard(topTecsPeriodo, topTecsCustomInicio, topTecsCustomFim)
+        .then((d) => { if (alive) setTopTecsDash(d); })
+        .finally(() => { if (alive) setTopTecsLoading(false); });
+    load();
+    const poll = window.setInterval(load, 30_000);
+    return () => { alive = false; clearInterval(poll); };
+  }, [topTecsPeriodo, topTecsCustomInicio, topTecsCustomFim]);
+
   /* ── derived ── */
   const emCampo    = useMemo(() => tecnicos.filter(t => t.status === "em-campo").length, [tecnicos]);
   const expediente = useMemo(
@@ -1496,7 +1766,8 @@ export default function PainelOverviewPage() {
   // Só entra no ranking quem já tem pelo menos 1 vistoria concluída —
   // município com puro backlog intocado não é "top" de nada ainda.
   const topMunis     = (historico?.topMunicipios ?? []).filter((m) => m.concluidas >= 1).slice(0, 8);
-  const topTecs      = (historico?.rankingTecnicos ?? []).slice(0, 5);
+  const topTecs      = (topTecsDash?.tecnicos ?? []).slice(0, 6);
+  const pendentesCpfl = topTecsDash?.pendentesCpflPorMunicipio ?? [];
   const mapaTeam     = mapaRealtime?.tecnicos ?? [];
 
   const velocity = useMemo(() => {
@@ -1858,21 +2129,59 @@ export default function PainelOverviewPage() {
         />
       </div>
 
-      {/* ════════════ LINHA 2: Municípios | Técnicos | Atividade | Revisitas ════════════ */}
-      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" style={{ animationDelay: "0.16s" }}>
+      {/* ════════════ LINHA 2: Municípios | Pendentes CPFL | Técnicos | Atividade | Revisitas ════════════ */}
+      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5" style={{ animationDelay: "0.16s" }}>
 
         {/* Widget 03 — Top Municípios: map IS the chart */}
         <MunicipiosMapWidget topMunicipios={topMunis} tecnicos={tecnicos} />
 
+        {/* Widget 04 — Pendentes CPFL: mesma malha, rampa âmbar */}
+        <PendentesCpflMapWidget itens={pendentesCpfl} />
+
         {/* Widget 05 — Top Técnicos: performance cockpit */}
         <Card>
-          <div className="flex items-center justify-between px-5 pt-4 pb-3">
+          <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2.5">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos · 30d</span>
+              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos</span>
             </div>
-            <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <select
+                  value={topTecsPeriodo}
+                  onChange={(e) => setTopTecsPeriodo(e.target.value as TopTecnicosPeriodo)}
+                  className="appearance-none rounded-full border border-[var(--vm-border)] bg-[var(--vm-tile)] py-1 pl-2.5 pr-6 text-[10px] font-semibold text-[var(--vm-text)] outline-none"
+                >
+                  <option value="hoje">Hoje</option>
+                  <option value="semana">Última semana</option>
+                  <option value="mes">Últimos 30 dias</option>
+                  <option value="personalizado">Personalizado</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--vm-faint)]" />
+              </div>
+              <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
+            </div>
           </div>
+          {topTecsPeriodo === "personalizado" && (
+            <div className="flex items-center gap-1.5 px-5 pb-2.5 text-[10.5px] text-[var(--vm-faint)]">
+              <CalendarDays className="h-3 w-3 shrink-0" />
+              <input
+                type="date"
+                value={topTecsCustomInicio}
+                max={topTecsCustomFim || undefined}
+                onChange={(e) => setTopTecsCustomInicio(e.target.value)}
+                className="rounded-lg border border-[var(--vm-border)] bg-[var(--vm-tile)] px-1.5 py-0.5 text-[10.5px] text-[var(--vm-text)] outline-none"
+              />
+              <span>até</span>
+              <input
+                type="date"
+                value={topTecsCustomFim}
+                min={topTecsCustomInicio || undefined}
+                onChange={(e) => setTopTecsCustomFim(e.target.value)}
+                className="rounded-lg border border-[var(--vm-border)] bg-[var(--vm-tile)] px-1.5 py-0.5 text-[10.5px] text-[var(--vm-text)] outline-none"
+              />
+            </div>
+          )}
           <div className="flex flex-col gap-0 px-3 pb-3">
             {topTecs.length > 0 ? (
               topTecs.map((t, i) => {
@@ -1970,8 +2279,12 @@ export default function PainelOverviewPage() {
                   </motion.div>
                 );
               })
-            ) : (
+            ) : topTecsLoading ? (
               <Skeleton h={200} />
+            ) : (
+              <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">
+                Nenhuma vistoria finalizada nesse período.
+              </p>
             )}
           </div>
         </Card>

@@ -211,6 +211,54 @@ export interface HistoricoAnalytics {
   }>;
 }
 
+export type TopTecnicosPeriodo = "hoje" | "semana" | "mes" | "personalizado";
+
+export interface RankingTecnicoItem {
+  id: number;
+  nome: string;
+  total: number;
+  aprovadas: number;
+  revisitas: number;
+  cidades: number;
+  kmPercorrido?: number;
+  tempoDeslocamentoMedioMin?: number | null;
+  slaExecucaoMedioMin?: number | null;
+}
+
+export interface TopTecnicosDashboard {
+  periodo: { inicio: string; fim: string };
+  tecnicos: RankingTecnicoItem[];
+  pendentesCpflPorMunicipio: Array<{ municipio: string; total: number }>;
+}
+
+/**
+ * Widget "Top Técnicos" do dashboard principal — período próprio
+ * (Hoje/Última Semana/30 dias/Personalizado), independente do seletor de
+ * /painel/historico. `inicio`/`fim` só importam quando periodo=personalizado.
+ */
+export async function fetchTopTecnicosDashboard(
+  periodo: TopTecnicosPeriodo,
+  inicio?: string,
+  fim?: string
+): Promise<TopTecnicosDashboard> {
+  const fb: TopTecnicosDashboard = {
+    periodo: { inicio: "", fim: "" },
+    tecnicos: [],
+    pendentesCpflPorMunicipio: [],
+  };
+  const params = new URLSearchParams({ periodo });
+  if (periodo === "personalizado" && inicio && fim) {
+    params.set("inicio", inicio);
+    params.set("fim", fim);
+  }
+  return tryReal(
+    api
+      .get<TopTecnicosDashboard>(`/painel/dashboard/top-tecnicos?${params.toString()}`)
+      .then((r) => r.data),
+    fb
+  );
+}
+
 export async function fetchHistorico(dias = 30): Promise<HistoricoAnalytics> {
   const fb: HistoricoAnalytics = {
     periodo: { inicio: "", fim: "", dias },
@@ -436,4 +484,5 @@ export const painelService = {
   fetchRealizadas,
   fetchStatus,
   fetchCPFL,
+  fetchTopTecnicosDashboard,
 };
