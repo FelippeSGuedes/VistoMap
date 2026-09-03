@@ -285,8 +285,31 @@ export function VistoriaExecucaoForm({
     return `${r || "—"},${n || "—"},${e || "—"},${c || "—"}`;
   };
 
+  /** Todo campo digitável do formulário é obrigatório — nada fica em branco. */
+  const camposObrigatoriosFaltando = (): string[] => {
+    const faltando: string[] = [];
+    if (!form.aterramentofield.trim()) faltando.push("Aterramento");
+    if (!form.alturadopostemfield.trim()) faltando.push("Altura do poste");
+    if (!form.tipodematerial.trim()) faltando.push("Tipo de material");
+    if (!form.danfield.trim()) faltando.push("Resistência (daN)");
+    if (!form.instalartpfield.trim()) faltando.push("Instalação de TP");
+    if (form.instalartpfield === "1" && !form.tensovfield.trim()) faltando.push("Tensão");
+    if (!buildEndereco().trim()) faltando.push("Endereço (toque em Detectar via GPS)");
+    if (!form.tipoifield.trim()) faltando.push("Tipo (Claro)");
+    if (!form.rsrpifield.trim()) faltando.push("RSRP (Claro)");
+    if (!form.tipollfield.trim()) faltando.push("Tipo (Vivo)");
+    if (!form.rsrpllfield.trim()) faltando.push("RSRP (Vivo)");
+    if (!form.observaofield.trim()) faltando.push("Observações");
+    return faltando;
+  };
+
   const onFinalize = async () => {
     if (!coords) return;
+    const faltando = camposObrigatoriosFaltando();
+    if (faltando.length > 0) {
+      setSubmitError(`Preencha os campos obrigatórios: ${faltando.join(", ")}.`);
+      return;
+    }
     if (!rsrpValido(form.rsrpifield) || !rsrpValido(form.rsrpllfield)) {
       setSubmitError(RSRP_MENSAGEM_ERRO);
       return;

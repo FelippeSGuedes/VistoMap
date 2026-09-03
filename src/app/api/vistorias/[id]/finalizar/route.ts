@@ -120,6 +120,34 @@ export async function POST(
       return NextResponse.json({ message: RSRP_MENSAGEM_ERRO }, { status: 400 });
     }
 
+    // Espelha a validação do cliente (VistoriaExecucaoForm) — defesa em
+    // profundidade, não confia só no formulário pra garantir preenchimento.
+    const camposObrigatorios: Array<[string, string | undefined]> = [
+      ["Aterramento", payload.aterramentofield],
+      ["Altura do poste", payload.alturadopostemfield],
+      ["Tipo de material", payload.materialfield],
+      ["Resistência (daN)", payload.danfield],
+      ["Instalação de TP", payload.instalartpfield],
+      ["Endereço", payload.endereofield],
+      ["Tipo (Claro)", payload.dropdowns?.tipoifield],
+      ["RSRP (Claro)", payload.rsrpifield],
+      ["Tipo (Vivo)", payload.dropdowns?.tipollfield],
+      ["RSRP (Vivo)", payload.rsrpllfield],
+      ["Observações", payload.observacoes],
+    ];
+    if (payload.instalartpfield === "1") {
+      camposObrigatorios.push(["Tensão", payload.dropdowns?.tensovfield]);
+    }
+    const faltando = camposObrigatorios
+      .filter(([, v]) => !v || !v.trim())
+      .map(([label]) => label);
+    if (faltando.length > 0) {
+      return NextResponse.json(
+        { message: `Preencha os campos obrigatórios: ${faltando.join(", ")}.` },
+        { status: 400 }
+      );
+    }
+
     for (const slot of PHOTO_SLOTS) {
       const entry = formData.get(slot.field);
       if (entry instanceof File && entry.size > 0) {
