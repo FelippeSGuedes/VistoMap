@@ -33,6 +33,7 @@ import { reverseGeocode } from "@/services/geocoding";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAuthStore } from "@/store/auth";
 import { cn } from "@/utils/cn";
+import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import type {
   CaptureBundle,
   DropdownKey,
@@ -286,6 +287,10 @@ export function VistoriaExecucaoForm({
 
   const onFinalize = async () => {
     if (!coords) return;
+    if (!rsrpValido(form.rsrpifield) || !rsrpValido(form.rsrpllfield)) {
+      setSubmitError(RSRP_MENSAGEM_ERRO);
+      return;
+    }
     setSubmitting(true);
     setDone(false);
     setSubmitError(null);
@@ -616,7 +621,7 @@ export function VistoriaExecucaoForm({
               <EditableField
                 label="RSRP (dBm)"
                 value={form.rsrpllfield}
-                placeholder="Ex.: -102"
+                placeholder="Ex.: -95"
                 icon={<Radio className="h-3 w-3" />}
                 onChange={(v) => setField("rsrpllfield", v)}
                 colSpan

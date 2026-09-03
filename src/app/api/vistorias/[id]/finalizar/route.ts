@@ -20,6 +20,7 @@ import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
+import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -114,6 +115,10 @@ export async function POST(
       return NextResponse.json({ message: "Payload ausente" }, { status: 400 });
     }
     payload = JSON.parse(rawPayload) as FinalizarPayload;
+
+    if (!rsrpValido(payload.rsrpifield) || !rsrpValido(payload.rsrpllfield)) {
+      return NextResponse.json({ message: RSRP_MENSAGEM_ERRO }, { status: 400 });
+    }
 
     for (const slot of PHOTO_SLOTS) {
       const entry = formData.get(slot.field);

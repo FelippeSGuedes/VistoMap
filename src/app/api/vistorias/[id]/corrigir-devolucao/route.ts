@@ -16,6 +16,7 @@ import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
+import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import { fetchDevolucaoPendentePorVistoria, resolverDevolucao } from "@/lib/glpi/devolucoes";
 import { DEVOLUCAO_DROPDOWN_FIELD } from "@/lib/glpi/devolucaoItens";
 
@@ -122,6 +123,10 @@ export async function POST(
       } catch {
         return NextResponse.json({ message: "Payload inválido" }, { status: 400 });
       }
+    }
+
+    if (!rsrpValido(campos.rsrpifield) || !rsrpValido(campos.rsrpllfield)) {
+      return NextResponse.json({ message: RSRP_MENSAGEM_ERRO }, { status: 400 });
     }
 
     // Só processa os campos que a devolução realmente apontou.

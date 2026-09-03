@@ -29,6 +29,7 @@ import { SelectField } from "@/components/vistorias/SelectField";
 import { VideoRecorderSheet } from "@/components/vistorias/VideoRecorderSheet";
 import { vistoriasService } from "@/services/vistorias";
 import { api, type ApiError } from "@/services/api";
+import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import {
   useDevolucaoStore,
   type DevolucaoPendente,
@@ -208,6 +209,10 @@ function CorrigirDevolucaoInner() {
 
   async function handleEnviar() {
     if (!id || !podeEnviar) return;
+    if (!rsrpValido(campos.rsrpifield) || !rsrpValido(campos.rsrpllfield)) {
+      setErroEnvio(RSRP_MENSAGEM_ERRO);
+      return;
+    }
     setFase("enviando");
     setErroEnvio(null);
     try {
