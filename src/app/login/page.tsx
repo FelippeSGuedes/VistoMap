@@ -8,14 +8,17 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  KeyRound,
   Loader2,
   Lock,
   MapPinned,
   Wrench,
   User,
 } from "lucide-react";
-import { authService } from "@/services/auth";
+import { authService, persist } from "@/services/auth";
+import { liberarAcessoService } from "@/services/liberarAcesso";
 import { deriveAndStoreHash, markUnlockedToday } from "@/services/lock";
+import { getDeviceId, getDeviceModel } from "@/lib/device";
 import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
 import type { AuthSession, Modulo } from "@/types";
@@ -23,6 +26,7 @@ import type { AuthSession, Modulo } from "@/types";
 interface FormValues {
   login: string;
   senha: string;
+  codigo: string;
 }
 
 const REMEMBER_KEY = "vistomap.login.usuario";
@@ -38,7 +42,9 @@ export default function LoginPage() {
   const { setSession, hydrated, session, logout } = useAuthStore();
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [deviceNaoLiberado, setDeviceNaoLiberado] = useState(false);
+  // Aparelho não vinculado — em vez de mandar pra outra tela, pede o código
+  // de ativação ali mesmo (gerado antes em /liberar-acesso, no navegador).
+  const [precisaCodigo, setPrecisaCodigo] = useState(false);
   const [lembrar, setLembrar] = useState(false);
   // Sessão recém-autenticada com os dois módulos — aguardando escolha.
   const [escolhaPendente, setEscolhaPendente] = useState<AuthSession | null>(null);
@@ -77,7 +83,7 @@ export default function LoginPage() {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: { login: "", senha: "" },
+    defaultValues: { login: "", senha: "", codigo: "" },
   });
 
   // Só depois do mount (evita mismatch de hidratação — localStorage não
@@ -91,32 +97,64 @@ export default function LoginPage() {
     }
   }, [setValue]);
 
+  /** Comum aos dois caminhos (login normal e ativação por código). */
+  const finalizarLogin = (next: AuthSession, senhaDigitada: string, loginDigitado: string) => {
+    void deriveAndStoreHash(senhaDigitada);
+    markUnlockedToday();
+    if (lembrar) {
+      window.localStorage.setItem(REMEMBER_KEY, loginDigitado.trim());
+    } else {
+      window.localStorage.removeItem(REMEMBER_KEY);
+    }
+    const modulos = next.modulos ?? ["vistoria"];
+    if (modulos.length > 1) {
+      // Tem acesso aos dois módulos — pergunta qual, não decide sozinho.
+      setEscolhaPendente(next);
+      return;
+    }
+    entrarNoModulo(next, modulos[0]);
+  };
+
   const onSubmit = async (values: FormValues) => {
     setError(null);
-    setDeviceNaoLiberado(false);
-    try {
-      const next = await authService.login(values);
-      // Login novo já conta como "destravado hoje" — trava diária (Fase 3a)
-      // só cobra confirmação de novo a partir de amanhã.
-      await deriveAndStoreHash(values.senha);
-      markUnlockedToday();
-      if (lembrar) {
-        window.localStorage.setItem(REMEMBER_KEY, values.login.trim());
-      } else {
-        window.localStorage.removeItem(REMEMBER_KEY);
-      }
-      const modulos = next.modulos ?? ["vistoria"];
-      if (modulos.length > 1) {
-        // Tem acesso aos dois módulos — pergunta qual, não decide sozinho.
-        setEscolhaPendente(next);
+
+    // Aparelho já identificado como não vinculado — o "Entrar" agora troca
+    // o código pelo vínculo de verdade, sem repetir login/senha (o código
+    // já prova a identidade, foi gerado depois de conferir tudo isso).
+    if (precisaCodigo) {
+      if (!values.codigo?.trim() || values.codigo.trim().length !== 6) {
+        setError("Digite os 6 dígitos do código de ativação.");
         return;
       }
-      entrarNoModulo(next, modulos[0]);
+      try {
+        const deviceId = await getDeviceId();
+        if (!deviceId) {
+          setError(
+            "Este aplicativo instalado é de uma versão antiga e não consegue se vincular. " +
+              "Abra vistomap.nansen.com.br/liberar-acesso pelo navegador do celular (não por este app) " +
+              "pra baixar a versão nova."
+          );
+          return;
+        }
+        const deviceModel = await getDeviceModel();
+        const session = await liberarAcessoService.confirmar(values.codigo.trim(), deviceId, deviceModel);
+        persist(session);
+        finalizarLogin(session, values.senha, values.login);
+      } catch (err) {
+        const data = (err as { response?: { data?: { message?: string } } })?.response?.data;
+        setError(data?.message ?? "Não foi possível confirmar o código. Tente novamente.");
+      }
+      return;
+    }
+
+    try {
+      const next = await authService.login(values);
+      finalizarLogin(next, values.senha, values.login);
     } catch (err) {
       const data = (err as { response?: { data?: { message?: string; code?: string } } })
         ?.response?.data;
       if (data?.code === "DEVICE_NOT_BOUND") {
-        setDeviceNaoLiberado(true);
+        setPrecisaCodigo(true);
       }
       setError(
         data?.message ??
@@ -277,17 +315,49 @@ export default function LoginPage() {
                 </span>
               )}
             </div>
+
+            {precisaCodigo && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                transition={{ duration: 0.3 }}
+              >
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-emerald">
+                  Código de ativação
+                </label>
+                <p className="mt-0.5 text-[10.5px] leading-relaxed text-white/55">
+                  Este aparelho ainda não está vinculado. Digite o código de 6
+                  dígitos gerado em vistomap.nansen.com.br/liberar-acesso.
+                </p>
+                <div className="group mt-1 flex h-[38px] items-center gap-2.5 rounded-[9px] border border-brand-emerald/40 bg-brand-emerald/[0.06] px-3 transition focus-within:border-brand-emerald/70 focus-within:shadow-[0_0_0_3px_rgba(6,214,160,0.12)]">
+                  <KeyRound className="h-[13px] w-[13px] shrink-0 text-brand-emerald" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="000000"
+                    className="h-full min-w-0 flex-1 bg-transparent text-center font-mono text-[16px] font-bold tracking-[0.3em] text-white outline-none placeholder:text-white/25"
+                    {...register("codigo")}
+                    onChange={(e) => {
+                      e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    }}
+                  />
+                </div>
+              </motion.div>
+            )}
           </div>
 
-          <label className="mt-3 flex items-center gap-2 text-[12.5px] font-medium text-white/70">
-            <input
-              type="checkbox"
-              checked={lembrar}
-              onChange={(e) => setLembrar(e.target.checked)}
-              className="h-4 w-4 rounded border-white/30 bg-white/10 accent-brand-emerald"
-            />
-            Lembrar meu usuário
-          </label>
+          {!precisaCodigo && (
+            <label className="mt-3 flex items-center gap-2 text-[12.5px] font-medium text-white/70">
+              <input
+                type="checkbox"
+                checked={lembrar}
+                onChange={(e) => setLembrar(e.target.checked)}
+                className="h-4 w-4 rounded border-white/30 bg-white/10 accent-brand-emerald"
+              />
+              Lembrar meu usuário
+            </label>
+          )}
 
           {error && (
             <motion.div
@@ -296,14 +366,6 @@ export default function LoginPage() {
               className="mt-4 rounded-2xl border border-red-300/40 bg-red-500/12 px-3 py-2 text-sm text-red-100"
             >
               {error}
-              {deviceNaoLiberado && (
-                <a
-                  href="/liberar-acesso"
-                  className="mt-1.5 block font-semibold text-brand-emerald underline underline-offset-2"
-                >
-                  Ativar este aparelho agora
-                </a>
-              )}
             </motion.div>
           )}
 
@@ -314,6 +376,11 @@ export default function LoginPage() {
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : precisaCodigo ? (
+              <>
+                Ativar e entrar
+                <ArrowRight className="h-[18px] w-[18px]" />
+              </>
             ) : (
               <>
                 Entrar na plataforma
@@ -321,6 +388,15 @@ export default function LoginPage() {
               </>
             )}
           </button>
+
+          {precisaCodigo && (
+            <a
+              href="/liberar-acesso"
+              className="mt-3 self-center text-[12px] font-medium text-white/55 underline-offset-2 hover:text-white/80 hover:underline"
+            >
+              Não tenho um código ainda — gerar um novo
+            </a>
+          )}
         </motion.form>
         )}
 
