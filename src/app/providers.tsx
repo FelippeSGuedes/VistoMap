@@ -48,7 +48,11 @@ function LockScreenMount() {
   const session = useAuthStore((s) => s.session);
   const pathname = usePathname();
   const isPainel = pathname?.startsWith("/painel") ?? false;
-  useLockScreen(!!session && !isPainel);
+  // /liberar-acesso precisa ficar livre da trava mesmo com sessão ativa —
+  // é a tela que troca de aparelho vinculado, pedir senha da trava aqui
+  // (verificação diária, feature separada) só atrapalha o fluxo de ativação.
+  const isLiberarAcesso = pathname?.startsWith("/liberar-acesso") ?? false;
+  useLockScreen(!!session && !isPainel && !isLiberarAcesso);
   return null;
 }
 

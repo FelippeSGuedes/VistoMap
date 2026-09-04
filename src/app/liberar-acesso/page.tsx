@@ -213,7 +213,7 @@ function FluxoNoNavegador() {
             <Campo
               icon={<IdCard className="h-[13px] w-[13px]" />}
               label="Matrícula"
-              placeholder="Sua matrícula GLPI"
+              placeholder="Sua matrícula Nansen"
               autoComplete="off"
               registro={register("matricula", { required: "Informe sua matrícula" })}
               erro={errors.matricula?.message}
@@ -683,7 +683,7 @@ function IdentidadeSemCodigo({
         <Campo
           icon={<IdCard className="h-[13px] w-[13px]" />}
           label="Matrícula"
-          placeholder="Sua matrícula GLPI"
+          placeholder="Sua matrícula Nansen"
           autoComplete="off"
           registro={register("matricula", { required: "Informe sua matrícula" })}
           erro={errors.matricula?.message}
