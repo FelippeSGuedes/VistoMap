@@ -20,7 +20,7 @@ import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
-import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
+import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -116,7 +116,7 @@ export async function POST(
     }
     payload = JSON.parse(rawPayload) as FinalizarPayload;
 
-    if (!rsrpValido(payload.rsrpifield) || !rsrpValido(payload.rsrpllfield)) {
+    if (!rsrpParValido(payload.rsrpifield, payload.rsrpllfield)) {
       return NextResponse.json({ message: RSRP_MENSAGEM_ERRO }, { status: 400 });
     }
 

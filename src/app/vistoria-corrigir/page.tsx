@@ -20,7 +20,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   AlertTriangle, Camera, Check, Clock, Loader2,
-  Navigation as NavigationIcon, Replace, Send, Video, XCircle,
+  Navigation as NavigationIcon, Replace, Send, Upload, Video, XCircle,
 } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
@@ -30,7 +30,7 @@ import { SelectField } from "@/components/vistorias/SelectField";
 import { VideoRecorderSheet } from "@/components/vistorias/VideoRecorderSheet";
 import { vistoriasService } from "@/services/vistorias";
 import { api, type ApiError } from "@/services/api";
-import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
+import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import type { MudancaPosteResponse } from "@/types";
 import {
   useDevolucaoStore,
@@ -219,7 +219,7 @@ function CorrigirDevolucaoInner() {
 
   async function handleEnviar() {
     if (!id || !podeEnviar) return;
-    if (!rsrpValido(campos.rsrpifield) || !rsrpValido(campos.rsrpllfield)) {
+    if (!rsrpParValido(campos.rsrpifield, campos.rsrpllfield)) {
       setErroEnvio(RSRP_MENSAGEM_ERRO);
       return;
     }
@@ -442,6 +442,11 @@ function CorrigirDevolucaoInner() {
                   {fotosApontadas.map((key) => {
                     const done = !!arquivos[key];
                     const isVideo = key === "video360";
+                    // Print Vivo/Claro (imagem4/imagem5) é captura de tela da
+                    // operadora, não foto do poste — igual ao fluxo normal
+                    // (GuidedCaptureFlow kind:"upload"), sem `capture` força
+                    // a galeria/seletor de arquivo em vez da câmera.
+                    const isUpload = key === "imagem4" || key === "imagem5";
                     return (
                       <div
                         key={key}
@@ -452,7 +457,15 @@ function CorrigirDevolucaoInner() {
                             done ? "bg-emerald-100 text-emerald-600" : "bg-brand-ice text-brand-deep"
                           }`}
                         >
-                          {done ? <Check className="h-5 w-5" /> : isVideo ? <Video className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
+                          {done ? (
+                            <Check className="h-5 w-5" />
+                          ) : isVideo ? (
+                            <Video className="h-5 w-5" />
+                          ) : isUpload ? (
+                            <Upload className="h-5 w-5" />
+                          ) : (
+                            <Camera className="h-5 w-5" />
+                          )}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-semibold text-ink">
@@ -468,14 +481,16 @@ function CorrigirDevolucaoInner() {
                           }}
                           className="shrink-0 rounded-xl bg-brand-emerald px-3.5 py-2 text-[12.5px] font-bold text-[#073B4C]"
                         >
-                          {done ? "Refazer" : "Capturar"}
+                          {isUpload
+                            ? (done ? "Trocar" : "Selecionar")
+                            : (done ? "Refazer" : "Capturar")}
                         </button>
                         {!isVideo && (
                           <input
                             ref={(el) => { fileInputs.current[key] = el; }}
                             type="file"
                             accept="image/*"
-                            capture="environment"
+                            capture={isUpload ? undefined : "environment"}
                             hidden
                             onChange={(e) => {
                               const f = e.target.files?.[0];

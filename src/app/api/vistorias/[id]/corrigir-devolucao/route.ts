@@ -16,7 +16,7 @@ import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
-import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
+import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import { fetchDevolucaoPendentePorVistoria, resolverDevolucao } from "@/lib/glpi/devolucoes";
 import { DEVOLUCAO_DROPDOWN_FIELD } from "@/lib/glpi/devolucaoItens";
 
@@ -146,7 +146,12 @@ export async function POST(
       }
     }
 
-    if (!rsrpValido(campos.rsrpifield) || !rsrpValido(campos.rsrpllfield)) {
+    // Se a devolução só apontou UM dos dois RSRP, o outro não vem em
+    // `campos` (nunca aparece no formulário de correção) — cai pro valor
+    // atual já salvo no GLPI pra avaliar o par completo.
+    const rsrpClaroCheck = campos.rsrpifield ?? vistoria.fields.rsrpifield;
+    const rsrpVivoCheck = campos.rsrpllfield ?? vistoria.fields.rsrpllfield;
+    if (!rsrpParValido(rsrpClaroCheck, rsrpVivoCheck)) {
       return NextResponse.json({ message: RSRP_MENSAGEM_ERRO }, { status: 400 });
     }
 

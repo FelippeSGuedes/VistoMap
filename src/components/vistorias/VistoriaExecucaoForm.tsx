@@ -33,7 +33,7 @@ import { reverseGeocode } from "@/services/geocoding";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAuthStore } from "@/store/auth";
 import { cn } from "@/utils/cn";
-import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
+import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import type {
   CaptureBundle,
   DropdownKey,
@@ -310,7 +310,7 @@ export function VistoriaExecucaoForm({
       setSubmitError(`Preencha os campos obrigatórios: ${faltando.join(", ")}.`);
       return;
     }
-    if (!rsrpValido(form.rsrpifield) || !rsrpValido(form.rsrpllfield)) {
+    if (!rsrpParValido(form.rsrpifield, form.rsrpllfield)) {
       setSubmitError(RSRP_MENSAGEM_ERRO);
       return;
     }
