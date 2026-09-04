@@ -12,6 +12,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Globe,
   IdCard,
   KeyRound,
   Loader2,
@@ -49,7 +50,18 @@ export default function LiberarAcessoPage() {
   // null = ainda não sabemos (evita mismatch de hidratação — isNativeApp()
   // só é confiável depois do mount, no browser).
   const [nativo, setNativo] = useState<boolean | null>(null);
-  useEffect(() => setNativo(isNativeApp()), []);
+  // App ANTIGO (instalado antes desta feature) é nativo mas não tem o
+  // plugin @capacitor/device compilado — cai aqui dentro sem jeito nenhum
+  // de completar a ativação. Detecta isso e orienta a abrir pelo navegador
+  // em vez de mostrar uma tela (código ou fallback) que nunca vai funcionar.
+  const [temDeviceId, setTemDeviceId] = useState<boolean | null>(null);
+  useEffect(() => {
+    const ehNativo = isNativeApp();
+    setNativo(ehNativo);
+    if (ehNativo) {
+      getDeviceId().then((id) => setTemDeviceId(!!id));
+    }
+  }, []);
 
   return (
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden text-brand-ice">
@@ -71,10 +83,12 @@ export default function LiberarAcessoPage() {
       />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[440px] flex-1 flex-col justify-center px-4 py-10">
-        {nativo === null ? (
+        {nativo === null || (nativo && temDeviceId === null) ? (
           <div className="flex justify-center py-10">
             <Loader2 className="h-6 w-6 animate-spin text-white/60" />
           </div>
+        ) : nativo && !temDeviceId ? (
+          <AppDesatualizado />
         ) : nativo ? (
           <FluxoNoApp />
         ) : (
@@ -90,6 +104,43 @@ export default function LiberarAcessoPage() {
         </footer>
       </div>
     </main>
+  );
+}
+
+/**
+ * App já instalado (nativo), mas SEM @capacitor/device — é o app ANTIGO,
+ * de antes desta feature. Não tem jeito de completar a ativação de
+ * dentro dele (o plugin simplesmente não existe nesse binário) — só
+ * orienta a abrir o link pelo navegador comum do celular, de onde dá pra
+ * baixar o app novo.
+ */
+function AppDesatualizado() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center text-center"
+    >
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-400/15 text-amber-300">
+        <Globe className="h-7 w-7" />
+      </span>
+      <h1 className="mt-4 text-[16px] font-semibold tracking-tight text-white">
+        Abra este link pelo navegador
+      </h1>
+      <p className="mt-2 max-w-[320px] text-[12.5px] leading-relaxed text-white/65">
+        Este aplicativo instalado é de uma versão antiga e não consegue
+        concluir a ativação. Copie o link abaixo e abra no navegador do seu
+        celular (Chrome, por exemplo) — não dentro deste app.
+      </p>
+      <div className="mt-5 w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3">
+        <p className="break-all font-mono text-[13px] text-white">
+          vistomap.nansen.com.br/liberar-acesso
+        </p>
+      </div>
+      <p className="mt-4 text-[11px] text-white/45">
+        Depois de instalar o app novo, desinstale este.
+      </p>
+    </motion.div>
   );
 }
 
