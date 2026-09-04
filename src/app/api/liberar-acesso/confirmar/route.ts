@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyActivationTicket } from "@/lib/jwt";
+import { resgatarCodigoAtivacao } from "@/lib/glpi/activationCode";
 import { buildSessionForUser } from "@/lib/auth/issueSession";
 import {
   createBinding,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/glpi/deviceBinding";
 import { auditInsert } from "@/lib/glpi/audit";
 import { logError } from "@/lib/observability";
+import { checkLoginRateLimit, resetLoginRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,34 +26,56 @@ interface GlpiUserIdentity {
 /**
  * POST /api/liberar-acesso/confirmar
  *
- * Passo 2 — chamado depois do termo de responsabilidade aceito (scroll
- * completo, ver ScrollGate). Grava o vínculo e já loga o técnico
- * automaticamente (não pede a senha de novo, já provada em .../validar).
+ * Passo 3 — chamado DE DENTRO DO APP, já instalado, logo na primeira
+ * abertura (sem sessão ainda). A pessoa digita o código de 6 dígitos que
+ * recebeu no navegador (passo 2) — aqui é onde o aparelho de verdade
+ * entra em cena (deviceId só existe com o app rodando nativo). Grava o
+ * vínculo e já loga automaticamente.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { ticket } = (await req.json()) as { ticket?: string };
-    if (!ticket) {
-      return NextResponse.json({ message: "Ticket ausente" }, { status: 400 });
-    }
+    const { codigo, deviceId, deviceModel } = (await req.json()) as {
+      codigo?: string;
+      deviceId?: string;
+      deviceModel?: string;
+    };
 
-    let claims;
-    try {
-      claims = await verifyActivationTicket(ticket);
-    } catch {
+    if (!codigo?.trim()) {
+      return NextResponse.json({ message: "Informe o código de ativação." }, { status: 400 });
+    }
+    if (!deviceId?.trim()) {
       return NextResponse.json(
-        { message: "Sessão de ativação expirada. Comece de novo." },
-        { status: 401 }
+        { message: "Não foi possível identificar o aparelho. Feche e abra o aplicativo de novo." },
+        { status: 400 }
       );
     }
 
-    const usersId = Number(claims.usersId);
-    const deviceId = claims.deviceId;
+    // Código de 6 dígitos é adivinhável por força bruta sem isso — mesmo
+    // limitador do login, chave por IP (não por código, senão um
+    // atacante trocando de código a cada tentativa furaria o limite).
+    const rateLimitKey = `codigo-ativacao:${getClientIp(req)}`;
+    const rateLimit = checkLoginRateLimit(rateLimitKey);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { message: "Muitas tentativas. Tente novamente em alguns instantes." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds ?? 60) } }
+      );
+    }
 
-    // Proteção contra corrida: alguém pode ter ativado nos ~10min do ticket.
+    const resgate = await resgatarCodigoAtivacao(codigo.trim());
+    if (!resgate) {
+      return NextResponse.json(
+        { message: "Código inválido ou expirado. Peça um novo em /liberar-acesso." },
+        { status: 401 }
+      );
+    }
+    const usersId = resgate.usersId;
+
+    // Proteção contra corrida: alguém pode ter ativado nos minutos entre
+    // gerar o código e digitar no app.
     const [bindingUser, bindingDevice] = await Promise.all([
       fetchActiveBindingByUser(usersId),
-      fetchActiveBindingByDevice(deviceId),
+      fetchActiveBindingByDevice(deviceId.trim()),
     ]);
     if (bindingUser) {
       return NextResponse.json(
@@ -86,7 +109,8 @@ export async function POST(req: NextRequest) {
 
     await createBinding({
       usersId: user.id,
-      deviceId,
+      deviceId: deviceId.trim(),
+      deviceModel: deviceModel ?? null,
       nomeConfirmado: `${user.firstname ?? ""} ${user.realname ?? ""}`.trim() || user.name,
       emailConfirmado: user.email ?? "",
       matriculaConfirmada: user.registration_number,
@@ -103,6 +127,7 @@ export async function POST(req: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ message: result.message }, { status: 403 });
     }
+    resetLoginRateLimit(rateLimitKey);
     return NextResponse.json(result.session);
   } catch (error) {
     console.error("[api/liberar-acesso/confirmar] POST error", error);

@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { signActivationTicket } from "@/lib/jwt";
-import {
-  fetchActiveBindingByDevice,
-  fetchActiveBindingByUser,
-} from "@/lib/glpi/deviceBinding";
+import { fetchActiveBindingByUser } from "@/lib/glpi/deviceBinding";
 import { logError } from "@/lib/observability";
 import { checkLoginRateLimit, resetLoginRateLimit, getClientIp } from "@/lib/rate-limit";
 
@@ -28,35 +25,28 @@ function normalizar(s: string): string {
 /**
  * POST /api/liberar-acesso/validar
  *
- * Passo 1 do fluxo de vínculo de aparelho — confere identidade (nome +
- * e-mail + matrícula + a MESMA senha do login) contra o GLPI. Senha é
- * obrigatória aqui: nome/e-mail/matrícula não são segredo (alguém pode
- * conhecer os dados de outro técnico), sem a senha um terceiro poderia
- * vincular o aparelho ERRADO e trancar o técnico real pra fora.
+ * Passo 1 do fluxo de vínculo de aparelho — roda no NAVEGADOR, ANTES do
+ * app estar instalado. Confere identidade (nome + e-mail + matrícula + a
+ * MESMA senha do login) contra o GLPI. Senha é obrigatória aqui: nome/
+ * e-mail/matrícula não são segredo (alguém pode conhecer os dados de
+ * outro técnico), sem a senha um terceiro poderia vincular o aparelho
+ * ERRADO e trancar o técnico real pra fora.
  *
  * Não grava nada — só devolve um ticket curto (10min) que
- * .../confirmar usa depois do termo de responsabilidade aceito.
+ * .../gerar-codigo usa depois do termo de responsabilidade aceito.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { nome, email, matricula, senha, deviceId, deviceModel } = (await req.json()) as {
+    const { nome, email, matricula, senha } = (await req.json()) as {
       nome?: string;
       email?: string;
       matricula?: string;
       senha?: string;
-      deviceId?: string;
-      deviceModel?: string;
     };
 
     if (!nome?.trim() || !email?.trim() || !matricula?.trim() || !senha) {
       return NextResponse.json(
         { message: "Preencha nome, e-mail, matrícula e senha." },
-        { status: 400 }
-      );
-    }
-    if (!deviceId?.trim()) {
-      return NextResponse.json(
-        { message: "Não foi possível identificar o aparelho. Abra este link pelo aplicativo instalado." },
         { status: 400 }
       );
     }
@@ -133,25 +123,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const deviceJaVinculado = await fetchActiveBindingByDevice(deviceId.trim());
-    if (deviceJaVinculado && deviceJaVinculado.users_id !== user.id) {
-      return NextResponse.json(
-        { message: "Este aparelho já está vinculado a outro usuário." },
-        { status: 409 }
-      );
-    }
-
-    const ticket = await signActivationTicket({
-      usersId: String(user.id),
-      deviceId: deviceId.trim(),
-    });
+    const ticket = await signActivationTicket({ usersId: String(user.id) });
 
     resetLoginRateLimit(rateLimitKey);
-    return NextResponse.json({
-      ticket,
-      nome: nomeGlpi,
-      deviceModel: deviceModel ?? null,
-    });
+    return NextResponse.json({ ticket, nome: nomeGlpi });
   } catch (error) {
     console.error("[api/liberar-acesso/validar] POST error", error);
     void logError("app", "liberar-acesso/validar", error);

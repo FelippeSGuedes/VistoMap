@@ -84,24 +84,27 @@ export function getJwtExpiresAtMs(hours = 8): number {
 /**
  * Ticket curto do fluxo de vínculo de aparelho (/liberar-acesso) — prova
  * que `POST .../validar` já conferiu identidade+senha+grupo, sem precisar
- * repetir tudo isso em `.../confirmar`. Claims própria (não reaproveita
+ * repetir tudo isso em `.../gerar-codigo`. Claims própria (não reaproveita
  * SessionClaims) e `purpose` fixo de propósito: garante que um token de
  * sessão normal nunca é aceito aqui, e vice-versa, mesmo assinados com o
  * mesmo segredo.
+ *
+ * Sem deviceId: esse passo roda no NAVEGADOR (o app ainda nem foi
+ * instalado) — o aparelho só entra em cena depois, quando o app já
+ * instalado troca o código de 6 dígitos por um vínculo de verdade em
+ * .../confirmar (ver activationCode.ts).
  */
 export interface ActivationTicketClaims extends JWTPayload {
   purpose: "device-activation";
   usersId: string;
-  deviceId: string;
 }
 
 export async function signActivationTicket(
-  claims: { usersId: string; deviceId: string }
+  claims: { usersId: string }
 ): Promise<string> {
   return new SignJWT({
     purpose: "device-activation",
     usersId: claims.usersId,
-    deviceId: claims.deviceId,
   })
     .setProtectedHeader({ alg: ALG })
     .setIssuedAt()
@@ -113,7 +116,7 @@ export async function verifyActivationTicket(
   token: string
 ): Promise<ActivationTicketClaims> {
   const { payload } = await jwtVerify(token, getSecret(), { algorithms: [ALG] });
-  if (payload.purpose !== "device-activation" || !payload.usersId || !payload.deviceId) {
+  if (payload.purpose !== "device-activation" || !payload.usersId) {
     throw new Error("Ticket de ativação inválido");
   }
   return payload as ActivationTicketClaims;
