@@ -50,7 +50,8 @@ export async function fetchVistorias(): Promise<Vistoria[]> {
 }
 
 /**
- * Vistorias CONCLUÍDAS/finalizadas do técnico (últimos 60 dias) — offline-first.
+ * Vistorias CONCLUÍDAS/finalizadas do técnico (últimos 60 dias, só as 10
+ * mais recentes) — offline-first.
  */
 export async function fetchVistoriasConcluidas(): Promise<Vistoria[]> {
   try {

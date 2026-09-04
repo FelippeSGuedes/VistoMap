@@ -174,7 +174,9 @@ export interface ListVistoriasFilters {
   /**
    * Quando true, retorna as vistorias CONCLUÍDAS/finalizadas do técnico
    * (situação Vistoriado/Revisitado OU status Aprovado/Reprovado/Em análise),
-   * limitadas aos últimos 60 dias. Default (false) = fila pendente.
+   * dos últimos 60 dias, mais recentes primeiro — só as últimas 10 (não
+   * enche a tela do técnico com histórico acumulado). Default (false) =
+   * fila pendente, sem esse limite.
    */
   concluidas?: boolean;
 }
@@ -212,8 +214,14 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
     }
   }
   const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";
+  // Concluídas: mais recentes primeiro, só as últimas 10 — evita encher a
+  // tela do técnico com meses de histórico (fila pendente continua sem
+  // limite prático, ordenada por nome do poste, como sempre foi).
+  const orderLimit = filters.concluidas
+    ? "ORDER BY f.datadavistoriafield DESC LIMIT 10"
+    : "ORDER BY ne.name LIMIT 500";
   const rows = await query<RawRow>(
-    `${SELECT_BASE} ${coordsFilter} ${extraWhere} ORDER BY ne.name LIMIT 500`,
+    `${SELECT_BASE} ${coordsFilter} ${extraWhere} ${orderLimit}`,
     params
   );
   return rows.map(mapRow);
