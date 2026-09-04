@@ -4,7 +4,7 @@ import { verifySessionJwt } from "@/lib/jwt";
 import { ensureExpedienteAuto } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
-import { execute } from "@/lib/db";
+import { execute, query } from "@/lib/db";
 import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 import { logError } from "@/lib/observability";
@@ -114,17 +114,35 @@ export async function POST(
         // Devolução pendente de um dia ANTERIOR → bloqueia iniciar vistoria
         // NOVA até resolver. No mesmo dia é só lembrete (não bloqueia) — só
         // vira obrigatório a partir do primeiro acesso do dia seguinte.
+        //
+        // Exceção: se o técnico pediu "não posso deslocar agora" nessa MESMA
+        // devolução (nao-posso-deslocar/route.ts) e o admin aprovou
+        // (responder/route.ts, exception_label=DEVOLUCAO_NAO_POSSO_DESLOCAR),
+        // o bloqueio aqui precisa sumir — aprovar lá só tira "a cobrança
+        // imediata" (comentário original), mas nada aqui de fato consultava
+        // essa aprovação: a rota barrava QUALQUER vistoria nova mesmo com o
+        // pedido aprovado, travando o técnico sem saída.
         const devolucaoPendente = await fetchDevolucaoPendente(userId);
         if (devolucaoPendente && devolucaoEhDeOutroDia(devolucaoPendente.criadoEm)) {
-          return NextResponse.json(
-            {
-              message: "Você tem uma vistoria devolvida pra correção — resolva antes de iniciar outra.",
-              motivo: "devolucao-pendente",
-              devolucaoId: devolucaoPendente.id,
-              devolucaoVistoriaId: devolucaoPendente.vistoriaId,
-            },
-            { status: 403 }
+          await ensureOverrideTable();
+          const [adiamentoAprovado] = await query<{ id: number }>(
+            `SELECT id FROM \`glpi_plugin_vistomap_override_requests\`
+              WHERE vistoria_id = ? AND exception_label = 'DEVOLUCAO_NAO_POSSO_DESLOCAR'
+                AND status = 'APROVADO' AND created_at >= ?
+              ORDER BY created_at DESC LIMIT 1`,
+            [devolucaoPendente.vistoriaId, devolucaoPendente.criadoEm]
           );
+          if (!adiamentoAprovado) {
+            return NextResponse.json(
+              {
+                message: "Você tem uma vistoria devolvida pra correção — resolva antes de iniciar outra.",
+                motivo: "devolucao-pendente",
+                devolucaoId: devolucaoPendente.id,
+                devolucaoVistoriaId: devolucaoPendente.vistoriaId,
+              },
+              { status: 403 }
+            );
+          }
         }
       }
     } catch {
