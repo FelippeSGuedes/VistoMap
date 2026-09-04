@@ -72,8 +72,26 @@ const DIRECT_FIELD_MAP: Record<string, keyof UpdateFieldsInput> = {
 /** campo de devolução → DropdownKey (resolve texto → id via resolveDropdowns). */
 const DROPDOWN_FIELD_MAP = DEVOLUCAO_DROPDOWN_FIELD as Record<string, DropdownKey>;
 
+interface MudancaPostePayload {
+  pspostefield: string;
+  municipiofield: string;
+  materialfield: string | null;
+  alturadopostemfield: string | null;
+  latitude: number;
+  longitude: number;
+  descricao_glpi: string;
+}
+
 interface CorrigirPayload {
   campos?: Record<string, string>;
+  /**
+   * Presente quando a devolução aponta problema de sinal (RSRP) e o técnico
+   * usou "Trocar de poste" (mesmo fluxo/endpoint /postes/mudancas do
+   * formulário normal) — poste escolhido não é necessariamente um dos itens
+   * apontados pela devolução, por isso é aplicado à parte, sem passar pelo
+   * filtro de camposApontados abaixo.
+   */
+  mudancaPoste?: MudancaPostePayload;
 }
 
 /**
@@ -117,9 +135,12 @@ export async function POST(
     const formData = await request.formData();
     const rawPayload = formData.get("payload");
     let campos: Record<string, string> = {};
+    let mudancaPoste: MudancaPostePayload | undefined;
     if (typeof rawPayload === "string") {
       try {
-        campos = (JSON.parse(rawPayload) as CorrigirPayload).campos ?? {};
+        const parsed = JSON.parse(rawPayload) as CorrigirPayload;
+        campos = parsed.campos ?? {};
+        mudancaPoste = parsed.mudancaPoste;
       } catch {
         return NextResponse.json({ message: "Payload inválido" }, { status: 400 });
       }
@@ -142,6 +163,23 @@ export async function POST(
       } else if (DROPDOWN_FIELD_MAP[item]) {
         dropdownsInput[DROPDOWN_FIELD_MAP[item]] = valor;
       }
+    }
+
+    // Troca de poste (sinal RSRP ruim) — o poste novo não é um dos itens
+    // apontados pela devolução, então é aplicado fora do filtro acima.
+    // Mesmo espírito de handlePosteMudado() no formulário normal: pisca por
+    // cima do local do poste antigo e concatena a descrição no observaofield.
+    if (mudancaPoste) {
+      updateInput.pspostefield = mudancaPoste.pspostefield;
+      updateInput.municipiofield = mudancaPoste.municipiofield;
+      if (mudancaPoste.materialfield) updateInput.materialfield = mudancaPoste.materialfield;
+      if (mudancaPoste.alturadopostemfield) updateInput.alturadopostemfield = mudancaPoste.alturadopostemfield;
+      updateInput.latitudefield = mudancaPoste.latitude;
+      updateInput.longitudefield = mudancaPoste.longitude;
+      const observacaoBase = updateInput.observaofield ?? vistoria.fields.observaofield ?? "";
+      updateInput.observaofield = observacaoBase
+        ? `${observacaoBase}\n\n${mudancaPoste.descricao_glpi}`
+        : mudancaPoste.descricao_glpi;
     }
 
     // Detecta se era revisita (pra voltar pro estado certo) e limpa a
@@ -207,7 +245,9 @@ export async function POST(
       ator: actor,
       acao: "devolucao-resolvida",
       alvo: { tipo: "vistoria", id: String(id), label: vistoria.equipamento },
-      descricao: `Devolução corrigida e reenviada — ${devolucao.itens.length} item(ns).`,
+      descricao: mudancaPoste
+        ? `Devolução corrigida e reenviada — ${devolucao.itens.length} item(ns), poste trocado para ${mudancaPoste.pspostefield}.`
+        : `Devolução corrigida e reenviada — ${devolucao.itens.length} item(ns).`,
     });
     void sendPainelWebPush({ acao: "devolucao-resolvida", equipamento: vistoria.equipamento, tecnico: actor.nome, vistoriaId: id });
 

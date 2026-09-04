@@ -18,6 +18,7 @@ export interface DevolucaoVistoria {
   latitude: number | null;
   longitude: number | null;
   cidade: string;
+  pspostefield: string;
 }
 
 interface DevolucaoState {

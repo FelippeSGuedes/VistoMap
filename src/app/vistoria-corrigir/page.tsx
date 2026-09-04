@@ -20,16 +20,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   AlertTriangle, Camera, Check, Clock, Loader2,
-  Navigation as NavigationIcon, Send, Video, XCircle,
+  Navigation as NavigationIcon, Replace, Send, Video, XCircle,
 } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
+import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import { NavigationOptionsSheet } from "@/components/vistorias/NavigationOptionsSheet";
 import { SelectField } from "@/components/vistorias/SelectField";
 import { VideoRecorderSheet } from "@/components/vistorias/VideoRecorderSheet";
 import { vistoriasService } from "@/services/vistorias";
 import { api, type ApiError } from "@/services/api";
 import { rsrpValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
+import type { MudancaPosteResponse } from "@/types";
 import {
   useDevolucaoStore,
   type DevolucaoPendente,
@@ -79,6 +81,8 @@ function CorrigirDevolucaoInner() {
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
 
   const [navOpen, setNavOpen] = useState(false);
+  const [mudarPosteOpen, setMudarPosteOpen] = useState(false);
+  const [posteMudanca, setPosteMudanca] = useState<MudancaPosteResponse | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [justificativa, setJustificativa] = useState("");
   const [overrideLoading, setOverrideLoading] = useState(false);
@@ -203,6 +207,12 @@ function CorrigirDevolucaoInner() {
     [devolucao]
   );
 
+  // Devolução por sinal fraco — RSRP não se corrige reescrevendo o número,
+  // o técnico precisa medir num poste diferente. Mesmo fluxo de "Mudar
+  // PSPOSTE" do formulário normal (mesmo endpoint /postes/mudancas).
+  const precisaTrocarPoste =
+    camposApontados.includes("rsrpifield") || camposApontados.includes("rsrpllfield");
+
   const podeEnviar =
     fotosApontadas.every((k) => !!arquivos[k]) &&
     camposApontados.every((k) => (campos[k] ?? "").trim().length > 0);
@@ -216,7 +226,18 @@ function CorrigirDevolucaoInner() {
     setFase("enviando");
     setErroEnvio(null);
     try {
-      await vistoriasService.corrigirDevolucao(id, campos, arquivos);
+      const mudancaPoste = posteMudanca
+        ? {
+            pspostefield: posteMudanca.poste_novo.pspostefield,
+            municipiofield: posteMudanca.poste_novo.municipiofield,
+            materialfield: posteMudanca.poste_novo.materialfield,
+            alturadopostemfield: posteMudanca.poste_novo.alturadopostemfield,
+            latitude: posteMudanca.poste_novo.latitudefield,
+            longitude: posteMudanca.poste_novo.longitudefield,
+            descricao_glpi: posteMudanca.descricao_glpi,
+          }
+        : undefined;
+      await vistoriasService.corrigirDevolucao(id, campos, arquivos, mudancaPoste);
       setFase("concluido");
       window.setTimeout(() => router.push("/vistorias"), 1800);
     } catch (err) {
@@ -372,6 +393,46 @@ function CorrigirDevolucaoInner() {
               </div>
             )}
 
+            {precisaTrocarPoste && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                  <Replace className="h-3 w-3" /> Sinal fraco nesse poste?
+                </p>
+                {posteMudanca ? (
+                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-ink">
+                        Poste trocado para {posteMudanca.poste_novo.pspostefield}
+                      </p>
+                      <p className="truncate text-[11.5px] text-ink-muted">
+                        {posteMudanca.poste_novo.municipiofield}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMudarPosteOpen(true)}
+                      className="shrink-0 rounded-xl bg-white px-3 py-1.5 text-[12px] font-bold text-amber-700 shadow-soft"
+                    >
+                      Trocar de novo
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-1 text-[12.5px] leading-relaxed text-amber-800">
+                      Se o sinal continuar ruim demais nesse local, escolha outro poste próximo — meça o RSRP no local novo.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setMudarPosteOpen(true)}
+                      className="mt-2 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 text-[12.5px] font-bold text-white"
+                    >
+                      <Replace className="h-3.5 w-3.5" /> Trocar de poste
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {fotosApontadas.length > 0 && (
               <div className="mb-4">
                 <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
@@ -510,6 +571,19 @@ function CorrigirDevolucaoInner() {
             setVideoKeyRecording(null);
           }}
           onFallback={() => setVideoKeyRecording(null)}
+        />
+      )}
+
+      {vistoria.latitude != null && vistoria.longitude != null && id && (
+        <MudarPosteFlow
+          open={mudarPosteOpen}
+          onClose={() => setMudarPosteOpen(false)}
+          vistoriaId={id}
+          psposteAntigo={posteMudanca?.poste_novo.pspostefield ?? vistoria.pspostefield}
+          municipioAntigo={posteMudanca?.poste_novo.municipiofield ?? vistoria.cidade}
+          latAtual={posteMudanca?.poste_novo.latitudefield ?? vistoria.latitude}
+          lngAtual={posteMudanca?.poste_novo.longitudefield ?? vistoria.longitude}
+          onApplied={setPosteMudanca}
         />
       )}
     </div>

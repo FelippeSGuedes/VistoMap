@@ -296,13 +296,24 @@ async function queueFinalizar(
  * saber na hora se deu certo. TODO Fase futura: escrever local-first igual
  * finalizarVistoria se isso se mostrar um problema em campo com sinal ruim.
  */
+export interface MudancaPostePayload {
+  pspostefield: string;
+  municipiofield: string;
+  materialfield: string | null;
+  alturadopostemfield: string | null;
+  latitude: number;
+  longitude: number;
+  descricao_glpi: string;
+}
+
 export async function corrigirDevolucao(
   vistoriaId: string | number,
   campos: Record<string, string>,
-  arquivos: Partial<Record<string, Blob>>
+  arquivos: Partial<Record<string, Blob>>,
+  mudancaPoste?: MudancaPostePayload
 ): Promise<{ ok: true; situacao: number }> {
   const form = new FormData();
-  form.append("payload", JSON.stringify({ campos }));
+  form.append("payload", JSON.stringify({ campos, mudancaPoste }));
   for (const [campo, blob] of Object.entries(arquivos)) {
     if (!blob) continue;
     const filename = campo === "video360" ? "video360.mp4" : `${campo}.png`;

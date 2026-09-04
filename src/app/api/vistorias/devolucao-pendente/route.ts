@@ -32,6 +32,7 @@ export async function GET(request: Request) {
           latitude: vistoria.latitude,
           longitude: vistoria.longitude,
           cidade: vistoria.cidade,
+          pspostefield: vistoria.fields.pspostefield,
         }
       : null,
   });
