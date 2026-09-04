@@ -337,10 +337,16 @@ export default function LoginPage() {
                     maxLength={6}
                     placeholder="000000"
                     className="h-full min-w-0 flex-1 bg-transparent text-center font-mono text-[16px] font-bold tracking-[0.3em] text-white outline-none placeholder:text-white/25"
-                    {...register("codigo")}
-                    onChange={(e) => {
-                      e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
-                    }}
+                    {...register("codigo", {
+                      onChange: (e) => {
+                        // Saneia (só dígitos, 6 no máximo) ANTES do
+                        // react-hook-form ler o valor — passado como opção
+                        // do próprio register(), não como onChange separado
+                        // (que substituiria o handler interno e o campo
+                        // nunca seria registrado no form de verdade).
+                        e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                      },
+                    })}
                   />
                 </div>
               </motion.div>
