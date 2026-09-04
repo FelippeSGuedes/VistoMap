@@ -23,6 +23,16 @@ const APP_OUTDATED_MSG =
   "App desatualizado. Atualize para a versão mais recente ou entre em " +
   "contato com a equipe de Engenharia de Desenvolvimento.";
 
+// Vínculo de aparelho (/liberar-acesso) — desligado por padrão. O APK
+// instalado hoje em campo NÃO tem o plugin @capacitor/device compilado
+// (só foi adicionado ao projeto, nenhum APK novo foi gerado/distribuído
+// ainda) — se isso for exigido agora, todo técnico cuja sessão de 30 dias
+// expirar fica trancado pra fora, sem conseguir nem ativar (a própria
+// /liberar-acesso depende do mesmo plugin ausente). Ativar em
+// .env.local (DEVICE_BINDING_ENFORCED=true) SÓ depois de confirmar que o
+// APK novo (com @capacitor/device) já está instalado em campo.
+const DEVICE_BINDING_ENFORCED = process.env.DEVICE_BINDING_ENFORCED === "true";
+
 export async function POST(req: NextRequest) {
   try {
     // Gate de versão: bloqueia APKs legados (sem header ou abaixo do mínimo).
@@ -90,27 +100,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Gate de vínculo de aparelho (ver /liberar-acesso). Sem deviceId no
-    // corpo (build antiga do app, antes desta feature) trata como "não
+    // Gate de vínculo de aparelho (ver /liberar-acesso) — só entra em vigor
+    // com DEVICE_BINDING_ENFORCED=true (ver comentário acima). Sem deviceId
+    // no corpo (build antiga do app, antes desta feature) trata como "não
     // vinculado" — mesma mensagem, mesmo caminho de ativação.
-    const binding = await fetchActiveBindingByUser(user.id);
-    if (!binding) {
-      return NextResponse.json(
-        {
-          message: "Este login ainda não foi liberado neste aparelho. Ative em /liberar-acesso.",
-          code: "DEVICE_NOT_BOUND",
-        },
-        { status: 403 }
-      );
-    }
-    if (!deviceId || binding.device_id !== deviceId) {
-      return NextResponse.json(
-        {
-          message: "Este login está vinculado a outro aparelho. Fale com o administrador.",
-          code: "DEVICE_MISMATCH",
-        },
-        { status: 403 }
-      );
+    if (DEVICE_BINDING_ENFORCED) {
+      const binding = await fetchActiveBindingByUser(user.id);
+      if (!binding) {
+        return NextResponse.json(
+          {
+            message: "Este login ainda não foi liberado neste aparelho. Ative em /liberar-acesso.",
+            code: "DEVICE_NOT_BOUND",
+          },
+          { status: 403 }
+        );
+      }
+      if (!deviceId || binding.device_id !== deviceId) {
+        return NextResponse.json(
+          {
+            message: "Este login está vinculado a outro aparelho. Fale com o administrador.",
+            code: "DEVICE_MISMATCH",
+          },
+          { status: 403 }
+        );
+      }
     }
 
     // Gate de grupo + montagem da sessão — mesma lógica usada logo após a
