@@ -25,11 +25,14 @@ import { DevolucaoBanner } from "@/components/vistorias/DevolucaoBanner";
 // funciona" mesmo com o servidor publicando certo. Se algum dia parecer não
 // estar rodando de novo, confirmar que este mount segue presente aqui.
 //
-// BUG HISTÓRICO (2026-07-27): a checagem/aplicação rodava incondicionalmente,
-// inclusive na tela de login (sem sessão) — o reload do WebView acontecia
-// bem no meio do técnico digitando a senha (tela piscando, input perdido).
-// Agora só dispara com sessão autenticada (pós-login); notifyAppReady()
-// continua rodando sempre, pra não sofrer rollback do capgo por demora.
+// BUG HISTÓRICO (2026-07-27 → revertido em 2026-09): gatear a checagem por
+// sessão autenticada evitava recarregar o WebView no meio do técnico
+// digitando a senha, mas criava um problema pior — quem nunca conseguia
+// logar (ex.: preso no fluxo de ativação de aparelho) NUNCA recebia
+// atualização OTA nenhuma, mesmo sendo a própria correção necessária pra
+// destravar o login. useOtaUpdate() agora roda uma vez por abertura do app
+// (trava própria via useRef), autenticado ou não — não depende mais deste
+// `!!session`, mas o parâmetro continua aceito pra não mudar a assinatura.
 function OtaUpdateMount() {
   const session = useAuthStore((s) => s.session);
   useOtaUpdate(!!session);

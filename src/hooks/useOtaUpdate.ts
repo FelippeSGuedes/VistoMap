@@ -11,10 +11,16 @@
  *     que o bundle atual carregou; sem isso o capgo faz rollback automático
  *     (proteção contra bundle quebrado) mesmo que o técnico só esteja
  *     demorando pra digitar a senha na tela de login.
- *  2. Busca o manifesto, baixa e aplica (`set`) — só com `enabled=true`
- *     (sessão autenticada). Rodar isso ANTES do login recarregava o WebView
- *     bem no meio do usuário digitando as credenciais (tela piscando,
- *     input perdido) — agora só dispara depois que o login já aconteceu.
+ *  2. Busca o manifesto, baixa e aplica (`set`) — UMA VEZ por abertura do
+ *     app, sempre, autenticado ou não (achado 2026-09: gatear isso por
+ *     sessão criava um problema de ovo-e-a-galinha — quem ainda não
+ *     conseguia logar [ex.: preso no fluxo de ativação de aparelho] nunca
+ *     recebia NENHUMA atualização OTA, mesmo sendo a própria correção
+ *     necessária pra destravar o login). Roda uma única vez por cold-start
+ *     via useRef, bem no começo da montagem — antes que dê tempo real do
+ *     usuário focar/digitar em algum campo — em vez de reagir a mudanças de
+ *     `enabled`, que é como a versão anterior evitava recarregar o WebView
+ *     no meio do usuário digitando a senha.
  *
  * set() em vez de next(): a checagem roda uma vez só (quando `enabled` vira
  * true), que já é o momento seguro pra recarregar — o técnico acabou de
@@ -30,7 +36,7 @@
  * Sem rede (zona rural) o fetch falha, é capturado, e o app segue no bundle atual.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { API_BASE } from "@/services/api";
 import { useOtaStore, OTA_JUST_UPDATED_KEY } from "@/store/ota";
 
@@ -155,10 +161,11 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 /**
- * @param enabled - só dispara a checagem/download/aplicação com uma sessão
- * autenticada (pós-login). `notifyAppReady()` roda sempre, independente disso.
+ * `enabled` não é mais usado pra gatear a checagem (ver comentário acima) —
+ * mantido só pra não mudar a assinatura/chamada em providers.tsx à toa.
  */
 export function useOtaUpdate(enabled: boolean) {
+  void enabled;
   // Efeito 1 — SEMPRE, uma vez no cold-start (mesmo na tela de login):
   // confirma o bundle atual pro capgo não fazer rollback por timeout, e
   // mostra a ponte "Atualizado ✓" se acabamos de reiniciar por causa de um
@@ -187,11 +194,12 @@ export function useOtaUpdate(enabled: boolean) {
     });
   }, []);
 
-  // Efeito 2 — só com sessão (pós-login): checa manifesto, baixa e aplica.
-  // Antes disso rodava incondicionalmente e recarregava o WebView bem na
-  // tela de login (tela piscando enquanto o técnico digitava a senha).
+  // Efeito 2 — checa manifesto, baixa e aplica. Uma vez só por abertura do
+  // app (trava por useRef, não por `enabled`) — autenticado ou não.
+  const jaRodou = useRef(false);
   useEffect(() => {
-    if (!enabled) return;
+    if (jaRodou.current) return;
+    jaRodou.current = true;
 
     const cap = getCapacitor();
     if (!cap?.isNativePlatform?.()) return;
@@ -369,5 +377,5 @@ export function useOtaUpdate(enabled: boolean) {
       cancelled = true;
       progressHandle?.remove().catch(() => {});
     };
-  }, [enabled]);
+  }, []);
 }
