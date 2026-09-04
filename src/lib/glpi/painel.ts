@@ -1659,7 +1659,8 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
             rsrpifield                                    = NULL,
             rsrpllfield                                   = NULL,
             motivofield                                   = NULL,
-            observaofield                                 = NULL
+            observaofield                                 = NULL,
+            projetodevistoriafoigeradofield                = 0
       WHERE items_id = ?`,
     [SITUACAO_A_VISTORIAR, STATUS_VISTORIA_PENDENTE, vistoriaId]
   );

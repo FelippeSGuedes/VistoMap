@@ -511,6 +511,7 @@ export async function cancelarInstalacao(itemsId: number): Promise<void> {
         SET f.${INSTALACAO_INSTALADOR_COLUMN} = 0,
             f.datadeinstalaofield = NULL,
             f.${INSTALACAO_TENSAO_COLUMN} = 0,
+            f.projetodeinstalaofoigeradofield = 0,
             ${checklistClears},
             ne.states_id = ?
       WHERE f.items_id = ?`,
