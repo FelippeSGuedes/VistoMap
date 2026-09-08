@@ -14,6 +14,7 @@ import {
   SITUACAO_EM_REVISITA,
   SITUACAO_EM_VISTORIA,
   SITUACAO_REVISITADO,
+  STATE_AGUARDANDO_VISTORIA,
   STATUS_VISTORIA_PENDENTE,
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
@@ -1663,6 +1664,16 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
             projetodevistoriafoigeradofield                = 0
       WHERE items_id = ?`,
     [SITUACAO_A_VISTORIAR, STATUS_VISTORIA_PENDENTE, vistoriaId]
+  );
+  // Status geral nativo (glpi_networkequipments.states_id) — finalizar()
+  // marca Vistoriado(7) aqui (marcarStatusGeralVistoriado), mas cancelar
+  // nunca desfazia isso: o poste voltava a aparecer "A Vistoriar" no nosso
+  // fluxo, porém ficava travado em states_id=7 pra sempre, contado como
+  // vistoriado por quem lê esse campo nativo direto (ex.: dashboard nativo
+  // do GIOC em geo-poc.php) — daí o card de lá mostrar 1 a mais que o nosso.
+  await execute(
+    `UPDATE \`${TABLE_NE}\` SET states_id = ? WHERE id = ?`,
+    [STATE_AGUARDANDO_VISTORIA, vistoriaId]
   );
   await execute(
     `DELETE FROM \`${TABLE_AUX}\`
