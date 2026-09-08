@@ -96,8 +96,13 @@ const CAR_MIN_PX = 46;
  *
  * Marcador de mapa tem tamanho fixo em pixels, e e isso que se faz aqui: a
  * figura ocupa sempre ~IDLE_ALVO_PX de altura na tela, em qualquer zoom.
+ *
+ * Era 110 — visivelmente maior que a picape (CAR_MIN_PX=46) no zoom de
+ * operacao, por ser tamanho fixo contra o real-scale-com-piso do carro.
+ * Baixado pra ficar na mesma ordem de grandeza do carro sem reintroduzir o
+ * modelo com piso (ver historico acima).
  */
-const IDLE_ALVO_PX = 110;
+const IDLE_ALVO_PX = 55;
 /**
  * Teto de ampliacao da figura — ver fatorTamanhoMinimo().
  *
