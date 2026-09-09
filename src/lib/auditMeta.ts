@@ -58,6 +58,8 @@ export const ACAO_META: Record<
   "recusa-aprovada":         { label: "Recusa aprovada",          icon: ShieldCheck,  fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },
   "recusa-reprovada":        { label: "Recusa reprovada",         icon: XCircle,      fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "tecnico-parado":          { label: "Técnico parado",           icon: ShieldAlert,  fg: "#C2410C", bg: "var(--vm-orange-tint)", dot: "#F97316" },
+  "vistoria-agendada":              { label: "Vistoria agendada",           icon: Send,  fg: "#4338CA", bg: "var(--vm-indigo-tint)", dot: "#6366F1" },
+  "vistoria-agendamento-cancelado": { label: "Agendamento cancelado",       icon: Ban,   fg: "#6B7280", bg: "var(--vm-tile)", dot: "#6B7280" },
   "instalacao-assumida":     { label: "Instalação assumida",      icon: Wrench,       fg: "#2563EB", bg: "#EFF6FF", dot: "#3B82F6" },
   "instalacao-finalizada":   { label: "Instalação finalizada",    icon: ClipboardCheck,fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "instalacao-rejeitada":    { label: "Instalação rejeitada",     icon: Ban,          fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#DC2626" },

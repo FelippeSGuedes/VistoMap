@@ -153,6 +153,10 @@ export interface Vistoria {
   latitude: number;
   longitude: number;
   agendadaPara?: string;
+  /** Chegada prevista (roteirizador) — só quando há agendamento pra hoje. */
+  agendaChegadaPrevista?: string;
+  /** Saída prevista (chegada + SLA médio do técnico). */
+  agendaSaidaPrevista?: string;
   thumbnailUrl?: string;
   distanciaKm?: number;
   categoria?: string;
@@ -457,6 +461,8 @@ export interface AuditEntry {
     | "recusa-aprovada"
     | "recusa-reprovada"
     | "tecnico-parado"
+    | "vistoria-agendada"
+    | "vistoria-agendamento-cancelado"
     | "instalacao-assumida"
     | "instalacao-finalizada"
     | "instalacao-rejeitada"

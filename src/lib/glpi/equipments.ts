@@ -14,6 +14,7 @@ import {
   type DropdownKey,
 } from "./constants";
 import type { VistoriaStatus } from "@/types";
+import { ensureAgendamentosTable } from "@/lib/ensureAgendamentosTable";
 
 const SELECT_BASE = `
   SELECT
@@ -182,6 +183,11 @@ export interface ListVistoriasFilters {
 }
 
 export async function listVistorias(filters: ListVistoriasFilters = {}) {
+  // Tabela do agendamento é referenciada no WHERE abaixo (NOT EXISTS) — sem
+  // garantir que ela existe, a fila do técnico quebraria inteira até o
+  // primeiro agendamento ser criado por algum analista.
+  if (filters.tecnicoId != null) await ensureAgendamentosTable();
+
   const where: string[] = [];
   const params: unknown[] = [];
   // Quando filtramos por técnico, NÃO aplicamos HAS_COORDS: o técnico precisa
@@ -211,6 +217,16 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
         COALESCE(f.plugin_fields_situaodavistoriafielddropdowns_id, 0) NOT IN (3, 6)
         AND COALESCE(f.plugin_fields_statusvistoriafielddropdowns_id, 0) NOT IN (3, 4, 5)
       )`);
+      // Agendamento (src/lib/roteirizacao.ts + api/painel/agendamentos):
+      // vistoria com data futura marcada fica invisível na fila até o dia
+      // chegar — não enche a tela do técnico com o que ainda não é pra
+      // fazer. Sem agendamento nenhum, comportamento 100% igual a antes.
+      where.push(`NOT EXISTS (
+        SELECT 1 FROM glpi_plugin_vistomap_agendamentos ag
+         WHERE ag.items_id = f.items_id
+           AND ag.status = 'AGENDADA'
+           AND ag.data_agendada > CURDATE()
+      )`);
     }
   }
   const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";
@@ -224,7 +240,48 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
     `${SELECT_BASE} ${coordsFilter} ${extraWhere} ${orderLimit}`,
     params
   );
-  return rows.map(mapRow);
+  const mapped = rows.map(mapRow);
+
+  // Agenda de HOJE (se houver) — ordena a fila pela ordem sugerida pelo
+  // roteirizador em vez do padrão por nome, e expõe o horário previsto de
+  // chegada/saída de cada parada (api/painel/agendamentos).
+  if (filters.tecnicoId != null && !filters.concluidas) {
+    const agenda = await query<{
+      items_id: number;
+      ordem_visita: number;
+      horario_previsto_chegada: string | null;
+      horario_previsto_saida: string | null;
+    }>(
+      `SELECT items_id, ordem_visita, horario_previsto_chegada, horario_previsto_saida
+         FROM glpi_plugin_vistomap_agendamentos
+        WHERE tecnico_id = ? AND status = 'AGENDADA' AND data_agendada = CURDATE()`,
+      [filters.tecnicoId]
+    );
+    if (agenda.length > 0) {
+      const agendaMap = new Map(agenda.map((a) => [a.items_id, a]));
+      const comAgenda = mapped.map((v) => {
+        const a = agendaMap.get(Number(v.id));
+        if (!a) return v;
+        return {
+          ...v,
+          agendadaPara: a.horario_previsto_chegada ?? undefined,
+          agendaChegadaPrevista: a.horario_previsto_chegada ?? undefined,
+          agendaSaidaPrevista: a.horario_previsto_saida ?? undefined,
+        };
+      });
+      comAgenda.sort((a, b) => {
+        const oa = agendaMap.get(Number(a.id))?.ordem_visita;
+        const ob = agendaMap.get(Number(b.id))?.ordem_visita;
+        if (oa != null && ob != null) return oa - ob;
+        if (oa != null) return -1;
+        if (ob != null) return 1;
+        return 0;
+      });
+      return comAgenda;
+    }
+  }
+
+  return mapped;
 }
 
 export async function getVistoria(id: number) {
