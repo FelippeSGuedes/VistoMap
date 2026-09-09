@@ -5,36 +5,59 @@
  * simulação do dia do técnico montando na frente do analista.
  *
  * O servidor devolve só o esqueleto (/preview/plano: ordem, origem, SLA do
- * técnico, hora de início) em milissegundos. Daí o NAVEGADOR traça cada
- * perna na Mapbox Directions e desenha a linha crescendo no mapa conforme
- * a resposta chega — com o MESMO veículo 3D da tela de deslocamento
- * (TechModel3DLayer) andando na ponta da linha; cada parada ganha horário
- * na timeline naquele instante; o almoço entra como bloco próprio; no fim,
- * o veredito ("Fulano termina às 16:40"). O /preview completo (rotas +
- * clima) roda em paralelo e só acrescenta o risco de chuva por parada — os
- * horários vêm da MESMA função pura que o servidor usa ao gravar
- * (roteirizacaoHorarios.ts), então o que o analista vê é o que vai pro banco.
+ * técnico, expediente) em milissegundos. Daí o NAVEGADOR traça cada perna
+ * na Mapbox Directions e desenha a linha crescendo no mapa — com o MESMO
+ * veículo 3D da tela de deslocamento (TechModel3DLayer) andando na ponta —
+ * e cada parada ganha dia/horário na timeline naquele instante. Os horários
+ * vêm da MESMA função pura que o servidor usa ao gravar
+ * (roteirizacaoHorarios.ts): respeitam o expediente configurado no painel
+ * (o que não cabe até o fim vai pro próximo dia útil), o almoço de 1h e a
+ * margem de 30 min. O /preview completo roda em paralelo só pro clima.
  *
- * Layout: o mapa é o protagonista (tela cheia, inclinado, prédios 3D);
- * cabeçalho e etapas centralizados no topo, e um dock centralizado embaixo
- * com a timeline horizontal 1→2→3 e o veredito. Nada espremido no canto.
+ * Editável: tirar uma parada da rota (clique no pin ou no ✕), reordenar
+ * (◀ ▶) e restaurar. A primeira montagem é cinematográfica; edições
+ * replanejam na hora, sem repetir a animação. A ordem final vai junto na
+ * confirmação e o servidor a respeita.
  */
 
 import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Calendar, Check, CloudRain, Flag, Loader2, MapPin, Route, Timer, UtensilsCrossed } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  CloudRain,
+  Flag,
+  Loader2,
+  MapPin,
+  Moon,
+  RotateCcw,
+  Route,
+  Timer,
+  UtensilsCrossed,
+  X,
+} from "lucide-react";
 import { MAP_STYLE_DARK, getMapboxToken } from "@/services/maps";
 import type { AgendamentoPlano, AgendamentoPreviewResponse } from "@/services/painel";
 import { TechModel3DLayer, type TechEntrySpec } from "@/app/painel/mapa/techModel3DLayer";
 import type { RouteResult } from "@/app/painel/mapa/routeService";
-import { acumularHorarios, almocoDoDia, calcularTermino, type PernaCalculada } from "@/lib/roteirizacaoHorarios";
+import {
+  planejarDias,
+  resumirDias,
+  type ExpedienteJanela,
+  type HorarioParada,
+  type PernaCalculada,
+} from "@/lib/roteirizacaoHorarios";
 
 /* ─── paleta própria da simulação — mundo escuro deliberado, único tema ───── */
 const SIM = {
   bg: "#04151A",
-  glass: "rgba(5,24,28,0.82)",
+  glass: "rgba(5,24,28,0.84)",
   border: "rgba(94,255,217,0.16)",
   borderSoft: "rgba(255,255,255,0.07)",
   text: "#E9F7F2",
@@ -49,17 +72,28 @@ const SIM = {
   tile: "rgba(255,255,255,0.05)",
 } as const;
 
+/** Uma cor por dia de roteiro — linha, anel do pin e cabeçalho do dia batem. */
+const DIA_CORES = ["#00D4A0", "#F4B400", "#A78BFA", "#60A5FA", "#F472B6", "#FB923C"];
+const corDoDia = (i: number) => DIA_CORES[i % DIA_CORES.length];
+
+/** Visão inicial: o estado de SP inteiro — o mapa aparece de cara, antes do plano, e depois "voa" até a rota. */
+const SP_CENTER: [number, number] = [-48.6, -22.4];
+const SP_ZOOM = 5.6;
+
 if (typeof document !== "undefined" && !document.getElementById("vm-sim-style")) {
   const s = document.createElement("style");
   s.id = "vm-sim-style";
   s.textContent = `
     @keyframes simPop{0%{transform:scale(.55);opacity:.5}55%{transform:scale(1.25)}100%{transform:scale(1);opacity:1}}
-    @keyframes simRing{0%{box-shadow:0 0 0 0 rgba(0,212,160,.65),0 4px 14px rgba(0,0,0,.45)}100%{box-shadow:0 0 0 18px rgba(0,212,160,0),0 4px 14px rgba(0,0,0,.45)}}
-    .sim-pin{width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;
-      font:800 12px/1 ui-sans-serif,system-ui;color:#fff;background:linear-gradient(145deg,#00B388,#00875F);
+    @keyframes simRing{0%{box-shadow:0 0 0 0 var(--ring,rgba(0,212,160,.65)),0 4px 14px rgba(0,0,0,.45)}100%{box-shadow:0 0 0 18px transparent,0 4px 14px rgba(0,0,0,.45)}}
+    .sim-pin{--ring:rgba(0,212,160,.65);width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;
+      font:800 12px/1 ui-sans-serif,system-ui;color:#fff;background:linear-gradient(145deg,#00B388,#00875F);cursor:pointer;
       border:2.5px solid rgba(255,255,255,.9);box-shadow:0 4px 14px rgba(0,0,0,.45);opacity:.55;transform:scale(.88);
-      transition:opacity .35s ease,transform .35s ease,filter .35s ease;filter:saturate(.35)}
-    .sim-pin[data-on="1"]{opacity:1;transform:scale(1);filter:none;animation:simPop .55s cubic-bezier(.22,.7,.2,1) both,simRing 1.1s ease-out .1s 1}
+      transition:opacity .35s ease,transform .35s ease,filter .35s ease,box-shadow .35s ease;filter:saturate(.35)}
+    .sim-pin[data-on="1"]{opacity:1;transform:scale(1);filter:none;box-shadow:0 0 0 3px var(--dia,transparent),0 4px 14px rgba(0,0,0,.45)}
+    .sim-pin[data-on="1"][data-pop="1"]{animation:simPop .55s cubic-bezier(.22,.7,.2,1) both,simRing 1.1s ease-out .1s 1}
+    .sim-pin[data-off="1"]{opacity:.7;transform:scale(.8);filter:none;background:#2A3740;border-color:rgba(255,255,255,.35);color:rgba(255,255,255,.6);text-decoration:line-through}
+    .sim-pin:hover{transform:scale(1.08)}
     .sim-strip{scrollbar-width:thin;scrollbar-color:rgba(94,255,217,.25) transparent}
     .sim-strip::-webkit-scrollbar{height:6px}
     .sim-strip::-webkit-scrollbar-thumb{background:rgba(94,255,217,.25);border-radius:9999px}
@@ -104,10 +138,7 @@ function trechoParcial(coords: Coord[], acc: number[], alvoM: number): Coord[] {
     }
     const seg = acc[i] - acc[i - 1];
     const t = seg > 0 ? (alvoM - acc[i - 1]) / seg : 0;
-    out.push([
-      coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * t,
-      coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * t,
-    ]);
+    out.push([coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * t, coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * t]);
     break;
   }
   return out;
@@ -129,12 +160,7 @@ async function buscarPerna(de: LatLng, para: LatLng): Promise<Leg> {
     const json = await r.json();
     const route = json.routes?.[0];
     if (!route?.geometry?.coordinates?.length) return fallback;
-    return {
-      distanciaM: Math.round(route.distance),
-      duracaoMin: route.duration / 60,
-      coords: route.geometry.coordinates as Coord[],
-      estimado: false,
-    };
+    return { distanciaM: Math.round(route.distance), duracaoMin: route.duration / 60, coords: route.geometry.coordinates as Coord[], estimado: false };
   } catch {
     return fallback;
   }
@@ -151,8 +177,13 @@ function fmtMin(min: number): string {
   const r = m % 60;
   return r ? `${h}h${String(r).padStart(2, "0")}` : `${h}h`;
 }
-function fmtData(iso: string): string {
-  return new Date(`${iso}T12:00:00-03:00`).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", timeZone: TZ });
+function fmtDia(iso: string, longo = false): string {
+  return new Date(`${iso}T12:00:00-03:00`).toLocaleDateString("pt-BR", {
+    weekday: longo ? "long" : "short",
+    day: "2-digit",
+    month: "short",
+    timeZone: TZ,
+  });
 }
 function iniciais(nome: string): string {
   return nome.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
@@ -186,14 +217,14 @@ const SRC_DONE = "sim-route-done";
 const SRC_ACTIVE = "sim-route-active";
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-const lineFC = (linhas: Coord[][]): GeoJSON.FeatureCollection => ({
+const lineFC = (linhas: Array<{ coords: Coord[]; cor: string }>): GeoJSON.FeatureCollection => ({
   type: "FeatureCollection",
   features: linhas
-    .filter((l) => l.length >= 2)
-    .map((l) => ({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: l } })),
+    .filter((l) => l.coords.length >= 2)
+    .map((l) => ({ type: "Feature", properties: { cor: l.cor }, geometry: { type: "LineString", coordinates: l.coords } })),
 });
 
-/** Mesma linha "estilo Waze" da tela de deslocamento (glow + traço em #00D4A0). */
+/** Mesma linha "estilo Waze" da tela de deslocamento (glow + traço), cor por dia. */
 function montarCamadas(map: mapboxgl.Map) {
   if (map.getSource(SRC_DONE)) return;
   map.addSource(SRC_DONE, { type: "geojson", data: EMPTY_FC });
@@ -204,7 +235,7 @@ function montarCamadas(map: mapboxgl.Map) {
       type: "line",
       source: src,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": SIM.accent, "line-width": 10, "line-blur": 6, "line-opacity": opacity },
+      paint: { "line-color": ["get", "cor"], "line-width": 10, "line-blur": 6, "line-opacity": opacity },
     });
   const line = (id: string, src: string, width: number) =>
     map.addLayer({
@@ -212,7 +243,7 @@ function montarCamadas(map: mapboxgl.Map) {
       type: "line",
       source: src,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": SIM.accent, "line-width": width, "line-opacity": 0.92 },
+      paint: { "line-color": ["get", "cor"], "line-width": width, "line-opacity": 0.92 },
     });
   glow("sim-done-glow", SRC_DONE, 0.35);
   line("sim-done-line", SRC_DONE, 3);
@@ -257,7 +288,14 @@ interface SimulacaoDiaOverlayProps {
   confirmando: boolean;
   erro: string | null;
   onVoltar: () => void;
-  onConfirmar: () => void;
+  /** Recebe a ordem final (ids), já sem as paradas retiradas. */
+  onConfirmar: (ordem: number[]) => void;
+  /** Avisa a cada edição (remover/reordenar/restaurar) — o painel refaz o clima em segundo plano. */
+  onOrdemChange?: (ordem: number[]) => void;
+}
+
+interface Ponto extends LatLng {
+  key: string;
 }
 
 export function SimulacaoDiaOverlay({
@@ -272,192 +310,408 @@ export function SimulacaoDiaOverlay({
   erro,
   onVoltar,
   onConfirmar,
+  onOrdemChange,
 }: SimulacaoDiaOverlayProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stripRef = useRef<HTMLDivElement | null>(null);
+  const dockRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const layer3dRef = useRef<TechModel3DLayer | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const pinElsRef = useRef<HTMLDivElement[]>([]);
-  const feitasRef = useRef<Coord[][]>([]);
+  const pinElsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  const legCacheRef = useRef<Map<string, Promise<Leg>>>(new Map());
+  const geracaoRef = useRef(0);
+  const cinematicoFeitoRef = useRef(false);
+  const ordemRef = useRef<number[]>([]);
+  const removidasRef = useRef<number[]>([]);
 
   const [mapReady, setMapReady] = useState(false);
+  const [mapErro, setMapErro] = useState<string | null>(null);
+  const [ordem, setOrdem] = useState<number[]>([]);
+  const [removidas, setRemovidas] = useState<number[]>([]);
   const [legs, setLegs] = useState<Leg[]>([]);
   const [rotasResolvidas, setRotasResolvidas] = useState(0);
   const [concluido, setConcluido] = useState(false);
+  const [replanejando, setReplanejando] = useState(false);
+  const [dockAberto, setDockAberto] = useState(true);
 
-  /* mapa: nasce quando abre, morre quando fecha */
+  const reduzir = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const paradaPorId = useMemo(() => new Map((plano?.paradas ?? []).map((p) => [p.vistoria_id, p])), [plano]);
+  const expediente: ExpedienteJanela | null = useMemo(
+    () => (plano ? { inicio: plano.expediente.inicio, fim: plano.expediente.fim, fimDeSemana: plano.expediente.fim_de_semana } : null),
+    [plano]
+  );
+
+  /* horários — a MESMA função pura do servidor */
+  const horariosDe = useCallback(
+    (pernas: PernaCalculada[]): HorarioParada[] =>
+      plano && expediente ? planejarDias(plano.data_agendada, expediente, plano.sla_min, pernas, plano.hora_inicio) : [],
+    [plano, expediente]
+  );
+  const horarios = useMemo(() => horariosDe(legs), [horariosDe, legs]);
+  const dias = useMemo(() => resumirDias(horarios), [horarios]);
+  const diaIndex = useCallback((dia: string) => Math.max(0, dias.findIndex((d) => d.dia === dia)), [dias]);
+
+  /* ── mapa: nasce quando abre, morre quando fecha ───────────────────────── */
   useEffect(() => {
     if (!open || !containerRef.current) return;
-    mapboxgl.accessToken = getMapboxToken();
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: MAP_STYLE_DARK,
-      center: plano?.origem ? [plano.origem.lng, plano.origem.lat] : [-47.0608, -22.9056],
-      zoom: 10,
-      pitch: 48,
-      bearing: -16,
-      attributionControl: false,
-      antialias: true, // a camada 3D (Three.js) precisa disso pra não serrilhar
-    });
-    // CustomLayerInterface só funciona certo em mercator — o estilo escuro do
-    // v3 nasce em "globe".
+    const token = getMapboxToken();
+    if (!token) {
+      setMapErro("Token do Mapbox não configurado neste painel (NEXT_PUBLIC_MAPBOX_TOKEN).");
+      return;
+    }
+    mapboxgl.accessToken = token;
+    let map: mapboxgl.Map;
+    try {
+      map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: MAP_STYLE_DARK,
+        center: SP_CENTER,
+        zoom: SP_ZOOM,
+        pitch: 0,
+        bearing: 0,
+        attributionControl: false,
+        antialias: true, // a camada 3D (Three.js) precisa disso pra não serrilhar
+      });
+    } catch (e) {
+      setMapErro(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    // CustomLayerInterface só funciona certo em mercator — o estilo escuro do v3 nasce em "globe".
     map.setProjection("mercator");
     mapRef.current = map;
+    map.on("error", (ev) => {
+      const msg = ev?.error?.message ?? "erro desconhecido no mapa";
+      setMapErro(msg);
+      void import("@/lib/reportClientError").then(({ reportClientError }) => reportClientError(msg, "SimulacaoDiaOverlay/mapa"));
+    });
     map.on("load", () => {
       map.setProjection("mercator");
       map.resize();
       montarPredios(map);
       montarCamadas(map);
-      const l3d = new TechModel3DLayer();
-      map.addLayer(l3d);
-      layer3dRef.current = l3d;
+      try {
+        const l3d = new TechModel3DLayer();
+        map.addLayer(l3d);
+        layer3dRef.current = l3d;
+      } catch (e) {
+        // sem o veículo 3D a simulação continua — só sem o carro
+        void import("@/lib/reportClientError").then(({ reportClientError }) =>
+          reportClientError(e instanceof Error ? e.message : String(e), "SimulacaoDiaOverlay/3d")
+        );
+      }
       setMapReady(true);
     });
     const ro = new ResizeObserver(() => map.resize());
     ro.observe(containerRef.current);
+    const geracao = geracaoRef; // contador, não nó do DOM — invalida qualquer execução em curso no cleanup
 
     return () => {
       ro.disconnect();
+      geracao.current++;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      pinElsRef.current = [];
-      feitasRef.current = [];
+      pinElsRef.current = new Map();
+      legCacheRef.current = new Map();
+      cinematicoFeitoRef.current = false;
       layer3dRef.current = null;
       map.remove();
       mapRef.current = null;
       setMapReady(false);
+      setMapErro(null);
+      setOrdem([]);
+      setRemovidas([]);
       setLegs([]);
       setRotasResolvidas(0);
       setConcluido(false);
+      setReplanejando(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  /* simulação: pins → pernas em paralelo → revela em ordem, desenhando com o carro na ponta */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!open || !mapReady || !map || !plano || !tecnico) return;
-    let cancelado = false;
-    let rafCancel: (() => void) | null = null;
-    const reduzir = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* ── helpers de mapa ──────────────────────────────────────────────────── */
+  const pontosDe = useCallback(
+    (ids: number[]): Ponto[] => {
+      if (!plano) return [];
+      const out: Ponto[] = [{ key: "origem", lat: plano.origem.lat, lng: plano.origem.lng }];
+      for (const id of ids) {
+        const p = paradaPorId.get(id);
+        if (p) out.push({ key: String(id), lat: p.lat, lng: p.lng });
+      }
+      return out;
+    },
+    [plano, paradaPorId]
+  );
 
-    // pins numerados (apagados até a rota chegar neles)
-    pinElsRef.current = plano.paradas.map((p) => {
-      const el = document.createElement("div");
-      el.className = "sim-pin";
-      el.dataset.on = "0";
-      el.textContent = String(p.ordem);
-      markersRef.current.push(new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
-      return el;
-    });
+  const obterLeg = useCallback((de: Ponto, para: Ponto): Promise<Leg> => {
+    const k = `${de.key}>${para.key}`;
+    let p = legCacheRef.current.get(k);
+    if (!p) {
+      p = buscarPerna(de, para);
+      legCacheRef.current.set(k, p);
+    }
+    return p;
+  }, []);
 
-    // veículo/beacon 3D — mesmo da tela de deslocamento
-    const usersId = Number(tecnico.id) || 1;
-    const spec = (lng: number, lat: number, route: RouteResult | null, speedKmh: number | null): TechEntrySpec => ({
-      usersId,
-      nome: tecnico.nome,
+  const spec3d = useCallback(
+    (lng: number, lat: number, route: RouteResult | null, speedKmh: number | null): TechEntrySpec => ({
+      usersId: Number(tecnico?.id) || 1,
+      nome: tecnico?.nome ?? "",
       lng,
       lat,
       speedKmh,
       corHex: SIM.accent,
       route,
       paradoDesdeMin: null,
-    });
-    const l3d = () => layer3dRef.current;
-    l3d()?.syncEntries([spec(plano.origem.lng, plano.origem.lat, null, 0)]);
+    }),
+    [tecnico]
+  );
 
-    const bounds = new mapboxgl.LngLatBounds();
-    bounds.extend([plano.origem.lng, plano.origem.lat]);
-    plano.paradas.forEach((p) => bounds.extend([p.lng, p.lat]));
-    const alturaDock = Math.min(330, Math.round(window.innerHeight * 0.42));
-    const padding = { top: 150, bottom: alturaDock, left: 80, right: 80 };
-    map.fitBounds(bounds, { padding, maxZoom: 15, pitch: reduzir ? 0 : 48, bearing: reduzir ? 0 : -16, duration: reduzir ? 0 : 1100 });
-
-    // todas as pernas saem juntas; a revelação respeita a ordem
-    const pontos: LatLng[] = [plano.origem, ...plano.paradas.map((p) => ({ lat: p.lat, lng: p.lng }))];
-    const promessas = plano.paradas.map((_, i) =>
-      buscarPerna(pontos[i], pontos[i + 1]).then((leg) => {
-        if (!cancelado) setRotasResolvidas((n) => n + 1);
-        return leg;
-      })
-    );
-
-    const srcDone = () => map.getSource(SRC_DONE) as GeoJSONSource | undefined;
-    const srcActive = () => map.getSource(SRC_ACTIVE) as GeoJSONSource | undefined;
-
-    const desenhar = (coords: Coord[], ms: number) =>
-      new Promise<void>((resolve) => {
-        const acc = cumulativo(coords);
-        const total = acc[acc.length - 1];
-        const fim = coords[coords.length - 1];
-        if (ms <= 0 || total === 0 || coords.length < 2) {
-          srcActive()?.setData(lineFC([coords]));
-          resolve();
-          return;
-        }
-        // Mesmo objeto de rota em todos os frames — a camada 3D usa a
-        // identidade pra saber que é a mesma perna e manter o progresso
-        // monotônico (o carro nunca anda de ré).
-        const route: RouteResult = { coordinates: coords, distanceM: total, fetchedAt: performance.now(), destLng: fim[0], destLat: fim[1] };
-        const speedKmh = (total / 1000) / (ms / 3_600_000);
-        const t0 = performance.now();
-        let raf = 0;
-        const step = (t: number) => {
-          if (cancelado) return;
-          const p = Math.min(1, (t - t0) / ms);
-          const e = 1 - Math.pow(1 - p, 3);
-          const parte = trechoParcial(coords, acc, e * total);
-          const ponta = parte[parte.length - 1];
-          srcActive()?.setData(lineFC([parte]));
-          l3d()?.syncEntries([spec(ponta[0], ponta[1], route, speedKmh)]);
-          if (p < 1) raf = requestAnimationFrame(step);
-          else resolve();
-        };
-        raf = requestAnimationFrame(step);
-        rafCancel = () => cancelAnimationFrame(raf);
+  const enquadrar = useCallback(
+    (ids: number[], voar: boolean) => {
+      const map = mapRef.current;
+      if (!map || !plano) return;
+      const bounds = new mapboxgl.LngLatBounds();
+      bounds.extend([plano.origem.lng, plano.origem.lat]);
+      ids.forEach((id) => {
+        const p = paradaPorId.get(id);
+        if (p) bounds.extend([p.lng, p.lat]);
       });
+      const h = map.getContainer().clientHeight || 800;
+      const dockH = dockRef.current?.offsetHeight ?? 220;
+      const bottom = Math.min(dockH + 48, Math.round(h * 0.45));
+      const padding = { top: 120, bottom, left: 90, right: 90 };
+      const cam = map.cameraForBounds(bounds, { padding, maxZoom: 15, pitch: reduzir ? 0 : 50, bearing: reduzir ? 0 : -18 });
+      if (!cam) return;
+      if (voar && !reduzir) map.flyTo({ ...cam, duration: 2400, curve: 1.25, essential: true });
+      else map.easeTo({ ...cam, duration: reduzir ? 0 : 900, essential: true });
+    },
+    [plano, paradaPorId, reduzir]
+  );
 
-    const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, reduzir ? 0 : ms));
+  /** Pins numerados na ordem atual + pins "fora da rota" (riscados). Clique alterna. */
+  const montarPins = useCallback(
+    (ids: number[], fora: number[], acesas: number, hs: HorarioParada[]) => {
+      const map = mapRef.current;
+      if (!map || !plano) return;
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      pinElsRef.current = new Map();
+      const diasLista = resumirDias(hs).map((d) => d.dia);
+      ids.forEach((id, i) => {
+        const p = paradaPorId.get(id);
+        if (!p) return;
+        const el = document.createElement("div");
+        el.className = "sim-pin";
+        el.textContent = String(i + 1);
+        el.title = `${p.equipamento} — clique pra tirar da rota`;
+        const ligada = i < acesas;
+        el.dataset.on = ligada ? "1" : "0";
+        if (ligada && hs[i]) {
+          const cor = corDoDia(Math.max(0, diasLista.indexOf(hs[i].dia)));
+          el.style.setProperty("--dia", cor);
+          el.style.setProperty("--ring", cor);
+        }
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          remover(id);
+        });
+        markersRef.current.push(new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
+        pinElsRef.current.set(id, el);
+      });
+      fora.forEach((id) => {
+        const p = paradaPorId.get(id);
+        if (!p) return;
+        const el = document.createElement("div");
+        el.className = "sim-pin";
+        el.dataset.off = "1";
+        el.textContent = "×";
+        el.title = `${p.equipamento} — fora da rota · clique pra restaurar`;
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          restaurar(id);
+        });
+        markersRef.current.push(new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
+      });
+    },
+    // remover/restaurar são definidos abaixo e estáveis via ref de geração
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [plano, paradaPorId]
+  );
 
-    (async () => {
-      await dormir(800); // deixa a câmera assentar antes da primeira linha
-      for (let i = 0; i < plano.paradas.length; i++) {
+  const desenharFeitas = useCallback(
+    (pernas: Leg[]) => {
+      const src = mapRef.current?.getSource(SRC_DONE) as GeoJSONSource | undefined;
+      if (!src) return;
+      const hs = horariosDe(pernas);
+      const diasLista = resumirDias(hs).map((d) => d.dia);
+      src.setData(lineFC(pernas.map((leg, i) => ({ coords: leg.coords, cor: corDoDia(Math.max(0, diasLista.indexOf(hs[i]?.dia ?? ""))) }))));
+    },
+    [horariosDe]
+  );
+
+  /* ── execução: cinematográfica (1ª vez) ou rápida (edições) ───────────── */
+  const executar = useCallback(
+    async (gen: number, ids: number[], fora: number[], cinematico: boolean) => {
+      const map = mapRef.current;
+      if (!map || !plano) return;
+      const vivo = () => gen === geracaoRef.current;
+      const pts = pontosDe(ids);
+      const promessas = pts.slice(1).map((p, i) =>
+        obterLeg(pts[i], p).then((leg) => {
+          if (vivo()) setRotasResolvidas((n) => n + 1);
+          return leg;
+        })
+      );
+      const srcActive = () => map.getSource(SRC_ACTIVE) as GeoJSONSource | undefined;
+      const l3d = () => layer3dRef.current;
+      const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, reduzir ? 0 : ms));
+
+      setRotasResolvidas(0);
+      setConcluido(false);
+      setLegs([]);
+      srcActive()?.setData(EMPTY_FC);
+      (map.getSource(SRC_DONE) as GeoJSONSource | undefined)?.setData(EMPTY_FC);
+      montarPins(ids, fora, cinematico ? 0 : ids.length, cinematico ? [] : horariosDe([]));
+
+      if (!cinematico) {
+        setReplanejando(true);
+        const todas = await Promise.all(promessas);
+        if (!vivo()) return;
+        setLegs(todas);
+        desenharFeitas(todas);
+        montarPins(ids, fora, ids.length, horariosDe(todas));
+        const ultimo = pts[pts.length - 1];
+        l3d()?.syncEntries([]);
+        l3d()?.syncEntries([spec3d(ultimo.lng, ultimo.lat, null, 0)]);
+        enquadrar(ids, false);
+        setReplanejando(false);
+        setConcluido(true);
+        return;
+      }
+
+      // cinematográfico: beacon na origem, voo até a rota, depois perna a perna
+      l3d()?.syncEntries([spec3d(plano.origem.lng, plano.origem.lat, null, 0)]);
+      enquadrar(ids, true);
+      await dormir(2500);
+      if (!vivo()) return;
+
+      const acumuladas: Leg[] = [];
+      for (let i = 0; i < ids.length; i++) {
         const leg = await promessas[i];
-        if (cancelado) return;
-        const destino = plano.paradas[i];
+        if (!vivo()) return;
+        const destino = pts[i + 1];
+        // cor da perna = cor do dia em que a parada de destino vai cair
+        const hs = horariosDe([...acumuladas, leg]);
+        const diasLista = resumirDias(hs).map((d) => d.dia);
+        const cor = corDoDia(Math.max(0, diasLista.indexOf(hs[i]?.dia ?? "")));
         const ms = reduzir ? 0 : Math.min(1500, Math.max(500, leg.distanciaM / 30));
-        await desenhar(leg.coords, ms);
-        if (cancelado) return;
-        feitasRef.current.push(leg.coords);
-        srcDone()?.setData(lineFC(feitasRef.current));
+
+        await new Promise<void>((resolve) => {
+          const acc = cumulativo(leg.coords);
+          const total = acc[acc.length - 1];
+          if (ms <= 0 || total === 0 || leg.coords.length < 2) {
+            srcActive()?.setData(lineFC([{ coords: leg.coords, cor }]));
+            resolve();
+            return;
+          }
+          const fim = leg.coords[leg.coords.length - 1];
+          // Mesmo objeto de rota em todos os frames — a camada 3D usa a
+          // identidade pra manter o progresso monotônico (o carro nunca anda de ré).
+          const route: RouteResult = { coordinates: leg.coords, distanceM: total, fetchedAt: performance.now(), destLng: fim[0], destLat: fim[1] };
+          const speedKmh = (total / 1000) / (ms / 3_600_000);
+          const t0 = performance.now();
+          const step = (t: number) => {
+            if (!vivo()) return resolve();
+            const p = Math.min(1, (t - t0) / ms);
+            const e = 1 - Math.pow(1 - p, 3);
+            const parte = trechoParcial(leg.coords, acc, e * total);
+            const ponta = parte[parte.length - 1];
+            srcActive()?.setData(lineFC([{ coords: parte, cor }]));
+            l3d()?.syncEntries([spec3d(ponta[0], ponta[1], route, speedKmh)]);
+            if (p < 1) requestAnimationFrame(step);
+            else resolve();
+          };
+          requestAnimationFrame(step);
+        });
+        if (!vivo()) return;
+
+        acumuladas.push(leg);
+        desenharFeitas(acumuladas);
         srcActive()?.setData(EMPTY_FC);
         // chegou: vira beacon (parado) na parada — recria a entrada pra não
         // herdar o tween de posição antiga do carro.
         l3d()?.syncEntries([]);
-        l3d()?.syncEntries([spec(destino.lng, destino.lat, null, 0)]);
-        pinElsRef.current[i]?.setAttribute("data-on", "1");
-        setLegs((prev) => [...prev, leg]);
+        l3d()?.syncEntries([spec3d(destino.lng, destino.lat, null, 0)]);
+        const el = pinElsRef.current.get(ids[i]);
+        if (el) {
+          el.dataset.on = "1";
+          el.dataset.pop = "1";
+          el.style.setProperty("--dia", cor);
+          el.style.setProperty("--ring", cor);
+        }
+        setLegs([...acumuladas]);
         await dormir(260);
       }
-      if (cancelado) return;
+      if (!vivo()) return;
+      cinematicoFeitoRef.current = true;
       setConcluido(true);
-      map.fitBounds(bounds, { padding, maxZoom: 15, pitch: reduzir ? 0 : 52, bearing: reduzir ? 0 : -24, duration: reduzir ? 0 : 1800 });
-    })();
+      map.easeTo({ pitch: reduzir ? 0 : 55, bearing: reduzir ? 0 : -26, duration: reduzir ? 0 : 1800 });
+    },
+    [plano, pontosDe, obterLeg, montarPins, horariosDe, desenharFeitas, spec3d, enquadrar, reduzir]
+  );
 
-    return () => {
-      cancelado = true;
-      rafCancel?.();
-    };
+  /* primeira montagem, quando mapa + plano estiverem prontos */
+  useEffect(() => {
+    if (!open || !mapReady || !plano || cinematicoFeitoRef.current || ordemRef.current.length > 0) return;
+    const ids = plano.paradas.map((p) => p.vistoria_id);
+    ordemRef.current = ids;
+    removidasRef.current = [];
+    setOrdem(ids);
+    setRemovidas([]);
+    const gen = ++geracaoRef.current;
+    void executar(gen, ids, [], true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, mapReady, plano, tecnico]);
+  }, [open, mapReady, plano]);
+
+  /* edições: replaneja na hora, sem animação */
+  const replanejar = useCallback(
+    (novaOrdem: number[], novasFora: number[]) => {
+      ordemRef.current = novaOrdem;
+      removidasRef.current = novasFora;
+      setOrdem(novaOrdem);
+      setRemovidas(novasFora);
+      cinematicoFeitoRef.current = true;
+      const gen = ++geracaoRef.current;
+      void executar(gen, novaOrdem, novasFora, false);
+      onOrdemChange?.(novaOrdem);
+    },
+    [executar, onOrdemChange]
+  );
+  function remover(id: number) {
+    const o = ordemRef.current.filter((x) => x !== id);
+    if (o.length === 0) return; // nunca deixa a rota vazia
+    replanejar(o, [...removidasRef.current.filter((x) => x !== id), id]);
+  }
+  function restaurar(id: number) {
+    replanejar([...ordemRef.current.filter((x) => x !== id), id], removidasRef.current.filter((x) => x !== id));
+  }
+  function mover(id: number, delta: -1 | 1) {
+    const o = [...ordemRef.current];
+    const i = o.indexOf(id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= o.length) return;
+    [o[i], o[j]] = [o[j], o[i]];
+    replanejar(o, removidasRef.current);
+  }
 
   /* a faixa da timeline acompanha a última parada revelada */
   useEffect(() => {
     const el = stripRef.current;
-    if (!el) return;
+    if (!el || !dockAberto) return;
     el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
-  }, [legs.length, concluido]);
+  }, [legs.length, concluido, dockAberto]);
 
   /* teclado + scroll do body */
   useEffect(() => {
@@ -474,19 +728,7 @@ export function SimulacaoDiaOverlay({
     };
   }, [open, confirmando, onVoltar]);
 
-  /* horários — a MESMA função pura do servidor */
-  const horaInicio = useMemo(() => (plano ? new Date(`${plano.data_agendada}T${plano.hora_inicio}:00-03:00`) : null), [plano]);
-  const almocoEm = useMemo(() => (plano ? almocoDoDia(plano.data_agendada) : null), [plano]);
-  const horarios = useMemo(
-    () => (plano && horaInicio && almocoEm ? acumularHorarios(horaInicio, plano.sla_min, legs, almocoEm) : []),
-    [plano, horaInicio, almocoEm, legs]
-  );
-  const termino = useMemo(() => (concluido && almocoEm ? calcularTermino(horarios, almocoEm) : null), [concluido, horarios, almocoEm]);
-  const almocoFim = useMemo(
-    () => (almocoEm && plano ? new Date(almocoEm.getTime() + plano.almoco.duracao_min * 60000) : null),
-    [almocoEm, plano]
-  );
-
+  /* ── derivados pra UI ─────────────────────────────────────────────────── */
   const totalKmM = legs.reduce((s, l) => s + l.distanciaM, 0);
   const totalRotaMin = legs.reduce((s, l) => s + l.duracaoMin, 0);
   const totalVistoriaMin = plano ? legs.length * plano.sla_min : 0;
@@ -499,23 +741,13 @@ export function SimulacaoDiaOverlay({
     previewFinal?.itens.forEach((it) => m.set(it.vistoria_id, { pct: it.risco_chuva_pct, alerta: it.risco_chuva_alerta }));
     return m;
   }, [previewFinal]);
-  const chuvaNoDia = previewFinal?.itens.some((it) => it.risco_chuva_alerta) ?? false;
+  const chuvaNoDia = ordem.some((id) => climaPorId.get(id)?.alerta);
 
-  const n = plano?.paradas.length ?? 0;
+  const n = ordem.length;
   const etapas: Array<{ key: string; label: string; detalhe?: string; estado: Etapa }> = [
     { key: "ordem", label: "Ordenando paradas", estado: plano ? "ok" : planoErro ? "falhou" : "ativa" },
-    {
-      key: "rotas",
-      label: "Traçando rotas",
-      detalhe: plano ? `${Math.min(rotasResolvidas, n)}/${n}` : undefined,
-      estado: !plano ? "pendente" : rotasResolvidas >= n ? "ok" : "ativa",
-    },
-    {
-      key: "horarios",
-      label: "Estimando horários",
-      detalhe: plano ? `${legs.length}/${n}` : undefined,
-      estado: !plano ? "pendente" : concluido ? "ok" : legs.length > 0 ? "ativa" : "pendente",
-    },
+    { key: "rotas", label: "Traçando rotas", detalhe: plano ? `${Math.min(rotasResolvidas, n)}/${n}` : undefined, estado: !plano ? "pendente" : rotasResolvidas >= n ? "ok" : "ativa" },
+    { key: "horarios", label: "Encaixando no expediente", detalhe: plano ? `${legs.length}/${n}` : undefined, estado: !plano ? "pendente" : concluido ? "ok" : legs.length > 0 ? "ativa" : "pendente" },
     {
       key: "clima",
       label: "Conferindo clima",
@@ -525,8 +757,10 @@ export function SimulacaoDiaOverlay({
   ];
 
   const primeiroNome = tecnico?.nome.split(" ")[0] ?? "";
-  const podeConfirmar = concluido && !confirmando && !!plano;
+  const podeConfirmar = concluido && !confirmando && !replanejando && !!plano && n > 0;
   const kmTxt = `${kmAnim.toFixed(1).replace(".", ",")} km`;
+  const ultimoDia = dias[dias.length - 1];
+  const primeiroDia = dias[0];
 
   return (
     <AnimatePresence>
@@ -545,17 +779,22 @@ export function SimulacaoDiaOverlay({
             aria-hidden
             className="pointer-events-none absolute inset-0"
             style={{
-              background:
-                "linear-gradient(180deg, rgba(4,21,26,0.72) 0%, rgba(4,21,26,0) 26%), linear-gradient(0deg, rgba(4,21,26,0.78) 0%, rgba(4,21,26,0) 38%)",
+              background: "linear-gradient(180deg, rgba(4,21,26,0.6) 0%, rgba(4,21,26,0) 18%), linear-gradient(0deg, rgba(4,21,26,0.55) 0%, rgba(4,21,26,0) 26%)",
             }}
           />
+
+          {mapErro && (
+            <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2 rounded-xl px-4 py-2 text-[12px]" style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.35)", color: "#FECACA" }}>
+              Mapa indisponível: {mapErro}
+            </div>
+          )}
 
           {/* voltar */}
           <motion.button
             type="button"
             onClick={onVoltar}
             disabled={confirmando}
-            className="absolute left-6 top-6 flex h-10 items-center gap-2 rounded-full px-4 text-[12.5px] font-semibold backdrop-blur-md transition hover:bg-white/10 disabled:opacity-40"
+            className="absolute left-6 top-6 z-10 flex h-10 items-center gap-2 rounded-full px-4 text-[12.5px] font-semibold backdrop-blur-md transition hover:bg-white/10 disabled:opacity-40"
             style={{ background: SIM.glass, border: `1px solid ${SIM.borderSoft}`, color: SIM.soft }}
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
@@ -565,34 +804,27 @@ export function SimulacaoDiaOverlay({
           </motion.button>
 
           {/* topo central: técnico + data + etapas */}
-          <div className="pointer-events-none absolute inset-x-0 top-6 flex flex-col items-center gap-3 px-24">
+          <div className="pointer-events-none absolute inset-x-0 top-6 z-10 flex flex-col items-center gap-2.5 px-28">
             <motion.div
-              className="pointer-events-auto flex items-center gap-3 rounded-full py-2 pl-2 pr-5 backdrop-blur-md"
+              className="pointer-events-auto flex items-center gap-3 rounded-full py-1.5 pl-1.5 pr-5 backdrop-blur-md"
               style={{ background: SIM.glass, border: `1px solid ${SIM.border}`, boxShadow: "0 12px 40px rgba(0,0,0,0.35)" }}
               initial={{ opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
             >
-              <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 4px 14px rgba(0,179,136,0.4)" }}
-              >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 4px 14px rgba(0,179,136,0.4)" }}>
                 {tecnico ? iniciais(tecnico.nome) : "—"}
               </span>
               <div className="leading-tight">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: SIM.faint }}>
-                  Simulação do dia
-                </p>
-                <p className="text-[14px] font-semibold">
+                <p className="text-[9.5px] font-bold uppercase tracking-[0.2em]" style={{ color: SIM.faint }}>Simulação do roteiro</p>
+                <p className="text-[13.5px] font-semibold">
                   {tecnico?.nome ?? "—"}
                   <span className="mx-2" style={{ color: SIM.faint }}>·</span>
-                  <span className="inline-flex items-center gap-1.5" style={{ color: SIM.soft }}>
-                    <Calendar className="h-3.5 w-3.5" /> {fmtData(dataAgendada)}
-                  </span>
+                  <span style={{ color: SIM.soft }}>a partir de {fmtDia(dataAgendada)}</span>
                   {plano && (
                     <>
                       <span className="mx-2" style={{ color: SIM.faint }}>·</span>
-                      <span style={{ color: SIM.soft }}>{n} parada{n !== 1 ? "s" : ""}</span>
+                      <span style={{ color: SIM.soft }}>expediente {plano.expediente.inicio}–{plano.expediente.fim}</span>
                     </>
                   )}
                 </p>
@@ -600,7 +832,7 @@ export function SimulacaoDiaOverlay({
             </motion.div>
 
             <motion.div
-              className="pointer-events-auto flex items-center gap-1 rounded-full px-2 py-1.5 backdrop-blur-md"
+              className="pointer-events-auto flex items-center gap-1 rounded-full px-2 py-1 backdrop-blur-md"
               style={{ background: SIM.glass, border: `1px solid ${SIM.borderSoft}` }}
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -608,16 +840,12 @@ export function SimulacaoDiaOverlay({
             >
               {etapas.map((et, i) => (
                 <div key={et.key} className="flex items-center">
-                  {i > 0 && <span className="mx-1 h-px w-5" style={{ background: SIM.borderSoft }} />}
-                  <div className="flex items-center gap-2 rounded-full px-2 py-1" style={{ opacity: et.estado === "pendente" ? 0.45 : 1 }}>
+                  {i > 0 && <span className="mx-1 h-px w-4" style={{ background: SIM.borderSoft }} />}
+                  <div className="flex items-center gap-1.5 rounded-full px-1.5 py-0.5" style={{ opacity: et.estado === "pendente" ? 0.45 : 1 }}>
                     <EtapaIcone estado={et.estado} />
-                    <span className="text-[12px] font-semibold" style={{ color: et.estado === "pendente" ? SIM.faint : SIM.text }}>
-                      {et.label}
-                    </span>
+                    <span className="text-[11.5px] font-semibold" style={{ color: et.estado === "pendente" ? SIM.faint : SIM.text }}>{et.label}</span>
                     {et.detalhe && (
-                      <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: et.estado === "falhou" ? SIM.danger : SIM.mint }}>
-                        {et.detalhe}
-                      </span>
+                      <span className="text-[10px] font-semibold tabular-nums" style={{ color: et.estado === "falhou" ? SIM.danger : SIM.mint }}>{et.detalhe}</span>
                     )}
                   </div>
                 </div>
@@ -626,218 +854,255 @@ export function SimulacaoDiaOverlay({
           </div>
 
           {/* dock inferior central */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-6">
+          <div className="pointer-events-none absolute inset-x-0 bottom-5 z-10 flex justify-center px-6">
             <motion.div
-              className="pointer-events-auto w-full max-w-[1060px] rounded-[26px] p-4 backdrop-blur-xl"
+              ref={dockRef}
+              className="pointer-events-auto w-full max-w-[1120px] rounded-[26px] backdrop-blur-xl"
               style={{ background: SIM.glass, border: `1px solid ${SIM.border}`, boxShadow: "0 24px 70px rgba(0,0,0,0.5)" }}
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 30 }}
               transition={{ type: "spring", stiffness: 260, damping: 28, delay: 0.15 }}
             >
-              {planoErro ? (
-                <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
-                  {planoErro}
-                </div>
-              ) : (
-                <>
-                  {plano && plano.ignorados_sem_coordenada.length > 0 && (
-                    <p className="mb-3 rounded-xl px-3 py-1.5 text-[11px]" style={{ background: "rgba(244,180,0,0.1)", color: "#FDE68A", border: "1px solid rgba(244,180,0,0.25)" }}>
-                      {plano.ignorados_sem_coordenada.length} equipamento(s) sem coordenada ficaram fora do roteiro.
-                    </p>
+              {/* barra do dock: resumo por dia + recolher */}
+              <div className="flex items-center gap-3 px-4 pt-3" style={{ borderBottom: dockAberto ? `1px solid ${SIM.borderSoft}` : "none", paddingBottom: dockAberto ? 10 : 12 }}>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  {dias.length === 0 && (
+                    <span className="flex items-center gap-2 text-[12px]" style={{ color: SIM.soft }}>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: SIM.accent }} />
+                      {plano ? "Montando o roteiro…" : "Ordenando as paradas pela posição do técnico…"}
+                    </span>
                   )}
+                  {dias.map((d, i) => (
+                    <span key={d.dia} className="flex items-center gap-2 rounded-full py-1 pl-1.5 pr-3 text-[11.5px] font-semibold" style={{ background: SIM.tile, border: `1px solid ${SIM.borderSoft}` }}>
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: corDoDia(i), boxShadow: `0 0 10px ${corDoDia(i)}` }} />
+                      <span className="capitalize">{fmtDia(d.dia)}</span>
+                      <span style={{ color: SIM.faint }}>·</span>
+                      <span className="tabular-nums" style={{ color: SIM.soft }}>{d.paradas} parada{d.paradas !== 1 ? "s" : ""} · até {fmtHora(d.termino)}</span>
+                    </span>
+                  ))}
+                  {removidas.length > 0 && (
+                    <span className="text-[11px]" style={{ color: SIM.faint }}>· {removidas.length} fora da rota</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDockAberto((v) => !v)}
+                  className="flex h-8 items-center gap-1 rounded-full px-3 text-[11px] font-semibold transition hover:bg-white/10"
+                  style={{ color: SIM.soft, border: `1px solid ${SIM.borderSoft}` }}
+                >
+                  {dockAberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+                  {dockAberto ? "Recolher" : "Roteiro"}
+                </button>
+              </div>
 
-                  {/* timeline horizontal 1 → 2 → 3 */}
-                  <div ref={stripRef} className="sim-strip flex items-stretch gap-2 overflow-x-auto pb-2">
-                    {plano ? (
-                      <>
-                        <Chip>
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold" style={{ background: SIM.mint, color: SIM.bg }}>
-                            {tecnico ? iniciais(tecnico.nome) : "—"}
-                          </span>
-                          <div className="leading-tight">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: SIM.faint }}>Saída</p>
-                            <p className="text-[13px] font-bold tabular-nums">{plano.hora_inicio}</p>
-                          </div>
-                        </Chip>
+              <AnimatePresence initial={false}>
+                {dockAberto && (
+                  <motion.div key="corpo" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} className="overflow-hidden">
+                    <div className="px-4 pt-3">
+                      {planoErro ? (
+                        <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>{planoErro}</div>
+                      ) : (
+                        <>
+                          {plano && plano.ignorados_sem_coordenada.length > 0 && (
+                            <p className="mb-2 rounded-xl px-3 py-1.5 text-[11px]" style={{ background: "rgba(244,180,0,0.1)", color: "#FDE68A", border: "1px solid rgba(244,180,0,0.25)" }}>
+                              {plano.ignorados_sem_coordenada.length} equipamento(s) sem coordenada ficaram fora do roteiro.
+                            </p>
+                          )}
 
-                        {plano.paradas.map((p, i) => {
-                          const revelada = i < legs.length;
-                          const h = horarios[i];
-                          const leg = legs[i];
-                          const clima = climaPorId.get(p.vistoria_id);
-                          return (
-                            <div key={p.vistoria_id} className="flex items-stretch gap-2">
-                              {revelada && h?.almocoAntes && almocoEm && almocoFim && (
-                                <>
-                                  <Seta />
-                                  <Chip amber>
-                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: SIM.amber, color: "#1C222B" }}>
-                                      <UtensilsCrossed className="h-3.5 w-3.5" />
-                                    </span>
-                                    <div className="leading-tight">
-                                      <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "#FDE68A" }}>Almoço</p>
-                                      <p className="text-[12.5px] font-bold tabular-nums" style={{ color: "#FDE68A" }}>{fmtHora(almocoEm)}–{fmtHora(almocoFim)}</p>
-                                    </div>
-                                  </Chip>
-                                </>
-                              )}
-                              <Seta ativa={revelada} />
-                              {revelada && h && leg ? (
-                                <motion.div
-                                  initial={{ opacity: 0, x: 14, scale: 0.96 }}
-                                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                                  transition={{ type: "spring", stiffness: 280, damping: 24 }}
-                                  className="flex"
-                                >
-                                  <Chip alerta={!!clima?.alerta}>
-                                    <span
-                                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                                      style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 0 0 4px rgba(0,212,160,0.18)" }}
-                                    >
-                                      {p.ordem}
-                                    </span>
-                                    <div className="min-w-0 leading-tight">
-                                      <p className="max-w-[150px] truncate text-[12px] font-semibold">{p.equipamento}</p>
-                                      <p className="text-[12.5px] font-bold tabular-nums" style={{ color: SIM.mint }}>
-                                        {fmtHora(h.chegada)} <span className="font-medium" style={{ color: SIM.faint }}>→</span> {fmtHora(h.saida)}
-                                      </p>
-                                      <p className="flex items-center gap-1 text-[10px] tabular-nums" style={{ color: SIM.soft }}>
-                                        <Route className="h-2.5 w-2.5" style={{ color: SIM.faint }} />
-                                        +{fmtKm(leg.distanciaM)} km · {fmtMin(leg.duracaoMin)}
-                                        {clima?.alerta && (
-                                          <span className="ml-1 inline-flex items-center gap-0.5 font-semibold" style={{ color: "#FCA5A5" }}>
-                                            <CloudRain className="h-2.5 w-2.5" /> {clima.pct}%
-                                          </span>
-                                        )}
-                                      </p>
-                                    </div>
-                                  </Chip>
-                                </motion.div>
-                              ) : (
-                                <Chip dim>
-                                  <span
-                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                                    style={{ background: "rgba(255,255,255,0.06)", border: `1px dashed ${SIM.border}`, color: SIM.faint }}
-                                  >
-                                    {p.ordem}
-                                  </span>
+                          {/* timeline horizontal por dia */}
+                          <div ref={stripRef} className="sim-strip flex items-stretch gap-2 overflow-x-auto pb-2">
+                            {plano && (
+                              <>
+                                <Chip>
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold" style={{ background: SIM.mint, color: SIM.bg }}>{tecnico ? iniciais(tecnico.nome) : "—"}</span>
                                   <div className="leading-tight">
-                                    <p className="max-w-[120px] truncate text-[11.5px] font-medium" style={{ color: SIM.faint }}>{p.equipamento}</p>
-                                    <p className="flex items-center gap-1 text-[10px]" style={{ color: SIM.faint }}>
-                                      {i === legs.length && !concluido ? (
-                                        <>
-                                          <Loader2 className="h-2.5 w-2.5 animate-spin" style={{ color: SIM.accent }} /> traçando…
-                                        </>
-                                      ) : (
-                                        "aguardando"
-                                      )}
-                                    </p>
+                                    <p className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: SIM.faint }}>Saída</p>
+                                    <p className="text-[13px] font-bold tabular-nums">{plano.hora_inicio}</p>
                                   </div>
                                 </Chip>
-                              )}
-                            </div>
-                          );
-                        })}
 
-                        {termino && (
-                          <>
-                            <Seta ativa />
-                            <motion.div initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 280, damping: 24, delay: 0.1 }} className="flex">
-                              <Chip>
-                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: SIM.mint, color: SIM.bg }}>
-                                  <Flag className="h-3.5 w-3.5" />
-                                </span>
-                                <div className="leading-tight">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: SIM.faint }}>Término</p>
-                                  <p className="text-[13px] font-bold tabular-nums">{fmtHora(termino)}</p>
-                                  <p className="text-[9.5px]" style={{ color: SIM.faint }}>+{plano.margem_min} min de margem</p>
-                                </div>
-                              </Chip>
-                            </motion.div>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <div className="flex h-[60px] w-full items-center justify-center gap-2 text-[12px]" style={{ color: SIM.soft }}>
-                        <Loader2 className="h-4 w-4 animate-spin" style={{ color: SIM.accent }} /> Ordenando as paradas pela posição do técnico…
-                      </div>
-                    )}
-                  </div>
+                                {ordem.map((id, i) => {
+                                  const p = paradaPorId.get(id);
+                                  if (!p) return null;
+                                  const revelada = i < legs.length;
+                                  const h = horarios[i];
+                                  const leg = legs[i];
+                                  const clima = climaPorId.get(id);
+                                  const cor = h ? corDoDia(diaIndex(h.dia)) : SIM.accent;
+                                  return (
+                                    <div key={id} className="flex items-stretch gap-2">
+                                      {revelada && h?.novoDia && (
+                                        <>
+                                          <Seta ativa cor={cor} />
+                                          <Chip cor={cor} titulo={`Não coube até ${plano.expediente.fim} — segue no próximo dia útil`}>
+                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: cor, color: "#0B1A1A" }}><Moon className="h-3.5 w-3.5" /></span>
+                                            <div className="leading-tight">
+                                              <p className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: cor }}>Vira o dia</p>
+                                              <p className="text-[12.5px] font-bold capitalize">{fmtDia(h.dia)} · {plano.expediente.inicio}</p>
+                                            </div>
+                                          </Chip>
+                                        </>
+                                      )}
+                                      {revelada && h?.almocoAntes && (
+                                        <>
+                                          <Seta ativa cor={cor} />
+                                          <Chip amber>
+                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: SIM.amber, color: "#1C222B" }}><UtensilsCrossed className="h-3.5 w-3.5" /></span>
+                                            <div className="leading-tight">
+                                              <p className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: "#FDE68A" }}>Almoço</p>
+                                              <p className="text-[12.5px] font-bold tabular-nums" style={{ color: "#FDE68A" }}>12:00–13:00</p>
+                                            </div>
+                                          </Chip>
+                                        </>
+                                      )}
+                                      <Seta ativa={revelada} cor={cor} />
+                                      {revelada && h && leg ? (
+                                        <motion.div initial={{ opacity: 0, x: 14, scale: 0.96 }} animate={{ opacity: 1, x: 0, scale: 1 }} transition={{ type: "spring", stiffness: 280, damping: 24 }} className="group flex">
+                                          <Chip alerta={!!clima?.alerta} cor={cor}>
+                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: `0 0 0 3px ${cor}55` }}>{i + 1}</span>
+                                            <div className="min-w-0 leading-tight">
+                                              <p className="max-w-[150px] truncate text-[12px] font-semibold">{p.equipamento}</p>
+                                              <p className="text-[12.5px] font-bold tabular-nums" style={{ color: SIM.mint }}>
+                                                {fmtHora(h.chegada)} <span className="font-medium" style={{ color: SIM.faint }}>→</span> {fmtHora(h.saida)}
+                                              </p>
+                                              <p className="flex items-center gap-1 text-[10px] tabular-nums" style={{ color: SIM.soft }}>
+                                                <Route className="h-2.5 w-2.5" style={{ color: SIM.faint }} />
+                                                +{fmtKm(leg.distanciaM)} km · {fmtMin(leg.duracaoMin)}
+                                                {clima?.alerta && (
+                                                  <span className="ml-1 inline-flex items-center gap-0.5 font-semibold" style={{ color: "#FCA5A5" }}><CloudRain className="h-2.5 w-2.5" /> {clima.pct}%</span>
+                                                )}
+                                              </p>
+                                            </div>
+                                            {/* ações — aparecem no hover */}
+                                            <div className="ml-1 flex flex-col gap-0.5 opacity-0 transition group-hover:opacity-100">
+                                              <button type="button" title="Tirar da rota" onClick={() => remover(id)} className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-white/10" style={{ color: SIM.danger }}><X className="h-3 w-3" /></button>
+                                              <div className="flex gap-0.5">
+                                                <button type="button" title="Mover antes" onClick={() => mover(id, -1)} disabled={i === 0} className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-white/10 disabled:opacity-25" style={{ color: SIM.soft }}><ChevronLeft className="h-3 w-3" /></button>
+                                                <button type="button" title="Mover depois" onClick={() => mover(id, 1)} disabled={i === ordem.length - 1} className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-white/10 disabled:opacity-25" style={{ color: SIM.soft }}><ChevronRight className="h-3 w-3" /></button>
+                                              </div>
+                                            </div>
+                                          </Chip>
+                                        </motion.div>
+                                      ) : (
+                                        <Chip dim>
+                                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: "rgba(255,255,255,0.06)", border: `1px dashed ${SIM.border}`, color: SIM.faint }}>{i + 1}</span>
+                                          <div className="leading-tight">
+                                            <p className="max-w-[120px] truncate text-[11.5px] font-medium" style={{ color: SIM.faint }}>{p.equipamento}</p>
+                                            <p className="flex items-center gap-1 text-[10px]" style={{ color: SIM.faint }}>
+                                              {i === legs.length && !concluido ? (<><Loader2 className="h-2.5 w-2.5 animate-spin" style={{ color: SIM.accent }} /> traçando…</>) : "aguardando"}
+                                            </p>
+                                          </div>
+                                        </Chip>
+                                      )}
+                                    </div>
+                                  );
+                                })}
 
-                  {/* veredito · totais · ações */}
-                  <div className="mt-3 flex flex-wrap items-center gap-4 border-t pt-3" style={{ borderColor: SIM.borderSoft }}>
-                    <div className="min-w-[260px] flex-1">
-                      <AnimatePresence mode="wait">
-                        {termino && plano ? (
-                          <motion.div key="veredito" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                            <p className="text-[11px] leading-snug" style={{ color: SIM.soft }}>
-                              Considerando início às <b style={{ color: SIM.text }}>{plano.hora_inicio}</b>, almoço de{" "}
-                              <b style={{ color: SIM.text }}>{plano.almoco.duracao_min / 60}h</b> e margem de{" "}
-                              <b style={{ color: SIM.text }}>{plano.margem_min} min</b>,
-                            </p>
-                            <p className="mt-0.5 text-[15px] font-semibold leading-tight">
-                              {primeiroNome} termina às{" "}
-                              <span className="text-[28px] font-bold tabular-nums tracking-tight" style={{ color: SIM.mint, textShadow: "0 0 24px rgba(94,255,217,0.35)" }}>
-                                {fmtHora(termino)}
-                              </span>
-                            </p>
-                            {chuvaNoDia && (
-                              <p className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: "#FCA5A5" }}>
-                                <CloudRain className="h-3.5 w-3.5" /> Risco de chuva em parte do percurso
-                              </p>
+                                {concluido && ultimoDia && (
+                                  <>
+                                    <Seta ativa cor={corDoDia(dias.length - 1)} />
+                                    <motion.div initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 280, damping: 24, delay: 0.1 }} className="flex">
+                                      <Chip>
+                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: SIM.mint, color: SIM.bg }}><Flag className="h-3.5 w-3.5" /></span>
+                                        <div className="leading-tight">
+                                          <p className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: SIM.faint }}>Término</p>
+                                          <p className="text-[13px] font-bold tabular-nums">{fmtHora(ultimoDia.termino)}</p>
+                                          <p className="text-[9.5px]" style={{ color: SIM.faint }}>+{plano.margem_min} min de margem</p>
+                                        </div>
+                                      </Chip>
+                                    </motion.div>
+                                  </>
+                                )}
+                              </>
                             )}
-                          </motion.div>
-                        ) : (
-                          <motion.div key="montando" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -6 }}>
-                            <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: SIM.faint }}>
-                              Montando o dia de {primeiroNome || "—"}
-                            </p>
-                            <div className="mt-2 h-1.5 w-full max-w-[320px] overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
-                              <motion.div
-                                className="h-full rounded-full"
-                                style={{ background: `linear-gradient(90deg, ${SIM.brand}, ${SIM.mint})` }}
-                                animate={{ width: `${n > 0 ? Math.max(6, (legs.length / n) * 100) : 6}%` }}
-                                transition={{ type: "spring", stiffness: 120, damping: 20 }}
-                              />
+                          </div>
+
+                          {/* fora da rota */}
+                          {removidas.length > 0 && plano && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              <span style={{ color: SIM.faint }}>Fora da rota:</span>
+                              {removidas.map((id) => (
+                                <button key={id} type="button" onClick={() => restaurar(id)} title="Restaurar na rota" className="flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition hover:bg-white/10" style={{ background: SIM.tile, border: `1px solid ${SIM.borderSoft}`, color: SIM.soft }}>
+                                  <RotateCcw className="h-3 w-3" style={{ color: SIM.accent }} />
+                                  <span className="max-w-[160px] truncate line-through">{paradaPorId.get(id)?.equipamento ?? id}</span>
+                                </button>
+                              ))}
                             </div>
-                            <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px]" style={{ color: SIM.faint }}>
-                              <Timer className="h-3 w-3" /> Média de {plano?.sla_min ?? "—"} min por vistoria — histórico do próprio técnico.
-                            </p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <Stat valor={kmTxt} label="percurso" dim={!termino} />
-                      <Stat valor={fmtMin(rotaAnim)} label="em rota" dim={!termino} />
-                      <Stat valor={fmtMin(vistoriaAnim)} label="em vistoria" dim={!termino} />
-                    </div>
-
-                    <div className="flex flex-col items-end gap-1.5">
-                      {erro && (
-                        <p className="text-[11px] font-medium" style={{ color: SIM.danger }}>
-                          {erro}
-                        </p>
+                          )}
+                        </>
                       )}
-                      <button
-                        type="button"
-                        onClick={onConfirmar}
-                        disabled={!podeConfirmar}
-                        className="flex h-12 min-w-[230px] items-center justify-center gap-2 rounded-2xl px-5 text-[13.5px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
-                        style={{
-                          background: `linear-gradient(135deg, ${SIM.brand}, ${SIM.brandDeep})`,
-                          boxShadow: podeConfirmar ? "0 10px 30px rgba(0,179,136,0.4)" : "none",
-                        }}
-                      >
-                        {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                        {confirmando ? "Gravando…" : concluido ? "Confirmar agendamento" : "Montando…"}
-                      </button>
                     </div>
-                  </div>
-                </>
-              )}
+
+                    {/* veredito · totais · ações */}
+                    <div className="mx-4 mt-3 flex flex-wrap items-center gap-4 border-t pb-4 pt-3" style={{ borderColor: SIM.borderSoft }}>
+                      <div className="min-w-[280px] flex-1">
+                        <AnimatePresence mode="wait">
+                          {concluido && plano && primeiroDia && ultimoDia ? (
+                            <motion.div key="veredito" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                              {dias.length === 1 ? (
+                                <>
+                                  <p className="text-[11px] leading-snug" style={{ color: SIM.soft }}>
+                                    Considerando início às <b style={{ color: SIM.text }}>{plano.hora_inicio}</b>, almoço de <b style={{ color: SIM.text }}>1h</b> e margem de <b style={{ color: SIM.text }}>{plano.margem_min} min</b>,
+                                  </p>
+                                  <p className="mt-0.5 text-[15px] font-semibold leading-tight">
+                                    {primeiroNome} termina <span className="capitalize">{fmtDia(primeiroDia.dia)}</span> às{" "}
+                                    <span className="text-[28px] font-bold tabular-nums tracking-tight" style={{ color: SIM.mint, textShadow: "0 0 24px rgba(94,255,217,0.35)" }}>{fmtHora(primeiroDia.termino)}</span>
+                                  </p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="flex items-center gap-1.5 text-[11px] leading-snug" style={{ color: SIM.soft }}>
+                                    <Moon className="h-3 w-3" style={{ color: corDoDia(1) }} />
+                                    Não cabe em um dia dentro do expediente ({plano.expediente.inicio}–{plano.expediente.fim}) — o roteiro se espalha por <b style={{ color: SIM.text }}>{dias.length} dias</b>.
+                                  </p>
+                                  <p className="mt-0.5 text-[14px] font-semibold leading-tight">
+                                    {primeiroNome} fecha <span className="capitalize">{fmtDia(primeiroDia.dia)}</span> às <b className="tabular-nums" style={{ color: corDoDia(0) }}>{fmtHora(primeiroDia.termino)}</b> e termina tudo{" "}
+                                    <span className="capitalize">{fmtDia(ultimoDia.dia)}</span> às{" "}
+                                    <span className="text-[26px] font-bold tabular-nums tracking-tight" style={{ color: SIM.mint, textShadow: "0 0 24px rgba(94,255,217,0.35)" }}>{fmtHora(ultimoDia.termino)}</span>
+                                  </p>
+                                </>
+                              )}
+                              {chuvaNoDia && (
+                                <p className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: "#FCA5A5" }}><CloudRain className="h-3.5 w-3.5" /> Risco de chuva em parte do percurso</p>
+                              )}
+                            </motion.div>
+                          ) : (
+                            <motion.div key="montando" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -6 }}>
+                              <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: SIM.faint }}>{replanejando ? "Replanejando" : `Montando o roteiro de ${primeiroNome || "—"}`}</p>
+                              <div className="mt-2 h-1.5 w-full max-w-[320px] overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+                                <motion.div className="h-full rounded-full" style={{ background: `linear-gradient(90deg, ${SIM.brand}, ${SIM.mint})` }} animate={{ width: `${n > 0 ? Math.max(6, (legs.length / n) * 100) : 6}%` }} transition={{ type: "spring", stiffness: 120, damping: 20 }} />
+                              </div>
+                              <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px]" style={{ color: SIM.faint }}><Timer className="h-3 w-3" /> Média de {plano?.sla_min ?? "—"} min por vistoria — histórico do próprio técnico.</p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2">
+                        <Stat valor={kmTxt} label="percurso" dim={!concluido} />
+                        <Stat valor={fmtMin(rotaAnim)} label="em rota" dim={!concluido} />
+                        <Stat valor={fmtMin(vistoriaAnim)} label="em vistoria" dim={!concluido} />
+                        <Stat valor={String(Math.max(dias.length, plano ? 1 : 0))} label={dias.length === 1 ? "dia" : "dias"} dim={!concluido} />
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1.5">
+                        {erro && <p className="text-[11px] font-medium" style={{ color: SIM.danger }}>{erro}</p>}
+                        <button
+                          type="button"
+                          onClick={() => onConfirmar(ordem)}
+                          disabled={!podeConfirmar}
+                          className="flex h-12 min-w-[250px] items-center justify-center gap-2 rounded-2xl px-5 text-[13.5px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                          style={{ background: `linear-gradient(135deg, ${SIM.brand}, ${SIM.brandDeep})`, boxShadow: podeConfirmar ? "0 10px 30px rgba(0,179,136,0.4)" : "none" }}
+                        >
+                          {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          {confirmando ? "Gravando…" : concluido ? `Confirmar ${n} vistoria${n !== 1 ? "s" : ""}${dias.length > 1 ? ` em ${dias.length} dias` : ""}` : "Montando…"}
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </div>
         </motion.div>
@@ -846,13 +1111,14 @@ export function SimulacaoDiaOverlay({
   );
 }
 
-function Chip({ children, dim, amber, alerta }: { children: React.ReactNode; dim?: boolean; amber?: boolean; alerta?: boolean }) {
+function Chip({ children, dim, amber, alerta, cor, titulo }: { children: React.ReactNode; dim?: boolean; amber?: boolean; alerta?: boolean; cor?: string; titulo?: string }) {
   return (
     <div
+      title={titulo}
       className="flex shrink-0 items-center gap-2.5 rounded-2xl px-3 py-2"
       style={{
         background: amber ? "rgba(244,180,0,0.1)" : SIM.tile,
-        border: `1px solid ${amber ? "rgba(244,180,0,0.3)" : alerta ? "rgba(248,113,113,0.4)" : dim ? SIM.borderSoft : SIM.border}`,
+        border: `1px solid ${amber ? "rgba(244,180,0,0.3)" : alerta ? "rgba(248,113,113,0.4)" : dim ? SIM.borderSoft : cor ? `${cor}55` : SIM.border}`,
         opacity: dim ? 0.7 : 1,
       }}
     >
@@ -861,46 +1127,30 @@ function Chip({ children, dim, amber, alerta }: { children: React.ReactNode; dim
   );
 }
 
-function Seta({ ativa }: { ativa?: boolean }) {
+function Seta({ ativa, cor }: { ativa?: boolean; cor?: string }) {
   return (
     <span className="flex shrink-0 items-center" aria-hidden>
-      <span className="h-[2px] w-4 rounded-full" style={{ background: ativa ? SIM.accent : SIM.borderSoft }} />
+      <span className="h-[2px] w-4 rounded-full" style={{ background: ativa ? cor ?? SIM.accent : SIM.borderSoft }} />
     </span>
   );
 }
 
 function EtapaIcone({ estado }: { estado: Etapa }) {
   if (estado === "ok") {
-    return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(0,212,160,0.18)", color: SIM.mint }}>
-        <Check className="h-3 w-3" strokeWidth={3} />
-      </span>
-    );
+    return <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(0,212,160,0.18)", color: SIM.mint }}><Check className="h-3 w-3" strokeWidth={3} /></span>;
   }
   if (estado === "falhou") {
-    return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: "rgba(248,113,113,0.15)", color: SIM.danger }}>
-        !
-      </span>
-    );
+    return <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: "rgba(248,113,113,0.15)", color: SIM.danger }}>!</span>;
   }
   if (estado === "ativa") {
-    return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(0,212,160,0.12)" }}>
-        <Loader2 className="h-3 w-3 animate-spin" style={{ color: SIM.accent }} />
-      </span>
-    );
+    return <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(0,212,160,0.12)" }}><Loader2 className="h-3 w-3 animate-spin" style={{ color: SIM.accent }} /></span>;
   }
-  return (
-    <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(255,255,255,0.05)" }}>
-      <MapPin className="h-2.5 w-2.5" style={{ color: SIM.faint }} />
-    </span>
-  );
+  return <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(255,255,255,0.05)" }}><MapPin className="h-2.5 w-2.5" style={{ color: SIM.faint }} /></span>;
 }
 
 function Stat({ valor, label, dim }: { valor: string; label: string; dim?: boolean }) {
   return (
-    <div className="min-w-[92px] rounded-xl px-3 py-2 text-center" style={{ background: "rgba(255,255,255,0.045)", border: `1px solid ${SIM.borderSoft}` }}>
+    <div className="min-w-[88px] rounded-xl px-3 py-2 text-center" style={{ background: "rgba(255,255,255,0.045)", border: `1px solid ${SIM.borderSoft}` }}>
       <p className="text-[14px] font-bold tabular-nums" style={{ color: dim ? SIM.soft : SIM.text }}>{valor}</p>
       <p className="text-[9px] font-semibold uppercase tracking-[0.14em]" style={{ color: SIM.faint }}>{label}</p>
     </div>

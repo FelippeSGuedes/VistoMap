@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { fetchParadasSelecionadas, montarRoteiroDoDia } from "@/lib/roteirizacao";
 import { getExpedienteConfig } from "@/lib/expediente";
-import { almocoDoDia, calcularTermino } from "@/lib/roteirizacaoHorarios";
+import { resumirDias } from "@/lib/roteirizacaoHorarios";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,6 +13,8 @@ interface PreviewBody {
   tecnico_id: number | string;
   data_agendada: string; // YYYY-MM-DD
   hora_inicio?: string; // HH:MM, default = início do expediente
+  /** Ordem escolhida à mão na simulação (remover/reordenar). Sem isso, vizinho mais próximo. */
+  ordem_vistoria_ids?: Array<number | string>;
 }
 
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -22,8 +24,9 @@ const HORA_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
  * POST /api/painel/agendamentos/preview  (analista)
  *
  * Roda o roteirizador + checagem de clima SEM gravar nada — devolve a
- * ordem sugerida, horários previstos e avisos de chuva pro analista
- * revisar antes de confirmar (POST /api/painel/agendamentos).
+ * ordem, o dia e os horários previstos de cada parada (respeitando o
+ * expediente: o que não cabe vai pro próximo dia útil) e avisos de chuva
+ * pro analista revisar antes de confirmar (POST /api/painel/agendamentos).
  */
 export async function POST(req: Request) {
   const auth = await requirePainelRole(req, "moderador");
@@ -35,6 +38,9 @@ export async function POST(req: Request) {
       .map((v) => Number(String(v).replace(/^NE-/, "")))
       .filter((v) => Number.isFinite(v) && v > 0);
     const tId = Number(body.tecnico_id);
+    const ordem = (body.ordem_vistoria_ids ?? [])
+      .map((v) => Number(String(v).replace(/^NE-/, "")))
+      .filter((v) => vIds.includes(v));
 
     if (vIds.length === 0 || !Number.isFinite(tId) || tId <= 0) {
       return NextResponse.json({ message: "vistoria_ids e tecnico_id são obrigatórios" }, { status: 400 });
@@ -46,7 +52,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "hora_inicio inválida (HH:MM)" }, { status: 400 });
     }
 
-    const { paradas, semCoordenada, nomeMap } = await fetchParadasSelecionadas(vIds);
+    const [{ paradas, semCoordenada, nomeMap }, expediente] = await Promise.all([
+      fetchParadasSelecionadas(vIds),
+      getExpedienteConfig(),
+    ]);
 
     if (paradas.length === 0) {
       return NextResponse.json(
@@ -55,18 +64,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const horaInicioStr = body.hora_inicio ?? (await getExpedienteConfig()).inicio;
-    // Offset explícito (-03:00, Brasília sem horário de verão) — sem ele,
-    // "T08:00:00" sem fuso é interpretado como hora LOCAL DO PROCESSO (UTC
-    // neste deploy), então "08:00" virava 05:00 de Brasília.
-    const horaInicio = new Date(`${body.data_agendada}T${horaInicioStr}:00-03:00`);
-
-    const roteiro = await montarRoteiroDoDia(tId, paradas, body.data_agendada, horaInicio);
+    const roteiro = await montarRoteiroDoDia(tId, paradas, body.data_agendada, expediente, {
+      horaInicio: body.hora_inicio,
+      ordem,
+    });
 
     const itens = roteiro.map((p) => ({
       vistoria_id: p.id,
       equipamento: nomeMap.get(p.id) ?? `NE-${p.id}`,
       ordem: p.ordem,
+      data: p.dia,
+      novo_dia: p.novoDia,
       distancia_desde_anterior_m: p.distanciaDesdeAnteriorM,
       duracao_perna_min: Math.round(p.duracaoPernaMin),
       chegada_prevista: p.chegadaPrevista.toISOString(),
@@ -76,18 +84,18 @@ export async function POST(req: Request) {
       risco_chuva_alerta: p.riscoChuvaAlerta,
     }));
 
-    const termino = calcularTermino(
-      roteiro.map((p) => ({ chegada: p.chegadaPrevista, saida: p.saidaPrevista, almocoAntes: p.almocoAntes })),
-      almocoDoDia(body.data_agendada)
+    const dias = resumirDias(
+      roteiro.map((p) => ({ dia: p.dia, chegada: p.chegadaPrevista, saida: p.saidaPrevista, almocoAntes: p.almocoAntes, novoDia: p.novoDia }))
     );
 
     return NextResponse.json({
       ok: true,
       itens,
       resumo: {
-        hora_inicio: horaInicioStr,
-        hora_termino: termino?.toISOString() ?? null,
+        hora_inicio: body.hora_inicio ?? expediente.inicio,
+        expediente: { inicio: expediente.inicio, fim: expediente.fim, fim_de_semana: expediente.fimDeSemana },
         distancia_total_m: roteiro.reduce((s, p) => s + (p.distanciaDesdeAnteriorM ?? 0), 0),
+        dias: dias.map((d) => ({ data: d.dia, paradas: d.paradas, hora_termino: d.termino.toISOString() })),
       },
       ignorados_sem_coordenada: semCoordenada,
     });

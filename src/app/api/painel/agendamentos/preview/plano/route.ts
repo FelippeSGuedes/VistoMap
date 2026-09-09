@@ -5,6 +5,7 @@ import {
   fetchOrigemTecnico,
   fetchParadasSelecionadas,
   fetchSlaTecnico,
+  ordenarManual,
   ordenarPorProximidade,
 } from "@/lib/roteirizacao";
 import { getExpedienteConfig } from "@/lib/expediente";
@@ -18,6 +19,7 @@ interface PlanoBody {
   tecnico_id: number | string;
   data_agendada: string; // YYYY-MM-DD
   hora_inicio?: string; // HH:MM
+  ordem_vistoria_ids?: Array<number | string>;
 }
 
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -27,8 +29,8 @@ const HORA_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
  * POST /api/painel/agendamentos/preview/plano  (analista)
  *
  * Só o ESQUELETO do roteiro, em milissegundos e sem chamada externa: ordem
- * das paradas, origem (último GPS do técnico), SLA médio dele e a config de
- * horário. O navegador traça cada perna ao vivo a partir disso
+ * das paradas, origem (último GPS do técnico), SLA médio dele e a janela
+ * de expediente. O navegador traça cada perna ao vivo a partir disso
  * (SimulacaoDiaOverlay) enquanto o /preview completo (rotas + clima) roda em
  * paralelo — o loading vira o próprio resultado se montando.
  */
@@ -42,6 +44,9 @@ export async function POST(req: Request) {
       .map((v) => Number(String(v).replace(/^NE-/, "")))
       .filter((v) => Number.isFinite(v) && v > 0);
     const tId = Number(body.tecnico_id);
+    const ordem = (body.ordem_vistoria_ids ?? [])
+      .map((v) => Number(String(v).replace(/^NE-/, "")))
+      .filter((v) => vIds.includes(v));
 
     if (vIds.length === 0 || !Number.isFinite(tId) || tId <= 0) {
       return NextResponse.json({ message: "vistoria_ids e tecnico_id são obrigatórios" }, { status: 400 });
@@ -67,12 +72,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const ordenadas = ordenarPorProximidade(origem, paradas);
+    const ordenadas = ordem.length ? ordenarManual(paradas, ordem) : ordenarPorProximidade(origem, paradas);
 
     return NextResponse.json({
       ok: true,
       data_agendada: body.data_agendada,
       hora_inicio: body.hora_inicio ?? expediente.inicio,
+      expediente: { inicio: expediente.inicio, fim: expediente.fim, fim_de_semana: expediente.fimDeSemana },
       sla_min: slaMin,
       origem,
       almoco: { hora: ALMOCO_HORA, duracao_min: ALMOCO_MIN },

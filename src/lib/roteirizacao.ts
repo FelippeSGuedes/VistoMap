@@ -3,7 +3,7 @@ import { query } from "@/lib/db";
 import { DEFAULT_CENTER } from "@/services/maps";
 import { TABLE_FIELDS, TABLE_NE } from "@/lib/glpi/constants";
 import { fetchRiscoChuva } from "@/lib/weather";
-import { acumularHorarios, almocoDoDia, type PernaCalculada } from "@/lib/roteirizacaoHorarios";
+import { planejarDias, type ExpedienteJanela, type PernaCalculada } from "@/lib/roteirizacaoHorarios";
 
 /**
  * Motor de roteirização/tempo pro agendamento de vistorias (painel) —
@@ -23,11 +23,30 @@ export interface Parada extends LatLng {
 
 export interface ParadaComHorario extends Parada {
   ordem: number;
+  /** Dia (YYYY-MM-DD) em que a parada foi encaixada — pode ser depois da data pedida se o expediente não coube. */
+  dia: string;
+  novoDia: boolean;
   distanciaDesdeAnteriorM: number | null;
   duracaoPernaMin: number;
   chegadaPrevista: Date;
   saidaPrevista: Date;
   almocoAntes: boolean;
+}
+
+/** Ordem escolhida à mão pelo analista (remover/reordenar na simulação) — quem ficou de fora da lista vai pro fim. */
+export function ordenarManual(paradas: Parada[], ordem: number[]): Parada[] {
+  const porId = new Map(paradas.map((p) => [p.id, p]));
+  const usadas = new Set<number>();
+  const out: Parada[] = [];
+  for (const id of ordem) {
+    const p = porId.get(id);
+    if (p && !usadas.has(id)) {
+      out.push(p);
+      usadas.add(id);
+    }
+  }
+  for (const p of paradas) if (!usadas.has(p.id)) out.push(p);
+  return out;
 }
 
 export interface ParadasSelecionadas {
@@ -193,8 +212,9 @@ export async function calcularHorarios(
   origem: LatLng,
   paradasOrdenadas: Parada[],
   slaMin: number,
-  horaInicio: Date,
-  almocoEm: Date
+  dataInicial: string,
+  expediente: ExpedienteJanela,
+  horaInicioDia1?: string
 ): Promise<ParadaComHorario[]> {
   // Origem/destino de cada perna já são conhecidos (ordem decidida) — as
   // chamadas à Directions saem em paralelo em vez de uma por vez.
@@ -208,11 +228,13 @@ export async function calcularHorarios(
     })
   );
 
-  const horarios = acumularHorarios(horaInicio, slaMin, pernas, almocoEm);
+  const horarios = planejarDias(dataInicial, expediente, slaMin, pernas, horaInicioDia1);
 
   return paradasOrdenadas.map((parada, i) => ({
     ...parada,
     ordem: i + 1,
+    dia: horarios[i].dia,
+    novoDia: horarios[i].novoDia,
     distanciaDesdeAnteriorM: pernas[i].distanciaM,
     duracaoPernaMin: pernas[i].duracaoMin,
     chegadaPrevista: horarios[i].chegada,
@@ -235,19 +257,21 @@ export interface ParadaComAgenda extends ParadaComHorario {
 export async function montarRoteiroDoDia(
   tecnicoId: number,
   paradas: Parada[],
-  dataAgendadaISO: string,
-  horaInicio: Date
+  dataInicial: string,
+  expediente: ExpedienteJanela,
+  opts: { horaInicio?: string; ordem?: number[] } = {}
 ): Promise<ParadaComAgenda[]> {
   const [slaMin, origem] = await Promise.all([
     fetchSlaTecnico(tecnicoId),
     fetchOrigemTecnico(tecnicoId),
   ]);
-  const ordenadas = ordenarPorProximidade(origem, paradas);
-  const comHorario = await calcularHorarios(origem, ordenadas, slaMin, horaInicio, almocoDoDia(dataAgendadaISO));
+  const ordenadas = opts.ordem?.length ? ordenarManual(paradas, opts.ordem) : ordenarPorProximidade(origem, paradas);
+  const comHorario = await calcularHorarios(origem, ordenadas, slaMin, dataInicial, expediente, opts.horaInicio);
 
+  // Clima do DIA em que a parada caiu (pode ser o seguinte, se o expediente não coube).
   const comClima = await Promise.all(
     comHorario.map(async (p) => {
-      const clima = await fetchRiscoChuva(p.lat, p.lng, dataAgendadaISO);
+      const clima = await fetchRiscoChuva(p.lat, p.lng, p.dia);
       return { ...p, riscoChuvaPct: clima.probabilidadePct, riscoChuvaAlerta: clima.alerta };
     })
   );

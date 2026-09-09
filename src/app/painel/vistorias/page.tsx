@@ -13,7 +13,7 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Building2,
@@ -1069,13 +1069,31 @@ function AtribuirDrawer({
     }
   };
 
-  const handleConfirmarAgendamento = async () => {
+  // Edição na simulação (tirar da rota / reordenar) → refaz o clima em
+  // segundo plano com a ordem nova. Debounce: cada clique não vira N
+  // chamadas à Directions no servidor.
+  const ordemTimerRef = useRef<number | null>(null);
+  const handleOrdemChange = (ordem: number[]) => {
     if (!tecnicoEscolhido) return;
+    if (ordemTimerRef.current) window.clearTimeout(ordemTimerRef.current);
+    ordemTimerRef.current = window.setTimeout(() => {
+      painelService
+        .previewAgendamento({ vistoria_ids: ordem, ordem_vistoria_ids: ordem, tecnico_id: tecnicoEscolhido.id, data_agendada: dataAgendada })
+        .then(setPreviewFinal)
+        .catch(() => setClimaErro(true));
+    }, 900);
+  };
+
+  // A ordem final (já sem as paradas retiradas) vai junto — o servidor
+  // recalcula os horários por conta própria, mas respeita essa ordem.
+  const handleConfirmarAgendamento = async (ordem: number[]) => {
+    if (!tecnicoEscolhido || ordem.length === 0) return;
     setConfirmando(true);
     setErroAgendamento(null);
     try {
       const resp = await painelService.criarAgendamento({
-        vistoria_ids: Array.from(selecionados),
+        vistoria_ids: ordem,
+        ordem_vistoria_ids: ordem,
         tecnico_id: tecnicoEscolhido.id,
         data_agendada: dataAgendada,
       });
@@ -1352,6 +1370,7 @@ function AtribuirDrawer({
             erro={erroAgendamento}
             onVoltar={() => setSimulacaoOpen(false)}
             onConfirmar={handleConfirmarAgendamento}
+            onOrdemChange={handleOrdemChange}
           />
         </>
       )}

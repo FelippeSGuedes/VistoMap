@@ -20,7 +20,11 @@ interface AgendarBody {
   tecnico_id: number | string;
   data_agendada: string; // YYYY-MM-DD
   hora_inicio?: string; // HH:MM
+  /** Ordem escolhida à mão na simulação (remover/reordenar). Sem isso, vizinho mais próximo. */
+  ordem_vistoria_ids?: Array<number | string>;
 }
+
+const fmtDiaBR = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HORA_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -44,6 +48,9 @@ export async function POST(req: Request) {
       .map((v) => Number(String(v).replace(/^NE-/, "")))
       .filter((v) => Number.isFinite(v) && v > 0);
     const tId = Number(body.tecnico_id);
+    const ordem = (body.ordem_vistoria_ids ?? [])
+      .map((v) => Number(String(v).replace(/^NE-/, "")))
+      .filter((v) => vIds.includes(v));
 
     if (vIds.length === 0 || !Number.isFinite(tId) || tId <= 0) {
       return NextResponse.json({ message: "vistoria_ids e tecnico_id são obrigatórios" }, { status: 400 });
@@ -55,7 +62,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "hora_inicio inválida (HH:MM)" }, { status: 400 });
     }
 
-    const [actor, rows, tecRow] = await Promise.all([
+    const [actor, rows, tecRow, expediente] = await Promise.all([
       getActorFromRequest(req),
       query<{ id: number; name: string; latitude: string | null; longitude: string | null }>(
         `SELECT ne.id, ne.name,
@@ -71,6 +78,7 @@ export async function POST(req: Request) {
         `SELECT name, firstname, realname FROM glpi_users WHERE id = ? LIMIT 1`,
         [tId]
       ).then((r) => r[0]),
+      getExpedienteConfig(),
     ]);
 
     const paradas = rows
@@ -84,13 +92,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const horaInicioStr = body.hora_inicio ?? (await getExpedienteConfig()).inicio;
-    // Offset explícito (-03:00, Brasília sem horário de verão) — sem ele,
-    // "T08:00:00" sem fuso é interpretado como hora LOCAL DO PROCESSO (UTC
-    // neste deploy), então "08:00" virava 05:00 de Brasília.
-    const horaInicio = new Date(`${body.data_agendada}T${horaInicioStr}:00-03:00`);
-
-    const roteiro = await montarRoteiroDoDia(tId, paradas, body.data_agendada, horaInicio);
+    // Mesmo roteiro do preview (expediente, almoço, virada de dia) — o que
+    // não coube no dia pedido cai no próximo dia útil, e cada linha guarda
+    // o SEU dia em data_agendada.
+    const roteiro = await montarRoteiroDoDia(tId, paradas, body.data_agendada, expediente, {
+      horaInicio: body.hora_inicio,
+      ordem,
+    });
 
     await ensureAgendamentosTable();
     const nomeMap = new Map(rows.map((r) => [r.id, r.name]));
@@ -112,7 +120,7 @@ export async function POST(req: Request) {
           p.id,
           equipamento,
           tId,
-          body.data_agendada,
+          p.dia,
           p.ordem,
           p.chegadaPrevista,
           p.saidaPrevista,
@@ -129,16 +137,19 @@ export async function POST(req: Request) {
         ator: actorFinal,
         acao: "vistoria-agendada" as AuditEntry["acao"],
         alvo: { tipo: "vistoria", id: String(p.id), label: equipamento },
-        descricao: `Agendada para ${tecNome} em ${body.data_agendada} (parada ${p.ordem}/${roteiro.length})${
+        descricao: `Agendada para ${tecNome} em ${p.dia} (parada ${p.ordem}/${roteiro.length})${
           p.riscoChuvaAlerta ? ` · risco de chuva ${p.riscoChuvaPct}%` : ""
         }`,
       });
     }
 
+    const dias = Array.from(new Set(roteiro.map((p) => p.dia))).sort();
+    const quando =
+      dias.length === 1 ? `para ${fmtDiaBR(dias[0])}` : `de ${fmtDiaBR(dias[0])} a ${fmtDiaBR(dias[dias.length - 1])}`;
     void sendPushTo({
       usersIds: [tId],
       title: "Vistorias agendadas",
-      body: `${roteiro.length} vistoria(s) agendada(s) para ${body.data_agendada}`,
+      body: `${roteiro.length} vistoria(s) agendada(s) ${quando}`,
       data: { url: "/app/vistorias" },
     });
 

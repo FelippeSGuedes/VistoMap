@@ -78,12 +78,23 @@ export interface AgendamentoInput {
   tecnico_id: number | string;
   data_agendada: string; // YYYY-MM-DD
   hora_inicio?: string; // HH:MM
+  /** Ordem escolhida à mão na simulação (remover/reordenar). Sem isso, vizinho mais próximo. */
+  ordem_vistoria_ids?: number[];
+}
+
+export interface ExpedienteResumo {
+  inicio: string;
+  fim: string;
+  fim_de_semana: boolean;
 }
 
 export interface AgendamentoPreviewItem {
   vistoria_id: number;
   equipamento: string;
   ordem: number;
+  /** Dia (YYYY-MM-DD) em que a parada caiu — pode ser depois da data pedida se o expediente não coube. */
+  data: string;
+  novo_dia: boolean;
   distancia_desde_anterior_m: number | null;
   duracao_perna_min: number;
   chegada_prevista: string;
@@ -98,8 +109,9 @@ export interface AgendamentoPreviewResponse {
   itens: AgendamentoPreviewItem[];
   resumo: {
     hora_inicio: string;
-    hora_termino: string | null;
+    expediente: ExpedienteResumo;
     distancia_total_m: number;
+    dias: Array<{ data: string; paradas: number; hora_termino: string }>;
   };
   ignorados_sem_coordenada: Array<{ vistoria_id: number; equipamento: string }>;
 }
@@ -114,6 +126,7 @@ export interface AgendamentoPlano {
   ok: true;
   data_agendada: string;
   hora_inicio: string; // HH:MM
+  expediente: ExpedienteResumo;
   sla_min: number;
   origem: { lat: number; lng: number };
   almoco: { hora: string; duracao_min: number };
