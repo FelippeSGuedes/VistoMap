@@ -47,9 +47,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Camera + audio — requerido para getUserMedia no WebView (VideoRecorderSheet) -->
+    <!-- Camera + audio — requerido para getUserMedia no WebView (VideoRecorderSheet).
+         MODIFY_AUDIO_SETTINGS é normal (sem prompt), mas sem declarar aqui o
+         Capacitor pede as 3 juntas (CAMERA+MODIFY_AUDIO_SETTINGS+RECORD_AUDIO)
+         quando getUserMedia pede audio+video juntos, e essa volta sempre negada
+         por nunca ter sido declarada — derrubando o pacote inteiro mesmo com
+         câmera/microfone liberados (bug real, achado em campo 2026-09-09). -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Biometria (trava diária) — o AAR do @capgo/capacitor-native-biometric
          não declara isso sozinho (confirmado no manifest do plugin), então
