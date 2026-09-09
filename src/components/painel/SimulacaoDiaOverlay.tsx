@@ -407,8 +407,32 @@ export function SimulacaoDiaOverlay({
     ro.observe(containerRef.current);
     const geracao = geracaoRef; // contador, não nó do DOM — invalida qualquer execução em curso no cleanup
 
+    // Resize à prova de bala (mesmo motivo do /painel/mapa): em alguns casos a
+    // altura só assenta depois, e um resize único trava num valor curto.
+    let estavel = 0;
+    const poll = window.setInterval(() => {
+      map.resize();
+      const alvo = containerRef.current?.clientHeight ?? 0;
+      if (alvo > 0 && Math.abs(map.getCanvas().clientHeight - alvo) <= 1) {
+        if (++estavel >= 4) window.clearInterval(poll);
+      } else estavel = 0;
+    }, 250);
+
+    // Cão de guarda: se depois de 3s o canvas continuar sem altura, mostra os
+    // números reais em vez de deixar a tela preta sem explicação.
+    const watchdog = window.setTimeout(() => {
+      const cv = map.getCanvas();
+      const el = containerRef.current;
+      if ((cv?.clientHeight ?? 0) > 0 && (el?.clientHeight ?? 0) > 0) return;
+      const diag = `container ${el?.clientWidth ?? 0}×${el?.clientHeight ?? 0} · canvas ${cv?.clientWidth ?? 0}×${cv?.clientHeight ?? 0} · estilo ${map.isStyleLoaded() ? "ok" : "não carregado"}`;
+      setMapErro(diag);
+      void import("@/lib/reportClientError").then(({ reportClientError }) => reportClientError(diag, "SimulacaoDiaOverlay/tamanho"));
+    }, 3000);
+
     return () => {
       ro.disconnect();
+      window.clearInterval(poll);
+      window.clearTimeout(watchdog);
       geracao.current++;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
@@ -774,7 +798,15 @@ export function SimulacaoDiaOverlay({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.35 }}
         >
-          <div ref={containerRef} className="absolute inset-0" />
+          {/* O container do mapa precisa de altura EXPLÍCITA (h-full), não de
+              `absolute inset-0`: o mapbox-gl.css entra depois do Tailwind (vem
+              no chunk dinâmico deste componente) e o seletor
+              `.mapboxgl-map{position:relative}` ganha do `.absolute`, zerando a
+              altura — o próprio `overflow:hidden` do Mapbox então escondia tudo
+              (mapa preto, sem pins nem rota, e sem nenhum erro). */}
+          <div className="absolute inset-0">
+            <div ref={containerRef} className="h-full w-full" />
+          </div>
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0"
