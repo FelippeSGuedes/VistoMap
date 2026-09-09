@@ -26,13 +26,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  BarChart3,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   CloudRain,
+  Crosshair,
   Flag,
+  List,
   Loader2,
   MapPin,
   Moon,
@@ -50,6 +53,7 @@ import type { RouteResult } from "@/app/painel/mapa/routeService";
 import {
   planejarDias,
   resumirDias,
+  tsBrasilia,
   type ExpedienteJanela,
   type HorarioParada,
   type PernaCalculada,
@@ -59,6 +63,8 @@ import {
 const SIM = {
   bg: "#04151A",
   glass: "rgba(5,24,28,0.84)",
+  /** Opaco — pro cartão da parada não deixar o mapa vazar por trás do texto. */
+  panelSolid: "#071D22",
   border: "rgba(94,255,217,0.16)",
   borderSoft: "rgba(255,255,255,0.07)",
   text: "#E9F7F2",
@@ -95,6 +101,10 @@ if (typeof document !== "undefined" && !document.getElementById("vm-sim-style"))
     .sim-pin[data-on="1"][data-pop="1"]{animation:simPop .55s cubic-bezier(.22,.7,.2,1) both,simRing 1.1s ease-out .1s 1}
     .sim-pin[data-off="1"]{opacity:.7;transform:scale(.8);filter:none;background:#2A3740;border-color:rgba(255,255,255,.35);color:rgba(255,255,255,.6);text-decoration:line-through}
     .sim-pin:hover{transform:scale(1.08)}
+    .sim-pin[data-hi="1"]{transform:scale(1.4);z-index:6;box-shadow:0 0 0 7px var(--dia,rgba(0,212,160,.35)),0 8px 22px rgba(0,0,0,.55)}
+    .sim-bloco{position:absolute;top:5px;bottom:5px;border-radius:3px;padding:0;border:none;cursor:pointer;
+      transition:transform .12s ease,filter .12s ease,box-shadow .12s ease;transform-origin:center}
+    .sim-bloco:hover,.sim-bloco[data-sel="1"]{transform:scaleY(1.35);filter:brightness(1.35);box-shadow:0 0 12px currentColor;z-index:3}
     .sim-strip{scrollbar-width:thin;scrollbar-color:rgba(94,255,217,.25) transparent}
     .sim-strip::-webkit-scrollbar{height:6px}
     .sim-strip::-webkit-scrollbar-thumb{background:rgba(94,255,217,.25);border-radius:9999px}
@@ -178,13 +188,21 @@ function fmtMin(min: number): string {
   const r = m % 60;
   return r ? `${h}h${String(r).padStart(2, "0")}` : `${h}h`;
 }
-function fmtDia(iso: string, longo = false): string {
-  return new Date(`${iso}T12:00:00-03:00`).toLocaleDateString("pt-BR", {
-    weekday: longo ? "long" : "short",
-    day: "2-digit",
-    month: "short",
-    timeZone: TZ,
-  });
+const DIAS_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+/** "qui 10/09" — curto, tabular e sem o "Qui., 10 De Set." que o toLocaleDateString + capitalize produzia. */
+function fmtDia(iso: string): string {
+  // Meio-dia de Brasília = 15:00 UTC, então getUTCDay() cai sempre no dia certo.
+  const semana = DIAS_SEMANA[new Date(`${iso}T12:00:00-03:00`).getUTCDay()];
+  return `${semana} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+}
+
+/** "HH:MM" → minutos desde a meia-noite. */
+function hhmmMin(hhmm: string): number {
+  return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+}
+/** Minutos desde a meia-noite (Brasília) que um instante ocupa dentro do seu dia. */
+function minNoDia(d: Date, dia: string): number {
+  return (d.getTime() - tsBrasilia(dia, "00:00")) / 60000;
 }
 function iniciais(nome: string): string {
   return nome.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
@@ -335,6 +353,9 @@ export function SimulacaoDiaOverlay({
   const [concluido, setConcluido] = useState(false);
   const [replanejando, setReplanejando] = useState(false);
   const [dockAberto, setDockAberto] = useState(true);
+  const [vista, setVista] = useState<"linha" | "lista">("linha");
+  const [hoverId, setHoverId] = useState<number | null>(null);
+  const [selId, setSelId] = useState<number | null>(null);
 
   const reduzir = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -353,6 +374,50 @@ export function SimulacaoDiaOverlay({
   const horarios = useMemo(() => horariosDe(legs), [horariosDe, legs]);
   const dias = useMemo(() => resumirDias(horarios), [horarios]);
   const diaIndex = useCallback((dia: string) => Math.max(0, dias.findIndex((d) => d.dia === dia)), [dias]);
+
+  /** Paradas já reveladas, agrupadas por dia — alimenta a linha do tempo. */
+  const porDia = useMemo(() => {
+    const m = new Map<string, BlocoParada[]>();
+    ordem.forEach((id, i) => {
+      const h = horarios[i];
+      const p = paradaPorId.get(id);
+      if (!h || !p || i >= legs.length) return;
+      const arr = m.get(h.dia) ?? [];
+      arr.push({ id, ordem: i + 1, equipamento: p.equipamento, chegada: h.chegada, saida: h.saida, almocoAntes: h.almocoAntes, legKm: legs[i].distanciaM, legMin: legs[i].duracaoMin });
+      m.set(h.dia, arr);
+    });
+    return m;
+  }, [ordem, horarios, legs, paradaPorId]);
+
+  /**
+   * Eixo de tempo COMPARTILHADO por todos os dias — sem isso cada dia teria
+   * escala própria e um dia quase vazio pareceria tão cheio quanto um lotado.
+   * Vai do início do expediente até o fim dele (ou até o término mais tarde,
+   * quando a margem estoura a janela).
+   */
+  const eixo = useMemo(() => {
+    if (!plano || dias.length === 0) return null;
+    const ini = hhmmMin(plano.expediente.inicio);
+    const fim = hhmmMin(plano.expediente.fim);
+    const max = dias.reduce((mx, d) => Math.max(mx, minNoDia(d.termino, d.dia)), fim);
+    return { ini, fim, max, span: Math.max(1, max - ini) };
+  }, [plano, dias]);
+
+  /** Destaca no mapa o pin da parada sob o cursor (ou selecionada) na linha do tempo. */
+  useEffect(() => {
+    pinElsRef.current.forEach((el, id) => {
+      el.dataset.hi = id === hoverId || id === selId ? "1" : "0";
+    });
+  }, [hoverId, selId, legs.length]);
+
+  const focarNoMapa = useCallback(
+    (id: number) => {
+      const p = paradaPorId.get(id);
+      if (!p || !mapRef.current) return;
+      mapRef.current.easeTo({ center: [p.lng, p.lat], zoom: Math.max(mapRef.current.getZoom(), 14), duration: 900 });
+    },
+    [paradaPorId]
+  );
 
   /* ── mapa: nasce quando abre, morre quando fecha ───────────────────────── */
   useEffect(() => {
@@ -903,27 +968,47 @@ export function SimulacaoDiaOverlay({
               exit={{ opacity: 0, y: 30 }}
               transition={{ type: "spring", stiffness: 260, damping: 28, delay: 0.15 }}
             >
-              {/* barra do dock: resumo por dia + recolher */}
+              {/* barra do dock: status + alternador de vista + recolher */}
               <div className="flex items-center gap-3 px-4 pt-3" style={{ borderBottom: dockAberto ? `1px solid ${SIM.borderSoft}` : "none", paddingBottom: dockAberto ? 10 : 12 }}>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                  {dias.length === 0 && (
+                <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                  {concluido ? (
+                    <>
+                      <span className="text-[12.5px] font-semibold">
+                        {n} parada{n !== 1 ? "s" : ""} em {dias.length} dia{dias.length !== 1 ? "s" : ""}
+                      </span>
+                      {removidas.length > 0 && (
+                        <span className="text-[11px]" style={{ color: SIM.faint }}>· {removidas.length} fora da rota</span>
+                      )}
+                      {!dockAberto && ultimoDia && (
+                        <span className="text-[11.5px]" style={{ color: SIM.soft }}>
+                          · termina {fmtDia(ultimoDia.dia)} às <b className="tabular-nums" style={{ color: SIM.mint }}>{fmtHora(ultimoDia.termino)}</b>
+                        </span>
+                      )}
+                    </>
+                  ) : (
                     <span className="flex items-center gap-2 text-[12px]" style={{ color: SIM.soft }}>
                       <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: SIM.accent }} />
-                      {plano ? "Montando o roteiro…" : "Ordenando as paradas pela posição do técnico…"}
+                      {replanejando ? "Replanejando…" : plano ? `Montando o roteiro — ${legs.length}/${n}` : "Ordenando as paradas…"}
                     </span>
-                  )}
-                  {dias.map((d, i) => (
-                    <span key={d.dia} className="flex items-center gap-2 rounded-full py-1 pl-1.5 pr-3 text-[11.5px] font-semibold" style={{ background: SIM.tile, border: `1px solid ${SIM.borderSoft}` }}>
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: corDoDia(i), boxShadow: `0 0 10px ${corDoDia(i)}` }} />
-                      <span className="capitalize">{fmtDia(d.dia)}</span>
-                      <span style={{ color: SIM.faint }}>·</span>
-                      <span className="tabular-nums" style={{ color: SIM.soft }}>{d.paradas} parada{d.paradas !== 1 ? "s" : ""} · até {fmtHora(d.termino)}</span>
-                    </span>
-                  ))}
-                  {removidas.length > 0 && (
-                    <span className="text-[11px]" style={{ color: SIM.faint }}>· {removidas.length} fora da rota</span>
                   )}
                 </div>
+
+                {dockAberto && (
+                  <div className="flex items-center gap-0.5 rounded-full p-0.5" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${SIM.borderSoft}` }}>
+                    {([["linha", "Linha do tempo", BarChart3], ["lista", "Lista", List]] as const).map(([k, rotulo, Icone]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setVista(k)}
+                        className="flex h-7 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold transition"
+                        style={vista === k ? { background: SIM.tile, color: SIM.text, boxShadow: `inset 0 0 0 1px ${SIM.border}` } : { color: SIM.faint }}
+                      >
+                        <Icone className="h-3.5 w-3.5" /> {rotulo}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setDockAberto((v) => !v)}
@@ -949,8 +1034,50 @@ export function SimulacaoDiaOverlay({
                             </p>
                           )}
 
+                          {/* LINHA DO TEMPO — cada dia é uma barra proporcional do
+                              expediente inteiro, no MESMO eixo, então dá pra ver de
+                              relance a densidade, onde cai o almoço e o quanto sobra. */}
+                          {vista === "linha" && (
+                            <div className="pb-1">
+                              {eixo && plano ? (
+                                <>
+                                  <EixoHoras eixo={eixo} />
+                                  <div className="space-y-1.5">
+                                    {dias.map((d, i) => (
+                                      <RibbonDia
+                                        key={d.dia}
+                                        dia={d.dia}
+                                        cor={corDoDia(i)}
+                                        termino={d.termino}
+                                        blocos={porDia.get(d.dia) ?? []}
+                                        eixo={eixo}
+                                        expediente={plano.expediente}
+                                        slaMin={plano.sla_min}
+                                        margemMin={plano.margem_min}
+                                        climaPorId={climaPorId}
+                                        hoverId={hoverId}
+                                        selId={selId}
+                                        onHover={setHoverId}
+                                        onSelect={(id) => setSelId((atual) => (atual === id ? null : id))}
+                                        onRemover={remover}
+                                        onMover={mover}
+                                        onFocar={focarNoMapa}
+                                        podeMoverAntes={(id) => ordem.indexOf(id) > 0}
+                                        podeMoverDepois={(id) => ordem.indexOf(id) < ordem.length - 1}
+                                      />
+                                    ))}
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex h-[76px] items-center justify-center gap-2 text-[12px]" style={{ color: SIM.soft }}>
+                                  <Loader2 className="h-4 w-4 animate-spin" style={{ color: SIM.accent }} /> desenhando a linha do tempo…
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {/* timeline horizontal por dia */}
-                          <div ref={stripRef} className="sim-strip flex items-stretch gap-2 overflow-x-auto pb-2">
+                          <div ref={stripRef} className="sim-strip flex items-stretch gap-2 overflow-x-auto pb-2" style={{ display: vista === "lista" ? undefined : "none" }}>
                             {plano && (
                               <>
                                 <Chip>
@@ -1083,34 +1210,25 @@ export function SimulacaoDiaOverlay({
                     <div className="mx-4 mt-3 flex flex-wrap items-center gap-4 border-t pb-4 pt-3" style={{ borderColor: SIM.borderSoft }}>
                       <div className="min-w-[280px] flex-1">
                         <AnimatePresence mode="wait">
-                          {concluido && plano && primeiroDia && ultimoDia ? (
+                          {concluido && plano && ultimoDia ? (
                             <motion.div key="veredito" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                              {dias.length === 1 ? (
-                                <>
-                                  <p className="text-[11px] leading-snug" style={{ color: SIM.soft }}>
-                                    Considerando início às <b style={{ color: SIM.text }}>{plano.hora_inicio}</b>, almoço de <b style={{ color: SIM.text }}>1h</b> e margem de <b style={{ color: SIM.text }}>{plano.margem_min} min</b>,
-                                  </p>
-                                  <p className="mt-0.5 text-[15px] font-semibold leading-tight">
-                                    {primeiroNome} termina <span className="capitalize">{fmtDia(primeiroDia.dia)}</span> às{" "}
-                                    <span className="text-[28px] font-bold tabular-nums tracking-tight" style={{ color: SIM.mint, textShadow: "0 0 24px rgba(94,255,217,0.35)" }}>{fmtHora(primeiroDia.termino)}</span>
-                                  </p>
-                                </>
-                              ) : (
-                                <>
-                                  <p className="flex items-center gap-1.5 text-[11px] leading-snug" style={{ color: SIM.soft }}>
-                                    <Moon className="h-3 w-3" style={{ color: corDoDia(1) }} />
-                                    Não cabe em um dia dentro do expediente ({plano.expediente.inicio}–{plano.expediente.fim}) — o roteiro se espalha por <b style={{ color: SIM.text }}>{dias.length} dias</b>.
-                                  </p>
-                                  <p className="mt-0.5 text-[14px] font-semibold leading-tight">
-                                    {primeiroNome} fecha <span className="capitalize">{fmtDia(primeiroDia.dia)}</span> às <b className="tabular-nums" style={{ color: corDoDia(0) }}>{fmtHora(primeiroDia.termino)}</b> e termina tudo{" "}
-                                    <span className="capitalize">{fmtDia(ultimoDia.dia)}</span> às{" "}
-                                    <span className="text-[26px] font-bold tabular-nums tracking-tight" style={{ color: SIM.mint, textShadow: "0 0 24px rgba(94,255,217,0.35)" }}>{fmtHora(ultimoDia.termino)}</span>
-                                  </p>
-                                </>
-                              )}
-                              {chuvaNoDia && (
-                                <p className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: "#FCA5A5" }}><CloudRain className="h-3.5 w-3.5" /> Risco de chuva em parte do percurso</p>
-                              )}
+                              <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: dias.length === 1 ? SIM.mint : SIM.amber }}>
+                                {dias.length > 1 && <Moon className="h-3 w-3" />}
+                                {dias.length === 1
+                                  ? "Cabe em um dia"
+                                  : `Não cabe em um dia · ${dias.length} dias`}
+                              </p>
+                              {/* baseline + nowrap: a frase nunca mais quebra no meio nem
+                                  joga o horário grande sozinho pra próxima linha. */}
+                              <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[14px] font-semibold leading-none">
+                                <span className="whitespace-nowrap" style={{ color: SIM.soft }}>{primeiroNome} termina</span>
+                                <span className="whitespace-nowrap">{fmtDia(ultimoDia.dia)} às</span>
+                                <span className="text-[30px] font-bold tabular-nums tracking-tight" style={{ color: SIM.mint, textShadow: "0 0 24px rgba(94,255,217,0.35)" }}>{fmtHora(ultimoDia.termino)}</span>
+                              </p>
+                              <p className="mt-1.5 text-[10px]" style={{ color: SIM.faint }}>
+                                início {plano.hora_inicio} · almoço 1h · margem {plano.margem_min} min · {plano.sla_min} min por vistoria
+                                {chuvaNoDia && <span style={{ color: "#FCA5A5" }}> · risco de chuva no percurso</span>}
+                              </p>
                             </motion.div>
                           ) : (
                             <motion.div key="montando" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -6 }}>
@@ -1153,6 +1271,251 @@ export function SimulacaoDiaOverlay({
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/* ─── linha do tempo ─────────────────────────────────────────────────────── */
+
+interface BlocoParada {
+  id: number;
+  ordem: number;
+  equipamento: string;
+  chegada: Date;
+  saida: Date;
+  almocoAntes: boolean;
+  legKm: number;
+  legMin: number;
+}
+
+interface Eixo {
+  ini: number;
+  fim: number;
+  max: number;
+  span: number;
+}
+
+const GRID_LINHA = "104px 1fr 74px";
+
+/** Régua de horas — compartilhada por todos os dias, senão as barras não seriam comparáveis. */
+function EixoHoras({ eixo }: { eixo: Eixo }) {
+  const horas: number[] = [];
+  for (let h = Math.ceil(eixo.ini / 60); h * 60 <= eixo.max; h++) horas.push(h);
+  return (
+    <div className="mb-1 grid items-end gap-3" style={{ gridTemplateColumns: GRID_LINHA }}>
+      <span />
+      <div className="relative h-3">
+        {horas.map((h) => {
+          const pct = ((h * 60 - eixo.ini) / eixo.span) * 100;
+          const rotulada = h % 2 === 0;
+          return (
+            <span key={h} className="absolute bottom-0 -translate-x-1/2 text-[9px] tabular-nums" style={{ left: `${pct}%`, color: rotulada ? SIM.faint : "transparent" }}>
+              {String(h).padStart(2, "0")}h
+            </span>
+          );
+        })}
+      </div>
+      <span />
+    </div>
+  );
+}
+
+function RibbonDia({
+  dia,
+  cor,
+  termino,
+  blocos,
+  eixo,
+  expediente,
+  slaMin,
+  margemMin,
+  climaPorId,
+  hoverId,
+  selId,
+  onHover,
+  onSelect,
+  onRemover,
+  onMover,
+  onFocar,
+  podeMoverAntes,
+  podeMoverDepois,
+}: {
+  dia: string;
+  cor: string;
+  termino: Date;
+  blocos: BlocoParada[];
+  eixo: Eixo;
+  expediente: { inicio: string; fim: string };
+  slaMin: number;
+  margemMin: number;
+  climaPorId: Map<number, { pct: number | null; alerta: boolean }>;
+  hoverId: number | null;
+  selId: number | null;
+  onHover: (id: number | null) => void;
+  onSelect: (id: number) => void;
+  onRemover: (id: number) => void;
+  onMover: (id: number, delta: -1 | 1) => void;
+  onFocar: (id: number) => void;
+  podeMoverAntes: (id: number) => boolean;
+  podeMoverDepois: (id: number) => boolean;
+}) {
+  const pct = (min: number) => ((min - eixo.ini) / eixo.span) * 100;
+  const minTermino = minNoDia(termino, dia);
+  const minFimExp = eixo.fim;
+  const estourou = minTermino > minFimExp + 0.5;
+  const ultimaSaida = blocos.length ? minNoDia(blocos[blocos.length - 1].saida, dia) : eixo.ini;
+  const almoco = blocos.some((b) => b.almocoAntes);
+  const destacado = blocos.find((b) => b.id === selId) ?? blocos.find((b) => b.id === hoverId) ?? null;
+  const clima = destacado ? climaPorId.get(destacado.id) : undefined;
+
+  return (
+    <div className="grid items-center gap-3" style={{ gridTemplateColumns: GRID_LINHA }}>
+      {/* etiqueta do dia */}
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-[12px] font-bold">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: cor, boxShadow: `0 0 10px ${cor}` }} />
+          {fmtDia(dia)}
+        </p>
+        <p className="text-[9.5px] tabular-nums" style={{ color: SIM.faint }}>
+          {blocos.length} parada{blocos.length !== 1 ? "s" : ""} · {slaMin} min cada
+        </p>
+      </div>
+
+      {/* trilho */}
+      <div
+        className="relative h-9 rounded-lg"
+        style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${SIM.borderSoft}` }}
+        onMouseLeave={() => onHover(null)}
+      >
+        {/* almoço */}
+        {almoco && (
+          <div
+            className="absolute inset-y-1 rounded-[3px]"
+            title="Almoço 12:00–13:00"
+            style={{ left: `${pct(12 * 60)}%`, width: `${pct(13 * 60) - pct(12 * 60)}%`, background: "rgba(244,180,0,0.22)", border: "1px solid rgba(244,180,0,0.45)" }}
+          />
+        )}
+
+        {/* margem de segurança depois da última parada */}
+        {blocos.length > 0 && (
+          <div
+            className="absolute inset-y-[10px] rounded-[2px]"
+            title={`Margem de ${margemMin} min`}
+            style={{
+              left: `${pct(ultimaSaida)}%`,
+              width: `${Math.max(0.4, pct(minTermino) - pct(ultimaSaida))}%`,
+              background: `repeating-linear-gradient(115deg, ${cor}55 0 4px, transparent 4px 8px)`,
+            }}
+          />
+        )}
+
+        {/* limite do expediente — só aparece quando a margem passa dele */}
+        {estourou && (
+          <div className="absolute inset-y-0 w-px" style={{ left: `${pct(minFimExp)}%`, background: SIM.danger, boxShadow: `0 0 8px ${SIM.danger}` }}>
+            <span className="absolute -top-0.5 left-1 whitespace-nowrap text-[8.5px] font-bold" style={{ color: SIM.danger }}>{expediente.fim}</span>
+          </div>
+        )}
+
+        {/* paradas */}
+        {blocos.map((b) => {
+          const ini = minNoDia(b.chegada, dia);
+          const fim = minNoDia(b.saida, dia);
+          const alerta = climaPorId.get(b.id)?.alerta;
+          const ativo = b.id === hoverId || b.id === selId;
+          return (
+            <button
+              key={b.id}
+              type="button"
+              className="sim-bloco"
+              data-sel={b.id === selId ? "1" : "0"}
+              onMouseEnter={() => onHover(b.id)}
+              onFocus={() => onHover(b.id)}
+              onClick={() => onSelect(b.id)}
+              aria-label={`${b.ordem} · ${b.equipamento}`}
+              style={{
+                left: `${pct(ini)}%`,
+                width: `${Math.max(0.55, pct(fim) - pct(ini))}%`,
+                minWidth: 3,
+                background: alerta ? SIM.danger : cor,
+                color: alerta ? SIM.danger : cor,
+                opacity: ativo ? 1 : 0.85,
+              }}
+            />
+          );
+        })}
+
+        {/* cartão da parada em foco */}
+        <AnimatePresence>
+          {destacado && (
+            <motion.div
+              key={destacado.id}
+              initial={{ opacity: 0, y: 6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.97 }}
+              transition={{ duration: 0.14 }}
+              className="absolute bottom-[calc(100%+8px)] z-20 w-[236px] -translate-x-1/2 rounded-xl p-2.5"
+              style={{
+                left: `${Math.min(92, Math.max(8, pct(minNoDia(destacado.chegada, dia))))}%`,
+                background: SIM.panelSolid,
+                border: `1px solid ${cor}66`,
+                boxShadow: "0 18px 40px rgba(0,0,0,0.55)",
+                pointerEvents: destacado.id === selId ? "auto" : "none",
+              }}
+            >
+              <div className="flex items-start gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}>{destacado.ordem}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] font-semibold">{destacado.equipamento}</p>
+                  <p className="text-[11.5px] font-bold tabular-nums" style={{ color: SIM.mint }}>
+                    {fmtHora(destacado.chegada)} <span className="font-medium" style={{ color: SIM.faint }}>→</span> {fmtHora(destacado.saida)}
+                  </p>
+                  <p className="text-[9.5px] tabular-nums" style={{ color: SIM.soft }}>
+                    {destacado.ordem === 1 ? "abre o dia" : `+${fmtKm(destacado.legKm)} km · ${fmtMin(destacado.legMin)}`}
+                    {clima?.alerta && <span style={{ color: "#FCA5A5" }}> · chuva {clima.pct}%</span>}
+                  </p>
+                </div>
+              </div>
+              {destacado.id === selId && (
+                <div className="mt-2 flex items-center gap-1 border-t pt-2" style={{ borderColor: SIM.borderSoft }}>
+                  <AcaoMini titulo="Focar no mapa" onClick={() => onFocar(destacado.id)}><Crosshair className="h-3 w-3" /></AcaoMini>
+                  <AcaoMini titulo="Mover antes" onClick={() => onMover(destacado.id, -1)} desabilitado={!podeMoverAntes(destacado.id)}><ChevronLeft className="h-3 w-3" /></AcaoMini>
+                  <AcaoMini titulo="Mover depois" onClick={() => onMover(destacado.id, 1)} desabilitado={!podeMoverDepois(destacado.id)}><ChevronRight className="h-3 w-3" /></AcaoMini>
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={() => onRemover(destacado.id)}
+                    className="flex h-6 items-center gap-1 rounded-md px-2 text-[10.5px] font-bold transition hover:bg-white/10"
+                    style={{ color: SIM.danger }}
+                  >
+                    <X className="h-3 w-3" /> Tirar da rota
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* término do dia */}
+      <div className="text-right">
+        <p className="text-[13px] font-bold tabular-nums" style={{ color: estourou ? SIM.amber : SIM.text }}>{fmtHora(termino)}</p>
+        <p className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: SIM.faint }}>término</p>
+      </div>
+    </div>
+  );
+}
+
+function AcaoMini({ children, titulo, onClick, desabilitado }: { children: React.ReactNode; titulo: string; onClick: () => void; desabilitado?: boolean }) {
+  return (
+    <button
+      type="button"
+      title={titulo}
+      onClick={onClick}
+      disabled={desabilitado}
+      className="flex h-6 w-6 items-center justify-center rounded-md transition hover:bg-white/10 disabled:opacity-25"
+      style={{ color: SIM.soft }}
+    >
+      {children}
+    </button>
   );
 }
 
