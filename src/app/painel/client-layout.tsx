@@ -268,6 +268,11 @@ export default function PainelClientLayout({ children }: { children: React.React
     return () => window.removeEventListener("resize", apply);
   }, []);
 
+  // Abre o grupo automaticamente quando está numa rota de operação
+  useEffect(() => {
+    if (OPERACAO_HREFS.has(pathname)) setOperacaoOpen(true);
+  }, [pathname]);
+
   // Abre o grupo automaticamente quando está numa rota de vistorias
   useEffect(() => {
     if (VISTORIAS_HREFS.has(pathname)) setVistoriasOpen(true);
