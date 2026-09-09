@@ -191,6 +191,9 @@ export function useOtaUpdate(enabled: boolean) {
 
     Updater.notifyAppReady().catch((e) => {
       console.warn("[useOtaUpdate] notifyAppReady falhou:", e);
+      void import("@/lib/reportClientError").then(({ reportClientError }) =>
+        reportClientError(e instanceof Error ? e.message : String(e), "useOtaUpdate/notifyAppReady")
+      );
     });
   }, []);
 
@@ -251,6 +254,13 @@ export function useOtaUpdate(enabled: boolean) {
         ) {
           console.warn(
             `[useOtaUpdate] Versão ${manifest.version} falhou ${attempt.count}x nos últimos 10min — pausando tentativas.`
+          );
+          void import("@/lib/reportClientError").then(({ reportClientError }) =>
+            reportClientError(
+              `Disjuntor OTA acionado — versão ${manifest.version} falhou ${attempt.count}x`,
+              "useOtaUpdate/circuitBreaker",
+              { deVersao, paraVersao: manifest.version, tentativas: attempt.count }
+            )
           );
           // Visível (aviso pequeno, não bloqueia o app) em vez de silencioso —
           // sem isso o técnico não tinha nenhum sinal de que o app sabia da
@@ -352,6 +362,17 @@ export function useOtaUpdate(enabled: boolean) {
       } catch (err) {
         console.warn("[useOtaUpdate] Checagem OTA falhou (offline?):", err);
         const st = useOtaStore.getState();
+        // "offline?" no log é só uma suposição — reporta o motivo real pro
+        // servidor. Sem isso, "atualização não puxa" só era diagnosticável
+        // por relato informal do técnico (mesmo gap que existia na falha do
+        // gravador de vídeo, mesmo fix).
+        void import("@/lib/reportClientError").then(({ reportClientError }) =>
+          reportClientError(
+            err instanceof Error ? err.message : String(err),
+            "useOtaUpdate/checagem",
+            { fase: st.phase, deVersao: st.deVersao, paraVersao: st.paraVersao }
+          )
+        );
         if (st.phase === "baixando" || st.phase === "aplicando") {
           // set() pode ter travado antes do reload real acontecer — limpa o
           // marcador "acabei de atualizar" pra não mostrar "Atualizado ✓"
