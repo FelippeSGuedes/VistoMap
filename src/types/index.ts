@@ -456,6 +456,7 @@ export interface AuditEntry {
     | "recusa-solicitada"
     | "recusa-aprovada"
     | "recusa-reprovada"
+    | "tecnico-parado"
     | "instalacao-assumida"
     | "instalacao-finalizada"
     | "instalacao-rejeitada"
@@ -513,6 +514,10 @@ export interface PainelStats {
   atribuidas24h?: number;
   /** Vistorias finalizadas nas últimas 24h — do audit log. */
   finalizadas24h?: number;
+  /** Vistorias atribuídas hoje (dia corrente) — do audit log. */
+  atribuidasHoje?: number;
+  /** Vistorias atribuídas no mês corrente — do audit log. */
+  atribuidasMes?: number;
   ultimaSincronizacao: string;
   /** Série diária dos últimos 14 dias por status (sparkline). */
   trend14d?: {

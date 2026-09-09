@@ -235,6 +235,37 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     /* tabela de audit pode não existir em dev — mantém 0 */
   }
 
+  // "Vistorias Atribuídas" (card do dashboard) — hoje (dia corrente) e mês
+  // corrente. Mesmo COUNT(DISTINCT alvo_id) do bloco de 24h acima: uma
+  // vistoria reatribuída (central-vistorias/[id]/reatribuir usa a MESMA
+  // acao) conta 1, não 1 por reatribuição.
+  let atribuidasHoje = 0;
+  let atribuidasMes = 0;
+  try {
+    const [rowHoje] = await query<{ total: number }>(
+      `
+        SELECT COUNT(DISTINCT alvo_id) AS total
+          FROM \`glpi_plugin_vistomap_audit\`
+         WHERE acao = 'vistoria-atribuida'
+           AND alvo_tipo = 'vistoria'
+           AND ts >= CURDATE()
+      `
+    );
+    atribuidasHoje = Number(rowHoje?.total) || 0;
+    const [rowMes] = await query<{ total: number }>(
+      `
+        SELECT COUNT(DISTINCT alvo_id) AS total
+          FROM \`glpi_plugin_vistomap_audit\`
+         WHERE acao = 'vistoria-atribuida'
+           AND alvo_tipo = 'vistoria'
+           AND ts >= DATE_FORMAT(NOW(), '%Y-%m-01')
+      `
+    );
+    atribuidasMes = Number(rowMes?.total) || 0;
+  } catch {
+    /* tabela de audit pode não existir em dev — mantém 0 */
+  }
+
   return {
     pendentes,
     emVistoria,
@@ -250,6 +281,8 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     rejeitadas,
     atribuidas24h,
     finalizadas24h,
+    atribuidasHoje,
+    atribuidasMes,
     ultimaSincronizacao: new Date().toISOString(),
   };
 }
@@ -1358,6 +1391,94 @@ function resolveMapaTecnicoStatus(
   return "parado";
 }
 
+/** Raio (m) dentro do qual pings consecutivos contam como "mesmo lugar". */
+const PARADO_RAIO_M = 60;
+/** Velocidade (km/h) abaixo da qual o técnico é considerado parado num ping. */
+const PARADO_VELOCIDADE_MAX = 3;
+/** Teto da janela investigada — além disso já passou dos dois limiares (badge/alerta). */
+const PARADO_JANELA_MIN = 45;
+
+function distanciaMetrosPainel(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+}
+
+interface ParadoTrailRow {
+  users_id: number;
+  latitude: string;
+  longitude: string;
+  speed_kmh: number | null;
+  created_at: string;
+}
+
+/**
+ * Reaproveitada tanto por fetchPainelMapa() (badge no mapa) quanto pela rota
+ * de cron do alerta (api/painel/cron/tecnico-parado) — mesma conta, dois
+ * consumidores, pra não divergir "quanto tempo parado" entre o que o mapa
+ * mostra e o que dispara o alerta.
+ *
+ * Só investiga os IDs passados (quem já está "parado" no snapshot atual) —
+ * a maioria dos técnicos nunca entra aqui, então o custo fica baixo mesmo
+ * puxando os últimos 45min de pings de cada um.
+ */
+export async function fetchParadoDesdeMin(
+  usersIds: number[]
+): Promise<Map<number, number>> {
+  const resultado = new Map<number, number>();
+  if (usersIds.length === 0) return resultado;
+
+  const placeholders = usersIds.map(() => "?").join(",");
+  const rows = await query<ParadoTrailRow>(
+    `SELECT users_id, latitude, longitude, speed_kmh, created_at
+       FROM glpi_plugin_vistomap_locations
+      WHERE users_id IN (${placeholders})
+        AND created_at >= NOW() - INTERVAL ${PARADO_JANELA_MIN} MINUTE
+      ORDER BY users_id ASC, created_at DESC`,
+    usersIds
+  );
+
+  const porTecnico = new Map<number, ParadoTrailRow[]>();
+  for (const r of rows) {
+    const lista = porTecnico.get(r.users_id);
+    if (lista) lista.push(r);
+    else porTecnico.set(r.users_id, [r]);
+  }
+
+  const now = Date.now();
+  for (const [usersId, pings] of porTecnico) {
+    // pings vem DESC (mais recente primeiro) por causa do ORDER BY acima.
+    const atual = pings[0];
+    const posAtual = { lat: Number(atual.latitude), lng: Number(atual.longitude) };
+
+    let ultimoDentroDoRaio = atual;
+    for (let i = 1; i < pings.length; i++) {
+      const p = pings[i];
+      const pos = { lat: Number(p.latitude), lng: Number(p.longitude) };
+      const dentroDoRaio = distanciaMetrosPainel(posAtual, pos) <= PARADO_RAIO_M;
+      const parado = (p.speed_kmh ?? 0) < PARADO_VELOCIDADE_MAX;
+      if (!dentroDoRaio || !parado) break;
+      ultimoDentroDoRaio = p;
+    }
+
+    const minutos = Math.round(
+      (now - new Date(ultimoDentroDoRaio.created_at).getTime()) / 60000
+    );
+    resultado.set(usersId, Math.max(0, minutos));
+  }
+
+  return resultado;
+}
+
 export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
   const group = process.env.GLPI_VISTOMAP_GROUP ?? "VistoMap-Tecnicos";
   const groupAlt =
@@ -1494,8 +1615,22 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       municipios_ativos: Number(r.municipios_ativos) || 0,
       vistorias_ativas: Number(r.ativos_count) || 0,
       revisitas_ativas: Number(r.revisita_count) || 0,
+      parado_desde_min: null,
     };
   });
+
+  // "Parado há Xmin" — só investiga quem já caiu no status "parado" acima,
+  // pra não pagar o custo do trail em todo mundo (ver fetchParadoDesdeMin).
+  const idsParados = tecnicos
+    .filter((t) => t.status_operacional === "parado")
+    .map((t) => t.users_id);
+  if (idsParados.length > 0) {
+    const paradoDesdeMin = await fetchParadoDesdeMin(idsParados);
+    for (const t of tecnicos) {
+      const min = paradoDesdeMin.get(t.users_id);
+      if (min != null) t.parado_desde_min = min;
+    }
+  }
 
   // Técnico purgado do GLPI (ver usuariosRemovidos.ts) — recupera o nome do
   // histórico em vez de deixar o pin do mapa sem nome de técnico.

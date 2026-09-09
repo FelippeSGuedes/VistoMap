@@ -2361,6 +2361,36 @@ export default function PainelOverviewPage() {
         <PipelineWidget stats={stats} />
       </div>
 
+      {/* ════════════ VISTORIAS ATRIBUÍDAS — hoje / mês corrente ════════════
+          "Atribuída" != "concluída": mede o que SAIU do backlog (audit
+          vistoria-atribuida, COUNT DISTINCT alvo_id — mesma conta de
+          atribuidas24h logo acima, só em janelas de dia/mês em vez de 24h). */}
+      <div
+        className="vm-rise rounded-2xl p-4"
+        style={{ animationDelay: "0.24s", background: "var(--vm-tile)", border: "1px solid var(--vm-border)" }}
+      >
+        <div className="mb-2 flex items-center gap-2">
+          <UserPlus className="h-4 w-4 text-[#8B5CF6]" strokeWidth={2} />
+          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias Atribuídas</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {(
+            [
+              { label: "Hoje", value: stats?.atribuidasHoje ?? null, sub: "desde 00:00", color: "#8B5CF6" },
+              { label: "Este mês", value: stats?.atribuidasMes ?? null, sub: "mês corrente", color: "#8B5CF6" },
+            ] as const
+          ).map((k) => (
+            <Card key={k.label} className="p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
+              <div className="mt-0.5 text-[26px] font-bold tabular-nums" style={{ color: k.color }}>
+                {k.value != null ? <CountUp value={k.value} /> : "—"}
+              </div>
+              <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
+            </Card>
+          ))}
+        </div>
+      </div>
+
       {/* ════════════ INSTALAÇÃO — seção própria, depois de toda a Vistoria ════════════
           Cards da Instalação numa seção clara e separada, no fim da tela de
           Operação (depois da Distribuição das Vistorias) — dado vem de

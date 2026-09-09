@@ -52,8 +52,6 @@ const ADMIN_ONLY: SessionRole[] = ["admin"];
 
 // Items simples do nav (sem grupo)
 const TOP_NAV = [
-  { href: "/painel",                label: "Operação",        icon: LayoutDashboard, exact: true, roles: ALL_ROLES },
-  { href: "/painel/mapa",           label: "Mapa Tempo Real", icon: MapIcon,                       roles: ALL_ROLES },
   { href: "/painel/notificacoes",   label: "Notificações",    icon: Bell,                          roles: ADMIN_MOD },
 ];
 
@@ -77,10 +75,22 @@ const CONFIG_GROUP = [
 ];
 const CONFIG_HREFS = new Set(CONFIG_GROUP.map((i) => i.href));
 
+// Sub-itens do grupo "Operação" — /painel (dashboard), /painel/mapa (mapa 3D)
+// e /painel/andamento (tabela de quem está em campo) mostram informação
+// parecida sobre "quem está fazendo o quê agora" — antes espalhados em 3
+// lugares diferentes do menu (2 soltos no topo + 1 dentro de Vistorias),
+// o que dava a impressão de mapas/telas embolados. Só reagrupamento visual,
+// nenhuma tela saiu do ar.
+const OPERACAO_GROUP = [
+  { href: "/painel",       label: "Dashboard",       icon: LayoutDashboard, exact: true, roles: ALL_ROLES },
+  { href: "/painel/mapa",  label: "Mapa Tempo Real", icon: MapIcon,                      roles: ALL_ROLES },
+  { href: "/painel/andamento", label: "Em Andamento", icon: Activity,                    roles: ALL_ROLES },
+];
+const OPERACAO_HREFS = new Set(OPERACAO_GROUP.map((i) => i.href));
+
 // Sub-itens do grupo "Vistorias"
 const VISTORIAS_GROUP = [
   { href: "/painel/vistorias",           label: "Pendentes",            icon: ClipboardList, roles: ADMIN_MOD },
-  { href: "/painel/andamento",           label: "Em Andamento",         icon: Activity,       roles: ALL_ROLES },
   { href: "/painel/realizadas",          label: "Concluídas",           icon: CheckCircle2,   roles: ALL_ROLES },
   { href: "/painel/revisitas",           label: "Revisitas",            icon: RotateCw,       roles: ALL_ROLES },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },
@@ -107,6 +117,7 @@ const INSTALACOES_HREFS = new Set(INSTALACOES_GROUP.map((i) => i.href));
 const PAGE_ROLES: Array<{ href: string; roles: SessionRole[] }> = [
   ...TOP_NAV,
   ...BOTTOM_NAV,
+  ...OPERACAO_GROUP,
   ...VISTORIAS_GROUP,
   ...INSTALACOES_GROUP,
   ...CONFIG_GROUP,
@@ -234,6 +245,7 @@ export default function PainelClientLayout({ children }: { children: React.React
   const { hydrated, session, logout } = useAuthStore();
 
   const [isDark, setIsDark] = useState(false);
+  const [operacaoOpen, setOperacaoOpen] = useState(false);
   const [vistoriasOpen, setVistoriasOpen] = useState(false);
   const [instalacoesOpen, setInstalacoesOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -336,11 +348,13 @@ export default function PainelClientLayout({ children }: { children: React.React
   const T = isDark ? DARK : LIGHT;
   const isMapaPage = pathname === "/painel/mapa";
   const nome = session.tecnico.nome;
+  const operacaoActive = OPERACAO_HREFS.has(pathname);
   const vistoriasActive = VISTORIAS_HREFS.has(pathname);
   const instalacoesActive = INSTALACOES_HREFS.has(pathname);
   const configActive = CONFIG_HREFS.has(pathname);
   const topNav = TOP_NAV.filter((i) => i.roles.includes(session.role));
   const bottomNav = BOTTOM_NAV.filter((i) => i.roles.includes(session.role));
+  const operacaoGroup = OPERACAO_GROUP.filter((i) => i.roles.includes(session.role));
   const vistoriasGroup = VISTORIAS_GROUP.filter((i) => i.roles.includes(session.role));
   const instalacoesGroup = INSTALACOES_GROUP.filter((i) => i.roles.includes(session.role));
   const configGroup = CONFIG_GROUP.filter((i) => i.roles.includes(session.role));
@@ -442,18 +456,92 @@ export default function PainelClientLayout({ children }: { children: React.React
           )}
           <ul className="space-y-[2px]">
             {/* Itens do topo */}
-            {topNav.map(({ href, label, icon, exact }) => (
+            {topNav.map(({ href, label, icon }) => (
               <NavItem
                 key={href}
                 href={href}
                 label={label}
                 icon={icon}
-                exact={exact}
                 pathname={pathname}
                 T={T}
                 collapsed={collapsed}
               />
             ))}
+
+            {/* ── GRUPO: OPERAÇÃO ────────────────────────────────── */}
+            {operacaoGroup.length === 0 ? null : collapsed ? (
+              <li>
+                <button
+                  type="button"
+                  title="Operação"
+                  onClick={() => { toggleCollapse(); setOperacaoOpen(true); }}
+                  className="relative flex w-full items-center justify-center rounded-lg py-[9px] transition-colors duration-100"
+                  style={{
+                    background: operacaoActive ? T.navActive : "transparent",
+                    color: operacaoActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {operacaoActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                    />
+                  )}
+                  <LayoutDashboard
+                    className="h-[15px] w-[15px]"
+                    strokeWidth={operacaoActive ? 2.3 : 1.8}
+                    style={{ color: operacaoActive ? "#00B388" : T.navInactive }}
+                  />
+                </button>
+              </li>
+            ) : (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setOperacaoOpen((v) => !v)}
+                  className="relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium transition-colors duration-100"
+                  style={{
+                    background: operacaoActive ? T.navActive : "transparent",
+                    color: operacaoActive ? T.navActiveTxt : T.navInactive,
+                  }}
+                >
+                  {operacaoActive && (
+                    <span
+                      className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ background: "linear-gradient(180deg,#00C99B,#00875F)" }}
+                    />
+                  )}
+                  <LayoutDashboard
+                    className="h-[15px] w-[15px] shrink-0"
+                    strokeWidth={operacaoActive ? 2.3 : 1.8}
+                    style={{ color: operacaoActive ? "#00B388" : T.navInactive }}
+                  />
+                  <span className="flex-1 truncate text-left">Operação</span>
+                  {operacaoOpen ? (
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                  )}
+                </button>
+
+                {operacaoOpen && (
+                  <ul className="mt-0.5 space-y-[2px]">
+                    {operacaoGroup.map(({ href, label, icon, exact }) => (
+                      <NavItem
+                        key={href}
+                        href={href}
+                        label={label}
+                        icon={icon}
+                        exact={exact}
+                        pathname={pathname}
+                        T={T}
+                        indent
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )}
 
             {/* ── GRUPO: VISTORIAS ───────────────────────────────── */}
             {vistoriasGroup.length === 0 ? null : collapsed ? (

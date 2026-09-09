@@ -19,6 +19,8 @@ export interface PainelMapaTecnico {
   municipios_ativos: number;
   vistorias_ativas: number;
   revisitas_ativas: number;
+  /** Minutos parado no mesmo lugar — só preenchido quando status_operacional === "parado". */
+  parado_desde_min: number | null;
 }
 
 export type MapaVistoriaStatus =

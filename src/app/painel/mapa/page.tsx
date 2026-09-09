@@ -1294,6 +1294,7 @@ export default function PainelMapaPage() {
           speedKmh: t.speed_kmh,
           corHex: statusColor(t.status_operacional),
           route,
+          paradoDesdeMin: t.parado_desde_min,
         });
       });
 

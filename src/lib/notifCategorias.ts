@@ -14,7 +14,7 @@
  * de `ACAO_META` em `@/lib/auditMeta` — não duplicar aqui.
  */
 
-import { Ban, ClipboardCheck, ShieldAlert, Undo2, XCircle } from "lucide-react";
+import { Ban, ClipboardCheck, Clock, ShieldAlert, Undo2, XCircle } from "lucide-react";
 import type { AuditEntry } from "@/types";
 
 export const NOTIF_CATEGORIAS = [
@@ -23,6 +23,7 @@ export const NOTIF_CATEGORIAS = [
   "vistoria-concluida",
   "devolucao-corrigida",
   "reprovacao",
+  "tecnico-parado",
 ] as const;
 
 export type NotifCategoria = (typeof NOTIF_CATEGORIAS)[number];
@@ -36,6 +37,7 @@ export const CATEGORIA_META: Record<
   "vistoria-concluida":  { label: "Vistoria concluída",    icon: ClipboardCheck, fg: "#00875F", bg: "var(--vm-accent-tint)" },
   "devolucao-corrigida": { label: "Devolução corrigida",   icon: Undo2,          fg: "#00875F", bg: "var(--vm-accent-tint)" },
   reprovacao:            { label: "Reprovação",            icon: XCircle,        fg: "#B91C1C", bg: "var(--vm-red-tint)" },
+  "tecnico-parado":      { label: "Técnico parado",        icon: Clock,          fg: "#C2410C", bg: "var(--vm-orange-tint)" },
 };
 
 /**
@@ -50,6 +52,7 @@ export const ACAO_CATEGORIA: Partial<Record<AuditEntry["acao"], NotifCategoria>>
   "vistoria-reprovada":  "reprovacao",
   "recusa-reprovada":    "reprovacao",
   "override-reprovado":  "reprovacao",
+  "tecnico-parado":      "tecnico-parado",
 };
 
 /** Título curto do push/toast por ação — texto de EVENTO, não de categoria. */
@@ -61,6 +64,7 @@ export const ACAO_TITULO: Partial<Record<AuditEntry["acao"], string>> = {
   "vistoria-reprovada":  "Vistoria reprovada",
   "recusa-reprovada":    "Recusa reprovada",
   "override-reprovado":  "Exceção reprovada",
+  "tecnico-parado":      "Técnico parado",
 };
 
 /** URL de destino ao clicar no push/toast, por ação. */
@@ -72,6 +76,7 @@ export const ACAO_HREF: Partial<Record<AuditEntry["acao"], string>> = {
   "vistoria-reprovada":  "/painel/revisitas",
   "recusa-reprovada":    "/painel/notificacoes",
   "override-reprovado":  "/painel/notificacoes",
+  "tecnico-parado":      "/painel/mapa",
 };
 
 export function categoriaDeAcao(acao: string): NotifCategoria | null {

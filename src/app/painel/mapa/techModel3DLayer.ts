@@ -113,6 +113,13 @@ const IDLE_ALVO_PX = 55;
  */
 const PIN_MAX_FATOR = 500;
 
+/** Badge "Parado há Xmin" na etiqueta — some abaixo disso (trânsito/semáforo é normal). */
+const PARADO_BADGE_MIN = 15;
+/** A partir daqui o badge fica vermelho — mesmo limiar que dispara o push (cron/tecnico-parado). */
+const PARADO_ALERTA_MIN = 30;
+/** Teto investigado no backend (fetchParadoDesdeMin) — acima disso mostra "Xmin+". */
+const PARADO_JANELA_MIN_LABEL = 45;
+
 
 // car.glb é o modelo real (modelado pelo usuário). O carrinho geométrico
 // continua no código como fallback: aparece enquanto os 17MB carregam e
@@ -423,6 +430,8 @@ export interface TechEntrySpec {
   corHex: string;
   /** Presente = "carro seguindo rota"; null = "pin parado". */
   route: RouteResult | null;
+  /** Minutos parado no mesmo lugar (fetchParadoDesdeMin) — null fora do status "parado". */
+  paradoDesdeMin: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -544,6 +553,8 @@ interface TechEntry {
 
   nome: string;
   corHex: string;
+  /** Minutos parado no mesmo lugar — null fora do status "parado". */
+  paradoDesdeMin: number | null;
   /** Etiqueta flutuante com o nome, reposicionada a cada frame. */
   label: mapboxgl.Marker | null;
   /** Última coordenada recebida — detecta se o poll trouxe posição nova. */
@@ -953,6 +964,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       usersId: spec.usersId,
       nome: spec.nome,
       corHex: spec.corHex,
+      paradoDesdeMin: spec.paradoDesdeMin,
       kind: spec.route ? "car" : "idle",
       object3d,
       visual: null,
@@ -988,6 +1000,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     e.route = spec.route;
     e.nome = spec.nome;
     e.corHex = spec.corHex;
+    e.paradoDesdeMin = spec.paradoDesdeMin;
     this.ensureVisual(e, corMudou);
     this.ensureLabel(e);
 
@@ -1029,6 +1042,34 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     }
   }
 
+  /**
+   * "Parado há Xmin" na etiqueta — só aparece a partir de PARADO_BADGE_MIN
+   * (paradas curtas de trânsito/semáforo não geram ruído). Cor esquenta pra
+   * vermelho a partir de PARADO_ALERTA_MIN, mesmo limiar que dispara o
+   * push pro analista (api/painel/cron/tecnico-parado) — o badge é o
+   * mesmo relógio que o alerta, só que visível o tempo todo.
+   */
+  private syncParadoBadge(el: HTMLElement, e: TechEntry): void {
+    const existente = el.querySelector("[data-parado]") as HTMLElement | null;
+    const min = e.paradoDesdeMin;
+    if (min == null || min < PARADO_BADGE_MIN) {
+      existente?.remove();
+      return;
+    }
+    const texto = min >= PARADO_JANELA_MIN_LABEL ? `Parado ${min}min+` : `Parado ${min}min`;
+    const cor = min >= PARADO_ALERTA_MIN ? "#ff5a5a" : "#ffb020";
+    if (existente) {
+      if (existente.textContent !== texto) existente.textContent = texto;
+      if (existente.style.color !== cor) existente.style.color = cor;
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.setAttribute("data-parado", "");
+    badge.style.cssText = `color:${cor};font-weight:700`;
+    badge.textContent = texto;
+    el.append(badge);
+  }
+
   /** Etiqueta flutuante com o nome; clicar seleciona o técnico. */
   private ensureLabel(e: TechEntry): void {
     if (!this.map) return;
@@ -1037,10 +1078,12 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     // padrão do painel, quem está parado ficaria anônimo — perda direta de
     // informação em relação ao que o mapa mostrava antes.
     if (e.label) {
-      const el = e.label.getElement().querySelector("[data-nome]");
-      if (el && el.textContent !== primeiroNome(e.nome)) el.textContent = primeiroNome(e.nome);
-      const dot = e.label.getElement().querySelector("[data-cor]") as HTMLElement | null;
+      const el = e.label.getElement();
+      const nomeEl = el.querySelector("[data-nome]");
+      if (nomeEl && nomeEl.textContent !== primeiroNome(e.nome)) nomeEl.textContent = primeiroNome(e.nome);
+      const dot = el.querySelector("[data-cor]") as HTMLElement | null;
       if (dot && dot.style.background !== e.corHex) dot.style.background = e.corHex;
+      this.syncParadoBadge(el, e);
       return;
     }
 
@@ -1058,6 +1101,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     nome.setAttribute("data-nome", "");
     nome.textContent = primeiroNome(e.nome);
     el.append(ponto, nome);
+    this.syncParadoBadge(el, e);
     el.addEventListener("click", (ev) => {
       ev.stopPropagation();
       this.onSelect?.(e.usersId);
