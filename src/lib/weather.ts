@@ -22,8 +22,10 @@ export async function fetchRiscoChuva(
   lng: number,
   dataISO: string
 ): Promise<RiscoChuva> {
+  // Offset explícito (-03:00) — meia-noite de Brasília, não do processo (UTC
+  // neste deploy), pra não errar por 1 dia perto da borda do horizonte.
   const dias = Math.ceil(
-    (new Date(`${dataISO}T00:00:00`).getTime() - Date.now()) / 86_400_000
+    (new Date(`${dataISO}T00:00:00-03:00`).getTime() - Date.now()) / 86_400_000
   );
   if (dias < 0 || dias > HORIZONTE_PREVISAO_DIAS) {
     return { probabilidadePct: null, alerta: false };

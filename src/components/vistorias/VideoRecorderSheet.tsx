@@ -35,9 +35,16 @@ function usePortrait(active: boolean): boolean {
 
 function pickMime(): { mime: string; ext: string } | null {
   if (typeof MediaRecorder === "undefined") return null;
+  // Lista ampliada (era só 3) — WebView mais restrito podia reprovar TODOS
+  // os candidatos antigos e cair direto no fallback pesado (câmera do
+  // sistema, sem limite/compressão). Mais variantes = menos motivo de
+  // "nenhum mimeType suportado".
   const candidates = [
     { mime: "video/webm;codecs=vp8,opus", ext: "webm" },
+    { mime: "video/webm;codecs=vp8", ext: "webm" },
+    { mime: "video/webm;codecs=vp9,opus", ext: "webm" },
     { mime: "video/webm", ext: "webm" },
+    { mime: "video/mp4;codecs=h264", ext: "mp4" },
     { mime: "video/mp4", ext: "mp4" },
   ];
   for (const c of candidates) {
@@ -89,35 +96,59 @@ export function VideoRecorderSheet({
     setRecording(false);
     setSecs(0);
 
+    const abrirCamera = async (): Promise<MediaStream> => {
+      if (!navigator.mediaDevices?.getUserMedia || !pickMime()) {
+        throw new Error("unsupported");
+      }
+      return navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 854 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 24 },
+        },
+        audio: true,
+      });
+    };
+
     (async () => {
+      let stream: MediaStream;
       try {
-        if (!navigator.mediaDevices?.getUserMedia || !pickMime()) {
-          throw new Error("unsupported");
-        }
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 854 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 24 },
-          },
-          audio: true,
-        });
-        if (!alive) {
-          stream.getTracks().forEach((t) => t.stop());
+        stream = await abrirCamera();
+      } catch (err1) {
+        // Falha transitória é comum aqui (câmera ainda sendo liberada pela
+        // tela anterior, WebView "esquentando") — uma retentativa curta
+        // evita cair no fallback pesado (câmera do sistema, sem
+        // limite/compressão) por causa de uma corrida, não de uma
+        // incompatibilidade real.
+        await new Promise((r) => setTimeout(r, 400));
+        if (!alive) return;
+        try {
+          stream = await abrirCamera();
+        } catch (err2) {
+          if (alive) {
+            setError("Não foi possível abrir a câmera aqui. Use a câmera do sistema.");
+            const motivo = err2 instanceof Error ? err2.message : String(err2);
+            void import("@/lib/reportClientError").then(({ reportClientError }) =>
+              reportClientError(motivo, "VideoRecorderSheet/getUserMedia", {
+                tentativa1: err1 instanceof Error ? err1.message : String(err1),
+              })
+            );
+          }
           return;
         }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        setReady(true);
-      } catch {
-        setError(
-          "Não foi possível abrir a câmera aqui. Use a câmera do sistema."
-        );
       }
+
+      if (!alive) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+      setReady(true);
     })();
 
     return () => {
@@ -139,8 +170,12 @@ export function VideoRecorderSheet({
         videoBitsPerSecond: VIDEO_BITRATE,
         audioBitsPerSecond: AUDIO_BITRATE,
       });
-    } catch {
+    } catch (err) {
       setError("Falha ao iniciar gravação. Use a câmera do sistema.");
+      const motivo = err instanceof Error ? err.message : String(err);
+      void import("@/lib/reportClientError").then(({ reportClientError }) =>
+        reportClientError(motivo, "VideoRecorderSheet/MediaRecorder", { mime: picked.mime })
+      );
       return;
     }
     recorderRef.current = rec;

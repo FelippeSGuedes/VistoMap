@@ -16,8 +16,16 @@ interface BindingRow {
   aceito_em: string;
 }
 
+// aceito_em/revogado_em vêm do MySQL em UTC ("YYYY-MM-DD HH:MM:SS", sem
+// indicação de fuso) — sem o "Z", a maioria dos browsers assume horário
+// LOCAL, mostrando 3h a mais. Mesmo fix já usado em auditoria/notificações/
+// tecnicos/[id]/instalacoes/rejeitadas.
+function parseUTC(iso: string): Date {
+  return new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
+}
+
 function fmtData(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUTC(iso);
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
     " · " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }

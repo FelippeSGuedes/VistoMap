@@ -21,6 +21,7 @@ import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
 import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
+import { nowBrasiliaSql } from "@/lib/timezone";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -50,24 +51,6 @@ interface FinalizarPayload {
   motivofield?: string;
   dropdowns?: Partial<Record<DropdownKey, string>>;
   finalizadaEm?: string;
-}
-
-function formatGlpiDateTime(iso?: string): string {
-  const d = iso ? new Date(iso) : new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    d.getFullYear() +
-    "-" +
-    pad(d.getMonth() + 1) +
-    "-" +
-    pad(d.getDate()) +
-    " " +
-    pad(d.getHours()) +
-    ":" +
-    pad(d.getMinutes()) +
-    ":" +
-    pad(d.getSeconds())
-  );
 }
 
 async function blobToBuffer(file: File): Promise<Buffer> {
@@ -201,7 +184,7 @@ export async function POST(
       ? await resolveDropdowns(payload.dropdowns)
       : {};
 
-    const datavistoria = formatGlpiDateTime(payload.finalizadaEm);
+    const datavistoria = nowBrasiliaSql(payload.finalizadaEm);
 
     // Detecta se já era revisita (is_repeat=1 na aux) p/ decidir situação.
     const [auxRow] = await query<{ is_repeat: number }>(

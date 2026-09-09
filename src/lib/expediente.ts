@@ -1,5 +1,6 @@
 import "server-only";
 import { execute, query } from "./db";
+import { hojeBrasiliaISO } from "./timezone";
 
 /**
  * Lib expediente — turno de trabalho do tecnico.
@@ -327,8 +328,11 @@ export async function janelaRastreio(): Promise<JanelaStatus> {
  */
 export async function fecharExpedientesPendurados(usersId?: number): Promise<number> {
   const cfg = await getExpedienteConfig();
-  const params: unknown[] = [];
-  let where = `fim_at IS NULL AND DATE(inicio_at) < CURDATE()`;
+  // CURDATE() reflete o dia civil do SERVIDOR (UTC neste deploy), não o de
+  // Brasília — perto da virada das 21h-24h locais os dois discordam.
+  const hoje = hojeBrasiliaISO();
+  const params: unknown[] = [hoje];
+  let where = `fim_at IS NULL AND DATE(inicio_at) < ?`;
   if (usersId != null) {
     where += ` AND users_id = ?`;
     params.push(usersId);
@@ -384,10 +388,10 @@ export async function ensureExpedienteAuto(
     if (aberto && janela.motivo === "depois") {
       await execute(
         `UPDATE glpi_plugin_vistomap_expediente
-            SET fim_at = GREATEST(inicio_at, TIMESTAMP(CURDATE(), ?)),
+            SET fim_at = GREATEST(inicio_at, TIMESTAMP(?, ?)),
                 pausa_almoco_fim = COALESCE(pausa_almoco_fim, pausa_almoco_inicio)
           WHERE id = ?`,
-        [`${janela.config.fim}:00`, aberto.id]
+        [hojeBrasiliaISO(), `${janela.config.fim}:00`, aberto.id]
       );
       aberto = null;
     }

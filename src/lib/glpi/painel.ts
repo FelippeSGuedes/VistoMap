@@ -26,6 +26,7 @@ import {
   TABLE_USERS,
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
+import { nowBrasiliaSql } from "@/lib/timezone";
 import type {
   AdminStatus,
   PainelStats,
@@ -786,19 +787,6 @@ export async function atualizarCamposVistoria(
 
 /* ── Aprovar / Reprovar (admin) ──────────────────────────────────── */
 
-function nowDateTime(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    d.getFullYear() +
-    "-" + pad(d.getMonth() + 1) +
-    "-" + pad(d.getDate()) +
-    " " + pad(d.getHours()) +
-    ":" + pad(d.getMinutes()) +
-    ":" + pad(d.getSeconds())
-  );
-}
-
 /**
  * Aprova uma vistoria (admin internamente, antes do envio à CPFL).
  *
@@ -825,7 +813,7 @@ export async function aprovarVistoria(
     [vistoriaId]
   );
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
-  const now = nowDateTime();
+  const now = nowBrasiliaSql();
 
   const sets = [
     "plugin_fields_statusvistoriafielddropdowns_id = ?",

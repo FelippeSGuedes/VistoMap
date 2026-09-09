@@ -85,9 +85,10 @@ export async function POST(req: Request) {
     }
 
     const horaInicioStr = body.hora_inicio ?? (await getExpedienteConfig()).inicio;
-    const [hh, mm] = horaInicioStr.split(":").map(Number);
-    const horaInicio = new Date(`${body.data_agendada}T00:00:00`);
-    horaInicio.setHours(hh, mm, 0, 0);
+    // Offset explícito (-03:00, Brasília sem horário de verão) — sem ele,
+    // "T08:00:00" sem fuso é interpretado como hora LOCAL DO PROCESSO (UTC
+    // neste deploy), então "08:00" virava 05:00 de Brasília.
+    const horaInicio = new Date(`${body.data_agendada}T${horaInicioStr}:00-03:00`);
 
     const roteiro = await montarRoteiroDoDia(tId, paradas, body.data_agendada, horaInicio);
 

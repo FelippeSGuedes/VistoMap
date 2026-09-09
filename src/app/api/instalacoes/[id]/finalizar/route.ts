@@ -10,6 +10,7 @@ import { getActorFromRequest } from "@/lib/auth-request";
 import { auditInsert } from "@/lib/glpi/audit";
 import { logError } from "@/lib/observability";
 import type { InstalacaoChecklistKey } from "@/lib/glpi/constants";
+import { nowBrasiliaSql } from "@/lib/timezone";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -127,7 +128,7 @@ export async function POST(
       items_id: id,
       equipment_name: instalacao.equipamento,
       project_status: "PENDENTE",
-      project_date: new Date().toISOString().slice(0, 19).replace("T", " "),
+      project_date: nowBrasiliaSql(),
       imagePaths,
     });
 

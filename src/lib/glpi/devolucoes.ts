@@ -1,5 +1,6 @@
 import "server-only";
 import { execute, query } from "@/lib/db";
+import { nowBrasiliaSql, hojeBrasiliaISO } from "@/lib/timezone";
 
 /**
  * Devoluções — analista aponta itens (fotos/campos) errados numa vistoria
@@ -177,13 +178,12 @@ function mapRow(r: DevolucaoRow): Devolucao {
  * nova vistoria no dia seguinte" — no mesmo dia é só lembrete, não bloqueia.
  */
 export function devolucaoEhDeOutroDia(criadoEm: string): boolean {
-  const d = new Date(criadoEm.includes("T") ? criadoEm : criadoEm.replace(" ", "T") + "Z");
-  const hoje = new Date();
-  return (
-    d.getFullYear() !== hoje.getFullYear() ||
-    d.getMonth() !== hoje.getMonth() ||
-    d.getDate() !== hoje.getDate()
-  );
+  const iso = criadoEm.includes("T") ? criadoEm : criadoEm.replace(" ", "T") + "Z";
+  // Dia de CALENDÁRIO EM BRASÍLIA — comparar por .getFullYear()/getMonth()/
+  // getDate() (fuso do processo, UTC neste deploy) dava falso positivo/
+  // negativo bem na janela das 21h-24h de Brasília (00h-03h UTC do dia
+  // seguinte), quando o dia civil em Brasília ainda não virou mas o UTC já.
+  return nowBrasiliaSql(iso).slice(0, 10) !== hojeBrasiliaISO();
 }
 
 /** Devolução PENDENTE mais recente de um técnico (gate diário do app). */

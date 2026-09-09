@@ -19,6 +19,7 @@ import { logError } from "@/lib/observability";
 import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import { fetchDevolucaoPendentePorVistoria, resolverDevolucao } from "@/lib/glpi/devolucoes";
 import { DEVOLUCAO_DROPDOWN_FIELD } from "@/lib/glpi/devolucaoItens";
+import { nowBrasiliaSql } from "@/lib/timezone";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,15 +29,6 @@ function parseId(raw: string): number | null {
   const cleaned = raw.replace(/^NE-/, "");
   const n = Number(cleaned);
   return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function formatGlpiDateTime(iso?: string): string {
-  const d = iso ? new Date(iso) : new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
-    " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds())
-  );
 }
 
 async function blobToBuffer(file: File): Promise<Buffer> {
@@ -198,7 +190,7 @@ export async function POST(
     );
     const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
     const situacaoFinal = eraRevisita ? SITUACAO_REVISITADO : SITUACAO_VISTORIADO;
-    const agora = formatGlpiDateTime();
+    const agora = nowBrasiliaSql();
 
     const dropdownIds =
       Object.keys(dropdownsInput).length > 0 ? await resolveDropdowns(dropdownsInput) : {};
