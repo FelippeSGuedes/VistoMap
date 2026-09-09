@@ -38,6 +38,8 @@ interface RecusarVistoriaFlowProps {
   equipamento: string;
   /** Quando definido, pula a etapa de escolha de motivo (caso do gate automático). */
   motivoFixo?: RecusaMotivo;
+  /** Respostas já conhecidas de antemão (ex.: RSRP já medido na tela de correção) — evita perguntar de novo o que o app já sabe. */
+  respostasIniciais?: Record<string, string>;
   onClose: () => void;
   /** Chamado quando a recusa é APROVADA — a vistoria saiu de circulação. */
   onAprovada: () => void;
@@ -48,12 +50,13 @@ export function RecusarVistoriaFlow({
   vistoriaId,
   equipamento,
   motivoFixo,
+  respostasIniciais,
   onClose,
   onAprovada,
 }: RecusarVistoriaFlowProps) {
   const [fase, setFase] = useState<Fase>("motivo");
   const [motivo, setMotivo] = useState<RecusaMotivo | null>(motivoFixo ?? null);
-  const [respostas, setRespostas] = useState<Record<string, string>>({});
+  const [respostas, setRespostas] = useState<Record<string, string>>(respostasIniciais ?? {});
   const [recusaId, setRecusaId] = useState<number | null>(null);
   const [motivoReprovacao, setMotivoReprovacao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -65,7 +68,7 @@ export function RecusarVistoriaFlow({
     if (!open) return;
     setFase(motivoFixo ? "revisao" : "motivo");
     setMotivo(motivoFixo ?? null);
-    setRespostas({});
+    setRespostas(respostasIniciais ?? {});
     setRecusaId(null);
     setMotivoReprovacao("");
     setErro(null);
@@ -74,6 +77,7 @@ export function RecusarVistoriaFlow({
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, motivoFixo]);
 
   function handleFotoChange(file: File | null) {

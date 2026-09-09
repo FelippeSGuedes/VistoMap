@@ -19,13 +19,14 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  AlertTriangle, Camera, Check, Clock, Loader2,
-  Navigation as NavigationIcon, Replace, Send, Upload, Video, XCircle,
+  AlertTriangle, Ban, Camera, Check, Clock, HelpCircle, Loader2,
+  Navigation as NavigationIcon, Replace, Send, Upload, Video, X, XCircle,
 } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import { NavigationOptionsSheet } from "@/components/vistorias/NavigationOptionsSheet";
+import { RecusarVistoriaFlow } from "@/components/vistorias/RecusarVistoriaFlow";
 import { SelectField } from "@/components/vistorias/SelectField";
 import { VideoRecorderSheet } from "@/components/vistorias/VideoRecorderSheet";
 import { vistoriasService } from "@/services/vistorias";
@@ -38,6 +39,7 @@ import {
   type DevolucaoVistoria,
 } from "@/store/devolucao";
 import { DEVOLUCAO_DROPDOWN_FIELD, DEVOLUCAO_ITEM_LABEL, DEVOLUCAO_ITENS } from "@/lib/glpi/devolucaoItens";
+import type { RecusaMotivo } from "@/lib/glpi/recusaMotivos";
 
 const RAIO_M = 100;
 
@@ -88,6 +90,17 @@ function CorrigirDevolucaoInner() {
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [pendingRequestId, setPendingRequestId] = useState<number | null>(null);
   const [reprovacaoMotivo, setReprovacaoMotivo] = useState<string | null>(null);
+
+  // "Recusar vistoria" — faltava um jeito de sair do loop "trocar de poste →
+  // sinal ainda ruim → não consegue enviar" nessa tela (achado em campo
+  // 2026-09-09). Chip discreto de ajuda (triagem genérica) + atalho
+  // automático quando o app já sabe, pelos números que o técnico acabou de
+  // digitar, que o poste novo também reprovou.
+  const [ajudaOpen, setAjudaOpen] = useState(false);
+  const [ajudaStep, setAjudaStep] = useState<"raiz" | "trocou">("raiz");
+  const [recusarOpen, setRecusarOpen] = useState(false);
+  const [recusarMotivoFixo, setRecusarMotivoFixo] = useState<RecusaMotivo | undefined>(undefined);
+  const [recusarRespostasIniciais, setRecusarRespostasIniciais] = useState<Record<string, string> | undefined>(undefined);
 
   const [campos, setCampos] = useState<Record<string, string>>({});
   const [arquivos, setArquivos] = useState<Record<string, Blob>>({});
@@ -216,6 +229,31 @@ function CorrigirDevolucaoInner() {
   const podeEnviar =
     fotosApontadas.every((k) => !!arquivos[k]) &&
     camposApontados.every((k) => (campos[k] ?? "").trim().length > 0);
+
+  // true quando o técnico já trocou de poste NESSA correção e o RSRP que ele
+  // acabou de digitar pro poste novo reprova de novo nas duas operadoras —
+  // nesse ponto o app já sabe que "trocar de novo" tende a repetir o loop.
+  const sinalAindaRuimAposTroca =
+    precisaTrocarPoste &&
+    !!posteMudanca &&
+    !rsrpParValido(campos.rsrpifield, campos.rsrpllfield);
+
+  function abrirRecusarPorSinal() {
+    setAjudaOpen(false);
+    setRecusarMotivoFixo("SINAL_RUIM_APOS_TROCA");
+    setRecusarRespostasIniciais({
+      rsrp_claro: campos.rsrpifield ?? "",
+      rsrp_vivo: campos.rsrpllfield ?? "",
+    });
+    setRecusarOpen(true);
+  }
+
+  function abrirRecusarGenerico() {
+    setAjudaOpen(false);
+    setRecusarMotivoFixo(undefined);
+    setRecusarRespostasIniciais(undefined);
+    setRecusarOpen(true);
+  }
 
   async function handleEnviar() {
     if (!id || !podeEnviar) return;
@@ -416,7 +454,17 @@ function CorrigirDevolucaoInner() {
                       Trocar de novo
                     </button>
                   </div>
-                ) : (
+                ) : null}
+                {sinalAindaRuimAposTroca && (
+                  <button
+                    type="button"
+                    onClick={abrirRecusarPorSinal}
+                    className="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-[12px] font-bold text-red-700"
+                  >
+                    <Ban className="h-3.5 w-3.5" /> Sinal continua ruim — Recusar vistoria
+                  </button>
+                )}
+                {!posteMudanca && (
                   <>
                     <p className="mt-1 text-[12.5px] leading-relaxed text-amber-800">
                       Se o sinal continuar ruim demais nesse local, escolha outro poste próximo — meça o RSRP no local novo.
@@ -562,6 +610,18 @@ function CorrigirDevolucaoInner() {
               </div>
             )}
 
+            {/* Chip discreto — escape hatch geral pra quando o técnico não sabe
+                como resolver (não só RSRP). Fica acima da barra de envio. */}
+            <button
+              type="button"
+              onClick={() => { setAjudaStep("raiz"); setAjudaOpen(true); }}
+              className="fixed bottom-[86px] right-4 z-20 flex h-9 items-center gap-1.5 rounded-full bg-white/95 px-3.5 text-[12px] font-semibold text-ink-muted shadow-elev backdrop-blur"
+              style={{ marginBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              Precisa de ajuda?
+            </button>
+
             <div className="fixed inset-x-0 bottom-0 border-t border-brand-steel/40 bg-white/95 px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-3 backdrop-blur">
               <button
                 type="button"
@@ -576,6 +636,68 @@ function CorrigirDevolucaoInner() {
           </div>
         )
       ) : null}
+
+      {/* Triagem da ajuda — funil curto que termina em "Trocar de poste" ou
+          "Recusar vistoria" (que já exige motivo + aprovação do analista). */}
+      {ajudaOpen && (
+        <div className="fixed inset-0 z-[210] flex items-end justify-center bg-black/40" onClick={() => setAjudaOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-white p-4 pb-[max(env(safe-area-inset-bottom),16px)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[15px] font-bold text-ink">
+                {ajudaStep === "raiz" ? "Qual é o problema?" : "Já tentou trocar de poste?"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setAjudaOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-ice text-ink-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {ajudaStep === "raiz" ? (
+              <div className="space-y-2">
+                {precisaTrocarPoste && (
+                  <button
+                    type="button"
+                    onClick={() => setAjudaStep("trocou")}
+                    className="w-full rounded-2xl border border-brand-steel/70 bg-white px-4 py-3 text-left text-[14px] font-medium text-ink hover:border-brand-emerald/50"
+                  >
+                    Sinal ruim (RSRP)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={abrirRecusarGenerico}
+                  className="w-full rounded-2xl border border-brand-steel/70 bg-white px-4 py-3 text-left text-[14px] font-medium text-ink hover:border-brand-emerald/50"
+                >
+                  Outro motivo (poste inacessível, risco, etc.)
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => { setAjudaOpen(false); setMudarPosteOpen(true); }}
+                  className="w-full rounded-2xl border border-brand-steel/70 bg-white px-4 py-3 text-left text-[14px] font-medium text-ink hover:border-brand-emerald/50"
+                >
+                  Não — trocar de poste agora
+                </button>
+                <button
+                  type="button"
+                  onClick={abrirRecusarPorSinal}
+                  className="w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-[14px] font-bold text-red-700"
+                >
+                  Sim, já troquei — recusar vistoria
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {vistoria.latitude != null && vistoria.longitude != null && (
         <VideoRecorderSheet
@@ -599,6 +721,22 @@ function CorrigirDevolucaoInner() {
           latAtual={posteMudanca?.poste_novo.latitudefield ?? vistoria.latitude}
           lngAtual={posteMudanca?.poste_novo.longitudefield ?? vistoria.longitude}
           onApplied={setPosteMudanca}
+          onNenhumAcessivel={abrirRecusarGenerico}
+        />
+      )}
+
+      {id && (
+        <RecusarVistoriaFlow
+          open={recusarOpen}
+          vistoriaId={id}
+          equipamento={vistoria.equipamento}
+          motivoFixo={recusarMotivoFixo}
+          respostasIniciais={recusarRespostasIniciais}
+          onClose={() => setRecusarOpen(false)}
+          onAprovada={() => {
+            setRecusarOpen(false);
+            router.push("/vistorias");
+          }}
         />
       )}
     </div>

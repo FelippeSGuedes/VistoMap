@@ -12,6 +12,7 @@
 
 export const RECUSA_MOTIVOS = [
   { key: "SEM_POSTES", label: "Sem postes na redondeza (100m)" },
+  { key: "SINAL_RUIM_APOS_TROCA", label: "Sinal ruim mesmo após trocar de poste" },
   { key: "ALTERNATIVAS_INACESSIVEIS", label: "Alternativas também inacessíveis" },
   { key: "PROPRIEDADE_PRIVADA", label: "Propriedade privada sem acesso" },
   { key: "RECUSA_MORADOR", label: "Recusa do morador/responsável" },
@@ -27,8 +28,15 @@ export const RECUSA_MOTIVO_LABEL: Record<RecusaMotivo, string> = Object.fromEntr
   RECUSA_MOTIVOS.map((m) => [m.key, m.label])
 ) as Record<RecusaMotivo, string>;
 
-/** Motivos que o técnico escolhe manualmente (exclui SEM_POSTES, que é automático). */
-export const RECUSA_MOTIVOS_MANUAIS = RECUSA_MOTIVOS.filter((m) => m.key !== "SEM_POSTES");
+/**
+ * Motivos que o técnico escolhe manualmente na lista — exclui os automáticos
+ * (SEM_POSTES vem do gate de 100m; SINAL_RUIM_APOS_TROCA vem da tela de
+ * correção de devolução, sempre com motivoFixo + RSRP já medido, nunca
+ * escolhido digitando numa lista).
+ */
+export const RECUSA_MOTIVOS_MANUAIS = RECUSA_MOTIVOS.filter(
+  (m) => m.key !== "SEM_POSTES" && m.key !== "SINAL_RUIM_APOS_TROCA"
+);
 
 export interface RecusaPergunta {
   key: string;
@@ -40,6 +48,9 @@ export interface RecusaPergunta {
 
 export const RECUSA_PERGUNTAS: Record<RecusaMotivo, RecusaPergunta[]> = {
   SEM_POSTES: [],
+  // Sem perguntas — vem sempre com motivoFixo da tela de correção, que já
+  // preenche rsrp_claro/rsrp_vivo em respostasIniciais com o valor real medido.
+  SINAL_RUIM_APOS_TROCA: [],
   ALTERNATIVAS_INACESSIVEIS: [
     {
       key: "impedimento",
@@ -125,6 +136,12 @@ export function gerarJustificativaRecusa(
   const label = RECUSA_MOTIVO_LABEL[motivo];
   if (motivo === "SEM_POSTES") {
     return "Vistoria recusada — nenhum poste alternativo encontrado num raio de 100m do equipamento original.";
+  }
+  if (motivo === "SINAL_RUIM_APOS_TROCA") {
+    const claro = respostas.rsrp_claro?.trim();
+    const vivo = respostas.rsrp_vivo?.trim();
+    const medidas = claro || vivo ? ` Último RSRP medido: Claro ${claro || "?"} dBm, Vivo ${vivo || "?"} dBm.` : "";
+    return `Vistoria recusada — sinal ruim (RSRP ≤ -102 dBm nas duas operadoras) mesmo após trocar de poste.${medidas}`;
   }
   const partes = RECUSA_PERGUNTAS[motivo]
     .map((p) => respostas[p.key]?.trim())
