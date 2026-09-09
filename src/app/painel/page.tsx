@@ -32,6 +32,7 @@ import {
   Zap,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
+import { CountUp } from "@/components/ui/CountUp";
 import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type {
   HistoricoAnalytics,
@@ -241,28 +242,6 @@ function Card({
       {children}
     </div>
   );
-}
-
-function CountUp({ value, duration = 850 }: { value: number; duration?: number }) {
-  const [display, setDisplay] = useState(0);
-  const prevRef = useRef(0);
-  useEffect(() => {
-    const from = prevRef.current;
-    const to = value;
-    if (from === to) { setDisplay(to); return; }
-    let raf = 0;
-    const t0 = performance.now();
-    const step = (t: number) => {
-      const p = Math.min((t - t0) / duration, 1);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setDisplay(Math.round(from + (to - from) * eased));
-      if (p < 1) raf = requestAnimationFrame(step);
-      else prevRef.current = to;
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [value, duration]);
-  return <>{fmtNum(display)}</>;
 }
 
 /* ── VelocityChart (self-contained — Widget 01) ────────────────────────────

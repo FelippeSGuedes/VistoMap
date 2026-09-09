@@ -23,13 +23,16 @@ import {
   CheckSquare,
   ChevronRight,
   CloudRain,
+  Compass,
   Filter,
   Layers,
   Loader2,
   MapPin,
+  MapPinOff,
   Pencil,
   RefreshCcw,
   RotateCw,
+  Route,
   Search,
   Sparkles,
   Square,
@@ -42,7 +45,20 @@ import { painelService, type FilaItem, type AgendamentoPreviewItem } from "@/ser
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import { VistoriaMetricsBadge } from "@/components/painel/VistoriaMetricsBadge";
+import { CountUp } from "@/components/ui/CountUp";
 import type { TecnicoAtivo } from "@/types";
+
+// vmStatusPulse já existe em mapa/page.tsx — mesmo keyframe, injetado uma
+// vez por módulo (não em useEffect) pro dot "ao vivo" do header e o status
+// dos técnicos no drawer de atribuição.
+if (typeof document !== "undefined" && !document.getElementById("vm-vistorias-style")) {
+  const s = document.createElement("style");
+  s.id = "vm-vistorias-style";
+  s.textContent = `
+    @keyframes vmStatusPulse{0%{box-shadow:0 0 0 0 currentColor,0 2px 5px rgba(0,0,0,.28)}70%{box-shadow:0 0 0 8px transparent,0 2px 5px rgba(0,0,0,.28)}100%{box-shadow:0 0 0 0 transparent,0 2px 5px rgba(0,0,0,.28)}}
+  `;
+  document.head.appendChild(s);
+}
 
 // ─── Paleta neutra/corporativa ────────────────────────────────────────────
 const C = {
@@ -60,6 +76,16 @@ const C = {
   brandLine: "rgba(0,179,136,0.22)",
   iconBg: "var(--vm-fill-2)",
   iconFg: "var(--vm-text-soft)",
+} as const;
+
+/** Glassmorphism — mesmo tratamento de mapa/page.tsx (GLASS), reaproveitado
+ *  aqui pros drawers em vez do branco chapado que tinham antes. */
+const GLASS = {
+  background: "var(--vm-glass)",
+  backdropFilter: "blur(20px) saturate(160%)",
+  WebkitBackdropFilter: "blur(20px) saturate(160%)",
+  border: "1px solid var(--vm-glass-border)",
+  boxShadow: "var(--vm-glass-shadow)",
 } as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -167,6 +193,8 @@ function ordenarItens(items: FilaItem[], ordem: OrdemItem, asc: boolean): FilaIt
 interface BlocoProximidade {
   id: string;
   rotulo: string;
+  /** "rua" = rótulo veio de endereço real; "regiao" = fallback por bússola. */
+  tipo: "rua" | "regiao";
   items: FilaItem[];
   raioM: number;
   semCoordenada: boolean;
@@ -297,6 +325,7 @@ function agruparPorProximidade(items: FilaItem[], alvo: number): BlocoProximidad
     blocos.push({
       id: `b${blocos.length}`,
       rotulo: rua ? `${rua} e redondezas` : regiaoNoMunicipio(bloco, centroMun, raioMun),
+      tipo: rua ? "rua" : "regiao",
       items: bloco,
       raioM,
       semCoordenada: false,
@@ -309,6 +338,7 @@ function agruparPorProximidade(items: FilaItem[], alvo: number): BlocoProximidad
     blocos.push({
       id: "sem-coord",
       rotulo: "Sem localização registrada",
+      tipo: "regiao",
       items: semCoord,
       raioM: 0,
       semCoordenada: true,
@@ -341,7 +371,7 @@ function EquipamentoRow({
 }) {
   return (
     <div
-      className="flex items-center gap-3 rounded-2xl p-3 transition"
+      className="flex items-center gap-3 rounded-2xl p-3 transition duration-150 hover:-translate-y-px hover:shadow-[0_6px_18px_rgba(6,59,59,0.08)]"
       style={{
         background: checked ? C.brandTint : C.surface,
         border: checked
@@ -491,7 +521,7 @@ function MunicipioCard({
           onOpen();
         }
       }}
-      className="group flex h-full cursor-pointer flex-col rounded-[18px] text-left outline-none transition duration-150 hover:-translate-y-0.5 focus-visible:ring-2"
+      className="group flex h-full cursor-pointer flex-col rounded-[18px] text-left outline-none transition duration-200 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(0,179,136,0.16)] focus-visible:ring-2"
       style={{
         background: C.surface,
         border: selCount > 0 ? "1px solid rgba(0,179,136,0.4)" : `1px solid ${C.line}`,
@@ -504,8 +534,8 @@ function MunicipioCard({
       {/* Topo: ícone + nome + seleção */}
       <div className="flex items-start gap-3 p-4 pb-2">
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px]"
-          style={{ background: C.iconBg, color: C.iconFg }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-white transition duration-200 group-hover:scale-105"
+          style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
         >
           <Building2 className="h-[18px] w-[18px]" strokeWidth={2} />
         </div>
@@ -539,7 +569,7 @@ function MunicipioCard({
           className="text-[40px] font-bold leading-none tabular-nums tracking-[-1px]"
           style={{ color: C.ink }}
         >
-          {grupo.total}
+          <CountUp value={grupo.total} />
         </span>
         <span className="mb-1 text-[11px] font-medium" style={{ color: C.faint }}>
           equipamentos
@@ -673,9 +703,10 @@ function MunicipioDetailDrawer({
             transition={{ type: "spring", stiffness: 380, damping: 36 }}
             className="fixed bottom-0 right-0 top-0 z-[201] flex w-full max-w-[600px] flex-col"
             style={{
-              background: C.surfaceAlt,
-              boxShadow: "-4px 0 40px rgba(6,59,59,0.16)",
-              borderLeft: `1px solid ${C.line}`,
+              ...GLASS,
+              boxShadow: `-4px 0 40px rgba(6,59,59,0.16), ${GLASS.boxShadow}`,
+              borderLeft: `1px solid var(--vm-glass-border)`,
+              borderRadius: 0,
             }}
           >
             {/* Header */}
@@ -882,12 +913,21 @@ function MunicipioDetailDrawer({
                         {/* Caixa alta + espaçamento: trata o rótulo como
                             etiqueta de seção, não como texto corrido — a
                             leitura em varredura fica mais rápida quando há
-                            uma dezena de blocos empilhados. */}
+                            uma dezena de blocos empilhados. Ícone antecipa
+                            se o bloco veio de endereço real (rua) ou só da
+                            posição relativa no município (bússola). */}
                         <p
-                          className="truncate text-[11.5px] font-bold"
+                          className="flex items-center gap-1.5 truncate text-[11.5px] font-bold"
                           style={{ color: C.ink, textTransform: "uppercase", letterSpacing: "0.05em" }}
                         >
-                          {b.rotulo}
+                          {b.semCoordenada ? (
+                            <MapPinOff className="h-3 w-3 shrink-0" style={{ color: C.faint }} />
+                          ) : b.tipo === "rua" ? (
+                            <Route className="h-3 w-3 shrink-0" style={{ color: C.brand }} />
+                          ) : (
+                            <Compass className="h-3 w-3 shrink-0" style={{ color: C.brand }} />
+                          )}
+                          <span className="truncate">{b.rotulo}</span>
                         </p>
                         <p className="text-[11px]" style={{ color: C.muted }}>
                           {b.items.length} vistorias
@@ -972,6 +1012,7 @@ function AtribuirDrawer({
   // técnico continua chamando onAtribuir direto (comportamento de sempre).
   // Com data, entra na prévia do roteirizador antes de gravar.
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [modo, setModo] = useState<"agora" | "agendar">("agora");
   const [dataAgendada, setDataAgendada] = useState("");
   const [fase, setFase] = useState<"escolher" | "revisar">("escolher");
   const [tecnicoEscolhido, setTecnicoEscolhido] = useState<{ id: string; nome: string } | null>(null);
@@ -985,7 +1026,7 @@ function AtribuirDrawer({
     new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
   const handleEscolherTecnico = async (tecId: string, tecNome: string) => {
-    if (!dataAgendada) {
+    if (modo === "agora" || !dataAgendada) {
       onAtribuir(tecId, tecNome);
       return;
     }
@@ -1053,6 +1094,23 @@ function AtribuirDrawer({
         return b.tec.atribuidas - a.tec.atribuidas;
       });
   }, [tecnicos, municipiosSel]);
+
+  // Resumo do roteiro — distância/duração total e janela de horário, a
+  // partir dos MESMOS itens já devolvidos pelo preview (sem chamada nova).
+  const resumoRoteiro = useMemo(() => {
+    if (previewItens.length === 0) return null;
+    const distanciaTotalM = previewItens.reduce((s, it) => s + (it.distancia_desde_anterior_m ?? 0), 0);
+    const primeira = previewItens[0];
+    const ultima = previewItens[previewItens.length - 1];
+    const duracaoMin = Math.round(
+      (new Date(ultima.saida_prevista).getTime() - new Date(primeira.chegada_prevista).getTime()) / 60000
+    );
+    const riscoMax = previewItens.reduce(
+      (max, it) => (it.risco_chuva_pct != null && it.risco_chuva_pct > max ? it.risco_chuva_pct : max),
+      0
+    );
+    return { distanciaTotalM, duracaoMin, primeira, ultima, riscoMax };
+  }, [previewItens]);
 
   return (
     <AnimatePresence>
@@ -1122,23 +1180,73 @@ function AtribuirDrawer({
             {fase === "escolher" ? (
               <>
                 <div className="border-b px-4 py-3" style={{ borderColor: C.line }}>
-                  <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.faint }}>
-                    <Calendar className="h-3 w-3" /> Agendar para (opcional)
-                  </label>
-                  <input
-                    type="date"
-                    min={hoje}
-                    value={dataAgendada}
-                    onChange={(e) => setDataAgendada(e.target.value)}
-                    className="mt-1.5 h-9 w-full rounded-lg border px-2.5 text-[13px]"
-                    style={{ borderColor: C.line, color: C.ink, background: C.surface }}
-                  />
-                  {dataAgendada && (
-                    <p className="mt-1.5 text-[10.5px]" style={{ color: C.muted }}>
-                      Ao escolher o técnico, o sistema sugere a melhor ordem de visita e
-                      avisa se há risco de chuva — a vistoria só aparece na fila dele no dia marcado.
-                    </p>
-                  )}
+                  {/* Segmented control — antes era um campo de data solto
+                      que parecia esquecido/opcional. Agora é uma escolha
+                      explícita entre os dois modos. */}
+                  <div
+                    className="grid grid-cols-2 gap-1 rounded-xl p-1"
+                    style={{ background: C.iconBg }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setModo("agora")}
+                      className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition"
+                      style={
+                        modo === "agora"
+                          ? { background: C.surface, color: C.ink, boxShadow: "0 1px 3px rgba(6,59,59,0.12)" }
+                          : { color: C.muted }
+                      }
+                    >
+                      <Zap className="h-3.5 w-3.5" /> Atribuir agora
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModo("agendar")}
+                      className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-semibold transition"
+                      style={
+                        modo === "agendar"
+                          ? { background: C.surface, color: C.ink, boxShadow: "0 1px 3px rgba(6,59,59,0.12)" }
+                          : { color: C.muted }
+                      }
+                    >
+                      <Calendar className="h-3.5 w-3.5" /> Agendar para depois
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {modo === "agendar" && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pt-3">
+                          <label
+                            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                            style={{ color: C.faint }}
+                          >
+                            Data agendada
+                          </label>
+                          <input
+                            type="date"
+                            min={hoje}
+                            value={dataAgendada}
+                            onChange={(e) => setDataAgendada(e.target.value)}
+                            className="mt-1.5 h-9 w-full rounded-lg border px-2.5 text-[13px]"
+                            style={{ borderColor: C.line, color: C.ink, background: C.surface }}
+                          />
+                          <p className="mt-1.5 flex items-start gap-1.5 text-[10.5px]" style={{ color: C.muted }}>
+                            <Route className="mt-[1px] h-3 w-3 shrink-0" style={{ color: C.brand }} />
+                            Ao escolher o técnico, o sistema sugere a melhor ordem de visita e
+                            avisa se há risco de chuva — a vistoria só aparece na fila dele no dia marcado.
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   {erroAgendamento && (
                     <p className="mt-1.5 text-[11px] font-medium" style={{ color: "#DC2626" }}>
                       {erroAgendamento}
@@ -1152,12 +1260,17 @@ function AtribuirDrawer({
                       Nenhum técnico disponível.
                     </p>
                   )}
+                  {modo === "agendar" && !dataAgendada && (
+                    <p className="mb-2 flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-medium" style={{ background: "var(--vm-warm-tint)", color: "#92400E" }}>
+                      <Calendar className="h-3 w-3" /> Escolha a data acima antes de selecionar o técnico.
+                    </p>
+                  )}
                   {sugestoes.map(({ tec, temMunicipio }) => (
                     <button
                       key={tec.id}
                       type="button"
                       onClick={() => handleEscolherTecnico(tec.id, tec.nome)}
-                      disabled={atribuindo || carregandoPreview}
+                      disabled={atribuindo || carregandoPreview || (modo === "agendar" && !dataAgendada)}
                       className="mb-1 flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-emerald-50/70 disabled:opacity-60"
                     >
                       <span
@@ -1169,7 +1282,9 @@ function AtribuirDrawer({
                           className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full"
                           style={{
                             background: STATUS_COR[tec.status] ?? "var(--vm-faint)",
+                            color: STATUS_COR[tec.status] ?? "var(--vm-faint)",
                             boxShadow: "0 0 0 2px var(--vm-card)",
+                            animation: tec.status === "em-campo" ? "vmStatusPulse 1.8s ease-out infinite" : undefined,
                           }}
                         />
                       </span>
@@ -1243,39 +1358,106 @@ function AtribuirDrawer({
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3">
+                  {carregandoPreview && (
+                    <div className="space-y-2 py-2">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="h-16 animate-pulse rounded-[14px]" style={{ background: C.iconBg }} />
+                      ))}
+                    </div>
+                  )}
+
+                  {!carregandoPreview && resumoRoteiro && (
+                    <div
+                      className="mb-3 rounded-[16px] p-3.5"
+                      style={{ background: "linear-gradient(135deg,#063B3B,#0E5F54)" }}
+                    >
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <p className="text-[18px] font-bold tabular-nums text-white">
+                            {previewItens.length}
+                          </p>
+                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
+                            paradas
+                          </p>
+                        </div>
+                        <div style={{ borderLeft: "1px solid rgba(255,255,255,0.15)", borderRight: "1px solid rgba(255,255,255,0.15)" }}>
+                          <p className="text-[18px] font-bold tabular-nums text-white">
+                            {(resumoRoteiro.distanciaTotalM / 1000).toFixed(1)}km
+                          </p>
+                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
+                            deslocamento
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[18px] font-bold tabular-nums text-white">
+                            {resumoRoteiro.duracaoMin >= 60
+                              ? `${Math.floor(resumoRoteiro.duracaoMin / 60)}h${resumoRoteiro.duracaoMin % 60 ? resumoRoteiro.duracaoMin % 60 : ""}`
+                              : `${resumoRoteiro.duracaoMin}min`}
+                          </p>
+                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
+                            duração
+                          </p>
+                        </div>
+                      </div>
+                      <p className="mt-2.5 border-t pt-2 text-center text-[11px]" style={{ borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)" }}>
+                        {fmtHora(resumoRoteiro.primeira.chegada_prevista)} → {fmtHora(resumoRoteiro.ultima.saida_prevista)}
+                        {resumoRoteiro.riscoMax >= 50 && (
+                          <span className="ml-1.5 inline-flex items-center gap-1 font-semibold" style={{ color: "#FCA5A5" }}>
+                            <CloudRain className="h-3 w-3" /> risco de chuva no percurso
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
                   {ignoradosSemCoord.length > 0 && (
-                    <p className="mb-2 rounded-lg px-2.5 py-2 text-[11px]" style={{ background: "#FEF3C7", color: "#92400E" }}>
+                    <p className="mb-2 rounded-lg px-2.5 py-2 text-[11px]" style={{ background: "var(--vm-warm-tint)", color: "#92400E" }}>
                       {ignoradosSemCoord.length} equipamento(s) sem coordenada — ficaram de fora do roteiro.
                     </p>
                   )}
-                  {previewItens.map((it) => (
-                    <div
-                      key={it.vistoria_id}
-                      className="mb-1.5 flex items-start gap-2.5 rounded-[14px] px-3 py-2.5"
-                      style={{ background: C.iconBg }}
-                    >
-                      <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                        style={{ background: "#00875F" }}
-                      >
-                        {it.ordem}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[12.5px] font-semibold" style={{ color: C.ink }}>
-                          {it.equipamento}
-                        </p>
-                        <p className="text-[10.5px]" style={{ color: C.muted }}>
-                          Chegada {fmtHora(it.chegada_prevista)} · Saída {fmtHora(it.saida_prevista)}
-                          {it.distancia_desde_anterior_m != null && ` · ${(it.distancia_desde_anterior_m / 1000).toFixed(1)}km`}
-                        </p>
-                        {it.risco_chuva_alerta && (
-                          <p className="mt-0.5 flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "#B91C1C" }}>
-                            <CloudRain className="h-3 w-3" /> Risco de chuva {it.risco_chuva_pct}%
+
+                  {/* Trilho vertical conectando as paradas — cada uma numerada,
+                      igual a uma linha de metrô, em vez de caixas soltas. */}
+                  <div className="relative">
+                    {previewItens.length > 1 && (
+                      <div
+                        className="absolute bottom-6 left-[27px] top-6 w-[2px]"
+                        style={{ background: "linear-gradient(180deg, var(--vm-accent-tint), var(--vm-border))" }}
+                      />
+                    )}
+                    {previewItens.map((it) => (
+                      <div key={it.vistoria_id} className="relative mb-2 flex items-start gap-3">
+                        <span
+                          className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                          style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 2px 6px rgba(0,135,95,0.35)" }}
+                        >
+                          {it.ordem}
+                        </span>
+                        <div
+                          className="min-w-0 flex-1 rounded-[14px] px-3 py-2.5"
+                          style={{ background: C.iconBg, border: it.risco_chuva_alerta ? "1px solid rgba(185,28,28,0.25)" : "1px solid transparent" }}
+                        >
+                          <p className="truncate text-[12.5px] font-semibold" style={{ color: C.ink }}>
+                            {it.equipamento}
                           </p>
-                        )}
+                          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px]" style={{ color: C.muted }}>
+                            <span className="font-semibold tabular-nums" style={{ color: C.brandDeep }}>
+                              {fmtHora(it.chegada_prevista)}–{fmtHora(it.saida_prevista)}
+                            </span>
+                            {it.distancia_desde_anterior_m != null && (
+                              <span>+{(it.distancia_desde_anterior_m / 1000).toFixed(1)}km</span>
+                            )}
+                          </p>
+                          {it.risco_chuva_alerta && (
+                            <p className="mt-1 flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "#B91C1C" }}>
+                              <CloudRain className="h-3 w-3" /> Risco de chuva {it.risco_chuva_pct}%
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+
                   {erroAgendamento && (
                     <p className="mt-1.5 text-[11px] font-medium" style={{ color: "#DC2626" }}>
                       {erroAgendamento}
@@ -1396,7 +1578,9 @@ function AtribuirModal({
                     className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
                     style={{
                       background: STATUS_COR[t.status] ?? "var(--vm-faint)",
+                      color: STATUS_COR[t.status] ?? "var(--vm-faint)",
                       boxShadow: "0 0 0 2px var(--vm-card)",
+                      animation: t.status === "em-campo" ? "vmStatusPulse 1.8s ease-out infinite" : undefined,
                     }}
                   />
                 </span>
@@ -1460,11 +1644,11 @@ export default function FilaVistoriasPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [atribuirItem, setAtribuirItem] = useState<FilaItem | null>(null);
   const [editarOpen, setEditarOpen] = useState<FilaItem | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; tipo: "sucesso" | "erro" } | null>(null);
   const [atribuindo, setAtribuindo] = useState(false);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
+  const showToast = (msg: string, tipo: "sucesso" | "erro" = "sucesso") => {
+    setToast({ msg, tipo });
     setTimeout(() => setToast(null), 3500);
   };
 
@@ -1641,7 +1825,7 @@ export default function FilaVistoriasPage() {
       setDrawerOpen(false);
       load();
     } catch {
-      showToast("Falha em parte das atribuições. Verifique a fila.");
+      showToast("Falha em parte das atribuições. Verifique a fila.", "erro");
     } finally {
       setAtribuindo(false);
     }
@@ -1663,7 +1847,7 @@ export default function FilaVistoriasPage() {
       setAtribuirItem(null);
       load();
     } catch {
-      showToast("Falha ao atribuir.");
+      showToast("Falha ao atribuir.", "erro");
     }
   };
 
@@ -1712,8 +1896,15 @@ export default function FilaVistoriasPage() {
             <h1 className="text-[30px] font-semibold tracking-[-0.6px] text-white">
               Vistorias Pendentes
             </h1>
-            <p className="mt-1 text-[13px]" style={{ color: "rgba(255,255,255,0.66)" }}>
-              Distribuição regional · {kpis.municipios} municípios ativos · atualiza a cada 30s
+            <p className="mt-1 flex items-center gap-1.5 text-[13px]" style={{ color: "rgba(255,255,255,0.66)" }}>
+              Distribuição regional · {kpis.municipios} municípios ativos ·
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: "#6EE7C7", color: "#6EE7C7", animation: "vmStatusPulse 1.8s ease-out infinite" }}
+                />
+                atualiza a cada 30s
+              </span>
             </p>
           </div>
         </div>
@@ -1741,7 +1932,7 @@ export default function FilaVistoriasPage() {
                   className="text-[24px] font-semibold leading-none tabular-nums tracking-tight"
                   style={{ color: k.accent }}
                 >
-                  {k.value}
+                  <CountUp value={k.value} />
                 </div>
                 <div
                   className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.13em]"
@@ -2094,15 +2285,27 @@ export default function FilaVistoriasPage() {
             animate={{ opacity: 1, y: 0, x: "-50%" }}
             exit={{ opacity: 0, y: 8 }}
             className="fixed bottom-8 left-1/2 z-[410] flex items-center gap-2 rounded-2xl px-4 py-2.5"
-            style={{
-              background: C.surface,
-              border: "1px solid rgba(0,179,136,0.28)",
-              boxShadow: "0 12px 32px rgba(0,179,136,0.16)",
-            }}
+            style={
+              toast.tipo === "erro"
+                ? {
+                    background: C.surface,
+                    border: "1px solid rgba(185,28,28,0.28)",
+                    boxShadow: "0 12px 32px rgba(185,28,28,0.16)",
+                  }
+                : {
+                    background: C.surface,
+                    border: "1px solid rgba(0,179,136,0.28)",
+                    boxShadow: "0 12px 32px rgba(0,179,136,0.16)",
+                  }
+            }
           >
-            <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: C.brand }} />
+            {toast.tipo === "erro" ? (
+              <X className="h-4 w-4 shrink-0" style={{ color: "#B91C1C" }} />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: C.brand }} />
+            )}
             <span className="text-[12.5px] font-medium" style={{ color: C.ink }}>
-              {toast}
+              {toast.msg}
             </span>
           </motion.div>
         )}
