@@ -7,6 +7,7 @@ import {
   Activity,
   Ban,
   Bell,
+  Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -91,6 +92,7 @@ const OPERACAO_HREFS = new Set(OPERACAO_GROUP.map((i) => i.href));
 // Sub-itens do grupo "Vistorias"
 const VISTORIAS_GROUP = [
   { href: "/painel/vistorias",           label: "Pendentes",            icon: ClipboardList, roles: ADMIN_MOD },
+  { href: "/painel/agendamentos",        label: "Agendamentos",         icon: Calendar,       roles: ALL_ROLES },
   { href: "/painel/realizadas",          label: "Concluídas",           icon: CheckCircle2,   roles: ALL_ROLES },
   { href: "/painel/revisitas",           label: "Revisitas",            icon: RotateCw,       roles: ALL_ROLES },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },

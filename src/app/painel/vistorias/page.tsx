@@ -15,13 +15,17 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   Building2,
+  Calendar,
   CheckCircle2,
   CheckSquare,
   ChevronRight,
+  CloudRain,
   Filter,
   Layers,
+  Loader2,
   MapPin,
   Pencil,
   RefreshCcw,
@@ -34,7 +38,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { painelService, type FilaItem } from "@/services/painel";
+import { painelService, type FilaItem, type AgendamentoPreviewItem } from "@/services/painel";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import { VistoriaMetricsBadge } from "@/components/painel/VistoriaMetricsBadge";
@@ -952,6 +956,7 @@ function AtribuirDrawer({
   atribuindo,
   onClose,
   onAtribuir,
+  onAgendado,
 }: {
   open: boolean;
   count: number;
@@ -961,7 +966,68 @@ function AtribuirDrawer({
   atribuindo: boolean;
   onClose: () => void;
   onAtribuir: (tecId: string, tecNome: string) => void;
+  onAgendado: (n: number, tecNome: string, dataAgendada: string) => void;
 }) {
+  // Agendamento (data futura) — opcional. Sem data marcada, tocar num
+  // técnico continua chamando onAtribuir direto (comportamento de sempre).
+  // Com data, entra na prévia do roteirizador antes de gravar.
+  const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [dataAgendada, setDataAgendada] = useState("");
+  const [fase, setFase] = useState<"escolher" | "revisar">("escolher");
+  const [tecnicoEscolhido, setTecnicoEscolhido] = useState<{ id: string; nome: string } | null>(null);
+  const [previewItens, setPreviewItens] = useState<AgendamentoPreviewItem[]>([]);
+  const [ignoradosSemCoord, setIgnoradosSemCoord] = useState<Array<{ vistoria_id: number; equipamento: string }>>([]);
+  const [carregandoPreview, setCarregandoPreview] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+  const [erroAgendamento, setErroAgendamento] = useState<string | null>(null);
+
+  const fmtHora = (iso: string) =>
+    new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+  const handleEscolherTecnico = async (tecId: string, tecNome: string) => {
+    if (!dataAgendada) {
+      onAtribuir(tecId, tecNome);
+      return;
+    }
+    setTecnicoEscolhido({ id: tecId, nome: tecNome });
+    setCarregandoPreview(true);
+    setErroAgendamento(null);
+    try {
+      const resp = await painelService.previewAgendamento({
+        vistoria_ids: Array.from(selecionados),
+        tecnico_id: tecId,
+        data_agendada: dataAgendada,
+      });
+      setPreviewItens(resp.itens);
+      setIgnoradosSemCoord(resp.ignorados_sem_coordenada);
+      setFase("revisar");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setErroAgendamento(msg ?? "Falha ao calcular a prévia do agendamento.");
+    } finally {
+      setCarregandoPreview(false);
+    }
+  };
+
+  const handleConfirmarAgendamento = async () => {
+    if (!tecnicoEscolhido) return;
+    setConfirmando(true);
+    setErroAgendamento(null);
+    try {
+      const resp = await painelService.criarAgendamento({
+        vistoria_ids: Array.from(selecionados),
+        tecnico_id: tecnicoEscolhido.id,
+        data_agendada: dataAgendada,
+      });
+      onAgendado(resp.agendadas, tecnicoEscolhido.nome, dataAgendada);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setErroAgendamento(msg ?? "Falha ao gravar o agendamento.");
+    } finally {
+      setConfirmando(false);
+    }
+  };
+
   const municipiosSel = useMemo(() => {
     const sel = items.filter((i) => selecionados.has(i.id));
     const m = new Map<string, number>();
@@ -1053,80 +1119,184 @@ function AtribuirDrawer({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3">
-              {sugestoes.length === 0 && (
-                <p className="py-8 text-center text-[12px]" style={{ color: C.faint }}>
-                  Nenhum técnico disponível.
-                </p>
-              )}
-              {sugestoes.map(({ tec, temMunicipio }) => (
-                <button
-                  key={tec.id}
-                  type="button"
-                  onClick={() => onAtribuir(tec.id, tec.nome)}
-                  disabled={atribuindo}
-                  className="mb-1 flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-emerald-50/70 disabled:opacity-60"
-                >
-                  <span
-                    className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-[11px] font-bold text-white"
-                    style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
-                  >
-                    {initials(tec.nome)}
-                    <span
-                      className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full"
-                      style={{
-                        background: STATUS_COR[tec.status] ?? "var(--vm-faint)",
-                        boxShadow: "0 0 0 2px var(--vm-card)",
-                      }}
-                    />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p
-                        className="truncate text-[13px] font-semibold"
-                        style={{ color: C.ink }}
-                      >
-                        {tec.nome}
-                      </p>
-                      {temMunicipio && (
-                        <span
-                          className="shrink-0 rounded-full px-1.5 py-[1px] text-[7.5px] font-bold uppercase tracking-[0.1em]"
-                          style={{ background: C.brandTint, color: C.brandDeep }}
-                        >
-                          ativo na região
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10.5px]" style={{ color: C.muted }}>
-                      {tec.municipio ?? "—"} · {tec.atribuidas} atribuídas · {tec.concluidasHoje} hoje
+            {fase === "escolher" ? (
+              <>
+                <div className="border-b px-4 py-3" style={{ borderColor: C.line }}>
+                  <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.faint }}>
+                    <Calendar className="h-3 w-3" /> Agendar para (opcional)
+                  </label>
+                  <input
+                    type="date"
+                    min={hoje}
+                    value={dataAgendada}
+                    onChange={(e) => setDataAgendada(e.target.value)}
+                    className="mt-1.5 h-9 w-full rounded-lg border px-2.5 text-[13px]"
+                    style={{ borderColor: C.line, color: C.ink, background: C.surface }}
+                  />
+                  {dataAgendada && (
+                    <p className="mt-1.5 text-[10.5px]" style={{ color: C.muted }}>
+                      Ao escolher o técnico, o sistema sugere a melhor ordem de visita e
+                      avisa se há risco de chuva — a vistoria só aparece na fila dele no dia marcado.
                     </p>
-                    {temMunicipio && tec.municipio && (
-                      <p className="text-[9.5px]" style={{ color: C.brandDeep }}>
-                        {tec.nome.split(" ")[0]} já possui operação ativa em {tec.municipio}.
-                      </p>
-                    )}
-                  </div>
-                  {atribuindo ? (
-                    <RefreshCcw
-                      className="h-3.5 w-3.5 shrink-0 animate-spin"
-                      style={{ color: "var(--vm-faint-b)" }}
-                    />
-                  ) : (
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint-b)" }} />
                   )}
-                </button>
-              ))}
-            </div>
+                  {erroAgendamento && (
+                    <p className="mt-1.5 text-[11px] font-medium" style={{ color: "#DC2626" }}>
+                      {erroAgendamento}
+                    </p>
+                  )}
+                </div>
 
-            <div className="border-t p-4" style={{ borderColor: C.line }}>
-              <p className="text-[10px]" style={{ color: C.faint }}>
-                Vincula via{" "}
-                <code className="rounded bg-black/[0.04] px-1 text-[9.5px]">
-                  users_id_vistoriadorafield
-                </code>{" "}
-                · grupo VistoMap-Técnicos
-              </p>
-            </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  {sugestoes.length === 0 && (
+                    <p className="py-8 text-center text-[12px]" style={{ color: C.faint }}>
+                      Nenhum técnico disponível.
+                    </p>
+                  )}
+                  {sugestoes.map(({ tec, temMunicipio }) => (
+                    <button
+                      key={tec.id}
+                      type="button"
+                      onClick={() => handleEscolherTecnico(tec.id, tec.nome)}
+                      disabled={atribuindo || carregandoPreview}
+                      className="mb-1 flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-emerald-50/70 disabled:opacity-60"
+                    >
+                      <span
+                        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-[11px] font-bold text-white"
+                        style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
+                      >
+                        {initials(tec.nome)}
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full"
+                          style={{
+                            background: STATUS_COR[tec.status] ?? "var(--vm-faint)",
+                            boxShadow: "0 0 0 2px var(--vm-card)",
+                          }}
+                        />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p
+                            className="truncate text-[13px] font-semibold"
+                            style={{ color: C.ink }}
+                          >
+                            {tec.nome}
+                          </p>
+                          {temMunicipio && (
+                            <span
+                              className="shrink-0 rounded-full px-1.5 py-[1px] text-[7.5px] font-bold uppercase tracking-[0.1em]"
+                              style={{ background: C.brandTint, color: C.brandDeep }}
+                            >
+                              ativo na região
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10.5px]" style={{ color: C.muted }}>
+                          {tec.municipio ?? "—"} · {tec.atribuidas} atribuídas · {tec.concluidasHoje} hoje
+                        </p>
+                        {temMunicipio && tec.municipio && (
+                          <p className="text-[9.5px]" style={{ color: C.brandDeep }}>
+                            {tec.nome.split(" ")[0]} já possui operação ativa em {tec.municipio}.
+                          </p>
+                        )}
+                      </div>
+                      {atribuindo || (carregandoPreview && tecnicoEscolhido?.id === tec.id) ? (
+                        <RefreshCcw
+                          className="h-3.5 w-3.5 shrink-0 animate-spin"
+                          style={{ color: "var(--vm-faint-b)" }}
+                        />
+                      ) : (
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint-b)" }} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="border-t p-4" style={{ borderColor: C.line }}>
+                  <p className="text-[10px]" style={{ color: C.faint }}>
+                    Vincula via{" "}
+                    <code className="rounded bg-black/[0.04] px-1 text-[9.5px]">
+                      users_id_vistoriadorafield
+                    </code>{" "}
+                    · grupo VistoMap-Técnicos
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: C.line }}>
+                  <button
+                    type="button"
+                    onClick={() => setFase("escolher")}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-black/5"
+                    style={{ color: C.muted }}
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                  </button>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold" style={{ color: C.ink }}>
+                      Prévia — {tecnicoEscolhido?.nome}
+                    </p>
+                    <p className="text-[10.5px]" style={{ color: C.muted }}>
+                      {new Date(`${dataAgendada}T00:00:00`).toLocaleDateString("pt-BR")} · ordem sugerida por proximidade
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3">
+                  {ignoradosSemCoord.length > 0 && (
+                    <p className="mb-2 rounded-lg px-2.5 py-2 text-[11px]" style={{ background: "#FEF3C7", color: "#92400E" }}>
+                      {ignoradosSemCoord.length} equipamento(s) sem coordenada — ficaram de fora do roteiro.
+                    </p>
+                  )}
+                  {previewItens.map((it) => (
+                    <div
+                      key={it.vistoria_id}
+                      className="mb-1.5 flex items-start gap-2.5 rounded-[14px] px-3 py-2.5"
+                      style={{ background: C.iconBg }}
+                    >
+                      <span
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                        style={{ background: "#00875F" }}
+                      >
+                        {it.ordem}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-semibold" style={{ color: C.ink }}>
+                          {it.equipamento}
+                        </p>
+                        <p className="text-[10.5px]" style={{ color: C.muted }}>
+                          Chegada {fmtHora(it.chegada_prevista)} · Saída {fmtHora(it.saida_prevista)}
+                          {it.distancia_desde_anterior_m != null && ` · ${(it.distancia_desde_anterior_m / 1000).toFixed(1)}km`}
+                        </p>
+                        {it.risco_chuva_alerta && (
+                          <p className="mt-0.5 flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "#B91C1C" }}>
+                            <CloudRain className="h-3 w-3" /> Risco de chuva {it.risco_chuva_pct}%
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {erroAgendamento && (
+                    <p className="mt-1.5 text-[11px] font-medium" style={{ color: "#DC2626" }}>
+                      {erroAgendamento}
+                    </p>
+                  )}
+                </div>
+
+                <div className="border-t p-4" style={{ borderColor: C.line }}>
+                  <button
+                    type="button"
+                    onClick={handleConfirmarAgendamento}
+                    disabled={confirmando || previewItens.length === 0}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-[13px] font-bold text-white disabled:opacity-60"
+                    style={{ background: "#00875F" }}
+                  >
+                    {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
+                    Confirmar agendamento
+                  </button>
+                </div>
+              </>
+            )}
           </motion.div>
         </>
       )}
@@ -1475,6 +1645,14 @@ export default function FilaVistoriasPage() {
     } finally {
       setAtribuindo(false);
     }
+  };
+
+  const handleAgendado = (n: number, tecNome: string, dataAgendada: string) => {
+    const dataFmt = new Date(`${dataAgendada}T00:00:00`).toLocaleDateString("pt-BR");
+    showToast(`${n} vistoria(s) agendada(s) para ${tecNome} em ${dataFmt}.`);
+    setSelecionados(new Set());
+    setDrawerOpen(false);
+    load();
   };
 
   // Atribuição individual
@@ -1877,6 +2055,7 @@ export default function FilaVistoriasPage() {
         atribuindo={atribuindo}
         onClose={() => setDrawerOpen(false)}
         onAtribuir={handleAtribuirLote}
+        onAgendado={handleAgendado}
       />
 
       {/* MODAL ATRIBUIÇÃO INDIVIDUAL */}

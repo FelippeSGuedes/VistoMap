@@ -73,6 +73,70 @@ export async function atribuir(input: AtribuirInput): Promise<{ ok: true }> {
   return { ok: true } as const;
 }
 
+export interface AgendamentoInput {
+  vistoria_ids: Array<number | string>;
+  tecnico_id: number | string;
+  data_agendada: string; // YYYY-MM-DD
+  hora_inicio?: string; // HH:MM
+}
+
+export interface AgendamentoPreviewItem {
+  vistoria_id: number;
+  equipamento: string;
+  ordem: number;
+  distancia_desde_anterior_m: number | null;
+  chegada_prevista: string;
+  saida_prevista: string;
+  risco_chuva_pct: number | null;
+  risco_chuva_alerta: boolean;
+}
+
+export interface AgendamentoPreviewResponse {
+  ok: true;
+  itens: AgendamentoPreviewItem[];
+  ignorados_sem_coordenada: Array<{ vistoria_id: number; equipamento: string }>;
+}
+
+export async function previewAgendamento(input: AgendamentoInput): Promise<AgendamentoPreviewResponse> {
+  const { data } = await api.post<AgendamentoPreviewResponse>("/painel/agendamentos/preview", input);
+  return data;
+}
+
+export async function criarAgendamento(input: AgendamentoInput): Promise<{ ok: true; agendadas: number }> {
+  const { data } = await api.post<{ ok: true; agendadas: number }>("/painel/agendamentos", input);
+  return data;
+}
+
+export interface AgendamentoItem {
+  id: number;
+  vistoria_id: number;
+  equipamento: string;
+  tecnico_id: number;
+  tecnico_nome: string;
+  data_agendada: string;
+  ordem: number;
+  chegada_prevista: string | null;
+  saida_prevista: string | null;
+  distancia_desde_anterior_m: number | null;
+  risco_chuva_pct: number | null;
+  risco_chuva_alerta: boolean;
+}
+
+export async function fetchAgendamentos(filtros: { tecnico_id?: number; de?: string; ate?: string } = {}): Promise<AgendamentoItem[]> {
+  const p = new URLSearchParams();
+  if (filtros.tecnico_id != null) p.set("tecnico_id", String(filtros.tecnico_id));
+  if (filtros.de) p.set("de", filtros.de);
+  if (filtros.ate) p.set("ate", filtros.ate);
+  const url = `/painel/agendamentos${p.toString() ? `?${p}` : ""}`;
+  const { data } = await api.get<{ ok: true; itens: AgendamentoItem[] }>(url);
+  return data.itens;
+}
+
+export async function cancelarAgendamento(id: number): Promise<{ ok: true }> {
+  await api.post(`/painel/agendamentos/${id}/cancelar`);
+  return { ok: true } as const;
+}
+
 export interface FetchAuditFilters {
   acao?: string;
   alvo_id?: string;
@@ -478,6 +542,10 @@ export const painelService = {
   fetchHistorico,
   fetchVistoriaFiles,
   atribuir,
+  previewAgendamento,
+  criarAgendamento,
+  fetchAgendamentos,
+  cancelarAgendamento,
   editarVistoria,
   aprovarVistoria,
   reprovarVistoria,
