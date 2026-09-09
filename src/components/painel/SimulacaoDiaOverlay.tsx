@@ -4,7 +4,7 @@
  * SimulacaoDiaOverlay — o "agendar" deixa de ser um salvar seco e vira uma
  * simulação do dia do técnico montando na frente do analista.
  *
- * O servidor devolve só o esqueleto (/preview/plano: ordem, origem, SLA do
+ * O servidor devolve só o esqueleto (/preview/plano: ordem, SLA do
  * técnico, expediente) em milissegundos. Daí o NAVEGADOR traça cada perna
  * na Mapbox Directions e desenha a linha crescendo no mapa — com o MESMO
  * veículo 3D da tela de deslocamento (TechModel3DLayer) andando na ponta —
@@ -38,6 +38,7 @@ import {
   Moon,
   RotateCcw,
   Route,
+  Sunrise,
   Timer,
   UtensilsCrossed,
   X,
@@ -455,17 +456,17 @@ export function SimulacaoDiaOverlay({
   }, [open]);
 
   /* ── helpers de mapa ──────────────────────────────────────────────────── */
+  /** Só as paradas — o roteiro não parte mais da posição do técnico. */
   const pontosDe = useCallback(
     (ids: number[]): Ponto[] => {
-      if (!plano) return [];
-      const out: Ponto[] = [{ key: "origem", lat: plano.origem.lat, lng: plano.origem.lng }];
+      const out: Ponto[] = [];
       for (const id of ids) {
         const p = paradaPorId.get(id);
         if (p) out.push({ key: String(id), lat: p.lat, lng: p.lng });
       }
       return out;
     },
-    [plano, paradaPorId]
+    [paradaPorId]
   );
 
   const obterLeg = useCallback((de: Ponto, para: Ponto): Promise<Leg> => {
@@ -497,7 +498,6 @@ export function SimulacaoDiaOverlay({
       const map = mapRef.current;
       if (!map || !plano) return;
       const bounds = new mapboxgl.LngLatBounds();
-      bounds.extend([plano.origem.lng, plano.origem.lat]);
       ids.forEach((id) => {
         const p = paradaPorId.get(id);
         if (p) bounds.extend([p.lng, p.lat]);
@@ -582,12 +582,18 @@ export function SimulacaoDiaOverlay({
       if (!map || !plano) return;
       const vivo = () => gen === geracaoRef.current;
       const pts = pontosDe(ids);
-      const promessas = pts.slice(1).map((p, i) =>
-        obterLeg(pts[i], p).then((leg) => {
+      // A 1ª parada abre o dia (sem perna antes dela) — perna zerada só pra
+      // manter o alinhamento legs[i] ↔ ordem[i] ↔ horarios[i].
+      const promessas = pts.map((p, i) => {
+        if (i === 0) {
+          if (vivo()) setRotasResolvidas((n) => n + 1);
+          return Promise.resolve<Leg>({ distanciaM: 0, duracaoMin: 0, coords: [], estimado: false });
+        }
+        return obterLeg(pts[i - 1], p).then((leg) => {
           if (vivo()) setRotasResolvidas((n) => n + 1);
           return leg;
-        })
-      );
+        });
+      });
       const srcActive = () => map.getSource(SRC_ACTIVE) as GeoJSONSource | undefined;
       const l3d = () => layer3dRef.current;
       const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, reduzir ? 0 : ms));
@@ -615,8 +621,9 @@ export function SimulacaoDiaOverlay({
         return;
       }
 
-      // cinematográfico: beacon na origem, voo até a rota, depois perna a perna
-      l3d()?.syncEntries([spec3d(plano.origem.lng, plano.origem.lat, null, 0)]);
+      // cinematográfico: beacon na 1ª parada (onde o dia começa), voo até a
+      // rota, depois perna a perna
+      if (pts[0]) l3d()?.syncEntries([spec3d(pts[0].lng, pts[0].lat, null, 0)]);
       enquadrar(ids, true);
       await dormir(2500);
       if (!vivo()) return;
@@ -625,7 +632,7 @@ export function SimulacaoDiaOverlay({
       for (let i = 0; i < ids.length; i++) {
         const leg = await promessas[i];
         if (!vivo()) return;
-        const destino = pts[i + 1];
+        const destino = pts[i];
         // cor da perna = cor do dia em que a parada de destino vai cair
         const hs = horariosDe([...acumuladas, leg]);
         const diasLista = resumirDias(hs).map((d) => d.dia);
@@ -947,10 +954,10 @@ export function SimulacaoDiaOverlay({
                             {plano && (
                               <>
                                 <Chip>
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold" style={{ background: SIM.mint, color: SIM.bg }}>{tecnico ? iniciais(tecnico.nome) : "—"}</span>
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: SIM.mint, color: SIM.bg }}><Sunrise className="h-4 w-4" /></span>
                                   <div className="leading-tight">
-                                    <p className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: SIM.faint }}>Saída</p>
-                                    <p className="text-[13px] font-bold tabular-nums">{plano.hora_inicio}</p>
+                                    <p className="text-[9.5px] font-bold uppercase tracking-[0.14em]" style={{ color: SIM.faint }}>Começa em</p>
+                                    <p className="text-[13px] font-bold tabular-nums capitalize">{fmtDia(dias[0]?.dia ?? plano.data_agendada)} · {plano.hora_inicio}</p>
                                   </div>
                                 </Chip>
 
@@ -999,8 +1006,14 @@ export function SimulacaoDiaOverlay({
                                                 {fmtHora(h.chegada)} <span className="font-medium" style={{ color: SIM.faint }}>→</span> {fmtHora(h.saida)}
                                               </p>
                                               <p className="flex items-center gap-1 text-[10px] tabular-nums" style={{ color: SIM.soft }}>
-                                                <Route className="h-2.5 w-2.5" style={{ color: SIM.faint }} />
-                                                +{fmtKm(leg.distanciaM)} km · {fmtMin(leg.duracaoMin)}
+                                                {i === 0 ? (
+                                                  <span style={{ color: SIM.faint }}>abre o dia</span>
+                                                ) : (
+                                                  <>
+                                                    <Route className="h-2.5 w-2.5" style={{ color: SIM.faint }} />
+                                                    +{fmtKm(leg.distanciaM)} km · {fmtMin(leg.duracaoMin)}
+                                                  </>
+                                                )}
                                                 {clima?.alerta && (
                                                   <span className="ml-1 inline-flex items-center gap-0.5 font-semibold" style={{ color: "#FCA5A5" }}><CloudRain className="h-2.5 w-2.5" /> {clima.pct}%</span>
                                                 )}

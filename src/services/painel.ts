@@ -128,7 +128,6 @@ export interface AgendamentoPlano {
   hora_inicio: string; // HH:MM
   expediente: ExpedienteResumo;
   sla_min: number;
-  origem: { lat: number; lng: number };
   almoco: { hora: string; duracao_min: number };
   margem_min: number;
   paradas: Array<{ vistoria_id: number; equipamento: string; ordem: number; lat: number; lng: number }>;

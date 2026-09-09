@@ -1,6 +1,5 @@
 import "server-only";
 import { query } from "@/lib/db";
-import { DEFAULT_CENTER } from "@/services/maps";
 import { TABLE_FIELDS, TABLE_NE } from "@/lib/glpi/constants";
 import { fetchRiscoChuva } from "@/lib/weather";
 import { planejarDias, type ExpedienteJanela, type PernaCalculada } from "@/lib/roteirizacaoHorarios";
@@ -130,34 +129,12 @@ export async function fetchSlaTecnico(tecnicoId: number): Promise<number> {
   }
 }
 
-/** Última posição de GPS conhecida do técnico — origem do roteiro do dia. */
-export async function fetchOrigemTecnico(tecnicoId: number): Promise<LatLng> {
-  try {
-    const [row] = await query<{ latitude: string; longitude: string }>(
-      `SELECT latitude, longitude
-         FROM glpi_plugin_vistomap_locations
-        WHERE users_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1`,
-      [tecnicoId]
-    );
-    if (row) {
-      const lat = Number(row.latitude);
-      const lng = Number(row.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-    }
-  } catch {
-    /* segue pro fallback */
-  }
-  return { lat: DEFAULT_CENTER[1], lng: DEFAULT_CENTER[0] };
-}
-
 /**
  * Nearest-neighbor puro em memória — greedy, não é o TSP ótimo, mas pro
  * tamanho real de uma agenda diária (poucas paradas) já dá uma ordem boa
  * o bastante sem pagar o custo de uma Optimization API paga.
  */
-export function ordenarPorProximidade(origem: LatLng, paradas: Parada[]): Parada[] {
+function ordenarPorProximidade(origem: LatLng, paradas: Parada[]): Parada[] {
   const restantes = [...paradas];
   const ordenadas: Parada[] = [];
   let atual = origem;
@@ -176,6 +153,27 @@ export function ordenarPorProximidade(origem: LatLng, paradas: Parada[]): Parada
     atual = proxima;
   }
   return ordenadas;
+}
+
+/**
+ * Ordena as paradas ENTRE SI, sem âncora na posição do técnico.
+ *
+ * Antes o roteiro partia da última posição de GPS dele — que pode ser de
+ * outro dia ou de outra cidade, o que torcia toda a ordem e ainda somava uma
+ * perna gigante antes da primeira parada. Agora o ponto de partida sai do
+ * próprio conjunto: começa pela parada mais afastada do centro (uma ponta do
+ * grupo, nunca o meio) e daí sempre segue pra mais próxima ainda não
+ * visitada — o roteiro varre de ponta a ponta, do mais perto ao mais longe,
+ * em vez de ziguezaguear.
+ */
+export function ordenarEntreParadas(paradas: Parada[]): Parada[] {
+  if (paradas.length <= 2) return [...paradas];
+  const centro: LatLng = {
+    lat: paradas.reduce((s, p) => s + p.lat, 0) / paradas.length,
+    lng: paradas.reduce((s, p) => s + p.lng, 0) / paradas.length,
+  };
+  const inicio = paradas.reduce((a, b) => (haversineM(centro, b) > haversineM(centro, a) ? b : a));
+  return [inicio, ...ordenarPorProximidade(inicio, paradas.filter((p) => p.id !== inicio.id))];
 }
 
 /** Duração/distância real de uma perna via Mapbox Directions — server-side, sem cache (chamado 1x por agendamento). */
@@ -209,18 +207,19 @@ async function fetchPerna(
  * roteirizacaoHorarios.ts, compartilhada com a prévia ao vivo do painel.
  */
 export async function calcularHorarios(
-  origem: LatLng,
   paradasOrdenadas: Parada[],
   slaMin: number,
   dataInicial: string,
   expediente: ExpedienteJanela,
   horaInicioDia1?: string
 ): Promise<ParadaComHorario[]> {
-  // Origem/destino de cada perna já são conhecidos (ordem decidida) — as
-  // chamadas à Directions saem em paralelo em vez de uma por vez.
+  // A PRIMEIRA parada não tem perna: o dia começa nela, na hora de início do
+  // expediente. Da segunda em diante, origem/destino já são conhecidos (a
+  // ordem está decidida), então as chamadas à Directions saem em paralelo.
   const pernas: PernaCalculada[] = await Promise.all(
     paradasOrdenadas.map(async (parada, i) => {
-      const de = i === 0 ? origem : paradasOrdenadas[i - 1];
+      if (i === 0) return { distanciaM: 0, duracaoMin: 0 };
+      const de = paradasOrdenadas[i - 1];
       const perna = await fetchPerna(de, parada);
       const distanciaM = perna?.distanciaM ?? Math.round(haversineM(de, parada));
       const duracaoMin = perna ? perna.duracaoS / 60 : (distanciaM / 1000 / 30) * 60;
@@ -235,7 +234,7 @@ export async function calcularHorarios(
     ordem: i + 1,
     dia: horarios[i].dia,
     novoDia: horarios[i].novoDia,
-    distanciaDesdeAnteriorM: pernas[i].distanciaM,
+    distanciaDesdeAnteriorM: i === 0 ? null : pernas[i].distanciaM,
     duracaoPernaMin: pernas[i].duracaoMin,
     chegadaPrevista: horarios[i].chegada,
     saidaPrevista: horarios[i].saida,
@@ -249,10 +248,10 @@ export interface ParadaComAgenda extends ParadaComHorario {
 }
 
 /**
- * Orquestra o roteiro completo de um dia: SLA do técnico + origem (última
- * posição de GPS) + ordem por proximidade + horários previstos + risco de
- * chuva por parada. Usado pelas duas rotas (preview e criação) pra nunca
- * divergir o que o analista vê na prévia do que de fato é gravado.
+ * Orquestra o roteiro completo: SLA do técnico + ordem entre as próprias
+ * paradas + horários previstos (respeitando o expediente) + risco de chuva
+ * por parada. Usado pelas duas rotas (preview e criação) pra nunca divergir
+ * o que o analista vê na prévia do que de fato é gravado.
  */
 export async function montarRoteiroDoDia(
   tecnicoId: number,
@@ -261,12 +260,9 @@ export async function montarRoteiroDoDia(
   expediente: ExpedienteJanela,
   opts: { horaInicio?: string; ordem?: number[] } = {}
 ): Promise<ParadaComAgenda[]> {
-  const [slaMin, origem] = await Promise.all([
-    fetchSlaTecnico(tecnicoId),
-    fetchOrigemTecnico(tecnicoId),
-  ]);
-  const ordenadas = opts.ordem?.length ? ordenarManual(paradas, opts.ordem) : ordenarPorProximidade(origem, paradas);
-  const comHorario = await calcularHorarios(origem, ordenadas, slaMin, dataInicial, expediente, opts.horaInicio);
+  const slaMin = await fetchSlaTecnico(tecnicoId);
+  const ordenadas = opts.ordem?.length ? ordenarManual(paradas, opts.ordem) : ordenarEntreParadas(paradas);
+  const comHorario = await calcularHorarios(ordenadas, slaMin, dataInicial, expediente, opts.horaInicio);
 
   // Clima do DIA em que a parada caiu (pode ser o seguinte, se o expediente não coube).
   const comClima = await Promise.all(

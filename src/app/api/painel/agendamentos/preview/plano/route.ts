@@ -2,11 +2,10 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import {
-  fetchOrigemTecnico,
   fetchParadasSelecionadas,
   fetchSlaTecnico,
+  ordenarEntreParadas,
   ordenarManual,
-  ordenarPorProximidade,
 } from "@/lib/roteirizacao";
 import { getExpedienteConfig } from "@/lib/expediente";
 import { ALMOCO_HORA, ALMOCO_MIN, MARGEM_DESVIO_MIN } from "@/lib/roteirizacaoHorarios";
@@ -58,10 +57,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "hora_inicio inválida (HH:MM)" }, { status: 400 });
     }
 
-    const [{ paradas, semCoordenada, nomeMap }, slaMin, origem, expediente] = await Promise.all([
+    const [{ paradas, semCoordenada, nomeMap }, slaMin, expediente] = await Promise.all([
       fetchParadasSelecionadas(vIds),
       fetchSlaTecnico(tId),
-      fetchOrigemTecnico(tId),
       getExpedienteConfig(),
     ]);
 
@@ -72,7 +70,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const ordenadas = ordem.length ? ordenarManual(paradas, ordem) : ordenarPorProximidade(origem, paradas);
+    const ordenadas = ordem.length ? ordenarManual(paradas, ordem) : ordenarEntreParadas(paradas);
 
     return NextResponse.json({
       ok: true,
@@ -80,7 +78,6 @@ export async function POST(req: Request) {
       hora_inicio: body.hora_inicio ?? expediente.inicio,
       expediente: { inicio: expediente.inicio, fim: expediente.fim, fim_de_semana: expediente.fimDeSemana },
       sla_min: slaMin,
-      origem,
       almoco: { hora: ALMOCO_HORA, duracao_min: ALMOCO_MIN },
       margem_min: MARGEM_DESVIO_MIN,
       paradas: ordenadas.map((p, i) => ({
