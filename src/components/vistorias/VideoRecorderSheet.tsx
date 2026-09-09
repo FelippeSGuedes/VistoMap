@@ -127,11 +127,24 @@ export function VideoRecorderSheet({
           stream = await abrirCamera();
         } catch (err2) {
           if (alive) {
-            setError("Não foi possível abrir a câmera aqui. Use a câmera do sistema.");
+            // Permissão negada é PERMANENTE — nenhuma retentativa resolve, e
+            // "use a câmera do sistema" nem sempre funciona (a permissão do
+            // Android costuma valer pro app inteiro, não só pra essa tela).
+            // O jeito real de resolver é o técnico liberar manualmente nas
+            // configurações do Android — mensagem genérica escondia isso e
+            // mandava direto pro fallback pesado sem dar a saída de verdade.
+            const nome = err2 instanceof Error ? err2.name : "";
             const motivo = err2 instanceof Error ? err2.message : String(err2);
+            const negada = nome === "NotAllowedError" || /permission denied/i.test(motivo);
+            setError(
+              negada
+                ? "Permissão de câmera bloqueada. Vá em Configurações do Android → Apps → VistoMap → Permissões → Câmera e ative — sem isso nem a câmera do sistema vai funcionar."
+                : "Não foi possível abrir a câmera aqui. Use a câmera do sistema."
+            );
             void import("@/lib/reportClientError").then(({ reportClientError }) =>
               reportClientError(motivo, "VideoRecorderSheet/getUserMedia", {
                 tentativa1: err1 instanceof Error ? err1.message : String(err1),
+                permissaoNegada: negada,
               })
             );
           }
