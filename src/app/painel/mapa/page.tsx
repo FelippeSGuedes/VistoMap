@@ -2286,7 +2286,7 @@ export default function PainelMapaPage() {
                     style={{ background: "rgba(239,68,68,0.1)", color: PANEL.danger, borderRadius: 12, border: `1px solid rgba(239,68,68,0.3)` }}
                   >
                     <Ban className="h-3.5 w-3.5" />
-                    Recusar vistoria (técnico incapacitado)
+                    Recusar vistoria
                   </button>
                 )}
 
