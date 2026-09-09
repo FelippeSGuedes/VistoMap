@@ -38,6 +38,7 @@ import { VistoriaDetalheModal } from "@/components/painel/VistoriaDetalheModal";
 import { StreetViewModal } from "@/components/painel/StreetViewModal";
 import {
   Activity,
+  Ban,
   Box,
   Camera,
   CheckCircle2,
@@ -780,6 +781,13 @@ export default function PainelMapaPage() {
   const [atribuirTecId, setAtribuirTecId] = useState<number | "">("");
   const [atribuirMotivo, setAtribuirMotivo] = useState("");
   const [atribuirLoading, setAtribuirLoading] = useState(false);
+
+  // Recusar vistoria em nome do técnico — pra quando ele fica incapacitado
+  // de fazer isso pelo próprio app (acidente, celular quebrado, etc).
+  const [recusarVistoria, setRecusarVistoria] = useState<PainelMapaVistoria | null>(null);
+  const [recusarJustificativa, setRecusarJustificativa] = useState("");
+  const [recusarLoading, setRecusarLoading] = useState(false);
+  const [recusarError, setRecusarError] = useState<string | null>(null);
 
   /* ── fetch ─────────────────────────────────────────────────────────────── */
 
@@ -2258,6 +2266,30 @@ export default function PainelMapaPage() {
                 </button>
               )}
 
+              {/* Recusar em nome do técnico — só quando HÁ técnico atribuído e a
+                  vistoria ainda está ativa (não faz sentido pra já concluída/
+                  já rejeitada). Pensado pra técnico incapacitado de agir pelo
+                  próprio app (2026-09-09). */}
+              {session?.role !== "leitura" &&
+                !!selectedVistoria.tecnico_nome &&
+                selectedVistoria.situacao !== "VISTORIADO" &&
+                selectedVistoria.situacao !== "REVISITADO" &&
+                selectedVistoria.situacao !== "REJEITADA" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecusarVistoria(selectedVistoria);
+                      setRecusarJustificativa("");
+                      setRecusarError(null);
+                    }}
+                    className="mb-3 flex w-full items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold transition hover:brightness-125"
+                    style={{ background: "rgba(239,68,68,0.1)", color: PANEL.danger, borderRadius: 12, border: `1px solid rgba(239,68,68,0.3)` }}
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                    Recusar vistoria (técnico incapacitado)
+                  </button>
+                )}
+
               {/* Quick actions */}
               <div className="grid grid-cols-3 gap-1.5">
                 <button
@@ -2421,6 +2453,95 @@ export default function PainelMapaPage() {
               >
                 {atribuirLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL RECUSAR VISTORIA (em nome do técnico) ─────────────────────── */}
+      {recusarVistoria && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" }}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(239,68,68,0.12)" }}>
+                  <Ban className="h-5 w-5" style={{ color: "#EF4444" }} />
+                </div>
+                <div>
+                  <h2 className="text-[14px] font-bold" style={{ color: "var(--vm-text)" }}>Recusar vistoria</h2>
+                  <p className="truncate text-[11px]" style={{ color: "var(--vm-faint)", maxWidth: 200 }}>{recusarVistoria.equipamento}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setRecusarVistoria(null)} style={{ color: "var(--vm-faint)" }}>
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="mb-3 rounded-xl px-3 py-2 text-[11px] leading-relaxed" style={{ background: "rgba(239,68,68,0.08)", color: "var(--vm-text-soft)" }}>
+              Isso tira a vistoria de <strong style={{ color: "var(--vm-text)" }}>{recusarVistoria.tecnico_nome}</strong> pra
+              sempre (mesmo efeito de uma recusa aprovada) — use só quando o técnico está incapacitado de fazer isso pelo
+              próprio app.
+            </p>
+
+            <label className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Motivo *</label>
+            <textarea
+              value={recusarJustificativa}
+              onChange={(e) => setRecusarJustificativa(e.target.value)}
+              placeholder="Ex: técnico se acidentou, celular quebrado, sem contato desde..."
+              rows={3}
+              className="mb-1 w-full resize-none rounded-xl px-3 py-2 text-[11px] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200"
+              style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+            />
+            {recusarError && (
+              <p className="mb-2 text-[11px] font-medium" style={{ color: "#EF4444" }}>{recusarError}</p>
+            )}
+
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRecusarVistoria(null)}
+                className="flex-1 rounded-xl py-2 text-[12px] font-semibold transition hover:brightness-95"
+                style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)", background: "var(--vm-tile)" }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!recusarJustificativa.trim() || recusarLoading}
+                onClick={async () => {
+                  if (!recusarJustificativa.trim() || !session?.token) return;
+                  setRecusarLoading(true);
+                  setRecusarError(null);
+                  try {
+                    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+                    const res = await fetch(`${base}/api/painel/central-vistorias/${recusarVistoria.id}/recusar`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+                      body: JSON.stringify({ justificativa: recusarJustificativa.trim() }),
+                    });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      setRecusarError(data?.message ?? "Falha ao recusar a vistoria.");
+                      return;
+                    }
+                    setRecusarVistoria(null);
+                    setSelectedVistoria(null);
+                    void fetchMapa();
+                  } catch {
+                    setRecusarError("Falha ao recusar a vistoria. Verifique a conexão e tente de novo.");
+                  } finally {
+                    setRecusarLoading(false);
+                  }
+                }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                style={{ background: "#DC2626" }}
+              >
+                {recusarLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                Recusar
               </button>
             </div>
           </div>

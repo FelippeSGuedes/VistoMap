@@ -13,6 +13,7 @@
 export const RECUSA_MOTIVOS = [
   { key: "SEM_POSTES", label: "Sem postes na redondeza (100m)" },
   { key: "SINAL_RUIM_APOS_TROCA", label: "Sinal ruim mesmo após trocar de poste" },
+  { key: "TECNICO_INCAPACITADO", label: "Recusada pelo analista (técnico incapacitado)" },
   { key: "ALTERNATIVAS_INACESSIVEIS", label: "Alternativas também inacessíveis" },
   { key: "PROPRIEDADE_PRIVADA", label: "Propriedade privada sem acesso" },
   { key: "RECUSA_MORADOR", label: "Recusa do morador/responsável" },
@@ -35,7 +36,7 @@ export const RECUSA_MOTIVO_LABEL: Record<RecusaMotivo, string> = Object.fromEntr
  * escolhido digitando numa lista).
  */
 export const RECUSA_MOTIVOS_MANUAIS = RECUSA_MOTIVOS.filter(
-  (m) => m.key !== "SEM_POSTES" && m.key !== "SINAL_RUIM_APOS_TROCA"
+  (m) => m.key !== "SEM_POSTES" && m.key !== "SINAL_RUIM_APOS_TROCA" && m.key !== "TECNICO_INCAPACITADO"
 );
 
 export interface RecusaPergunta {
@@ -51,6 +52,9 @@ export const RECUSA_PERGUNTAS: Record<RecusaMotivo, RecusaPergunta[]> = {
   // Sem perguntas — vem sempre com motivoFixo da tela de correção, que já
   // preenche rsrp_claro/rsrp_vivo em respostasIniciais com o valor real medido.
   SINAL_RUIM_APOS_TROCA: [],
+  // Sem perguntas — essa recusa nasce direto do painel (analista), nunca do
+  // fluxo de perguntas do técnico no app.
+  TECNICO_INCAPACITADO: [],
   ALTERNATIVAS_INACESSIVEIS: [
     {
       key: "impedimento",
