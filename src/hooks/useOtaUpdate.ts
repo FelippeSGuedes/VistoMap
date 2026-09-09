@@ -296,12 +296,18 @@ export function useOtaUpdate(enabled: boolean) {
         let bundle: BundleInfo | null = null;
         try {
           const lista = await withTimeout(Updater.list?.() ?? Promise.resolve(undefined), 8_000, "Updater.list()");
-          const existente = lista?.bundles?.find(
-            (b) => b.version === manifest.version && b.id && b.status !== "error"
-          );
-          if (existente && (existente.status === "success" || existente.status === "pending")) {
+          const existente = lista?.bundles?.find((b) => b.version === manifest.version && b.id);
+          if (existente?.status === "success" || existente?.status === "pending") {
             bundle = existente;
             console.log(`[useOtaUpdate] Bundle ${manifest.version} já baixado — reaproveitando.`);
+          } else if (existente?.status === "error") {
+            // Download anterior ficou quebrado (parcial/corrompido) — apaga
+            // ANTES de tentar de novo. Sem isso, o downloader nativo pode
+            // encontrar esse arquivo pela frente e tentar retomar dele por
+            // conta própria (resume mal resolvido = mesmo bug de sempre
+            // travar no mesmo ponto), em vez de baixar do zero de verdade.
+            console.log(`[useOtaUpdate] Bundle ${manifest.version} com status "error" — apagando antes de rebaixar.`);
+            await Updater.delete?.({ id: existente.id }).catch(() => {});
           }
         } catch {
           /* list() indisponível/travou — segue pro download */
