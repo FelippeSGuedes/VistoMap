@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
+  Ban,
   Camera,
   CheckCircle2,
   Construction,
   Crosshair,
+  HelpCircle,
   History,
   Loader2,
   Locate,
@@ -27,6 +29,8 @@ import { SelectField } from "./SelectField";
 import { VistoriaHeaderHero } from "./VistoriaHeaderHero";
 import { CaptureCameraModal } from "./CaptureCameraModal";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
+import { AjudaTriagemSheet } from "./AjudaTriagemSheet";
+import { RecusarVistoriaFlow } from "./RecusarVistoriaFlow";
 import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
 import { reverseGeocode } from "@/services/geocoding";
@@ -34,6 +38,7 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAuthStore } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
+import type { RecusaMotivo } from "@/lib/glpi/recusaMotivos";
 import type {
   CaptureBundle,
   DropdownKey,
@@ -185,6 +190,17 @@ export function VistoriaExecucaoForm({
   });
 
   const [mudarPosteOpen, setMudarPosteOpen] = useState(false);
+  const [posteJaTrocado, setPosteJaTrocado] = useState(false);
+
+  // "Recusar vistoria" por sinal ruim persistente — mesmo gap achado na tela
+  // de correção de devolução (2026-09-09): sem isso, o técnico ficava preso
+  // trocando de poste sem sair do loop quando o poste novo também reprova.
+  const [ajudaOpen, setAjudaOpen] = useState(false);
+  const [ajudaStep, setAjudaStep] = useState<"raiz" | "trocou">("raiz");
+  const [recusarOpen, setRecusarOpen] = useState(false);
+  const [recusarMotivoFixo, setRecusarMotivoFixo] = useState<RecusaMotivo | undefined>(undefined);
+  const [recusarRespostasIniciais, setRecusarRespostasIniciais] = useState<Record<string, string> | undefined>(undefined);
+
   const [detectingAddress, setDetectingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   const geoForAddress = useGeolocation(false);
@@ -258,7 +274,30 @@ export function VistoriaExecucaoForm({
         ? `${f.observaofield}\n\n${response.descricao_glpi}`
         : response.descricao_glpi,
     }));
+    setPosteJaTrocado(true);
   };
+
+  // true quando o técnico já trocou de poste NESSA vistoria e o RSRP que ele
+  // acabou de digitar pro poste novo reprova de novo nas duas operadoras.
+  const sinalAindaRuimAposTroca =
+    posteJaTrocado && !rsrpParValido(form.rsrpifield, form.rsrpllfield);
+
+  function abrirRecusarPorSinal() {
+    setAjudaOpen(false);
+    setRecusarMotivoFixo("SINAL_RUIM_APOS_TROCA");
+    setRecusarRespostasIniciais({
+      rsrp_claro: form.rsrpifield ?? "",
+      rsrp_vivo: form.rsrpllfield ?? "",
+    });
+    setRecusarOpen(true);
+  }
+
+  function abrirRecusarGenerico() {
+    setAjudaOpen(false);
+    setRecusarMotivoFixo(undefined);
+    setRecusarRespostasIniciais(undefined);
+    setRecusarOpen(true);
+  }
 
   const captureCount =
     (captures.imagem1 ? 1 : 0) +
@@ -651,6 +690,15 @@ export function VistoriaExecucaoForm({
               />
             </div>
           </div>
+          {sinalAindaRuimAposTroca && (
+            <button
+              type="button"
+              onClick={abrirRecusarPorSinal}
+              className="mt-1 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-[12px] font-bold text-red-700"
+            >
+              <Ban className="h-3.5 w-3.5" /> Sinal continua ruim mesmo após trocar — Recusar vistoria
+            </button>
+          )}
         </SectionCard>
 
         <Card className="space-y-3">
@@ -760,6 +808,13 @@ export function VistoriaExecucaoForm({
             {done ? "Finalizada ✓" : submitting ? "Enviando…" : "Finalizar Vistoria"}
           </Button>
         </div>
+        <button
+          type="button"
+          onClick={() => { setAjudaStep("raiz"); setAjudaOpen(true); }}
+          className="mx-auto mt-1.5 flex items-center gap-1 text-[11px] font-medium text-ink-muted underline-offset-2 hover:underline"
+        >
+          <HelpCircle className="h-3 w-3" /> Precisa de ajuda?
+        </button>
       </div>
 
       <ProgressOverlay
@@ -796,6 +851,31 @@ export function VistoriaExecucaoForm({
         latAtual={coords.lat}
         lngAtual={coords.lng}
         onApplied={handlePosteMudado}
+        onNenhumAcessivel={abrirRecusarGenerico}
+      />
+
+      <AjudaTriagemSheet
+        open={ajudaOpen}
+        step={ajudaStep}
+        onStepChange={setAjudaStep}
+        onClose={() => setAjudaOpen(false)}
+        mostrarOpcaoSinal
+        onTrocarPoste={() => { setAjudaOpen(false); setMudarPosteOpen(true); }}
+        onRecusarPorSinal={abrirRecusarPorSinal}
+        onRecusarGenerico={abrirRecusarGenerico}
+      />
+
+      <RecusarVistoriaFlow
+        open={recusarOpen}
+        vistoriaId={vistoria.id}
+        equipamento={vistoria.equipamento}
+        motivoFixo={recusarMotivoFixo}
+        respostasIniciais={recusarRespostasIniciais}
+        onClose={() => setRecusarOpen(false)}
+        onAprovada={() => {
+          setRecusarOpen(false);
+          onDone?.();
+        }}
       />
     </div>
   );

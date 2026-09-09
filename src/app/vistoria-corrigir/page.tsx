@@ -20,11 +20,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   AlertTriangle, Ban, Camera, Check, Clock, HelpCircle, Loader2,
-  Navigation as NavigationIcon, Replace, Send, Upload, Video, X, XCircle,
+  Navigation as NavigationIcon, Replace, Send, Upload, Video, XCircle,
 } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
+import { AjudaTriagemSheet } from "@/components/vistorias/AjudaTriagemSheet";
 import { NavigationOptionsSheet } from "@/components/vistorias/NavigationOptionsSheet";
 import { RecusarVistoriaFlow } from "@/components/vistorias/RecusarVistoriaFlow";
 import { SelectField } from "@/components/vistorias/SelectField";
@@ -637,67 +638,16 @@ function CorrigirDevolucaoInner() {
         )
       ) : null}
 
-      {/* Triagem da ajuda — funil curto que termina em "Trocar de poste" ou
-          "Recusar vistoria" (que já exige motivo + aprovação do analista). */}
-      {ajudaOpen && (
-        <div className="fixed inset-0 z-[210] flex items-end justify-center bg-black/40" onClick={() => setAjudaOpen(false)}>
-          <div
-            className="w-full max-w-md rounded-t-3xl bg-white p-4 pb-[max(env(safe-area-inset-bottom),16px)]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-[15px] font-bold text-ink">
-                {ajudaStep === "raiz" ? "Qual é o problema?" : "Já tentou trocar de poste?"}
-              </p>
-              <button
-                type="button"
-                onClick={() => setAjudaOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-ice text-ink-muted"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {ajudaStep === "raiz" ? (
-              <div className="space-y-2">
-                {precisaTrocarPoste && (
-                  <button
-                    type="button"
-                    onClick={() => setAjudaStep("trocou")}
-                    className="w-full rounded-2xl border border-brand-steel/70 bg-white px-4 py-3 text-left text-[14px] font-medium text-ink hover:border-brand-emerald/50"
-                  >
-                    Sinal ruim (RSRP)
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={abrirRecusarGenerico}
-                  className="w-full rounded-2xl border border-brand-steel/70 bg-white px-4 py-3 text-left text-[14px] font-medium text-ink hover:border-brand-emerald/50"
-                >
-                  Outro motivo (poste inacessível, risco, etc.)
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => { setAjudaOpen(false); setMudarPosteOpen(true); }}
-                  className="w-full rounded-2xl border border-brand-steel/70 bg-white px-4 py-3 text-left text-[14px] font-medium text-ink hover:border-brand-emerald/50"
-                >
-                  Não — trocar de poste agora
-                </button>
-                <button
-                  type="button"
-                  onClick={abrirRecusarPorSinal}
-                  className="w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-[14px] font-bold text-red-700"
-                >
-                  Sim, já troquei — recusar vistoria
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <AjudaTriagemSheet
+        open={ajudaOpen}
+        step={ajudaStep}
+        onStepChange={setAjudaStep}
+        onClose={() => setAjudaOpen(false)}
+        mostrarOpcaoSinal={precisaTrocarPoste}
+        onTrocarPoste={() => { setAjudaOpen(false); setMudarPosteOpen(true); }}
+        onRecusarPorSinal={abrirRecusarPorSinal}
+        onRecusarGenerico={abrirRecusarGenerico}
+      />
 
       {vistoria.latitude != null && vistoria.longitude != null && (
         <VideoRecorderSheet
