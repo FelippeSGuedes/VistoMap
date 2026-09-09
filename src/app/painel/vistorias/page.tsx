@@ -15,18 +15,15 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
   ArrowRight,
   Building2,
   Calendar,
   CheckCircle2,
   CheckSquare,
   ChevronRight,
-  CloudRain,
   Compass,
   Filter,
   Layers,
-  Loader2,
   MapPin,
   MapPinOff,
   Pencil,
@@ -41,12 +38,25 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { painelService, type FilaItem, type AgendamentoPreviewItem } from "@/services/painel";
+import dynamic from "next/dynamic";
+import {
+  painelService,
+  type FilaItem,
+  type AgendamentoPlano,
+  type AgendamentoPreviewResponse,
+} from "@/services/painel";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 import { DateRangeFilter, dentroDoRange, type DateRange } from "@/components/painel/DateRangeFilter";
 import { VistoriaMetricsBadge } from "@/components/painel/VistoriaMetricsBadge";
 import { CountUp } from "@/components/ui/CountUp";
 import type { TecnicoAtivo } from "@/types";
+
+// Mapbox GL só é carregado quando a simulação do dia abre — não pesa na
+// Central de Distribuição em si.
+const SimulacaoDiaOverlay = dynamic(
+  () => import("@/components/painel/SimulacaoDiaOverlay").then((m) => m.SimulacaoDiaOverlay),
+  { ssr: false }
+);
 
 // vmStatusPulse já existe em mapa/page.tsx — mesmo keyframe, injetado uma
 // vez por módulo (não em useEffect) pro dot "ao vivo" do header e o status
@@ -1014,37 +1024,46 @@ function AtribuirDrawer({
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [modo, setModo] = useState<"agora" | "agendar">("agora");
   const [dataAgendada, setDataAgendada] = useState("");
-  const [fase, setFase] = useState<"escolher" | "revisar">("escolher");
   const [tecnicoEscolhido, setTecnicoEscolhido] = useState<{ id: string; nome: string } | null>(null);
-  const [previewItens, setPreviewItens] = useState<AgendamentoPreviewItem[]>([]);
-  const [ignoradosSemCoord, setIgnoradosSemCoord] = useState<Array<{ vistoria_id: number; equipamento: string }>>([]);
+  const [simulacaoOpen, setSimulacaoOpen] = useState(false);
+  const [plano, setPlano] = useState<AgendamentoPlano | null>(null);
+  const [planoErro, setPlanoErro] = useState<string | null>(null);
+  const [previewFinal, setPreviewFinal] = useState<AgendamentoPreviewResponse | null>(null);
+  const [climaErro, setClimaErro] = useState(false);
   const [carregandoPreview, setCarregandoPreview] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [erroAgendamento, setErroAgendamento] = useState<string | null>(null);
 
-  const fmtHora = (iso: string) =>
-    new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  useEffect(() => {
+    if (!open) setSimulacaoOpen(false);
+  }, [open]);
 
   const handleEscolherTecnico = async (tecId: string, tecNome: string) => {
     if (modo === "agora" || !dataAgendada) {
       onAtribuir(tecId, tecNome);
       return;
     }
+    // Abre a simulação na hora — o esqueleto (ordem/origem/SLA) chega em ms
+    // e o navegador traça as rotas ao vivo; o preview completo (clima) corre
+    // em paralelo e só acrescenta o risco de chuva quando terminar.
+    const input = { vistoria_ids: Array.from(selecionados), tecnico_id: tecId, data_agendada: dataAgendada };
     setTecnicoEscolhido({ id: tecId, nome: tecNome });
-    setCarregandoPreview(true);
+    setPlano(null);
+    setPlanoErro(null);
+    setPreviewFinal(null);
+    setClimaErro(false);
     setErroAgendamento(null);
+    setSimulacaoOpen(true);
+    setCarregandoPreview(true);
+    painelService
+      .previewAgendamento(input)
+      .then(setPreviewFinal)
+      .catch(() => setClimaErro(true));
     try {
-      const resp = await painelService.previewAgendamento({
-        vistoria_ids: Array.from(selecionados),
-        tecnico_id: tecId,
-        data_agendada: dataAgendada,
-      });
-      setPreviewItens(resp.itens);
-      setIgnoradosSemCoord(resp.ignorados_sem_coordenada);
-      setFase("revisar");
+      setPlano(await painelService.previewPlanoAgendamento(input));
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setErroAgendamento(msg ?? "Falha ao calcular a prévia do agendamento.");
+      setPlanoErro(msg ?? "Falha ao montar o roteiro do agendamento.");
     } finally {
       setCarregandoPreview(false);
     }
@@ -1060,6 +1079,7 @@ function AtribuirDrawer({
         tecnico_id: tecnicoEscolhido.id,
         data_agendada: dataAgendada,
       });
+      setSimulacaoOpen(false);
       onAgendado(resp.agendadas, tecnicoEscolhido.nome, dataAgendada);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -1094,23 +1114,6 @@ function AtribuirDrawer({
         return b.tec.atribuidas - a.tec.atribuidas;
       });
   }, [tecnicos, municipiosSel]);
-
-  // Resumo do roteiro — distância/duração total e janela de horário, a
-  // partir dos MESMOS itens já devolvidos pelo preview (sem chamada nova).
-  const resumoRoteiro = useMemo(() => {
-    if (previewItens.length === 0) return null;
-    const distanciaTotalM = previewItens.reduce((s, it) => s + (it.distancia_desde_anterior_m ?? 0), 0);
-    const primeira = previewItens[0];
-    const ultima = previewItens[previewItens.length - 1];
-    const duracaoMin = Math.round(
-      (new Date(ultima.saida_prevista).getTime() - new Date(primeira.chegada_prevista).getTime()) / 60000
-    );
-    const riscoMax = previewItens.reduce(
-      (max, it) => (it.risco_chuva_pct != null && it.risco_chuva_pct > max ? it.risco_chuva_pct : max),
-      0
-    );
-    return { distanciaTotalM, duracaoMin, primeira, ultima, riscoMax };
-  }, [previewItens]);
 
   return (
     <AnimatePresence>
@@ -1177,8 +1180,7 @@ function AtribuirDrawer({
               </button>
             </div>
 
-            {fase === "escolher" ? (
-              <>
+            <>
                 <div className="border-b px-4 py-3" style={{ borderColor: C.line }}>
                   {/* Segmented control — antes era um campo de data solto
                       que parecia esquecido/opcional. Agora é uma escolha
@@ -1335,151 +1337,22 @@ function AtribuirDrawer({
                     · grupo VistoMap-Técnicos
                   </p>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: C.line }}>
-                  <button
-                    type="button"
-                    onClick={() => setFase("escolher")}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-black/5"
-                    style={{ color: C.muted }}
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                  </button>
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-semibold" style={{ color: C.ink }}>
-                      Prévia — {tecnicoEscolhido?.nome}
-                    </p>
-                    <p className="text-[10.5px]" style={{ color: C.muted }}>
-                      {new Date(`${dataAgendada}T00:00:00`).toLocaleDateString("pt-BR")} · ordem sugerida por proximidade
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3">
-                  {carregandoPreview && (
-                    <div className="space-y-2 py-2">
-                      {[...Array(3)].map((_, i) => (
-                        <div key={i} className="h-16 animate-pulse rounded-[14px]" style={{ background: C.iconBg }} />
-                      ))}
-                    </div>
-                  )}
-
-                  {!carregandoPreview && resumoRoteiro && (
-                    <div
-                      className="mb-3 rounded-[16px] p-3.5"
-                      style={{ background: "linear-gradient(135deg,#063B3B,#0E5F54)" }}
-                    >
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <p className="text-[18px] font-bold tabular-nums text-white">
-                            {previewItens.length}
-                          </p>
-                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
-                            paradas
-                          </p>
-                        </div>
-                        <div style={{ borderLeft: "1px solid rgba(255,255,255,0.15)", borderRight: "1px solid rgba(255,255,255,0.15)" }}>
-                          <p className="text-[18px] font-bold tabular-nums text-white">
-                            {(resumoRoteiro.distanciaTotalM / 1000).toFixed(1)}km
-                          </p>
-                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
-                            deslocamento
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[18px] font-bold tabular-nums text-white">
-                            {resumoRoteiro.duracaoMin >= 60
-                              ? `${Math.floor(resumoRoteiro.duracaoMin / 60)}h${resumoRoteiro.duracaoMin % 60 ? resumoRoteiro.duracaoMin % 60 : ""}`
-                              : `${resumoRoteiro.duracaoMin}min`}
-                          </p>
-                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
-                            duração
-                          </p>
-                        </div>
-                      </div>
-                      <p className="mt-2.5 border-t pt-2 text-center text-[11px]" style={{ borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)" }}>
-                        {fmtHora(resumoRoteiro.primeira.chegada_prevista)} → {fmtHora(resumoRoteiro.ultima.saida_prevista)}
-                        {resumoRoteiro.riscoMax >= 50 && (
-                          <span className="ml-1.5 inline-flex items-center gap-1 font-semibold" style={{ color: "#FCA5A5" }}>
-                            <CloudRain className="h-3 w-3" /> risco de chuva no percurso
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  )}
-
-                  {ignoradosSemCoord.length > 0 && (
-                    <p className="mb-2 rounded-lg px-2.5 py-2 text-[11px]" style={{ background: "var(--vm-warm-tint)", color: "#92400E" }}>
-                      {ignoradosSemCoord.length} equipamento(s) sem coordenada — ficaram de fora do roteiro.
-                    </p>
-                  )}
-
-                  {/* Trilho vertical conectando as paradas — cada uma numerada,
-                      igual a uma linha de metrô, em vez de caixas soltas. */}
-                  <div className="relative">
-                    {previewItens.length > 1 && (
-                      <div
-                        className="absolute bottom-6 left-[27px] top-6 w-[2px]"
-                        style={{ background: "linear-gradient(180deg, var(--vm-accent-tint), var(--vm-border))" }}
-                      />
-                    )}
-                    {previewItens.map((it) => (
-                      <div key={it.vistoria_id} className="relative mb-2 flex items-start gap-3">
-                        <span
-                          className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                          style={{ background: "linear-gradient(145deg,#00B388,#00875F)", boxShadow: "0 2px 6px rgba(0,135,95,0.35)" }}
-                        >
-                          {it.ordem}
-                        </span>
-                        <div
-                          className="min-w-0 flex-1 rounded-[14px] px-3 py-2.5"
-                          style={{ background: C.iconBg, border: it.risco_chuva_alerta ? "1px solid rgba(185,28,28,0.25)" : "1px solid transparent" }}
-                        >
-                          <p className="truncate text-[12.5px] font-semibold" style={{ color: C.ink }}>
-                            {it.equipamento}
-                          </p>
-                          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px]" style={{ color: C.muted }}>
-                            <span className="font-semibold tabular-nums" style={{ color: C.brandDeep }}>
-                              {fmtHora(it.chegada_prevista)}–{fmtHora(it.saida_prevista)}
-                            </span>
-                            {it.distancia_desde_anterior_m != null && (
-                              <span>+{(it.distancia_desde_anterior_m / 1000).toFixed(1)}km</span>
-                            )}
-                          </p>
-                          {it.risco_chuva_alerta && (
-                            <p className="mt-1 flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "#B91C1C" }}>
-                              <CloudRain className="h-3 w-3" /> Risco de chuva {it.risco_chuva_pct}%
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {erroAgendamento && (
-                    <p className="mt-1.5 text-[11px] font-medium" style={{ color: "#DC2626" }}>
-                      {erroAgendamento}
-                    </p>
-                  )}
-                </div>
-
-                <div className="border-t p-4" style={{ borderColor: C.line }}>
-                  <button
-                    type="button"
-                    onClick={handleConfirmarAgendamento}
-                    disabled={confirmando || previewItens.length === 0}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-[13px] font-bold text-white disabled:opacity-60"
-                    style={{ background: "#00875F" }}
-                  >
-                    {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
-                    Confirmar agendamento
-                  </button>
-                </div>
-              </>
-            )}
+            </>
           </motion.div>
+
+          <SimulacaoDiaOverlay
+            open={simulacaoOpen}
+            tecnico={tecnicoEscolhido}
+            dataAgendada={dataAgendada}
+            plano={plano}
+            planoErro={planoErro}
+            previewFinal={previewFinal}
+            climaErro={climaErro}
+            confirmando={confirmando}
+            erro={erroAgendamento}
+            onVoltar={() => setSimulacaoOpen(false)}
+            onConfirmar={handleConfirmarAgendamento}
+          />
         </>
       )}
     </AnimatePresence>

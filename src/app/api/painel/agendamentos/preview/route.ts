@@ -1,10 +1,9 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
-import { query } from "@/lib/db";
-import { TABLE_FIELDS, TABLE_NE } from "@/lib/glpi/constants";
-import { montarRoteiroDoDia } from "@/lib/roteirizacao";
+import { fetchParadasSelecionadas, montarRoteiroDoDia } from "@/lib/roteirizacao";
 import { getExpedienteConfig } from "@/lib/expediente";
+import { almocoDoDia, calcularTermino } from "@/lib/roteirizacaoHorarios";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,21 +46,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "hora_inicio inválida (HH:MM)" }, { status: 400 });
     }
 
-    const rows = await query<{ id: number; name: string; latitude: string | null; longitude: string | null }>(
-      `SELECT ne.id, ne.name,
-              REPLACE(f.latitudefield, ',', '.') + 0.0 AS latitude,
-              REPLACE(f.longitudefield, ',', '.') + 0.0 AS longitude
-         FROM \`${TABLE_NE}\` ne
-         INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
-        WHERE ne.id IN (${vIds.map(() => "?").join(",")})
-          AND ne.is_deleted = 0`,
-      vIds
-    );
-
-    const semCoordenada = rows.filter((r) => r.latitude == null || r.longitude == null || Number(r.latitude) === 0);
-    const paradas = rows
-      .filter((r) => r.latitude != null && r.longitude != null && Number(r.latitude) !== 0)
-      .map((r) => ({ id: r.id, lat: Number(r.latitude), lng: Number(r.longitude) }));
+    const { paradas, semCoordenada, nomeMap } = await fetchParadasSelecionadas(vIds);
 
     if (paradas.length === 0) {
       return NextResponse.json(
@@ -78,22 +63,33 @@ export async function POST(req: Request) {
 
     const roteiro = await montarRoteiroDoDia(tId, paradas, body.data_agendada, horaInicio);
 
-    const nomeMap = new Map(rows.map((r) => [r.id, r.name]));
     const itens = roteiro.map((p) => ({
       vistoria_id: p.id,
       equipamento: nomeMap.get(p.id) ?? `NE-${p.id}`,
       ordem: p.ordem,
       distancia_desde_anterior_m: p.distanciaDesdeAnteriorM,
+      duracao_perna_min: Math.round(p.duracaoPernaMin),
       chegada_prevista: p.chegadaPrevista.toISOString(),
       saida_prevista: p.saidaPrevista.toISOString(),
+      almoco_antes: p.almocoAntes,
       risco_chuva_pct: p.riscoChuvaPct,
       risco_chuva_alerta: p.riscoChuvaAlerta,
     }));
 
+    const termino = calcularTermino(
+      roteiro.map((p) => ({ chegada: p.chegadaPrevista, saida: p.saidaPrevista, almocoAntes: p.almocoAntes })),
+      almocoDoDia(body.data_agendada)
+    );
+
     return NextResponse.json({
       ok: true,
       itens,
-      ignorados_sem_coordenada: semCoordenada.map((r) => ({ vistoria_id: r.id, equipamento: r.name })),
+      resumo: {
+        hora_inicio: horaInicioStr,
+        hora_termino: termino?.toISOString() ?? null,
+        distancia_total_m: roteiro.reduce((s, p) => s + (p.distanciaDesdeAnteriorM ?? 0), 0),
+      },
+      ignorados_sem_coordenada: semCoordenada,
     });
   } catch (err) {
     console.error("[api/painel/agendamentos/preview] error", err);

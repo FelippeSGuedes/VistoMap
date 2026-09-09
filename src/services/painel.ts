@@ -85,8 +85,10 @@ export interface AgendamentoPreviewItem {
   equipamento: string;
   ordem: number;
   distancia_desde_anterior_m: number | null;
+  duracao_perna_min: number;
   chegada_prevista: string;
   saida_prevista: string;
+  almoco_antes: boolean;
   risco_chuva_pct: number | null;
   risco_chuva_alerta: boolean;
 }
@@ -94,11 +96,34 @@ export interface AgendamentoPreviewItem {
 export interface AgendamentoPreviewResponse {
   ok: true;
   itens: AgendamentoPreviewItem[];
+  resumo: {
+    hora_inicio: string;
+    hora_termino: string | null;
+    distancia_total_m: number;
+  };
   ignorados_sem_coordenada: Array<{ vistoria_id: number; equipamento: string }>;
 }
 
 export async function previewAgendamento(input: AgendamentoInput): Promise<AgendamentoPreviewResponse> {
   const { data } = await api.post<AgendamentoPreviewResponse>("/painel/agendamentos/preview", input);
+  return data;
+}
+
+/** Esqueleto do roteiro (ordem + origem + SLA + config) — instantâneo, sem rota/clima. */
+export interface AgendamentoPlano {
+  ok: true;
+  data_agendada: string;
+  hora_inicio: string; // HH:MM
+  sla_min: number;
+  origem: { lat: number; lng: number };
+  almoco: { hora: string; duracao_min: number };
+  margem_min: number;
+  paradas: Array<{ vistoria_id: number; equipamento: string; ordem: number; lat: number; lng: number }>;
+  ignorados_sem_coordenada: Array<{ vistoria_id: number; equipamento: string }>;
+}
+
+export async function previewPlanoAgendamento(input: AgendamentoInput): Promise<AgendamentoPlano> {
+  const { data } = await api.post<AgendamentoPlano>("/painel/agendamentos/preview/plano", input);
   return data;
 }
 
@@ -543,6 +568,7 @@ export const painelService = {
   fetchVistoriaFiles,
   atribuir,
   previewAgendamento,
+  previewPlanoAgendamento,
   criarAgendamento,
   fetchAgendamentos,
   cancelarAgendamento,

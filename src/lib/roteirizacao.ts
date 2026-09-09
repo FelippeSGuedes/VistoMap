@@ -1,7 +1,9 @@
 import "server-only";
 import { query } from "@/lib/db";
 import { DEFAULT_CENTER } from "@/services/maps";
+import { TABLE_FIELDS, TABLE_NE } from "@/lib/glpi/constants";
 import { fetchRiscoChuva } from "@/lib/weather";
+import { acumularHorarios, almocoDoDia, type PernaCalculada } from "@/lib/roteirizacaoHorarios";
 
 /**
  * Motor de roteirização/tempo pro agendamento de vistorias (painel) —
@@ -22,8 +24,40 @@ export interface Parada extends LatLng {
 export interface ParadaComHorario extends Parada {
   ordem: number;
   distanciaDesdeAnteriorM: number | null;
+  duracaoPernaMin: number;
   chegadaPrevista: Date;
   saidaPrevista: Date;
+  almocoAntes: boolean;
+}
+
+export interface ParadasSelecionadas {
+  paradas: Parada[];
+  semCoordenada: Array<{ vistoria_id: number; equipamento: string }>;
+  nomeMap: Map<number, string>;
+}
+
+/**
+ * Carrega lat/lng das vistorias escolhidas — mesma query nas rotas de
+ * preview, plano e criação, pra nunca divergir o filtro de "sem coordenada".
+ */
+export async function fetchParadasSelecionadas(vIds: number[]): Promise<ParadasSelecionadas> {
+  const rows = await query<{ id: number; name: string; latitude: string | null; longitude: string | null }>(
+    `SELECT ne.id, ne.name,
+            REPLACE(f.latitudefield, ',', '.') + 0.0 AS latitude,
+            REPLACE(f.longitudefield, ',', '.') + 0.0 AS longitude
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      WHERE ne.id IN (${vIds.map(() => "?").join(",")})
+        AND ne.is_deleted = 0`,
+    vIds
+  );
+  const temCoord = (r: (typeof rows)[number]) =>
+    r.latitude != null && r.longitude != null && Number(r.latitude) !== 0;
+  return {
+    paradas: rows.filter(temCoord).map((r) => ({ id: r.id, lat: Number(r.latitude), lng: Number(r.longitude) })),
+    semCoordenada: rows.filter((r) => !temCoord(r)).map((r) => ({ vistoria_id: r.id, equipamento: r.name })),
+    nomeMap: new Map(rows.map((r) => [r.id, r.name])),
+  };
 }
 
 /** Quando o técnico não tem histórico de execução ainda. */
@@ -152,42 +186,39 @@ async function fetchPerna(
  * Acumula chegada/saída prevista de cada parada, na ordem já decidida.
  * Perna sem resposta da Directions API (rede fora, token ausente) cai pra
  * uma estimativa por linha reta a 30km/h — nunca trava o agendamento por
- * causa disso.
+ * causa disso. A regra de horário (almoço/margem) vive em
+ * roteirizacaoHorarios.ts, compartilhada com a prévia ao vivo do painel.
  */
 export async function calcularHorarios(
   origem: LatLng,
   paradasOrdenadas: Parada[],
   slaMin: number,
-  horaInicio: Date
+  horaInicio: Date,
+  almocoEm: Date
 ): Promise<ParadaComHorario[]> {
-  const resultado: ParadaComHorario[] = [];
-  let atual = origem;
-  let horario = horaInicio;
+  // Origem/destino de cada perna já são conhecidos (ordem decidida) — as
+  // chamadas à Directions saem em paralelo em vez de uma por vez.
+  const pernas: PernaCalculada[] = await Promise.all(
+    paradasOrdenadas.map(async (parada, i) => {
+      const de = i === 0 ? origem : paradasOrdenadas[i - 1];
+      const perna = await fetchPerna(de, parada);
+      const distanciaM = perna?.distanciaM ?? Math.round(haversineM(de, parada));
+      const duracaoMin = perna ? perna.duracaoS / 60 : (distanciaM / 1000 / 30) * 60;
+      return { distanciaM, duracaoMin };
+    })
+  );
 
-  for (let i = 0; i < paradasOrdenadas.length; i++) {
-    const parada = paradasOrdenadas[i];
-    const perna = await fetchPerna(atual, parada);
-    const distanciaM = perna?.distanciaM ?? Math.round(haversineM(atual, parada));
-    const duracaoMin = perna
-      ? perna.duracaoS / 60
-      : (distanciaM / 1000 / 30) * 60; // fallback: 30km/h em linha reta
+  const horarios = acumularHorarios(horaInicio, slaMin, pernas, almocoEm);
 
-    const chegadaPrevista = new Date(horario.getTime() + duracaoMin * 60000);
-    const saidaPrevista = new Date(chegadaPrevista.getTime() + slaMin * 60000);
-
-    resultado.push({
-      ...parada,
-      ordem: i + 1,
-      distanciaDesdeAnteriorM: distanciaM,
-      chegadaPrevista,
-      saidaPrevista,
-    });
-
-    atual = parada;
-    horario = saidaPrevista;
-  }
-
-  return resultado;
+  return paradasOrdenadas.map((parada, i) => ({
+    ...parada,
+    ordem: i + 1,
+    distanciaDesdeAnteriorM: pernas[i].distanciaM,
+    duracaoPernaMin: pernas[i].duracaoMin,
+    chegadaPrevista: horarios[i].chegada,
+    saidaPrevista: horarios[i].saida,
+    almocoAntes: horarios[i].almocoAntes,
+  }));
 }
 
 export interface ParadaComAgenda extends ParadaComHorario {
@@ -212,7 +243,7 @@ export async function montarRoteiroDoDia(
     fetchOrigemTecnico(tecnicoId),
   ]);
   const ordenadas = ordenarPorProximidade(origem, paradas);
-  const comHorario = await calcularHorarios(origem, ordenadas, slaMin, horaInicio);
+  const comHorario = await calcularHorarios(origem, ordenadas, slaMin, horaInicio, almocoDoDia(dataAgendadaISO));
 
   const comClima = await Promise.all(
     comHorario.map(async (p) => {
