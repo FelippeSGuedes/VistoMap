@@ -119,6 +119,8 @@ interface CPFLRow {
   validacao_cpfl: string | null;
   validador_cpfl: string | null;
   avaliador_interno: string | null;
+  avaliador_interno_firstname: string | null;
+  avaliador_interno_realname: string | null;
   tecnico_id: number | null;
   tecnico_name: string | null;
   tecnico_firstname: string | null;
@@ -212,6 +214,8 @@ export async function fetchVistoriasCPFL(
         valcpfl.name      AS validacao_cpfl,
         valu.name         AS validador_cpfl,
         av.name           AS avaliador_interno,
+        av.firstname      AS avaliador_interno_firstname,
+        av.realname       AS avaliador_interno_realname,
         f.users_id_vistoriadorafield AS tecnico_id,
         u.name      AS tecnico_name,
         u.firstname AS tecnico_firstname,
@@ -262,6 +266,12 @@ export async function fetchVistoriasCPFL(
         r.tecnico_name ||
         "—";
 
+    // Nome Completo do avaliador, não o login (ex.: "debora.farias").
+    const nomeAvaliador = r.avaliador_interno
+      ? `${r.avaliador_interno_firstname ?? ""} ${r.avaliador_interno_realname ?? ""}`.trim() ||
+        r.avaliador_interno
+      : null;
+
     return {
       id: r.id,
       glpiId: `NE-${r.id}`,
@@ -280,7 +290,7 @@ export async function fetchVistoriasCPFL(
       pdfPath: r.pdf_path ?? null,
       validacaoCpfl: limpa(r.validacao_cpfl),
       validadorCpfl: limpa(r.validador_cpfl),
-      avaliadorInterno: limpa(r.avaliador_interno),
+      avaliadorInterno: limpa(nomeAvaliador),
     };
   });
 }

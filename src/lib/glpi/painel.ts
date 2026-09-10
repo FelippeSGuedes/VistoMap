@@ -1021,8 +1021,8 @@ export async function recuperarAvaliadorViaLogsGlpi(): Promise<RecuperarAvaliado
     }
     const candidatoUserId = Number(idMatch[1]);
 
-    const usuarios = await query<{ id: number }>(
-      `SELECT id FROM \`${TABLE_USERS}\` WHERE id = ? LIMIT 2`,
+    const usuarios = await query<{ id: number; firstname: string | null; realname: string | null; name: string }>(
+      `SELECT id, firstname, realname, name FROM \`${TABLE_USERS}\` WHERE id = ? LIMIT 2`,
       [candidatoUserId]
     );
     if (usuarios.length !== 1) {
@@ -1034,11 +1034,28 @@ export async function recuperarAvaliadorViaLogsGlpi(): Promise<RecuperarAvaliado
       continue;
     }
 
+    // Nome Completo (firstname + realname), não o login — mesma convenção
+    // já usada pro nome do técnico logo acima neste arquivo.
+    const u = usuarios[0];
+    const nomeCompleto = `${u.firstname ?? ""} ${u.realname ?? ""}`.trim() || u.name;
+
     await execute(
       `UPDATE \`${TABLE_FIELDS}\` SET \`${AVALIADOR_CPFL_USER_COLUMN}\` = ? WHERE items_id = ?`,
-      [usuarios[0].id, c.id]
+      [u.id, c.id]
     );
-    recuperados.push({ id: c.id, equipamento: c.name, avaliador: nomeLog, dataLog: c.data_aprovacao });
+
+    // Histórico NATIVO do GLPI também — não só a Auditoria do VistoMap.
+    // Sem id_search_option registrado pra esse campo (Plugin Fields não o
+    // expõe como opção de busca), então usa 0; data = a data REAL da
+    // aprovação, pra não parecer que a mudança aconteceu agora.
+    await execute(
+      `INSERT INTO glpi_logs
+         (itemtype, items_id, itemtype_link, linked_action, user_name, date_mod, id_search_option, old_value, new_value)
+       VALUES ('${ITEMTYPE_NE}', ?, '', 0, ?, ?, 0, '', ?)`,
+      [c.id, `${nomeCompleto} (${u.id})`, c.data_aprovacao, `Avaliador da Vistoria CPFL: ${nomeCompleto} (${u.id})`]
+    );
+
+    recuperados.push({ id: c.id, equipamento: c.name, avaliador: nomeCompleto, dataLog: c.data_aprovacao });
   }
 
   return { recuperados, naoRecuperados };
