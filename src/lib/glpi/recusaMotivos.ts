@@ -4,15 +4,36 @@
  * removido, etc.), diferente de "Mudar Poste" (o poste específico está
  * bloqueado mas existe alternativa por perto).
  *
+ * CATEGORIA (2026-09-10): "impedimento" vs "recusa" — MESMO mecanismo (essa
+ * mesma tabela, motivo + justificativa + aprovação do analista), só um
+ * rótulo/cor diferente pra separar visualmente as duas naturezas:
+ *   • impedimento = circunstância externa (sinal ruim, acesso bloqueado,
+ *     condomínio fechado) — ninguém "decidiu" nada, o ambiente impediu.
+ *   • recusa = decisão/recusa de fato (morador recusou, risco que o técnico
+ *     optou por não correr, propriedade privada, técnico incapacitado).
+ * É puramente derivado do MOTIVO (RECUSA_MOTIVO_CATEGORIA abaixo) — sem
+ * coluna nova no banco, sem tabela nova. O mesmo motivo nunca muda de
+ * categoria; quando a MESMA situação podia terminar nas duas (sinal fora do
+ * padrão → "impedimento" ou "recusar" direto), viram duas chaves distintas.
+ *
  * SEM_POSTES é especial: nunca é escolhido manualmente — só é usado quando
  * o gate automático (busca de postes num raio de 100m) não encontra
- * nenhuma alternativa. Os demais (2–7) só ficam disponíveis depois que o
- * técnico passa pela lista de "Mudar Poste" e nenhuma opção serve.
+ * nenhuma alternativa. Os motivos "manuais" (RECUSA_MOTIVOS_MANUAIS) só
+ * ficam disponíveis pelo escape hatch de "Mudar Poste" (nenhuma alternativa
+ * serve) — o Assistente de Vistoria (AssistenteVistoria.tsx) tem seu
+ * próprio funil conversacional e não usa essa lista solta.
  */
 
 export const RECUSA_MOTIVOS = [
   { key: "SEM_POSTES", label: "Sem postes na redondeza (100m)" },
   { key: "SINAL_RUIM_APOS_TROCA", label: "Sinal ruim mesmo após trocar de poste" },
+  { key: "SINAL_FORA_PADRAO", label: "Sinal fora do padrão CPFL — impedimento" },
+  { key: "SINAL_FORA_PADRAO_RECUSA", label: "Sinal fora do padrão CPFL — recusa" },
+  { key: "SINAL_SEM_MEDICAO", label: "Não foi possível medir o sinal" },
+  { key: "CONDOMINIO_ACESSO_BLOQUEADO", label: "Condomínio — acesso bloqueado" },
+  { key: "CONDOMINIO_SEM_CONTATO", label: "Condomínio — sem contato com responsável" },
+  { key: "AREA_DIFICIL_ACESSO", label: "Área de difícil acesso" },
+  { key: "OUTRO_PROBLEMA_IMPEDE", label: "Outro problema — impede a vistoria" },
   { key: "TECNICO_INCAPACITADO", label: "Recusada pelo analista (técnico incapacitado)" },
   { key: "ALTERNATIVAS_INACESSIVEIS", label: "Alternativas também inacessíveis" },
   { key: "PROPRIEDADE_PRIVADA", label: "Propriedade privada sem acesso" },
@@ -29,15 +50,49 @@ export const RECUSA_MOTIVO_LABEL: Record<RecusaMotivo, string> = Object.fromEntr
   RECUSA_MOTIVOS.map((m) => [m.key, m.label])
 ) as Record<RecusaMotivo, string>;
 
+export type RecusaCategoria = "impedimento" | "recusa";
+
+const MOTIVOS_IMPEDIMENTO: RecusaMotivo[] = [
+  "SEM_POSTES",
+  "SINAL_RUIM_APOS_TROCA",
+  "SINAL_FORA_PADRAO",
+  "SINAL_SEM_MEDICAO",
+  "CONDOMINIO_ACESSO_BLOQUEADO",
+  "CONDOMINIO_SEM_CONTATO",
+  "AREA_DIFICIL_ACESSO",
+  "OUTRO_PROBLEMA_IMPEDE",
+];
+
+export const RECUSA_MOTIVO_CATEGORIA: Record<RecusaMotivo, RecusaCategoria> = Object.fromEntries(
+  RECUSA_MOTIVOS.map((m) => [m.key, MOTIVOS_IMPEDIMENTO.includes(m.key) ? "impedimento" : "recusa"])
+) as Record<RecusaMotivo, RecusaCategoria>;
+
+export const CATEGORIA_LABEL: Record<RecusaCategoria, string> = {
+  impedimento: "Impedimento",
+  recusa: "Recusa",
+};
+
+/** Motivos que só chegam com motivoFixo (gate automático ou Assistente de Vistoria) — nunca escolhidos numa lista solta. */
+const MOTIVOS_AUTOMATICOS: RecusaMotivo[] = [
+  "SEM_POSTES",
+  "SINAL_RUIM_APOS_TROCA",
+  "SINAL_FORA_PADRAO",
+  "SINAL_FORA_PADRAO_RECUSA",
+  "SINAL_SEM_MEDICAO",
+  "CONDOMINIO_ACESSO_BLOQUEADO",
+  "CONDOMINIO_SEM_CONTATO",
+  "AREA_DIFICIL_ACESSO",
+  "OUTRO_PROBLEMA_IMPEDE",
+  "TECNICO_INCAPACITADO",
+];
+
 /**
- * Motivos que o técnico escolhe manualmente na lista — exclui os automáticos
- * (SEM_POSTES vem do gate de 100m; SINAL_RUIM_APOS_TROCA vem da tela de
- * correção de devolução, sempre com motivoFixo + RSRP já medido, nunca
- * escolhido digitando numa lista).
+ * Motivos que aparecem na lista solta de "Recusar vistoria" quando o
+ * técnico entra pelo escape hatch de "Mudar Poste" (nenhuma alternativa
+ * serve) — os automáticos/conversacionais (acima) nunca aparecem numa
+ * lista pra escolher, sempre chegam com motivoFixo já decidido.
  */
-export const RECUSA_MOTIVOS_MANUAIS = RECUSA_MOTIVOS.filter(
-  (m) => m.key !== "SEM_POSTES" && m.key !== "SINAL_RUIM_APOS_TROCA" && m.key !== "TECNICO_INCAPACITADO"
-);
+export const RECUSA_MOTIVOS_MANUAIS = RECUSA_MOTIVOS.filter((m) => !MOTIVOS_AUTOMATICOS.includes(m.key));
 
 export interface RecusaPergunta {
   key: string;
@@ -49,11 +104,17 @@ export interface RecusaPergunta {
 
 export const RECUSA_PERGUNTAS: Record<RecusaMotivo, RecusaPergunta[]> = {
   SEM_POSTES: [],
-  // Sem perguntas — vem sempre com motivoFixo da tela de correção, que já
-  // preenche rsrp_claro/rsrp_vivo em respostasIniciais com o valor real medido.
+  // Sem perguntas — vem sempre com motivoFixo (RSRP já preenchido em
+  // respostasIniciais pelas telas/assistente que geram cada uma).
   SINAL_RUIM_APOS_TROCA: [],
-  // Sem perguntas — essa recusa nasce direto do painel (analista), nunca do
-  // fluxo de perguntas do técnico no app.
+  SINAL_FORA_PADRAO: [],
+  SINAL_FORA_PADRAO_RECUSA: [],
+  SINAL_SEM_MEDICAO: [],
+  CONDOMINIO_ACESSO_BLOQUEADO: [],
+  CONDOMINIO_SEM_CONTATO: [],
+  AREA_DIFICIL_ACESSO: [],
+  OUTRO_PROBLEMA_IMPEDE: [],
+  // Sem perguntas — nasce direto do painel (analista), nunca do app.
   TECNICO_INCAPACITADO: [],
   ALTERNATIVAS_INACESSIVEIS: [
     {
@@ -132,7 +193,7 @@ export function recusaRespostasCompletas(motivo: RecusaMotivo, respostas: Record
   return RECUSA_PERGUNTAS[motivo].every((p) => !p.obrigatoria || (respostas[p.key] ?? "").trim().length > 0);
 }
 
-/** Monta o texto de justificativa a partir do motivo + respostas do Q&A. */
+/** Monta o texto de justificativa a partir do motivo + respostas do Q&A (ou do Assistente de Vistoria). */
 export function gerarJustificativaRecusa(
   motivo: RecusaMotivo,
   respostas: Record<string, string>
@@ -146,6 +207,31 @@ export function gerarJustificativaRecusa(
     const vivo = respostas.rsrp_vivo?.trim();
     const medidas = claro || vivo ? ` Último RSRP medido: Claro ${claro || "?"} dBm, Vivo ${vivo || "?"} dBm.` : "";
     return `Vistoria recusada — sinal ruim (RSRP ≤ -102 dBm nas duas operadoras) mesmo após trocar de poste.${medidas}`;
+  }
+  if (motivo === "SINAL_FORA_PADRAO" || motivo === "SINAL_FORA_PADRAO_RECUSA") {
+    const claro = respostas.rsrp_claro?.trim();
+    const vivo = respostas.rsrp_vivo?.trim();
+    const medidas = claro || vivo ? ` RSRP medido: Claro ${claro || "?"} dBm, Vivo ${vivo || "?"} dBm.` : "";
+    const acao = motivo === "SINAL_FORA_PADRAO" ? "Impedimento registrado" : "Vistoria recusada";
+    return `${acao} — sinal fora do padrão aceito pela CPFL (RSRP ≤ -102 dBm nas duas operadoras).${medidas}`;
+  }
+  if (motivo === "SINAL_SEM_MEDICAO") {
+    return "Impedimento registrado — não foi possível medir o sinal das duas operadoras no local.";
+  }
+  if (motivo === "CONDOMINIO_ACESSO_BLOQUEADO") {
+    return "Impedimento registrado — condomínio com responsável contatado, mas acesso não foi liberado.";
+  }
+  if (motivo === "CONDOMINIO_SEM_CONTATO") {
+    return "Impedimento registrado — não foi possível contato com o responsável/administração do condomínio.";
+  }
+  if (motivo === "AREA_DIFICIL_ACESSO") {
+    const dificuldade = respostas.dificuldade?.trim();
+    const descricao = respostas.descricao?.trim();
+    return `Impedimento registrado — área de difícil acesso${dificuldade ? ` (${dificuldade})` : ""}.${descricao ? ` ${descricao}` : ""}`;
+  }
+  if (motivo === "OUTRO_PROBLEMA_IMPEDE") {
+    const descricao = respostas.descricao?.trim();
+    return `Impedimento registrado — ${descricao || "problema relatado pelo técnico impede a realização da vistoria."}`;
   }
   const partes = RECUSA_PERGUNTAS[motivo]
     .map((p) => respostas[p.key]?.trim())

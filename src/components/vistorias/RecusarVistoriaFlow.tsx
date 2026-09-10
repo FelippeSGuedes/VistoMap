@@ -23,6 +23,7 @@ import { api, type ApiError } from "@/services/api";
 import { cn } from "@/utils/cn";
 import {
   RECUSA_MOTIVOS_MANUAIS,
+  RECUSA_MOTIVO_CATEGORIA,
   RECUSA_MOTIVO_LABEL,
   RECUSA_PERGUNTAS,
   gerarJustificativaRecusa,
@@ -40,6 +41,8 @@ interface RecusarVistoriaFlowProps {
   motivoFixo?: RecusaMotivo;
   /** Respostas já conhecidas de antemão (ex.: RSRP já medido na tela de correção) — evita perguntar de novo o que o app já sabe. */
   respostasIniciais?: Record<string, string>;
+  /** Foto já capturada durante a conversa (Assistente de Vistoria) — chega na revisão já anexada, sem pedir de novo. */
+  fotoInicial?: File | null;
   onClose: () => void;
   /** Chamado quando a recusa é APROVADA — a vistoria saiu de circulação. */
   onAprovada: () => void;
@@ -51,6 +54,7 @@ export function RecusarVistoriaFlow({
   equipamento,
   motivoFixo,
   respostasIniciais,
+  fotoInicial,
   onClose,
   onAprovada,
 }: RecusarVistoriaFlowProps) {
@@ -64,6 +68,12 @@ export function RecusarVistoriaFlow({
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
 
+  // Categoria é puramente derivada do motivo (impedimento = circunstância
+  // externa; recusa = decisão de fato) — muda só o rótulo/cor, o mecanismo
+  // por baixo (essa mesma tela) é idêntico nos dois casos.
+  const categoria = motivo ? RECUSA_MOTIVO_CATEGORIA[motivo] : "recusa";
+  const ehImpedimento = categoria === "impedimento";
+
   useEffect(() => {
     if (!open) return;
     setFase(motivoFixo ? "revisao" : "motivo");
@@ -72,10 +82,10 @@ export function RecusarVistoriaFlow({
     setRecusaId(null);
     setMotivoReprovacao("");
     setErro(null);
-    setFoto(null);
+    setFoto(fotoInicial ?? null);
     setFotoPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      return null;
+      return fotoInicial ? URL.createObjectURL(fotoInicial) : null;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, motivoFixo]);
@@ -154,13 +164,19 @@ export function RecusarVistoriaFlow({
 
   const BG_RED = "linear-gradient(160deg,#DC2626 0%,#B91C1C 60%,#7F1D1D 100%)";
   const BG_GREEN = "linear-gradient(160deg,#059669 0%,#047857 60%,#065F46 100%)";
-  const BG_NEUTRAL = "linear-gradient(160deg,#1F2937 0%,#111827 60%,#0B1220 100%)";
+  const BG_NEUTRAL_RECUSA = "linear-gradient(160deg,#1F2937 0%,#111827 60%,#0B1220 100%)";
+  // Impedimento é circunstância, não decisão — tom mais quente/âmbar em vez
+  // do cinza-chumbo sério da recusa, mesma ideia dos estados 🟡 do resto do app.
+  const BG_NEUTRAL_IMPEDIMENTO = "linear-gradient(160deg,#292118 0%,#1C1710 60%,#120E09 100%)";
 
   const bg =
     fase === "aprovado" ? BG_GREEN
     : fase === "reprovado" ? BG_RED
     : fase === "aguardando" ? "linear-gradient(160deg,#EA580C 0%,#C2410C 60%,#9A3412 100%)"
-    : BG_NEUTRAL;
+    : ehImpedimento ? BG_NEUTRAL_IMPEDIMENTO
+    : BG_NEUTRAL_RECUSA;
+
+  const corAcento = ehImpedimento ? "#F4B400" : "#EF4444";
 
   return (
     <AnimatePresence>
@@ -176,8 +192,8 @@ export function RecusarVistoriaFlow({
           {/* header */}
           <div className="flex items-start justify-between px-5 pt-[max(env(safe-area-inset-top),18px)]">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">
-                Recusar vistoria
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: corAcento }}>
+                {ehImpedimento ? "Registrar impedimento" : "Recusar vistoria"}
               </p>
               <h2 className="truncate text-[18px] font-bold tracking-tight">{equipamento}</h2>
             </div>
@@ -326,7 +342,9 @@ export function RecusarVistoriaFlow({
                 )}
                 <p className="mt-4 flex items-start gap-2 text-[12.5px] text-white/60">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  A vistoria sai da sua fila até o analista aprovar ou reprovar a recusa.
+                  {ehImpedimento
+                    ? "A vistoria sai da sua fila até o analista confirmar o impedimento."
+                    : "A vistoria sai da sua fila até o analista aprovar ou reprovar a recusa."}
                 </p>
               </>
             )}
@@ -360,7 +378,7 @@ export function RecusarVistoriaFlow({
                 >
                   <Check className="h-20 w-20" strokeWidth={3} />
                 </motion.div>
-                <p className="mt-7 text-[22px] font-bold">Recusa aprovada</p>
+                <p className="mt-7 text-[22px] font-bold">{ehImpedimento ? "Impedimento confirmado" : "Recusa aprovada"}</p>
                 <p className="mt-1 text-[14px] text-white/80">Essa vistoria saiu da sua fila.</p>
               </div>
             )}
@@ -375,7 +393,7 @@ export function RecusarVistoriaFlow({
                 >
                   <XCircle className="h-20 w-20" strokeWidth={2} />
                 </motion.div>
-                <p className="mt-7 text-[22px] font-bold">Recusa não aceita</p>
+                <p className="mt-7 text-[22px] font-bold">{ehImpedimento ? "Impedimento não aceito" : "Recusa não aceita"}</p>
                 <p className="mt-1 text-[14px] text-white/80">A vistoria voltou pra sua fila.</p>
                 {motivoReprovacao && (
                   <div className="mt-4 max-w-[300px] rounded-2xl bg-white/10 px-4 py-3">
@@ -415,7 +433,7 @@ export function RecusarVistoriaFlow({
             )}
             {fase === "revisao" && (
               <Button fullWidth size="lg" variant="secondary" leftIcon={<Send className="h-4 w-4" />} onClick={enviar}>
-                Enviar recusa
+                {ehImpedimento ? "Confirmar impedimento" : "Confirmar recusa"}
               </Button>
             )}
             {fase === "reprovado" && (

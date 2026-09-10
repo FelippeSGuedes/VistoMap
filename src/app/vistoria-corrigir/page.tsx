@@ -19,13 +19,13 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  AlertTriangle, Ban, Camera, Check, Clock, HelpCircle, Loader2,
+  AlertTriangle, Ban, Camera, Check, Clock, Loader2,
   Navigation as NavigationIcon, Replace, Send, Upload, Video, XCircle,
 } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
-import { AjudaTriagemSheet } from "@/components/vistorias/AjudaTriagemSheet";
+import { AssistenteVistoria } from "@/components/vistorias/AssistenteVistoria";
 import { NavigationOptionsSheet } from "@/components/vistorias/NavigationOptionsSheet";
 import { RecusarVistoriaFlow } from "@/components/vistorias/RecusarVistoriaFlow";
 import { SelectField } from "@/components/vistorias/SelectField";
@@ -94,11 +94,9 @@ function CorrigirDevolucaoInner() {
 
   // "Recusar vistoria" — faltava um jeito de sair do loop "trocar de poste →
   // sinal ainda ruim → não consegue enviar" nessa tela (achado em campo
-  // 2026-09-09). Chip discreto de ajuda (triagem genérica) + atalho
+  // 2026-09-09). Assistente conversacional (balão flutuante) + atalho
   // automático quando o app já sabe, pelos números que o técnico acabou de
   // digitar, que o poste novo também reprovou.
-  const [ajudaOpen, setAjudaOpen] = useState(false);
-  const [ajudaStep, setAjudaStep] = useState<"raiz" | "trocou">("raiz");
   const [recusarOpen, setRecusarOpen] = useState(false);
   const [recusarMotivoFixo, setRecusarMotivoFixo] = useState<RecusaMotivo | undefined>(undefined);
   const [recusarRespostasIniciais, setRecusarRespostasIniciais] = useState<Record<string, string> | undefined>(undefined);
@@ -240,7 +238,6 @@ function CorrigirDevolucaoInner() {
     !rsrpParValido(campos.rsrpifield, campos.rsrpllfield);
 
   function abrirRecusarPorSinal() {
-    setAjudaOpen(false);
     setRecusarMotivoFixo("SINAL_RUIM_APOS_TROCA");
     setRecusarRespostasIniciais({
       rsrp_claro: campos.rsrpifield ?? "",
@@ -250,7 +247,6 @@ function CorrigirDevolucaoInner() {
   }
 
   function abrirRecusarGenerico() {
-    setAjudaOpen(false);
     setRecusarMotivoFixo(undefined);
     setRecusarRespostasIniciais(undefined);
     setRecusarOpen(true);
@@ -611,18 +607,6 @@ function CorrigirDevolucaoInner() {
               </div>
             )}
 
-            {/* Chip discreto — escape hatch geral pra quando o técnico não sabe
-                como resolver (não só RSRP). Fica acima da barra de envio. */}
-            <button
-              type="button"
-              onClick={() => { setAjudaStep("raiz"); setAjudaOpen(true); }}
-              className="fixed bottom-[86px] right-4 z-20 flex h-9 items-center gap-1.5 rounded-full bg-white/95 px-3.5 text-[12px] font-semibold text-ink-muted shadow-elev backdrop-blur"
-              style={{ marginBottom: "max(env(safe-area-inset-bottom), 0px)" }}
-            >
-              <HelpCircle className="h-3.5 w-3.5" />
-              Precisa de ajuda?
-            </button>
-
             <div className="fixed inset-x-0 bottom-0 border-t border-brand-steel/40 bg-white/95 px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-3 backdrop-blur">
               <button
                 type="button"
@@ -638,16 +622,16 @@ function CorrigirDevolucaoInner() {
         )
       ) : null}
 
-      <AjudaTriagemSheet
-        open={ajudaOpen}
-        step={ajudaStep}
-        onStepChange={setAjudaStep}
-        onClose={() => setAjudaOpen(false)}
-        mostrarOpcaoSinal={precisaTrocarPoste}
-        onTrocarPoste={() => { setAjudaOpen(false); setMudarPosteOpen(true); }}
-        onRecusarPorSinal={abrirRecusarPorSinal}
-        onRecusarGenerico={abrirRecusarGenerico}
-      />
+      {fase === "form" && (
+        <AssistenteVistoria
+          vistoriaId={vistoria.id}
+          equipamento={vistoria.equipamento}
+          poste={vistoria.pspostefield}
+          municipio={vistoria.cidade}
+          bottomOffset={96}
+          onRegistrada={() => router.push("/vistorias")}
+        />
+      )}
 
       {vistoria.latitude != null && vistoria.longitude != null && (
         <VideoRecorderSheet

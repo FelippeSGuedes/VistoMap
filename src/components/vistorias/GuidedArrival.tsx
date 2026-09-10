@@ -26,6 +26,7 @@ import { useOfflinePrep } from "@/hooks/useOfflinePrep";
 import { usePostesProximos } from "@/hooks/usePostesProximos";
 import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
 import { RecusarVistoriaFlow } from "./RecusarVistoriaFlow";
+import { AssistenteVistoria } from "./AssistenteVistoria";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import type { RecusaMotivo } from "@/lib/glpi/recusaMotivos";
 
@@ -583,19 +584,6 @@ export function GuidedArrival({
                   </button>
                 )}
 
-                {/* Sempre visível, mesmo com vários postes por perto — cobre motivo
-                    de recusa que não tem nada a ver com posição de poste (propriedade
-                    privada, morador recusou, risco de segurança, etc.). */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecusarMotivoFixo(undefined);
-                    setRecusarOpen(true);
-                  }}
-                  className="w-full py-1.5 text-center text-[12.5px] font-semibold text-white/70 underline-offset-2 hover:underline"
-                >
-                  Tenho um problema com essa vistoria
-                </button>
               </div>
             )}
 
@@ -698,6 +686,20 @@ export function GuidedArrival({
             onClose={() => setRecusarOpen(false)}
             onAprovada={() => {
               setRecusarOpen(false);
+              onDataChanged?.();
+              onClose();
+            }}
+          />
+
+          {/* Balão único de ajuda — sempre alcançável, em qualquer fase
+              (aguardando/aproximando/chegou), nunca cortado pela pilha de
+              botões de baixo (era o "Tenho um problema" ilegível). */}
+          <AssistenteVistoria
+            vistoriaId={vistoria.id}
+            equipamento={vistoria.equipamento}
+            poste={vistoria.fields?.pspostefield}
+            municipio={vistoria.cidade}
+            onRegistrada={() => {
               onDataChanged?.();
               onClose();
             }}

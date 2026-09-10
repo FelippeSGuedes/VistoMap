@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Construction,
   Crosshair,
-  HelpCircle,
   History,
   Loader2,
   Locate,
@@ -29,7 +28,7 @@ import { SelectField } from "./SelectField";
 import { VistoriaHeaderHero } from "./VistoriaHeaderHero";
 import { CaptureCameraModal } from "./CaptureCameraModal";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
-import { AjudaTriagemSheet } from "./AjudaTriagemSheet";
+import { AssistenteVistoria } from "./AssistenteVistoria";
 import { RecusarVistoriaFlow } from "./RecusarVistoriaFlow";
 import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
@@ -195,8 +194,9 @@ export function VistoriaExecucaoForm({
   // "Recusar vistoria" por sinal ruim persistente — mesmo gap achado na tela
   // de correção de devolução (2026-09-09): sem isso, o técnico ficava preso
   // trocando de poste sem sair do loop quando o poste novo também reprova.
-  const [ajudaOpen, setAjudaOpen] = useState(false);
-  const [ajudaStep, setAjudaStep] = useState<"raiz" | "trocou">("raiz");
+  // A triagem em si agora é o AssistenteVistoria (balão único) — esse
+  // estado só serve pro link automático abaixo e pro escape hatch do
+  // MudarPosteFlow ("nenhum poste é acessível"), que abrem RecusarVistoriaFlow direto.
   const [recusarOpen, setRecusarOpen] = useState(false);
   const [recusarMotivoFixo, setRecusarMotivoFixo] = useState<RecusaMotivo | undefined>(undefined);
   const [recusarRespostasIniciais, setRecusarRespostasIniciais] = useState<Record<string, string> | undefined>(undefined);
@@ -283,7 +283,6 @@ export function VistoriaExecucaoForm({
     posteJaTrocado && !rsrpParValido(form.rsrpifield, form.rsrpllfield);
 
   function abrirRecusarPorSinal() {
-    setAjudaOpen(false);
     setRecusarMotivoFixo("SINAL_RUIM_APOS_TROCA");
     setRecusarRespostasIniciais({
       rsrp_claro: form.rsrpifield ?? "",
@@ -293,7 +292,6 @@ export function VistoriaExecucaoForm({
   }
 
   function abrirRecusarGenerico() {
-    setAjudaOpen(false);
     setRecusarMotivoFixo(undefined);
     setRecusarRespostasIniciais(undefined);
     setRecusarOpen(true);
@@ -808,20 +806,6 @@ export function VistoriaExecucaoForm({
             {done ? "Finalizada ✓" : submitting ? "Enviando…" : "Finalizar Vistoria"}
           </Button>
         </div>
-        {/* Pílula visível, não linkzinho de texto — o mesmo botão discreto
-            demais (11px cinza) fazia gente jurar que "não tinha aparecido"
-            mesmo estando lá (achado em campo 2026-09-10). Estilo idêntico
-            ao de vistoria-corrigir, de propósito — é o mesmo recurso, tem
-            que parecer o mesmo recurso em toda vistoria. */}
-        <div className="mx-auto mt-2 flex w-full max-w-xl justify-center">
-          <button
-            type="button"
-            onClick={() => { setAjudaStep("raiz"); setAjudaOpen(true); }}
-            className="flex h-9 items-center gap-1.5 rounded-full border border-brand-steel/60 bg-white px-3.5 text-[12px] font-semibold text-ink-muted shadow-elev"
-          >
-            <HelpCircle className="h-3.5 w-3.5" /> Precisa de ajuda?
-          </button>
-        </div>
       </div>
 
       <ProgressOverlay
@@ -861,17 +845,6 @@ export function VistoriaExecucaoForm({
         onNenhumAcessivel={abrirRecusarGenerico}
       />
 
-      <AjudaTriagemSheet
-        open={ajudaOpen}
-        step={ajudaStep}
-        onStepChange={setAjudaStep}
-        onClose={() => setAjudaOpen(false)}
-        mostrarOpcaoSinal
-        onTrocarPoste={() => { setAjudaOpen(false); setMudarPosteOpen(true); }}
-        onRecusarPorSinal={abrirRecusarPorSinal}
-        onRecusarGenerico={abrirRecusarGenerico}
-      />
-
       <RecusarVistoriaFlow
         open={recusarOpen}
         vistoriaId={vistoria.id}
@@ -883,6 +856,15 @@ export function VistoriaExecucaoForm({
           setRecusarOpen(false);
           onDone?.();
         }}
+      />
+
+      <AssistenteVistoria
+        vistoriaId={vistoria.id}
+        equipamento={vistoria.equipamento}
+        poste={form.pspostefield}
+        municipio={vistoria.cidade}
+        bottomOffset={embedded ? 84 : 96}
+        onRegistrada={onDone}
       />
     </div>
   );
