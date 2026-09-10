@@ -10,6 +10,8 @@ import {
   STATE_EM_PROCESSO_VISTORIA,
   STATE_INSTALADO,
   STATE_LIBERADO_INSTALACAO,
+  STATE_VISTORIADO,
+  STATUS_VISTORIA_APROVADO,
   TABLE_EMPRESA,
   TABLE_FIELDS,
   TABLE_NE,
@@ -517,4 +519,50 @@ export async function cancelarInstalacao(itemsId: number): Promise<void> {
       WHERE f.items_id = ?`,
     [STATE_LIBERADO_INSTALACAO, itemsId]
   );
+}
+
+export interface EquipamentoLiberado {
+  id: number;
+  equipamento: string;
+}
+
+/**
+ * Reconciliação: equipamento aprovado pela CPFL (statusvistoria = Aprovado
+ * + data de aprovação da concessionária preenchida — o mesmo critério já
+ * usado/documentado em cpfl.ts pra identificar aprovação de verdade) nunca
+ * tinha nada que avançasse o status NATIVO do GLPI (`states_id`) pra
+ * "Liberado para Instalação" — a aprovação (seja pelo botão interno do
+ * VistoMap em revisitas, seja pela CPFL direto no GLPI, que não passa por
+ * nenhuma rota do app) fica só nos campos do plugin, e o equipamento nunca
+ * aparece no módulo de Instalação nem reflete o status certo no GLPI
+ * (achado 2026-09-10, relatado pelo usuário).
+ *
+ * Critério de segurança: só mexe em quem está EXATAMENTE em "Vistoriado"
+ * (states_id = 7) — nunca em algo já Em Instalação/Instalado/Rejeitado,
+ * pra não regredir nada que já avançou no módulo de Instalação.
+ *
+ * Idempotente: rodar de novo sem nada pendente não afeta nenhuma linha.
+ */
+export async function sincronizarStatusLiberadoInstalacao(): Promise<EquipamentoLiberado[]> {
+  const pendentes = await query<{ id: number; name: string }>(
+    `SELECT ne.id, ne.name
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      WHERE ne.is_deleted = 0
+        AND ne.states_id = ?
+        AND f.plugin_fields_statusvistoriafielddropdowns_id = ?
+        AND f.dataaprovaoconcessionriafield IS NOT NULL
+        AND f.dataaprovaoconcessionriafield <> ''`,
+    [STATE_VISTORIADO, STATUS_VISTORIA_APROVADO]
+  );
+  if (pendentes.length === 0) return [];
+
+  const ids = pendentes.map((p) => p.id);
+  const placeholders = ids.map(() => "?").join(",");
+  await execute(
+    `UPDATE \`${TABLE_NE}\` SET states_id = ? WHERE id IN (${placeholders})`,
+    [STATE_LIBERADO_INSTALACAO, ...ids]
+  );
+
+  return pendentes.map((p) => ({ id: p.id, equipamento: p.name }));
 }

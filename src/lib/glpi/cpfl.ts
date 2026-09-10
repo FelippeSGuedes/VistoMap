@@ -18,10 +18,18 @@
  * mais os campos de validador. Estão 100% vazios (0 de 4599 registros), então
  * NÃO servem como fonte da etapa — são lidos só como informação extra, para
  * o dia em que a CPFL começar a preenchê-los.
+ *
+ * "Avaliador da Vistoria CPFL" (users_id_avaliadordavistoriacpflfield) é
+ * OUTRO campo, diferente do validador acima: é preenchido pelo VistoMap
+ * (aprovarVistoria/reprovarVistoria em painel.ts) com o analista que clicou
+ * Aprovar/Reprovar em /painel/revisitas — não é a CPFL. Lido aqui só pra
+ * exibição (2026-09-10: usuário reportou que "não aparece em lugar nenhum" —
+ * o valor sempre esteve sendo gravado certinho, só nunca tinha sido lido).
  */
 
 import { query } from "@/lib/db";
 import {
+  AVALIADOR_CPFL_USER_COLUMN,
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
   STATUS_VISTORIA_APROVADO,
@@ -74,6 +82,8 @@ export interface VistoriaCPFL {
   /** Dropdown dedicado da CPFL — hoje sempre nulo, ver cabeçalho. */
   validacaoCpfl: string | null;
   validadorCpfl: string | null;
+  /** Analista do VistoMap que aprovou/reprovou em /painel/revisitas — ver cabeçalho. */
+  avaliadorInterno: string | null;
 }
 
 export interface CPFLStats {
@@ -108,6 +118,7 @@ interface CPFLRow {
   pdf_path: string | null;
   validacao_cpfl: string | null;
   validador_cpfl: string | null;
+  avaliador_interno: string | null;
   tecnico_id: number | null;
   tecnico_name: string | null;
   tecnico_firstname: string | null;
@@ -173,7 +184,9 @@ const JOINS = `
       LEFT  JOIN \`${TABLE_AUX}\` aux
              ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       LEFT  JOIN \`${TABLE_USERS}\` u
-             ON u.id = f.users_id_vistoriadorafield`;
+             ON u.id = f.users_id_vistoriadorafield
+      LEFT  JOIN \`${TABLE_USERS}\` av
+             ON av.id = f.${AVALIADOR_CPFL_USER_COLUMN}`;
 
 export async function fetchVistoriasCPFL(
   filtros: CPFLFilters = {}
@@ -198,6 +211,7 @@ export async function fetchVistoriasCPFL(
         aux.pdf_path,
         valcpfl.name      AS validacao_cpfl,
         valu.name         AS validador_cpfl,
+        av.name           AS avaliador_interno,
         f.users_id_vistoriadorafield AS tecnico_id,
         u.name      AS tecnico_name,
         u.firstname AS tecnico_firstname,
@@ -266,6 +280,7 @@ export async function fetchVistoriasCPFL(
       pdfPath: r.pdf_path ?? null,
       validacaoCpfl: limpa(r.validacao_cpfl),
       validadorCpfl: limpa(r.validador_cpfl),
+      avaliadorInterno: limpa(r.avaliador_interno),
     };
   });
 }

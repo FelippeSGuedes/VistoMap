@@ -104,6 +104,9 @@ export default function ValidacaoCPFLPage() {
   const [q, setQ] = useState("");
   const [municipio, setMunicipio] = useState<string>("");
 
+  const [sincronizando, setSincronizando] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
   async function carregar() {
     setLoading(true);
     setErro(null);
@@ -169,6 +172,30 @@ export default function ValidacaoCPFLPage() {
     }
   }
 
+  // Não é "aprovar" — é corrigir o status NATIVO do GLPI (states_id) de
+  // equipamento que a CPFL JÁ aprovou (statusvistoria + data preenchida)
+  // mas que nunca avançou pra "Liberado para Instalação" porque nada
+  // fazia essa ponte automaticamente (achado 2026-09-10). Continua sem
+  // inventar decisão nenhuma da CPFL — só propaga uma que já existe.
+  async function handleSincronizar() {
+    setSincronizando(true);
+    try {
+      const r = await painelService.sincronizarStatusCPFL();
+      setToast(
+        r.liberados.length === 0
+          ? "Nada pra corrigir — todo mundo aprovado já está com o status certo."
+          : `${r.liberados.length} equipamento(s) corrigido(s) pra "Liberado para Instalação": ${r.liberados
+              .map((e) => e.equipamento)
+              .join(", ")}`
+      );
+    } catch (e) {
+      setToast(`❌ Falha ao sincronizar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSincronizando(false);
+      setTimeout(() => setToast(null), 8000);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* ── CABEÇALHO ── */}
@@ -191,17 +218,39 @@ export default function ValidacaoCPFLPage() {
               Validação CPFL
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => void carregar()}
-            disabled={loading}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition hover:brightness-95 disabled:opacity-50"
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSincronizar()}
+              disabled={sincronizando}
+              title='Corrige o status geral (states_id) de equipamentos já aprovados pela CPFL que ficaram presos em "Vistoriado" — não aprova nada, só propaga uma aprovação que já existe.'
+              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold text-white transition hover:brightness-105 disabled:opacity-50"
+              style={{ background: "var(--vm-accent)" }}
+            >
+              <ShieldCheck className={`h-3.5 w-3.5 ${sincronizando ? "animate-pulse" : ""}`} />
+              {sincronizando ? "Sincronizando…" : "Sincronizar status"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void carregar()}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition hover:brightness-95 disabled:opacity-50"
+              style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Atualizar
+            </button>
+          </div>
+        </div>
+
+        {toast && (
+          <div
+            className="mt-3 rounded-xl px-3.5 py-2.5 text-[12.5px] font-medium"
             style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            Atualizar
-          </button>
-        </div>
+            {toast}
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatPill label="Aguardando" value={stats.aguardando} color="#D97706" bg="rgba(217,119,6,0.10)" />
@@ -445,6 +494,16 @@ function CardCPFL({ v, onPdf }: { v: VistoriaCPFL; onPdf: () => void }) {
           </span>
         )}
       </div>
+
+      {/* Analista do VistoMap que aprovou/reprovou em /painel/revisitas — só
+          aparece quando a decisão passou por lá (a maioria vem de aprovação
+          direta da CPFL no GLPI, fora do alcance do VistoMap). */}
+      {v.avaliadorInterno && (
+        <div className="mt-1.5 flex items-center gap-1 text-[11px]" style={{ color: "var(--vm-muted)" }}>
+          <ShieldCheck className="h-3 w-3 shrink-0" />
+          Aprovado internamente por {v.avaliadorInterno}
+        </div>
+      )}
 
       <div className="mt-auto flex items-center gap-1.5 pt-3">
         {v.etapa === "AGUARDANDO" && (

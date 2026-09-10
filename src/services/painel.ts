@@ -523,6 +523,7 @@ export interface VistoriaCPFL {
   pdfPath: string | null;
   validacaoCpfl: string | null;
   validadorCpfl: string | null;
+  avaliadorInterno: string | null;
 }
 
 export interface CPFLStats {
@@ -570,6 +571,19 @@ export async function fetchCPFL(filters: CPFLFilters = {}): Promise<CPFLResponse
   );
 }
 
+/**
+ * Corrige o status geral (states_id) de equipamentos já aprovados pela CPFL
+ * que ficaram presos em "Vistoriado" — ver sincronizarStatusLiberadoInstalacao
+ * em @/lib/glpi/instalacoes.ts pro critério e o porquê disso existir.
+ */
+export async function sincronizarStatusCPFL() {
+  const { data } = await api.post<{
+    ok: true;
+    liberados: Array<{ id: number; equipamento: string }>;
+  }>("/painel/instalacoes/sincronizar-cpfl");
+  return data;
+}
+
 export const painelService = {
   fetchStats,
   fetchTecnicos,
@@ -590,5 +604,6 @@ export const painelService = {
   fetchRealizadas,
   fetchStatus,
   fetchCPFL,
+  sincronizarStatusCPFL,
   fetchTopTecnicosDashboard,
 };
