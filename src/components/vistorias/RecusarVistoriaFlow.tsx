@@ -67,6 +67,13 @@ export function RecusarVistoriaFlow({
   const [foto, setFoto] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+  // Ref pro callback — evita que o interval seja destruído/recriado a cada
+  // re-render do componente que HOSPEDA essa tela (GPS, chat, etc.): mesma
+  // técnica já usada no polling de override em GuidedArrival.tsx.
+  const onAprovadaRef = useRef(onAprovada);
+  useEffect(() => {
+    onAprovadaRef.current = onAprovada;
+  }, [onAprovada]);
 
   // Categoria é puramente derivada do motivo (impedimento = circunstância
   // externa; recusa = decisão de fato) — muda só o rótulo/cor, o mecanismo
@@ -117,7 +124,7 @@ export function RecusarVistoriaFlow({
         if (data.status === "APROVADO") {
           window.clearInterval(pollRef.current!);
           setFase("aprovado");
-          window.setTimeout(onAprovada, 2200);
+          window.setTimeout(() => onAprovadaRef.current(), 2200);
         } else if (data.status === "REPROVADO") {
           window.clearInterval(pollRef.current!);
           setMotivoReprovacao(data.motivoReprovacao ?? "");
@@ -131,7 +138,12 @@ export function RecusarVistoriaFlow({
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current);
     };
-  }, [fase, recusaId, onAprovada]);
+    // deps mínimas de propósito — onAprovada vem por ref (ver acima) pra o
+    // interval não ser destruído/recriado a cada re-render do host (era o
+    // bug: ficava "aguardando aprovação" infinitamente porque o poll nunca
+    // chegava a completar 3s antes de ser reiniciado).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fase, recusaId]);
 
   const perguntas = motivo ? RECUSA_PERGUNTAS[motivo] : [];
   const podeRevisar = motivo != null && recusaRespostasCompletas(motivo, respostas);

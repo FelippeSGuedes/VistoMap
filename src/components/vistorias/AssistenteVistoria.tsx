@@ -510,7 +510,7 @@ function EtapaControles(p: EtapaControlesProps) {
     case "sinal_medir":
       return (
         <div className="space-y-2">
-          <BotaoResposta onClick={() => p.avancar("Sim, consigo", "sinal_valores", ["Perfeito 👍", "Informe o RSRP encontrado nas duas operadoras (dBm)."])}>
+          <BotaoResposta onClick={() => p.avancar("Sim, consigo", "sinal_valores", ["Perfeito 👍", "Informe o RSRP encontrado nas duas operadoras."])}>
             Sim, consigo
           </BotaoResposta>
           <BotaoResposta onClick={() => p.avancar("Não consigo", "sinal_evidencia", ["Sem problema.", "Para registrar a situação corretamente, precisamos documentar o que você encontrou no local."])}>
@@ -524,7 +524,7 @@ function EtapaControles(p: EtapaControlesProps) {
         <div className="space-y-3 rounded-2xl border border-brand-steel/60 bg-white p-3.5">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">Claro</p>
-            <label className="mt-1.5 block text-[10px] font-bold uppercase tracking-wide text-ink-muted">RSRP (dBm)</label>
+            <label className="mt-1.5 block text-[10px] font-bold uppercase tracking-wide text-ink-muted">RSRP</label>
             <input
               inputMode="numeric"
               value={p.chipClaro}
@@ -535,7 +535,7 @@ function EtapaControles(p: EtapaControlesProps) {
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Vivo</p>
-            <label className="mt-1.5 block text-[10px] font-bold uppercase tracking-wide text-ink-muted">RSRP (dBm)</label>
+            <label className="mt-1.5 block text-[10px] font-bold uppercase tracking-wide text-ink-muted">RSRP</label>
             <input
               inputMode="numeric"
               value={p.chipVivo}
@@ -548,11 +548,11 @@ function EtapaControles(p: EtapaControlesProps) {
             type="button"
             disabled={!p.chipClaro.trim() || !p.chipVivo.trim()}
             onClick={() => {
-              const resumo = `RSRP Claro ${p.chipClaro} dBm · Vivo ${p.chipVivo} dBm`;
+              const resumo = `RSRP Claro ${p.chipClaro} · Vivo ${p.chipVivo}`;
               if (p.sinalDentroDoPadrao) {
                 p.avancar(resumo, "sinal_ok", ["🟢 Tudo certo!", "O RSRP das duas operadoras está dentro do padrão aceito pela CPFL.", "Você pode prosseguir com a vistoria."]);
               } else {
-                p.avancar(resumo, "sinal_decisao", ["🔴 O RSRP informado está fora do padrão aceito pela CPFL nas duas operadoras (≤ -102 dBm).", "Isso caracteriza recusa da vistoria."]);
+                p.avancar(resumo, "sinal_decisao", ["🔴 O RSRP informado está fora do padrão aceito pela CPFL nas duas operadoras (≤ -102).", "Isso caracteriza recusa da vistoria."]);
               }
             }}
             className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-emerald text-[13.5px] font-bold text-[#073B4C] disabled:opacity-40"
