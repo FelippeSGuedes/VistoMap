@@ -944,8 +944,8 @@ interface LogCandidato {
 }
 
 export async function recuperarAvaliadorViaLogsGlpi(): Promise<RecuperarAvaliadorResultado> {
-  const candidatos = await query<{ id: number; name: string }>(
-    `SELECT ne.id, ne.name
+  const candidatos = await query<{ id: number; name: string; data_aprovacao: string }>(
+    `SELECT ne.id, ne.name, f.dataaprovaoconcessionriafield AS data_aprovacao
        FROM \`${TABLE_NE}\` ne
        INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
       WHERE ne.is_deleted = 0
@@ -959,30 +959,41 @@ export async function recuperarAvaliadorViaLogsGlpi(): Promise<RecuperarAvaliado
   const recuperados: AvaliadorRecuperado[] = [];
   const naoRecuperados: AvaliadorNaoRecuperado[] = [];
 
+  // Janela de tempo em vez de casar texto: o clique em "Aprovar" grava o
+  // status via SQL bruto (FieldsUpdater::updateFieldsRow, no plugin GLPI)
+  // que NUNCA passa pelo mecanismo de histórico do GLPI — então não existe
+  // log da aprovação em si. A única pista possível é um log de OUTRO campo
+  // editado bem perto do mesmo instante (endereço, motivo, etc. — esses
+  // sim passam pela aba padrão do GLPI e são logados), pelo MESMO autor.
+  // Verificado contra a base real 2026-09-10: 11/24 recuperados assim.
+  const JANELA_SEGUNDOS = 180;
+
   for (const c of candidatos) {
     const logs = await query<LogCandidato>(
       `SELECT user_name, new_value, date_mod
          FROM glpi_logs
         WHERE itemtype = '${ITEMTYPE_NE}' AND items_id = ?
-          AND new_value LIKE '%aprovad%'
-        ORDER BY date_mod DESC`,
-      [c.id]
+          AND ABS(TIMESTAMPDIFF(SECOND, date_mod, ?)) <= ${JANELA_SEGUNDOS}`,
+      [c.id, c.data_aprovacao]
     );
 
     if (logs.length === 0) {
-      naoRecuperados.push({ id: c.id, equipamento: c.name, motivo: "Nenhum log de mudança encontrado" });
+      naoRecuperados.push({
+        id: c.id,
+        equipamento: c.name,
+        motivo: `Nenhum log em até ${JANELA_SEGUNDOS}s de ${c.data_aprovacao}`,
+      });
       continue;
     }
 
-    // Só confia quando TODOS os candidatos apontam pro mesmo autor — se
-    // o histórico tem "Aprovado" de gente diferente (outra transição,
-    // outro campo com valor parecido), a ambiguidade impede um chute.
+    // Só confia quando TODOS os logs na janela apontam pro mesmo autor —
+    // se tem gente diferente editando por perto, a ambiguidade impede um chute.
     const autoresUnicos = new Set(logs.map((l) => (l.user_name ?? "").trim()).filter(Boolean));
     if (autoresUnicos.size !== 1) {
       naoRecuperados.push({
         id: c.id,
         equipamento: c.name,
-        motivo: `Ambíguo — ${autoresUnicos.size} autor(es) diferentes no histórico`,
+        motivo: `Ambíguo — ${autoresUnicos.size} autor(es) diferentes na janela`,
       });
       continue;
     }
@@ -1027,7 +1038,7 @@ export async function recuperarAvaliadorViaLogsGlpi(): Promise<RecuperarAvaliado
       `UPDATE \`${TABLE_FIELDS}\` SET \`${AVALIADOR_CPFL_USER_COLUMN}\` = ? WHERE items_id = ?`,
       [usuarios[0].id, c.id]
     );
-    recuperados.push({ id: c.id, equipamento: c.name, avaliador: nomeLog, dataLog: logs[0].date_mod });
+    recuperados.push({ id: c.id, equipamento: c.name, avaliador: nomeLog, dataLog: c.data_aprovacao });
   }
 
   return { recuperados, naoRecuperados };
