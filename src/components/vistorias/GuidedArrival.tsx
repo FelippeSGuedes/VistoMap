@@ -26,7 +26,6 @@ import { useOfflinePrep } from "@/hooks/useOfflinePrep";
 import { usePostesProximos } from "@/hooks/usePostesProximos";
 import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
 import { RecusarVistoriaFlow } from "./RecusarVistoriaFlow";
-import { AssistenteVistoria } from "./AssistenteVistoria";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import type { RecusaMotivo } from "@/lib/glpi/recusaMotivos";
 
@@ -686,20 +685,6 @@ export function GuidedArrival({
             onClose={() => setRecusarOpen(false)}
             onAprovada={() => {
               setRecusarOpen(false);
-              onDataChanged?.();
-              onClose();
-            }}
-          />
-
-          {/* Balão único de ajuda — sempre alcançável, em qualquer fase
-              (aguardando/aproximando/chegou), nunca cortado pela pilha de
-              botões de baixo (era o "Tenho um problema" ilegível). */}
-          <AssistenteVistoria
-            vistoriaId={vistoria.id}
-            equipamento={vistoria.equipamento}
-            poste={vistoria.fields?.pspostefield}
-            municipio={vistoria.cidade}
-            onRegistrada={() => {
               onDataChanged?.();
               onClose();
             }}

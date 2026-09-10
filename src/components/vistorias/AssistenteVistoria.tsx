@@ -4,8 +4,9 @@
  * AssistenteVistoria — balão flutuante único de ajuda + conversa guiada,
  * substituindo AjudaTriagemSheet (árvore estática) e os pontos de entrada
  * espalhados (link de texto em GuidedArrival, pílula em VistoriaExecucaoForm
- * e vistoria-corrigir). Um balão só, sempre no mesmo lugar, em toda vistoria
- * — nova, em andamento ou em correção de devolução (2026-09-10).
+ * e vistoria-corrigir). Só aparece durante a EXECUÇÃO de fato da vistoria
+ * (preenchendo o formulário) — não em GuidedArrival, que é só navegação
+ * até o poste, antes de existir o que ajudar (2026-09-10).
  *
  * Design: parece uma conversa com um atendente, não um formulário. O
  * técnico só vê a pergunta ATUAL — as trocas já respondidas ficam acima
@@ -65,6 +66,7 @@ interface Msg {
   id: number;
   from: "bot" | "user";
   text: string;
+  hora: string;
 }
 
 interface AssistenteVistoriaProps {
@@ -89,12 +91,18 @@ const DIFICULDADE_OPCOES = [
 let seq = 0;
 const nextId = () => ++seq;
 
+function horaAgora(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, bottomOffset = 24, onRegistrada }: AssistenteVistoriaProps) {
   const [aberto, setAberto] = useState(false);
   const [step, setStep] = useState<StepId>("raiz");
   const [transcript, setTranscript] = useState<Msg[]>([]);
   const [digitando, setDigitando] = useState(false);
   const [live, setLive] = useState<string[]>(["👋 Olá! Vamos resolver isso juntos.", "Precisa de ajuda com esta vistoria?"]);
+  const [liveHora, setLiveHora] = useState(() => horaAgora());
 
   const [chipClaro, setChipClaro] = useState("");
   const [chipVivo, setChipVivo] = useState("");
@@ -120,6 +128,7 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
     setStep("raiz");
     setTranscript([]);
     setLive(["👋 Olá! Vamos resolver isso juntos.", "Precisa de ajuda com esta vistoria?"]);
+    setLiveHora(horaAgora());
     setChipClaro("");
     setChipVivo("");
     setDificuldade("");
@@ -145,14 +154,15 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
   function avancar(respostaLabel: string, proximoStep: StepId, proximaFala: string[]) {
     setTranscript((t) => [
       ...t,
-      ...live.map((linha) => ({ id: nextId(), from: "bot" as const, text: linha })),
-      { id: nextId(), from: "user" as const, text: respostaLabel },
+      ...live.map((linha) => ({ id: nextId(), from: "bot" as const, text: linha, hora: liveHora })),
+      { id: nextId(), from: "user" as const, text: respostaLabel, hora: horaAgora() },
     ]);
     setLive([]);
     setDigitando(true);
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
       setDigitando(false);
+      setLiveHora(horaAgora());
       setStep(proximoStep);
       setLive(proximaFala);
     }, 550);
@@ -219,17 +229,17 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
               transition={{ type: "spring", stiffness: 340, damping: 34 }}
               className="flex h-[86dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white md:mx-auto md:h-[80dvh] md:max-w-md md:rounded-3xl"
             >
-              {/* cabeçalho — contexto discreto da vistoria + fechar */}
-              <div className="flex items-center gap-3 border-b border-brand-steel/50 px-4 py-3">
-                <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white"
-                  style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
-                >
+              {/* cabeçalho estilo "contato" — barra colorida, como um chat de verdade */}
+              <div
+                className="flex items-center gap-3 px-4 py-3 shadow-[0_2px_8px_rgba(0,80,55,0.18)]"
+                style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-white ring-1 ring-white/30">
                   <Sparkles className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-bold text-ink">Assistente de Vistoria</p>
-                  <p className="truncate text-[10.5px] text-ink-muted">
+                  <p className="truncate text-[13px] font-bold text-white">Assistente de Vistoria</p>
+                  <p className="truncate text-[10.5px] text-white/80">
                     {equipamento}
                     {poste ? ` · Poste ${poste}` : ""}
                     {municipio ? ` · ${municipio}` : ""}
@@ -238,28 +248,49 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
                 <button
                   type="button"
                   onClick={fechar}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-ice text-ink-muted"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15 text-white"
                   aria-label="Fechar"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* histórico + fala atual */}
-              <div ref={scrollRef} className="flex-1 space-y-2.5 overflow-y-auto px-4 py-4">
-                {transcript.map((m) => (
-                  <ChatBolha key={m.id} from={m.from} text={m.text} />
+              {/* histórico + fala atual — fundo com textura sutil, como o papel de parede de um chat */}
+              <div
+                ref={scrollRef}
+                className="flex-1 overflow-y-auto px-4 py-4"
+                style={{
+                  backgroundColor: "#F3F8F6",
+                  backgroundImage: "radial-gradient(circle, rgba(0,135,95,0.08) 1px, transparent 1px)",
+                  backgroundSize: "16px 16px",
+                }}
+              >
+                {transcript.map((m, i) => (
+                  <ChatBolha
+                    key={m.id}
+                    from={m.from}
+                    text={m.text}
+                    hora={m.hora}
+                    grouped={i > 0 && transcript[i - 1].from === m.from}
+                    isLast={!(i < transcript.length - 1 && transcript[i + 1].from === m.from)}
+                  />
                 ))}
                 {live.map((linha, i) => (
-                  <motion.div key={`live-${step}-${i}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.12 }}>
-                    <ChatBolha from="bot" text={linha} />
-                  </motion.div>
+                  <ChatBolha
+                    key={`live-${step}-${i}`}
+                    from="bot"
+                    text={linha}
+                    hora={liveHora}
+                    grouped={i > 0}
+                    isLast={i === live.length - 1}
+                    delay={i * 0.12}
+                  />
                 ))}
                 {digitando && <ChatDigitando />}
 
                 {/* controles da etapa atual — só depois da fala do bot terminar de "digitar" */}
                 {!digitando && (
-                  <div className="pt-1">
+                  <div className="mt-3">
                     <EtapaControles
                       step={step}
                       chipClaro={chipClaro}
@@ -305,38 +336,73 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
 
 /* ─────────────────────────── bolhas do chat ─────────────────────────── */
 
-function ChatBolha({ from, text }: { from: "bot" | "user"; text: string }) {
-  if (from === "user") {
-    return (
-      <div className="flex justify-end">
-        <div
-          className="max-w-[80%] rounded-2xl rounded-br-md px-3.5 py-2 text-[13.5px] font-semibold text-white"
-          style={{ background: "linear-gradient(145deg,#00B388,#00875F)" }}
-        >
-          {text}
-        </div>
-      </div>
-    );
-  }
+/** Avatar do assistente — só aparece na última bolha de um grupo consecutivo (senão vira só um espaçador, como no WhatsApp). */
+function AvatarOuEspaco({ mostrar }: { mostrar: boolean }) {
+  if (!mostrar) return <span className="w-6 shrink-0" />;
   return (
-    <div className="flex items-end gap-2">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-deep">
-        <Sparkles className="h-3 w-3" />
-      </span>
-      <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-brand-ice px-3.5 py-2 text-[13.5px] leading-relaxed text-ink">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-brand-deep shadow-[0_1px_2px_rgba(0,0,0,0.12)]">
+      <Sparkles className="h-3 w-3" />
+    </span>
+  );
+}
+
+function ChatBolha({
+  from,
+  text,
+  hora,
+  grouped = false,
+  isLast = true,
+  delay = 0,
+}: {
+  from: "bot" | "user";
+  text: string;
+  hora: string;
+  grouped?: boolean;
+  isLast?: boolean;
+  delay?: number;
+}) {
+  const isUser = from === "user";
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      className={`flex items-end gap-2 ${grouped ? "mt-0.5" : "mt-2.5"} ${isUser ? "justify-end" : "justify-start"}`}
+    >
+      {!isUser && <AvatarOuEspaco mostrar={isLast} />}
+      <div
+        className={`relative max-w-[80%] px-3.5 py-2 text-[13.5px] leading-relaxed shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] ${
+          isUser
+            ? `rounded-2xl font-medium text-white ${isLast ? "rounded-br-md" : ""}`
+            : `rounded-2xl text-ink ${isLast ? "rounded-bl-md" : ""}`
+        }`}
+        style={{ background: isUser ? "linear-gradient(145deg,#00B388,#00875F)" : "#ffffff" }}
+      >
         {text}
+        <span className={`mt-1 block text-right text-[9.5px] ${isUser ? "text-white/75" : "text-ink-muted/70"}`}>
+          {hora}
+        </span>
+        {isLast && (
+          <span
+            aria-hidden
+            className="absolute bottom-0 h-2.5 w-2.5"
+            style={
+              isUser
+                ? { right: -6, background: "#00875F", clipPath: "polygon(0 0, 100% 100%, 0 100%)" }
+                : { left: -6, background: "#ffffff", clipPath: "polygon(100% 0, 0% 100%, 100% 100%)" }
+            }
+          />
+        )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function ChatDigitando() {
   return (
-    <div className="flex items-end gap-2">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-ice text-brand-deep">
-        <Sparkles className="h-3 w-3" />
-      </span>
-      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-brand-ice px-4 py-3">
+    <div className="mt-2.5 flex items-end gap-2">
+      <AvatarOuEspaco mostrar />
+      <div className="relative flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-4 py-3 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]">
         {[0, 1, 2].map((i) => (
           <motion.span
             key={i}
@@ -345,6 +411,7 @@ function ChatDigitando() {
             transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }}
           />
         ))}
+        <span aria-hidden className="absolute bottom-0 h-2.5 w-2.5" style={{ left: -6, background: "#ffffff", clipPath: "polygon(100% 0, 0% 100%, 100% 100%)" }} />
       </div>
     </div>
   );
@@ -443,7 +510,7 @@ function EtapaControles(p: EtapaControlesProps) {
     case "sinal_medir":
       return (
         <div className="space-y-2">
-          <BotaoResposta onClick={() => p.avancar("Sim, consigo", "sinal_valores", ["Perfeito 👍", "Informe os valores encontrados nas duas operadoras (dBm)."])}>
+          <BotaoResposta onClick={() => p.avancar("Sim, consigo", "sinal_valores", ["Perfeito 👍", "Informe o RSRP encontrado nas duas operadoras (dBm)."])}>
             Sim, consigo
           </BotaoResposta>
           <BotaoResposta onClick={() => p.avancar("Não consigo", "sinal_evidencia", ["Sem problema.", "Para registrar a situação corretamente, precisamos documentar o que você encontrou no local."])}>
@@ -456,7 +523,8 @@ function EtapaControles(p: EtapaControlesProps) {
       return (
         <div className="space-y-3 rounded-2xl border border-brand-steel/60 bg-white p-3.5">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wide text-red-600">Claro (dBm)</label>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">Claro</p>
+            <label className="mt-1.5 block text-[10px] font-bold uppercase tracking-wide text-ink-muted">RSRP (dBm)</label>
             <input
               inputMode="numeric"
               value={p.chipClaro}
@@ -466,7 +534,8 @@ function EtapaControles(p: EtapaControlesProps) {
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wide text-purple-700">Vivo (dBm)</label>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Vivo</p>
+            <label className="mt-1.5 block text-[10px] font-bold uppercase tracking-wide text-ink-muted">RSRP (dBm)</label>
             <input
               inputMode="numeric"
               value={p.chipVivo}
@@ -479,11 +548,11 @@ function EtapaControles(p: EtapaControlesProps) {
             type="button"
             disabled={!p.chipClaro.trim() || !p.chipVivo.trim()}
             onClick={() => {
-              const resumo = `Claro ${p.chipClaro} dBm · Vivo ${p.chipVivo} dBm`;
+              const resumo = `RSRP Claro ${p.chipClaro} dBm · Vivo ${p.chipVivo} dBm`;
               if (p.sinalDentroDoPadrao) {
-                p.avancar(resumo, "sinal_ok", ["🟢 Tudo certo!", "Os valores das duas operadoras estão dentro do padrão aceito pela CPFL.", "Você pode prosseguir com a vistoria."]);
+                p.avancar(resumo, "sinal_ok", ["🟢 Tudo certo!", "O RSRP das duas operadoras está dentro do padrão aceito pela CPFL.", "Você pode prosseguir com a vistoria."]);
               } else {
-                p.avancar(resumo, "sinal_decisao", ["⚠️ Identificamos uma possível inconsistência no sinal.", "Os valores informados estão fora do padrão esperado (≤ -102 dBm nas duas operadoras).", "Como deseja registrar essa situação?"]);
+                p.avancar(resumo, "sinal_decisao", ["🔴 O RSRP informado está fora do padrão aceito pela CPFL nas duas operadoras (≤ -102 dBm).", "Isso caracteriza recusa da vistoria."]);
               }
             }}
             className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-emerald text-[13.5px] font-bold text-[#073B4C] disabled:opacity-40"
@@ -502,14 +571,9 @@ function EtapaControles(p: EtapaControlesProps) {
 
     case "sinal_decisao":
       return (
-        <div className="space-y-2">
-          <BotaoResposta variant="impedimento" onClick={() => p.registrar("SINAL_FORA_PADRAO", { rsrp_claro: p.chipClaro, rsrp_vivo: p.chipVivo })}>
-            <Ban className="h-4 w-4" /> Registrar impedimento
-          </BotaoResposta>
-          <BotaoResposta variant="recusa" onClick={() => p.registrar("SINAL_FORA_PADRAO_RECUSA", { rsrp_claro: p.chipClaro, rsrp_vivo: p.chipVivo })}>
-            <X className="h-4 w-4" /> Recusar vistoria
-          </BotaoResposta>
-        </div>
+        <BotaoResposta variant="recusa" onClick={() => p.registrar("SINAL_FORA_PADRAO", { rsrp_claro: p.chipClaro, rsrp_vivo: p.chipVivo })}>
+          <X className="h-4 w-4" /> Recusar vistoria
+        </BotaoResposta>
       );
 
     case "sinal_evidencia":
@@ -520,10 +584,9 @@ function EtapaControles(p: EtapaControlesProps) {
             type="button"
             disabled={!p.foto}
             onClick={() => p.registrar("SINAL_SEM_MEDICAO", {})}
-            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[13.5px] font-bold text-amber-800 disabled:opacity-40"
-            style={{ background: "#FEF3C7", border: "1px solid #FDE68A" }}
+            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-[13.5px] font-bold text-red-700 disabled:opacity-40"
           >
-            <Ban className="h-4 w-4" /> Registrar impedimento
+            <X className="h-4 w-4" /> Recusar vistoria
           </button>
           <button type="button" onClick={() => p.avancar("Voltar", "sinal_medir", ["Sem problema, vamos de novo.", "Você consegue realizar uma medição das duas operadoras?"])} className="w-full py-1 text-center text-[12px] font-semibold text-ink-muted underline-offset-2 hover:underline">
             Voltar

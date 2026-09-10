@@ -7,14 +7,15 @@
  * CATEGORIA (2026-09-10): "impedimento" vs "recusa" — MESMO mecanismo (essa
  * mesma tabela, motivo + justificativa + aprovação do analista), só um
  * rótulo/cor diferente pra separar visualmente as duas naturezas:
- *   • impedimento = circunstância externa (sinal ruim, acesso bloqueado,
+ *   • impedimento = ausência de infraestrutura/acesso (sem poste na área,
  *     condomínio fechado) — ninguém "decidiu" nada, o ambiente impediu.
- *   • recusa = decisão/recusa de fato (morador recusou, risco que o técnico
- *     optou por não correr, propriedade privada, técnico incapacitado).
+ *   • recusa = decisão/recusa de fato (sinal ruim/fora do padrão CPFL —
+ *     SEMPRE recusa, nunca impedimento —, morador recusou, risco que o
+ *     técnico optou por não correr, propriedade privada, técnico
+ *     incapacitado).
  * É puramente derivado do MOTIVO (RECUSA_MOTIVO_CATEGORIA abaixo) — sem
  * coluna nova no banco, sem tabela nova. O mesmo motivo nunca muda de
- * categoria; quando a MESMA situação podia terminar nas duas (sinal fora do
- * padrão → "impedimento" ou "recusar" direto), viram duas chaves distintas.
+ * categoria.
  *
  * SEM_POSTES é especial: nunca é escolhido manualmente — só é usado quando
  * o gate automático (busca de postes num raio de 100m) não encontra
@@ -27,8 +28,7 @@
 export const RECUSA_MOTIVOS = [
   { key: "SEM_POSTES", label: "Sem postes na redondeza (100m)" },
   { key: "SINAL_RUIM_APOS_TROCA", label: "Sinal ruim mesmo após trocar de poste" },
-  { key: "SINAL_FORA_PADRAO", label: "Sinal fora do padrão CPFL — impedimento" },
-  { key: "SINAL_FORA_PADRAO_RECUSA", label: "Sinal fora do padrão CPFL — recusa" },
+  { key: "SINAL_FORA_PADRAO", label: "Sinal fora do padrão CPFL" },
   { key: "SINAL_SEM_MEDICAO", label: "Não foi possível medir o sinal" },
   { key: "CONDOMINIO_ACESSO_BLOQUEADO", label: "Condomínio — acesso bloqueado" },
   { key: "CONDOMINIO_SEM_CONTATO", label: "Condomínio — sem contato com responsável" },
@@ -54,9 +54,6 @@ export type RecusaCategoria = "impedimento" | "recusa";
 
 const MOTIVOS_IMPEDIMENTO: RecusaMotivo[] = [
   "SEM_POSTES",
-  "SINAL_RUIM_APOS_TROCA",
-  "SINAL_FORA_PADRAO",
-  "SINAL_SEM_MEDICAO",
   "CONDOMINIO_ACESSO_BLOQUEADO",
   "CONDOMINIO_SEM_CONTATO",
   "AREA_DIFICIL_ACESSO",
@@ -77,7 +74,6 @@ const MOTIVOS_AUTOMATICOS: RecusaMotivo[] = [
   "SEM_POSTES",
   "SINAL_RUIM_APOS_TROCA",
   "SINAL_FORA_PADRAO",
-  "SINAL_FORA_PADRAO_RECUSA",
   "SINAL_SEM_MEDICAO",
   "CONDOMINIO_ACESSO_BLOQUEADO",
   "CONDOMINIO_SEM_CONTATO",
@@ -108,7 +104,6 @@ export const RECUSA_PERGUNTAS: Record<RecusaMotivo, RecusaPergunta[]> = {
   // respostasIniciais pelas telas/assistente que geram cada uma).
   SINAL_RUIM_APOS_TROCA: [],
   SINAL_FORA_PADRAO: [],
-  SINAL_FORA_PADRAO_RECUSA: [],
   SINAL_SEM_MEDICAO: [],
   CONDOMINIO_ACESSO_BLOQUEADO: [],
   CONDOMINIO_SEM_CONTATO: [],
@@ -208,15 +203,14 @@ export function gerarJustificativaRecusa(
     const medidas = claro || vivo ? ` Último RSRP medido: Claro ${claro || "?"} dBm, Vivo ${vivo || "?"} dBm.` : "";
     return `Vistoria recusada — sinal ruim (RSRP ≤ -102 dBm nas duas operadoras) mesmo após trocar de poste.${medidas}`;
   }
-  if (motivo === "SINAL_FORA_PADRAO" || motivo === "SINAL_FORA_PADRAO_RECUSA") {
+  if (motivo === "SINAL_FORA_PADRAO") {
     const claro = respostas.rsrp_claro?.trim();
     const vivo = respostas.rsrp_vivo?.trim();
     const medidas = claro || vivo ? ` RSRP medido: Claro ${claro || "?"} dBm, Vivo ${vivo || "?"} dBm.` : "";
-    const acao = motivo === "SINAL_FORA_PADRAO" ? "Impedimento registrado" : "Vistoria recusada";
-    return `${acao} — sinal fora do padrão aceito pela CPFL (RSRP ≤ -102 dBm nas duas operadoras).${medidas}`;
+    return `Vistoria recusada — sinal (RSRP) fora do padrão aceito pela CPFL (≤ -102 dBm nas duas operadoras).${medidas}`;
   }
   if (motivo === "SINAL_SEM_MEDICAO") {
-    return "Impedimento registrado — não foi possível medir o sinal das duas operadoras no local.";
+    return "Vistoria recusada — não foi possível medir o RSRP das duas operadoras no local.";
   }
   if (motivo === "CONDOMINIO_ACESSO_BLOQUEADO") {
     return "Impedimento registrado — condomínio com responsável contatado, mas acesso não foi liberado.";
