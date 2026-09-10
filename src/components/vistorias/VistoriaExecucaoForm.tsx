@@ -808,13 +808,20 @@ export function VistoriaExecucaoForm({
             {done ? "Finalizada ✓" : submitting ? "Enviando…" : "Finalizar Vistoria"}
           </Button>
         </div>
-        <button
-          type="button"
-          onClick={() => { setAjudaStep("raiz"); setAjudaOpen(true); }}
-          className="mx-auto mt-1.5 flex items-center gap-1 text-[11px] font-medium text-ink-muted underline-offset-2 hover:underline"
-        >
-          <HelpCircle className="h-3 w-3" /> Precisa de ajuda?
-        </button>
+        {/* Pílula visível, não linkzinho de texto — o mesmo botão discreto
+            demais (11px cinza) fazia gente jurar que "não tinha aparecido"
+            mesmo estando lá (achado em campo 2026-09-10). Estilo idêntico
+            ao de vistoria-corrigir, de propósito — é o mesmo recurso, tem
+            que parecer o mesmo recurso em toda vistoria. */}
+        <div className="mx-auto mt-2 flex w-full max-w-xl justify-center">
+          <button
+            type="button"
+            onClick={() => { setAjudaStep("raiz"); setAjudaOpen(true); }}
+            className="flex h-9 items-center gap-1.5 rounded-full border border-brand-steel/60 bg-white px-3.5 text-[12px] font-semibold text-ink-muted shadow-elev"
+          >
+            <HelpCircle className="h-3.5 w-3.5" /> Precisa de ajuda?
+          </button>
+        </div>
       </div>
 
       <ProgressOverlay
