@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
 import {
@@ -37,11 +37,17 @@ const MODULO_HOME: Record<Modulo, string> = {
   instalacao: "/instalacao",
 };
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setSession, hydrated, session, logout } = useAuthStore();
   const [show, setShow] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Pré-preenchido quando o axios redireciona aqui por sessão expirada
+  // (?expirada=1 — ver interceptor de 401 em services/api.ts). Some sozinho
+  // na primeira tentativa de login (o catch do submit substitui o estado).
+  const [error, setError] = useState<string | null>(
+    searchParams.get("expirada") === "1" ? "Sua sessão expirou. Faça login novamente." : null
+  );
   // Aparelho não vinculado — em vez de mandar pra outra tela, pede o código
   // de ativação ali mesmo (gerado antes em /liberar-acesso, no navegador).
   const [precisaCodigo, setPrecisaCodigo] = useState(false);
@@ -423,5 +429,13 @@ export default function LoginPage() {
         </footer>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

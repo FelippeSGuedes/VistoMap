@@ -82,7 +82,26 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401 && typeof window !== "undefined") {
+    // 401 com token Bearer já enviado = sessão inválida/expirada de verdade
+    // (não confundir com login errado ou /liberar-acesso, que nunca mandam
+    // token e usam 401 como resposta normal de "credencial inválida").
+    //
+    // Achado em campo (2026-09-10, Vinicius Lavio): o interceptor só
+    // apagava o token do localStorage e seguia — a página continuava
+    // renderizada como se estivesse logada, e TODA chamada seguinte
+    // (mesmo um GET de alertas) voltava 401 de novo, silenciosamente, sem
+    // nenhum aviso pro usuário. "Não consigo devolver vistoria" era na
+    // verdade "minha sessão morreu 6 chamadas atrás e ninguém me avisou".
+    const tinhaToken = !!error.config?.headers?.Authorization;
+    if (error.response?.status === 401 && tinhaToken && typeof window !== "undefined") {
+      const path = window.location.pathname;
+      const jaNoLogin = path.endsWith("/login") || path.includes("/liberar-acesso");
+      void import("@/store/auth").then(({ useAuthStore }) => useAuthStore.getState().logout());
+      if (!jaNoLogin) {
+        const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+        window.location.href = `${base}/login?expirada=1`;
+      }
+    } else if (error.response?.status === 401 && typeof window !== "undefined") {
       setAuthToken(null);
     }
     // Só reporta falha de rede/timeout (sem resposta) ou erro inesperado do

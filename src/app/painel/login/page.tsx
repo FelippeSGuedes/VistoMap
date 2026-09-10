@@ -8,21 +8,27 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck, User } from "lucide-react";
 import { authService } from "@/services/auth";
 import { useAuthStore } from "@/store/auth";
 import { asset } from "@/utils/asset";
 
-export default function PainelLoginPage() {
+function PainelLoginInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { hydrated, session, setSession } = useAuthStore();
   const [login, setLogin] = useState("");
   const [senha, setSenha] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Pré-preenchido quando o axios redireciona aqui por sessão expirada
+  // (?expirada=1 — ver interceptor de 401 em services/api.ts). Some sozinho
+  // na primeira tentativa de login (handleSubmit substitui o estado).
+  const [error, setError] = useState<string | null>(
+    searchParams.get("expirada") === "1" ? "Sua sessão expirou. Faça login novamente." : null
+  );
   const [focusUser, setFocusUser] = useState(false);
   const [focusPwd, setFocusPwd] = useState(false);
 
@@ -514,5 +520,13 @@ export default function PainelLoginPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function PainelLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <PainelLoginInner />
+    </Suspense>
   );
 }
