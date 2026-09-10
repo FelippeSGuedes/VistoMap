@@ -993,17 +993,32 @@ export async function recuperarAvaliadorViaLogsGlpi(): Promise<RecuperarAvaliado
       continue;
     }
 
+    // O GLPI grava user_name como "Nome Completo (id)" — o id sempre no
+    // final entre parênteses (verificado contra a base real 2026-09-10;
+    // mesmo padrão documentado em usuariosRemovidos.ts). Extrai o id
+    // direto em vez de tentar casar o nome por igualdade de string —
+    // "Farias Débora do Nascimento (43)" nunca bate com nenhuma
+    // combinação de name/firstname/realname da tabela de usuários.
+    const idMatch = nomeLog.match(/\((\d+)\)\s*$/);
+    if (!idMatch) {
+      naoRecuperados.push({
+        id: c.id,
+        equipamento: c.name,
+        motivo: `user_name "${nomeLog}" sem id no formato esperado`,
+      });
+      continue;
+    }
+    const candidatoUserId = Number(idMatch[1]);
+
     const usuarios = await query<{ id: number }>(
-      `SELECT id FROM \`${TABLE_USERS}\`
-        WHERE name = ? OR TRIM(CONCAT(firstname, ' ', realname)) = ?
-        LIMIT 2`,
-      [nomeLog, nomeLog]
+      `SELECT id FROM \`${TABLE_USERS}\` WHERE id = ? LIMIT 2`,
+      [candidatoUserId]
     );
     if (usuarios.length !== 1) {
       naoRecuperados.push({
         id: c.id,
         equipamento: c.name,
-        motivo: `Nome "${nomeLog}" não resolveu pra exatamente um usuário do GLPI`,
+        motivo: `id ${candidatoUserId} (de "${nomeLog}") não existe em ${TABLE_USERS}`,
       });
       continue;
     }
