@@ -144,6 +144,11 @@ export function VistoriaExecucaoForm({
   onDone,
   embedded,
 }: VistoriaExecucaoFormProps) {
+  // Repetidor não fica na régua de cobertura celular do poste — não mede
+  // RSRP nem tira print das operadoras (2026-09-10, confirmado com o time).
+  const isRepetidor = (vistoria.fields?.equipamentofield ?? "").trim().toLowerCase() === "repetidor";
+  const totalEvidencias = isRepetidor ? 4 : 6;
+
   const [form, setForm] = useState<FormState>(() => {
     const raw = vistoria.fields?.endereofield ?? vistoria.endereco ?? "";
     const addr = parseGlpiEndereco(raw);
@@ -332,10 +337,12 @@ export function VistoriaExecucaoForm({
     if (!form.instalartpfield.trim()) faltando.push("Instalação de TP");
     if (form.instalartpfield === "1" && !form.tensovfield.trim()) faltando.push("Tensão");
     if (!buildEndereco().trim()) faltando.push("Endereço (toque em Detectar via GPS)");
-    if (!form.tipoifield.trim()) faltando.push("Tipo (Claro)");
-    if (!form.rsrpifield.trim()) faltando.push("RSRP (Claro)");
-    if (!form.tipollfield.trim()) faltando.push("Tipo (Vivo)");
-    if (!form.rsrpllfield.trim()) faltando.push("RSRP (Vivo)");
+    if (!isRepetidor) {
+      if (!form.tipoifield.trim()) faltando.push("Tipo (Claro)");
+      if (!form.rsrpifield.trim()) faltando.push("RSRP (Claro)");
+      if (!form.tipollfield.trim()) faltando.push("Tipo (Vivo)");
+      if (!form.rsrpllfield.trim()) faltando.push("RSRP (Vivo)");
+    }
     if (!form.observaofield.trim()) faltando.push("Observações");
     return faltando;
   };
@@ -414,7 +421,7 @@ export function VistoriaExecucaoForm({
     }
   };
 
-  const canSubmit = captureCount >= 6 && !submitting;
+  const canSubmit = captureCount >= totalEvidencias && !submitting;
   const bottomBarClass = embedded
     ? "sticky bottom-0 z-20 border-t border-brand-steel/60 bg-white/90 px-4 pb-4 pt-3 backdrop-blur-xl"
     : "fixed inset-x-0 bottom-0 z-30 border-t border-brand-steel/60 bg-white/85 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur-xl";
@@ -640,64 +647,66 @@ export function VistoriaExecucaoForm({
         </motion.div>
 
 
-        <SectionCard
-          icon={<Radio className="h-5 w-5" />}
-          title="Rede Móvel"
-          description="Cobertura por operadora medida em campo."
-          tone="amber"
-        >
-          <div className="grid grid-cols-2 gap-3">
-            {/* Claro */}
-            <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">Claro</p>
-              <SelectField
-                label="Tipo"
-                value={form.tipoifield}
-                options={tipoIOptions}
-                placeholder="Selecione…"
-                onChange={(v) => setField("tipoifield", v)}
-                colSpan
-              />
-              <EditableField
-                label="RSRP (dBm)"
-                value={form.rsrpifield}
-                placeholder="Ex.: -95"
-                icon={<Radio className="h-3 w-3" />}
-                onChange={(v) => setField("rsrpifield", v)}
-                colSpan
-              />
+        {!isRepetidor && (
+          <SectionCard
+            icon={<Radio className="h-5 w-5" />}
+            title="Rede Móvel"
+            description="Cobertura por operadora medida em campo."
+            tone="amber"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              {/* Claro */}
+              <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">Claro</p>
+                <SelectField
+                  label="Tipo"
+                  value={form.tipoifield}
+                  options={tipoIOptions}
+                  placeholder="Selecione…"
+                  onChange={(v) => setField("tipoifield", v)}
+                  colSpan
+                />
+                <EditableField
+                  label="RSRP (dBm)"
+                  value={form.rsrpifield}
+                  placeholder="Ex.: -95"
+                  icon={<Radio className="h-3 w-3" />}
+                  onChange={(v) => setField("rsrpifield", v)}
+                  colSpan
+                />
+              </div>
+              {/* Vivo */}
+              <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Vivo</p>
+                <SelectField
+                  label="Tipo"
+                  value={form.tipollfield}
+                  options={tipoLLOptions}
+                  placeholder="Selecione…"
+                  onChange={(v) => setField("tipollfield", v)}
+                  colSpan
+                />
+                <EditableField
+                  label="RSRP (dBm)"
+                  value={form.rsrpllfield}
+                  placeholder="Ex.: -95"
+                  icon={<Radio className="h-3 w-3" />}
+                  onChange={(v) => setField("rsrpllfield", v)}
+                  colSpan
+                />
+              </div>
             </div>
-            {/* Vivo */}
-            <div className="space-y-2 rounded-2xl border border-brand-steel/40 bg-white p-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Vivo</p>
-              <SelectField
-                label="Tipo"
-                value={form.tipollfield}
-                options={tipoLLOptions}
-                placeholder="Selecione…"
-                onChange={(v) => setField("tipollfield", v)}
-                colSpan
-              />
-              <EditableField
-                label="RSRP (dBm)"
-                value={form.rsrpllfield}
-                placeholder="Ex.: -95"
-                icon={<Radio className="h-3 w-3" />}
-                onChange={(v) => setField("rsrpllfield", v)}
-                colSpan
-              />
-            </div>
-          </div>
-          {sinalAindaRuimAposTroca && (
-            <button
-              type="button"
-              onClick={abrirRecusarPorSinal}
-              className="mt-1 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-[12px] font-bold text-red-700"
-            >
-              <Ban className="h-3.5 w-3.5" /> Sinal continua ruim mesmo após trocar — Recusar vistoria
-            </button>
-          )}
-        </SectionCard>
+            {sinalAindaRuimAposTroca && (
+              <button
+                type="button"
+                onClick={abrirRecusarPorSinal}
+                className="mt-1 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 text-[12px] font-bold text-red-700"
+              >
+                <Ban className="h-3.5 w-3.5" /> Sinal continua ruim mesmo após trocar — Recusar vistoria
+              </button>
+            )}
+          </SectionCard>
+        )}
 
         <Card className="space-y-3">
           <header className="flex items-center justify-between gap-3">
@@ -706,7 +715,8 @@ export function VistoriaExecucaoForm({
                 Evidências de campo
               </h3>
               <p className="text-xs text-ink-muted">
-                {captureCount}/6 etapas validadas · 5 fotos + 1 vídeo 360°
+                {captureCount}/{totalEvidencias} etapas validadas ·{" "}
+                {isRepetidor ? "3 fotos" : "5 fotos"} + 1 vídeo 360°
               </p>
             </div>
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-amber/20 text-[#8a5a00]">
@@ -714,9 +724,9 @@ export function VistoriaExecucaoForm({
             </span>
           </header>
 
-          <CaptureProgressBar count={captureCount} total={6} />
+          <CaptureProgressBar count={captureCount} total={totalEvidencias} />
 
-          <CaptureThumbnails bundle={captures} />
+          <CaptureThumbnails bundle={captures} isRepetidor={isRepetidor} />
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
@@ -727,7 +737,7 @@ export function VistoriaExecucaoForm({
             >
               {captureCount === 0
                 ? "Abrir câmera"
-                : captureCount < 6
+                : captureCount < totalEvidencias
                 ? "Continuar captura"
                 : "Revisar evidências"}
             </Button>
@@ -786,7 +796,7 @@ export function VistoriaExecucaoForm({
           <div className="hidden flex-col text-xs text-ink-muted sm:flex">
             <span className="font-semibold text-ink">Pronto para enviar</span>
             <span>
-              {captureCount}/6 evidências · {form.observaofield.length} caracteres
+              {captureCount}/{totalEvidencias} evidências · {form.observaofield.length} caracteres
             </span>
           </div>
           <Button
@@ -815,7 +825,7 @@ export function VistoriaExecucaoForm({
         description={
           done
             ? "Sincronizando com o GLPI"
-            : `${captureCount}/6 evidências · GPS · observações`
+            : `${captureCount}/${totalEvidencias} evidências · GPS · observações`
         }
         done={done}
       />
@@ -831,6 +841,7 @@ export function VistoriaExecucaoForm({
           lng: coords?.lng,
           vistoriador: tecnicoLogadoNome,
         }}
+        skipPrints={isRepetidor}
       />
 
       <MudarPosteFlow
@@ -863,6 +874,7 @@ export function VistoriaExecucaoForm({
         equipamento={vistoria.equipamento}
         poste={form.pspostefield}
         municipio={vistoria.cidade}
+        isRepetidor={isRepetidor}
         bottomOffset={embedded ? 84 : 96}
         onRegistrada={onDone}
       />
@@ -911,10 +923,13 @@ const THUMB_LABELS = [
   { key: "imagem5" as const, label: "Claro" },
 ];
 
-function CaptureThumbnails({ bundle }: { bundle: CaptureBundle }) {
+function CaptureThumbnails({ bundle, isRepetidor = false }: { bundle: CaptureBundle; isRepetidor?: boolean }) {
+  const labels = isRepetidor
+    ? THUMB_LABELS.filter((t) => t.key !== "imagem4" && t.key !== "imagem5")
+    : THUMB_LABELS;
   return (
     <div className="grid grid-cols-3 gap-2">
-      {THUMB_LABELS.map((t) => {
+      {labels.map((t) => {
         const blob = bundle[t.key];
         const hasBlob = blob instanceof Blob;
         return (

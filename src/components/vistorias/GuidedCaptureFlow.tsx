@@ -621,10 +621,12 @@ function Confetti() {
 interface GuidedCaptureFlowProps {
   bundle: CaptureBundle;
   onChange: (bundle: CaptureBundle) => void;
-  /** Disparado ~2s depois que TODAS as 6 capturas válidas estão no bundle. */
+  /** Disparado ~2s depois que TODAS as capturas válidas estão no bundle. */
   onComplete?: () => void;
   /** Aplica marca-d'água nas fotos (lat/lng/data/técnico + logo). */
   watermark?: WatermarkInfo;
+  /** Equipamento "Repetidor" não mede sinal de operadora — pula os prints Vivo/Claro (4 etapas em vez de 6). */
+  skipPrints?: boolean;
 }
 
 interface PreviewState {
@@ -637,20 +639,25 @@ export function GuidedCaptureFlow({
   onChange,
   onComplete,
   watermark,
+  skipPrints = false,
 }: GuidedCaptureFlowProps) {
+  // Repetidor não mede sinal de operadora — os prints Vivo/Claro (only
+  // step com brand definido) somem da sequência.
+  const steps = skipPrints ? STEPS.filter((s) => s.brand == null) : STEPS;
+
   // Ao reabrir pra "revisar evidências", começa na primeira etapa que ainda
   // falta — se já está tudo completo (reabriu só pra conferir/refazer algo
   // específico), fica na etapa 1 mas o técnico pode pular direto pra
   // qualquer uma clicando na barra de progresso (ver ProgressHeader).
   const [stepIdx, setStepIdx] = useState(() => {
-    const firstMissing = STEPS.findIndex((s) => !bundle[s.key]);
+    const firstMissing = steps.findIndex((s) => !bundle[s.key]);
     return firstMissing === -1 ? 0 : firstMissing;
   });
   // Inicializa com os previews do que já está no bundle (senão reabrir
   // pra revisão mostrava tudo como "não capturado", mesmo já tendo dado).
   const [previews, setPreviews] = useState<Partial<Record<StepKey, PreviewState>>>(() => {
     const initial: Partial<Record<StepKey, PreviewState>> = {};
-    for (const s of STEPS) {
+    for (const s of steps) {
       const blob = bundle[s.key];
       if (blob) {
         initial[s.key] = {
@@ -666,17 +673,16 @@ export function GuidedCaptureFlow({
   const [recorderOpen, setRecorderOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const step = STEPS[stepIdx];
-  const total = STEPS.length;
+  const step = steps[stepIdx];
+  const total = steps.length;
   const isLast = stepIdx === total - 1;
-  // Sucesso = todas 6 entradas existem no bundle (ok OU warn — error não persiste).
+  // Sucesso = todas as entradas necessárias existem no bundle (ok OU warn — error não persiste).
   const allDone =
     !!bundle.imagem1 &&
     !!bundle.imagem2 &&
     !!bundle.imagem3 &&
     !!bundle.video360 &&
-    !!bundle.imagem4 &&
-    !!bundle.imagem5;
+    (skipPrints || (!!bundle.imagem4 && !!bundle.imagem5));
 
   // Auto-fechar 2s só na TRANSIÇÃO pra completo (acabou de capturar a
   // última etapa) — nunca ao reabrir um bundle que já estava 100% completo
@@ -956,7 +962,7 @@ export function GuidedCaptureFlow({
               </span>
               <div>
                 <p className="text-[15px] font-semibold tracking-tight">
-                  🎉 6/6 evidências capturadas!
+                  🎉 {total}/{total} evidências capturadas!
                 </p>
                 <p className="text-xs text-white/85">
                   Voltando ao formulário em instantes…

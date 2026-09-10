@@ -13,6 +13,8 @@ interface CaptureCameraModalProps {
   onClose: () => void;
   equipmentName?: string;
   watermark?: WatermarkInfo;
+  /** Equipamento "Repetidor" não mede sinal de operadora — pula os prints Vivo/Claro. */
+  skipPrints?: boolean;
 }
 
 export function CaptureCameraModal({
@@ -22,6 +24,7 @@ export function CaptureCameraModal({
   onClose,
   equipmentName,
   watermark,
+  skipPrints = false,
 }: CaptureCameraModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -94,6 +97,7 @@ export function CaptureCameraModal({
                     onChange={onChange}
                     onComplete={onClose}
                     watermark={watermark}
+                    skipPrints={skipPrints}
                   />
                 </div>
               </div>
@@ -102,7 +106,7 @@ export function CaptureCameraModal({
             <footer className="sticky bottom-0 z-20 border-t border-white/8 bg-[#05101A]/85 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur-xl">
               <div className="mx-auto flex w-full max-w-xl items-center justify-between gap-3">
                 <span className="text-xs text-white/70">
-                  Concluir as 6 etapas para retornar ao formulário.
+                  Concluir as {skipPrints ? 4 : 6} etapas para retornar ao formulário.
                 </span>
                 <button
                   type="button"

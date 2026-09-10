@@ -74,6 +74,8 @@ interface AssistenteVistoriaProps {
   equipamento: string;
   poste?: string | null;
   municipio?: string | null;
+  /** Repetidor não mede RSRP — some a opção "Sinal ruim" do menu do assistente. */
+  isRepetidor?: boolean;
   /** Espaço (px) reservado embaixo — cada tela tem sua própria barra inferior; o balão flutua sempre acima dela. */
   bottomOffset?: number;
   /** Impedimento/recusa APROVADO pelo analista — a vistoria saiu da fila, a tela host decide o que fazer (fechar, recarregar, etc.). */
@@ -96,7 +98,7 @@ function horaAgora(): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, bottomOffset = 24, onRegistrada }: AssistenteVistoriaProps) {
+export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, isRepetidor = false, bottomOffset = 24, onRegistrada }: AssistenteVistoriaProps) {
   const [aberto, setAberto] = useState(false);
   const [step, setStep] = useState<StepId>("raiz");
   const [transcript, setTranscript] = useState<Msg[]>([]);
@@ -293,6 +295,7 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
                   <div className="mt-3">
                     <EtapaControles
                       step={step}
+                      isRepetidor={isRepetidor}
                       chipClaro={chipClaro}
                       chipVivo={chipVivo}
                       dificuldade={dificuldade}
@@ -449,6 +452,7 @@ function BotaoResposta({
 
 interface EtapaControlesProps {
   step: StepId;
+  isRepetidor: boolean;
   chipClaro: string;
   chipVivo: string;
   dificuldade: string;
@@ -494,9 +498,11 @@ function EtapaControles(p: EtapaControlesProps) {
     case "raiz":
       return (
         <div className="space-y-2">
-          <BotaoResposta onClick={() => p.avancar("📡 Sinal ruim", "sinal_medir", ["Entendi. Vamos verificar o sinal antes de tomar qualquer decisão. 📶", "Você consegue realizar uma medição das duas operadoras?"])}>
-            <Radio className="h-4 w-4 text-brand-emerald" /> Sinal ruim
-          </BotaoResposta>
+          {!p.isRepetidor && (
+            <BotaoResposta onClick={() => p.avancar("📡 Sinal ruim", "sinal_medir", ["Entendi. Vamos verificar o sinal antes de tomar qualquer decisão. 📶", "Você consegue realizar uma medição das duas operadoras?"])}>
+              <Radio className="h-4 w-4 text-brand-emerald" /> Sinal ruim
+            </BotaoResposta>
+          )}
           <BotaoResposta onClick={() => p.avancar("📍 Local de difícil acesso", "acesso_tipo", ["Entendi. Vamos verificar se o acesso pode ser realizado.", "O local fica dentro de um condomínio ou possui alguma restrição de acesso?"])}>
             <MapPin className="h-4 w-4 text-brand-emerald" /> Local de difícil acesso
           </BotaoResposta>
