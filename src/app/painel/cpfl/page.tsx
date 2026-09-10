@@ -105,6 +105,7 @@ export default function ValidacaoCPFLPage() {
   const [municipio, setMunicipio] = useState<string>("");
 
   const [sincronizando, setSincronizando] = useState(false);
+  const [recuperandoAvaliador, setRecuperandoAvaliador] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   async function carregar() {
@@ -196,6 +197,34 @@ export default function ValidacaoCPFLPage() {
     }
   }
 
+  // A CPFL aprova direto no GLPI dela — o único jeito de saber quem foi é
+  // o histórico nativo do GLPI (glpi_logs). Best-effort de propósito: só
+  // grava quando o histórico não deixa margem pra dúvida (ver
+  // recuperarAvaliadorViaLogsGlpi em painel.ts); o resto fica reportado,
+  // nunca "no chute".
+  async function handleRecuperarAvaliador() {
+    setRecuperandoAvaliador(true);
+    try {
+      const r = await painelService.recuperarAvaliadorCPFL();
+      const partes: string[] = [];
+      if (r.recuperados.length > 0) {
+        partes.push(
+          `${r.recuperados.length} recuperado(s): ${r.recuperados.map((x) => `${x.equipamento} → ${x.avaliador}`).join(", ")}`
+        );
+      }
+      if (r.naoRecuperados.length > 0) {
+        partes.push(`${r.naoRecuperados.length} sem confirmação suficiente no histórico do GLPI`);
+      }
+      setToast(partes.length > 0 ? partes.join(" · ") : "Nada pendente — nenhum aprovado sem avaliador registrado.");
+      if (r.recuperados.length > 0) void carregar();
+    } catch (e) {
+      setToast(`❌ Falha ao recuperar avaliador: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRecuperandoAvaliador(false);
+      setTimeout(() => setToast(null), 10000);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* ── CABEÇALHO ── */}
@@ -218,7 +247,7 @@ export default function ValidacaoCPFLPage() {
               Validação CPFL
             </h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => void handleSincronizar()}
@@ -229,6 +258,17 @@ export default function ValidacaoCPFLPage() {
             >
               <ShieldCheck className={`h-3.5 w-3.5 ${sincronizando ? "animate-pulse" : ""}`} />
               {sincronizando ? "Sincronizando…" : "Sincronizar status"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRecuperarAvaliador()}
+              disabled={recuperandoAvaliador}
+              title='Tenta recuperar, pelo histórico nativo do GLPI, o nome de quem aprovou vistorias que a CPFL aprovou direto no GLPI dela (sem passar pelo VistoMap) — best-effort, só grava quando o histórico não deixa margem pra dúvida.'
+              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition hover:brightness-95 disabled:opacity-50"
+              style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
+            >
+              <User className={`h-3.5 w-3.5 ${recuperandoAvaliador ? "animate-pulse" : ""}`} />
+              {recuperandoAvaliador ? "Buscando…" : "Recuperar avaliador"}
             </button>
             <button
               type="button"

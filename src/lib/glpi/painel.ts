@@ -16,6 +16,7 @@ import {
   SITUACAO_REVISITADO,
   STATE_AGUARDANDO_VISTORIA,
   STATUS_VISTORIA_PENDENTE,
+  STATUS_VISTORIA_APROVADO,
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
@@ -896,6 +897,125 @@ export async function reprovarVistoria(
   );
 
   return { affected: r.affectedRows };
+}
+
+/* ── Recuperar avaliador via histórico do GLPI (2026-09-11) ───────
+ *
+ * A CPFL aprova direto no GLPI dela — o VistoMap nunca fica sabendo quem
+ * foi, e o campo "Avaliador da Vistoria CPFL"
+ * (users_id_avaliadordavistoriacpflfield) fica vazio pra sempre nesse
+ * caso (só é escrito por aprovarVistoria/reprovarVistoria acima, usados
+ * só em /painel/revisitas). A ÚNICA fonte possível de "quem mudou" pra
+ * essas é o log NATIVO do GLPI (glpi_logs — grava toda alteração de
+ * campo, com o nome de quem mudou em texto puro, sobrevive mesmo se o
+ * usuário for depois removido; mesma tabela já usada em
+ * usuariosRemovidos.ts pra outro propósito).
+ *
+ * Incerteza real, verificada só rodando contra a base de produção: não
+ * há garantia de que o GLPI de fato loga mudança nesse campo específico
+ * (campo de plugin, log de plugin depende de config) — por isso cada
+ * candidato só é gravado quando existe EXATAMENTE UMA transição
+ * plausível pra "Aprovado" no histórico do item E o nome resolve pra um
+ * usuário real do GLPI. Ambíguo (0 ou 2+ candidatos, ou nome sem
+ * correspondência) fica de fora, reportado, nunca "no chute".
+ */
+export interface AvaliadorRecuperado {
+  id: number;
+  equipamento: string;
+  avaliador: string;
+  dataLog: string;
+}
+
+export interface AvaliadorNaoRecuperado {
+  id: number;
+  equipamento: string;
+  motivo: string;
+}
+
+export interface RecuperarAvaliadorResultado {
+  recuperados: AvaliadorRecuperado[];
+  naoRecuperados: AvaliadorNaoRecuperado[];
+}
+
+interface LogCandidato {
+  user_name: string | null;
+  new_value: string | null;
+  date_mod: string;
+}
+
+export async function recuperarAvaliadorViaLogsGlpi(): Promise<RecuperarAvaliadorResultado> {
+  const candidatos = await query<{ id: number; name: string }>(
+    `SELECT ne.id, ne.name
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      WHERE ne.is_deleted = 0
+        AND f.plugin_fields_statusvistoriafielddropdowns_id = ?
+        AND f.dataaprovaoconcessionriafield IS NOT NULL
+        AND f.dataaprovaoconcessionriafield <> ''
+        AND (f.\`${AVALIADOR_CPFL_USER_COLUMN}\` IS NULL OR f.\`${AVALIADOR_CPFL_USER_COLUMN}\` = 0)`,
+    [STATUS_VISTORIA_APROVADO]
+  );
+
+  const recuperados: AvaliadorRecuperado[] = [];
+  const naoRecuperados: AvaliadorNaoRecuperado[] = [];
+
+  for (const c of candidatos) {
+    const logs = await query<LogCandidato>(
+      `SELECT user_name, new_value, date_mod
+         FROM glpi_logs
+        WHERE itemtype = '${ITEMTYPE_NE}' AND items_id = ?
+          AND new_value LIKE '%aprovad%'
+        ORDER BY date_mod DESC`,
+      [c.id]
+    );
+
+    if (logs.length === 0) {
+      naoRecuperados.push({ id: c.id, equipamento: c.name, motivo: "Nenhum log de mudança encontrado" });
+      continue;
+    }
+
+    // Só confia quando TODOS os candidatos apontam pro mesmo autor — se
+    // o histórico tem "Aprovado" de gente diferente (outra transição,
+    // outro campo com valor parecido), a ambiguidade impede um chute.
+    const autoresUnicos = new Set(logs.map((l) => (l.user_name ?? "").trim()).filter(Boolean));
+    if (autoresUnicos.size !== 1) {
+      naoRecuperados.push({
+        id: c.id,
+        equipamento: c.name,
+        motivo: `Ambíguo — ${autoresUnicos.size} autor(es) diferentes no histórico`,
+      });
+      continue;
+    }
+
+    const nomeLog = logs[0].user_name?.trim();
+    if (!nomeLog) {
+      naoRecuperados.push({ id: c.id, equipamento: c.name, motivo: "Log sem nome de usuário" });
+      continue;
+    }
+
+    const usuarios = await query<{ id: number }>(
+      `SELECT id FROM \`${TABLE_USERS}\`
+        WHERE name = ? OR TRIM(CONCAT(firstname, ' ', realname)) = ?
+        LIMIT 2`,
+      [nomeLog, nomeLog]
+    );
+    if (usuarios.length !== 1) {
+      naoRecuperados.push({
+        id: c.id,
+        equipamento: c.name,
+        motivo: `Nome "${nomeLog}" não resolveu pra exatamente um usuário do GLPI`,
+      });
+      continue;
+    }
+
+    await execute(
+      `UPDATE \`${TABLE_FIELDS}\` SET \`${AVALIADOR_CPFL_USER_COLUMN}\` = ? WHERE items_id = ?`,
+      [usuarios[0].id, c.id]
+    );
+    recuperados.push({ id: c.id, equipamento: c.name, avaliador: nomeLog, dataLog: logs[0].date_mod });
+  }
+
+  return { recuperados, naoRecuperados };
 }
 
 /* ── Atribuir vistoria a técnico ────────────────────────────────── */

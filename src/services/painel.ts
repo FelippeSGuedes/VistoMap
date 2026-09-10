@@ -584,6 +584,20 @@ export async function sincronizarStatusCPFL() {
   return data;
 }
 
+/**
+ * Recupera, pelo log nativo do GLPI, quem aprovou vistorias que a CPFL
+ * já aprovou direto no GLPI dela (sem passar pelo VistoMap) — ver
+ * recuperarAvaliadorViaLogsGlpi em @/lib/glpi/painel.ts.
+ */
+export async function recuperarAvaliadorCPFL() {
+  const { data } = await api.post<{
+    ok: true;
+    recuperados: Array<{ id: number; equipamento: string; avaliador: string; dataLog: string }>;
+    naoRecuperados: Array<{ id: number; equipamento: string; motivo: string }>;
+  }>("/painel/cpfl/recuperar-avaliador");
+  return data;
+}
+
 export const painelService = {
   fetchStats,
   fetchTecnicos,
@@ -605,5 +619,6 @@ export const painelService = {
   fetchStatus,
   fetchCPFL,
   sincronizarStatusCPFL,
+  recuperarAvaliadorCPFL,
   fetchTopTecnicosDashboard,
 };
