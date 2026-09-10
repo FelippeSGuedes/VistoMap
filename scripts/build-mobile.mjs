@@ -22,10 +22,23 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STASH = path.join(ROOT, ".mobile-build-stash");
 
 // Pastas removidas só durante o build mobile (caminhos relativos ao ROOT).
+//
+// BUG REAL (achado em campo 2026-09-10 — 7 publicações de OTA seguidas
+// falhando desde 53e9469, "Precisa de ajuda?" nunca chegou nos técnicos):
+// `src/components/painel/**` ficava DE FORA dessa lista, mas um componente
+// lá (SimulacaoDiaOverlay.tsx) importa de `src/app/painel/mapa/**` (reuso
+// do veículo 3D) — que ESTA sim é escondida. O `next build` do mobile
+// falhava com "Cannot find module" mesmo NENHUMA rota mobile importando
+// esse componente, porque o type-check do Next varre `src/` inteiro por
+// tsconfig glob, não só o que as rotas realmente usam. Confirmado (grep):
+// todo import de `@/components/painel/**` vem de dentro de `src/app/painel/**`
+// (já escondido) — sem uso nenhum do lado mobile, então escondê-la também
+// é seguro.
 const EXCLUDE = [
   "src/app/api",
   "src/app/painel",
   "src/app/vistorias/[id]",
+  "src/components/painel",
 ];
 
 const API_URL =
