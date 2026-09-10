@@ -33,7 +33,6 @@ import { RecusarVistoriaFlow } from "./RecusarVistoriaFlow";
 import { ProgressOverlay } from "@/components/feedback/ProgressOverlay";
 import { vistoriasService } from "@/services/vistorias";
 import { reverseGeocode } from "@/services/geocoding";
-import { useGeolocation } from "@/hooks/useGeolocation";
 import { useAuthStore } from "@/store/auth";
 import { cn } from "@/utils/cn";
 import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
@@ -208,7 +207,6 @@ export function VistoriaExecucaoForm({
 
   const [detectingAddress, setDetectingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
-  const geoForAddress = useGeolocation(false);
 
   // Opções de "Tipo" (2G/3G/4G…) puxadas do dropdown do GLPI — evita o
   // técnico digitar valor livre e criar entradas duplicadas/inconsistentes.
@@ -234,22 +232,17 @@ export function VistoriaExecucaoForm({
     setCoords({ lat: vistoria.latitude, lng: vistoria.longitude });
   }, [vistoria.latitude, vistoria.longitude]);
 
-  const handleDetectAddress = async () => {
+  // Endereço sempre a partir da Lat/Lng do POSTE (fonte fixa, cadastrada no
+  // GLPI) — não mais do GPS do técnico, que variava conforme onde ele
+  // estava parado e nunca reagia a "Trocar de poste". `coords` já é a
+  // mesma referência usada pro geofence/envio final, e já é atualizada em
+  // handlePosteMudado — então buscar de novo sempre que ela muda cobre os
+  // dois casos (poste original ao carregar E poste trocado) de uma vez.
+  const detectarEnderecoDoPoste = async (lat: number, lng: number) => {
     setDetectingAddress(true);
     setAddressError(null);
     try {
-      // Pega GPS atual do técnico (não usa o do poste — endereço é onde ele tá
-      // fisicamente). SEMPRE via refresh(): `geoForAddress.position` pode vir
-      // semeado do cache module-scope de useGeolocation.ts com uma leitura de
-      // OUTRO ponto/tela (mesma causa do bug de Mudar Poste puxando o último
-      // ponto vistoriado). refresh() já tem cache de 5s próprio, então não
-      // reconsulta hardware à toa em sequência — só quando a leitura é velha.
-      const pos = await geoForAddress.refresh();
-      if (!pos) {
-        setAddressError("Sem GPS — autorize a localização.");
-        return;
-      }
-      const addr = await reverseGeocode(pos.lat, pos.lng);
+      const addr = await reverseGeocode(lat, lng);
       setForm((f) => ({
         ...f,
         endereco_rua: addr.rua || f.endereco_rua,
@@ -265,6 +258,13 @@ export function VistoriaExecucaoForm({
       setDetectingAddress(false);
     }
   };
+
+  useEffect(() => {
+    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return;
+    if (coords.lat === 0 && coords.lng === 0) return;
+    void detectarEnderecoDoPoste(coords.lat, coords.lng);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coords.lat, coords.lng]);
 
   const handlePosteMudado = (response: MudancaPosteResponse) => {
     const p = response.poste_novo;
@@ -336,7 +336,7 @@ export function VistoriaExecucaoForm({
     if (!form.danfield.trim()) faltando.push("Resistência (daN)");
     if (!form.instalartpfield.trim()) faltando.push("Instalação de TP");
     if (form.instalartpfield === "1" && !form.tensovfield.trim()) faltando.push("Tensão");
-    if (!buildEndereco().trim()) faltando.push("Endereço (toque em Detectar via GPS)");
+    if (!buildEndereco().trim()) faltando.push("Endereço (aguarde a busca automática ou toque em Atualizar)");
     if (!isRepetidor) {
       if (!form.tipoifield.trim()) faltando.push("Tipo (Claro)");
       if (!form.rsrpifield.trim()) faltando.push("RSRP (Claro)");
@@ -590,7 +590,7 @@ export function VistoriaExecucaoForm({
                 </div>
                 <button
                   type="button"
-                  onClick={handleDetectAddress}
+                  onClick={() => void detectarEnderecoDoPoste(coords.lat, coords.lng)}
                   disabled={detectingAddress}
                   className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand-emerald/12 px-3 text-[11px] font-semibold text-brand-emerald disabled:opacity-60"
                 >
@@ -599,13 +599,13 @@ export function VistoriaExecucaoForm({
                   ) : (
                     <Locate className="h-3 w-3" />
                   )}
-                  {detectingAddress ? "Buscando…" : "Detectar via GPS"}
+                  {detectingAddress ? "Buscando…" : "Atualizar"}
                 </button>
               </div>
 
               <p className="mt-1 text-[11px] leading-relaxed text-ink-muted">
-                Preenchimento <strong className="text-ink">somente via GPS</strong>.
-                Toque em <em>Detectar via GPS</em> para resolver via OpenStreetMap.
+                Preenchimento <strong className="text-ink">automático</strong>, a partir da
+                localização cadastrada do poste. Toque em <em>Atualizar</em> se precisar buscar de novo.
               </p>
 
               <div className="mt-2 grid grid-cols-2 gap-2">
