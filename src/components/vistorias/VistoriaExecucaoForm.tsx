@@ -11,7 +11,6 @@ import {
   Crosshair,
   History,
   Loader2,
-  Locate,
   Lock,
   MapPin as MapPinIcon,
   Radio,
@@ -579,33 +578,21 @@ export function VistoriaExecucaoForm({
 
             {/* Endereço — sub-bloco com 4 campos + GPS */}
             <div className="relative mt-4 rounded-2xl border border-brand-steel/50 bg-white p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-deep/8 text-brand-deep">
-                    <MapPinIcon className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
-                    Endereço do poste
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void detectarEnderecoDoPoste(coords.lat, coords.lng)}
-                  disabled={detectingAddress}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand-emerald/12 px-3 text-[11px] font-semibold text-brand-emerald disabled:opacity-60"
-                >
-                  {detectingAddress ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Locate className="h-3 w-3" />
-                  )}
-                  {detectingAddress ? "Buscando…" : "Atualizar"}
-                </button>
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-brand-deep/8 text-brand-deep">
+                  <MapPinIcon className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+                  Endereço do poste
+                </span>
+                {detectingAddress && (
+                  <Loader2 className="h-3 w-3 animate-spin text-ink-muted" />
+                )}
               </div>
 
               <p className="mt-1 text-[11px] leading-relaxed text-ink-muted">
                 Preenchimento <strong className="text-ink">automático</strong>, a partir da
-                localização cadastrada do poste. Toque em <em>Atualizar</em> se precisar buscar de novo.
+                localização cadastrada do poste.
               </p>
 
               <div className="mt-2 grid grid-cols-2 gap-2">
