@@ -4,42 +4,37 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Proxy de reverse geocoding via OSM Nominatim.
+ * Proxy de reverse geocoding via Mapbox Geocoding API.
  *
- * Por que server-side?
- *   - Nominatim exige User-Agent identificando a aplicação.
- *   - Navegadores não deixam o frontend setar User-Agent custom.
- *   - Aqui injetamos `User-Agent: VistoMap/1.0 (contato@vistomap.io)` corretamente.
+ * Trocado do Nominatim (OSM) em 2026-09-11: Nominatim limita a 1 req/s e
+ * proíbe uso em massa nos termos de uso — inviável pra rodar automático em
+ * toda vistoria (desde a mudança de "Detectar via GPS" manual pra busca
+ * automática pela Lat/Lng do poste) e pra migração retroativa dos pontos
+ * já vistoriados. Mapbox reaproveita o MESMO token público já usado pro
+ * mapa (NEXT_PUBLIC_MAPBOX_TOKEN, já usado server-side em roteirizacao.ts
+ * pra Directions), com limite de requisição bem mais alto.
  *
- * Rate limit: 1 req/s por IP (Nominatim policy).
- * Em produção pesada, considerar:
- *   - cache de respostas (LRU)
- *   - rodar instância própria do Nominatim
- *   - usar Mapbox Geocoding API (tem token + sem rate limit free baixo)
+ * Mantém a MESMA forma de resposta do Nominatim (EnderecoReverseResponse)
+ * de propósito — services/geocoding.ts e quem consome não precisam mudar.
  */
 
-const USER_AGENT =
-  process.env.NOMINATIM_USER_AGENT ??
-  "VistoMap/1.0 (https://github.com/seu-org/vistomap)";
+const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
-interface NominatimResponse {
-  display_name?: string;
-  address?: {
-    road?: string;
-    pedestrian?: string;
-    house_number?: string;
-    neighbourhood?: string;
-    suburb?: string;
-    city?: string;
-    town?: string;
-    village?: string;
-    municipality?: string;
-    state?: string;
-    "ISO3166-2-lvl4"?: string;
-    postcode?: string;
-    country?: string;
-    country_code?: string;
-  };
+interface MapboxContextItem {
+  id: string;
+  text: string;
+  short_code?: string;
+}
+
+interface MapboxFeature {
+  place_name?: string;
+  text?: string;
+  address?: string;
+  context?: MapboxContextItem[];
+}
+
+interface MapboxResponse {
+  features?: MapboxFeature[];
 }
 
 export interface EnderecoReverseResponse {
@@ -54,11 +49,8 @@ export interface EnderecoReverseResponse {
   display_name: string;
 }
 
-function pickEstadoSigla(addr?: NominatimResponse["address"]): string {
-  if (!addr) return "";
-  const lvl = addr["ISO3166-2-lvl4"];
-  if (lvl && lvl.startsWith("BR-")) return lvl.slice(3);
-  return "";
+function contextValue(context: MapboxContextItem[] | undefined, prefix: string): MapboxContextItem | undefined {
+  return context?.find((c) => c.id.startsWith(prefix));
 }
 
 export async function GET(request: Request) {
@@ -78,50 +70,53 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   }
+  if (!TOKEN) {
+    return NextResponse.json(
+      { message: "NEXT_PUBLIC_MAPBOX_TOKEN não configurado" },
+      { status: 500 }
+    );
+  }
 
-  const url = new URL("https://nominatim.openstreetmap.org/reverse");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("lat", String(lat));
-  url.searchParams.set("lon", String(lng));
-  url.searchParams.set("addressdetails", "1");
-  url.searchParams.set("zoom", "18");
-  url.searchParams.set("accept-language", "pt-BR");
+  const url =
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json` +
+    `?access_token=${TOKEN}&language=pt-BR&types=address,street`;
 
   try {
-    const resp = await fetch(url.toString(), {
-      headers: {
-        "User-Agent": USER_AGENT,
-        "Accept-Language": "pt-BR",
-      },
-      // Pequeno cache de borda no Next — Nominatim tem rate limit de 1 req/s.
-      next: { revalidate: 30 },
-    });
+    const resp = await fetch(url, { next: { revalidate: 30 } });
 
     if (!resp.ok) {
       return NextResponse.json(
-        { message: `Nominatim respondeu ${resp.status}` },
+        { message: `Mapbox Geocoding respondeu ${resp.status}` },
         { status: 502 }
       );
     }
 
-    const data = (await resp.json()) as NominatimResponse;
-    const addr = data.address ?? {};
+    const data = (await resp.json()) as MapboxResponse;
+    const feature = data.features?.[0];
+    const context = feature?.context;
+
+    const bairro = contextValue(context, "neighborhood");
+    const cidade = contextValue(context, "place");
+    const estado = contextValue(context, "region");
+    const cep = contextValue(context, "postcode");
+    const pais = contextValue(context, "country");
+
     const result: EnderecoReverseResponse = {
-      rua: addr.road ?? addr.pedestrian ?? "",
-      numero: addr.house_number ?? "",
-      bairro: addr.neighbourhood ?? addr.suburb ?? "",
-      cidade: addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? "",
-      estado: addr.state ?? "",
-      estado_sigla: pickEstadoSigla(addr),
-      cep: addr.postcode ?? "",
-      pais: addr.country ?? "",
-      display_name: data.display_name ?? "",
+      rua: feature?.text ?? "",
+      numero: feature?.address ?? "",
+      bairro: bairro?.text ?? "",
+      cidade: cidade?.text ?? "",
+      estado: estado?.text ?? "",
+      estado_sigla: estado?.short_code?.replace(/^BR-/, "") ?? "",
+      cep: cep?.text ?? "",
+      pais: pais?.text ?? "",
+      display_name: feature?.place_name ?? "",
     };
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(
       {
-        message: "Falha ao consultar Nominatim",
+        message: "Falha ao consultar Mapbox Geocoding",
         error: err instanceof Error ? err.message : String(err),
       },
       { status: 502 }
