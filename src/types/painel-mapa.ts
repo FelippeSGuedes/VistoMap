@@ -21,6 +21,8 @@ export interface PainelMapaTecnico {
   revisitas_ativas: number;
   /** Minutos parado no mesmo lugar — só preenchido quando status_operacional === "parado". */
   parado_desde_min: number | null;
+  /** Cor de identidade (paleta neutra, fixa por usuário) — anel dos marcadores, pin 2D, uniforme 3D. */
+  cor: string;
 }
 
 export type MapaVistoriaStatus =
@@ -62,6 +64,8 @@ export interface PainelMapaVistoria {
   tecnico_id: number | null;
   /** Nome do técnico atribuído (null = sem atribuição). */
   tecnico_nome: string | null;
+  /** Cor de identidade do técnico atribuído (null = sem atribuição) — anel do marcador. */
+  tecnico_cor: string | null;
   /** ID do dropdown situaodavistoria (1..6). 0 = não definido. */
   situacao_id: number;
   /** Situação operacional consolidada (deriva de situacao_id + flags). */

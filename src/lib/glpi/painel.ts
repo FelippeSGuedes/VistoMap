@@ -27,6 +27,7 @@ import {
   TABLE_USERS,
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
+import { getCoresIdentidade } from "./tecnicoIdentidade";
 import { nowBrasiliaSql } from "@/lib/timezone";
 import type {
   AdminStatus,
@@ -1742,6 +1743,15 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
   );
 
   const now = Date.now();
+
+  // Cor de identidade ("Sinal"): uma por técnico, fixa. Cobre também técnicos
+  // que já saíram do grupo mas ainda têm vistorias atribuídas — o anel do
+  // marcador precisa da cor mesmo sem o pin do técnico no mapa.
+  const coresIdentidade = await getCoresIdentidade([
+    ...tecnicosRows.map((r) => r.users_id),
+    ...vistoriasRows.map((r) => Number(r.tecnico_id) || 0),
+  ]);
+
   const tecnicos: PainelMapaTecnico[] = tecnicosRows.map((r) => {
     const nome = `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.username;
     const minutos = r.created_at
@@ -1767,6 +1777,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       vistorias_ativas: Number(r.ativos_count) || 0,
       revisitas_ativas: Number(r.revisita_count) || 0,
       parado_desde_min: null,
+      cor: coresIdentidade.get(r.users_id) ?? "#4F6D8F",
     };
   });
 
@@ -1817,6 +1828,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       is_revisita: isRevisita,
       tecnico_id: r.tecnico_id,
       tecnico_nome: tecnicoNome,
+      tecnico_cor: hasTecnico ? coresIdentidade.get(Number(r.tecnico_id)) ?? null : null,
       situacao_id: Number(r.situacao_id ?? 0) || 0,
       situacao: resolveSituacaoOperacional(
         r.situacao_id,

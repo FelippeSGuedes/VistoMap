@@ -1,6 +1,10 @@
 "use client";
 
-import mapboxgl, { type GeoJSONSource } from "mapbox-gl";
+import mapboxgl, {
+  type ExpressionSpecification,
+  type FilterSpecification,
+  type GeoJSONSource,
+} from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { TechModel3DLayer, TECH_MODEL_LAYER_ID, type TechEntrySpec } from "./techModel3DLayer";
@@ -36,6 +40,25 @@ import type {
 } from "@/types/painel-instalacoes";
 import { VistoriaDetalheModal } from "@/components/painel/VistoriaDetalheModal";
 import { StreetViewModal } from "@/components/painel/StreetViewModal";
+import { MapaLoading } from "./MapaLoading";
+import {
+  ANEL_SEM_TECNICO,
+  FAMILIA_COR,
+  FAMILIA_DESCRICAO,
+  FAMILIA_LABEL,
+  FAMILIA_ORDEM,
+  R_EXTERNO,
+  R_INTERNO,
+  R_INTERNO_ATRIBUIDO,
+  SITUACAO_LABEL,
+  SITUACOES,
+  corSituacao,
+  familiaDe,
+  iconeDe,
+  registrarSpritesSinal,
+  shade,
+  type FamiliaSinal,
+} from "./sinal";
 import {
   Activity,
   Ban,
@@ -91,8 +114,8 @@ const INST_TEC_LABEL: Record<MapaInstaladorStatus, string> = {
 // (copiado direto de node_modules/lucide-react/dist/esm/icons/wrench.js, v0.460.0),
 // embutido como string estática pra não puxar react-dom/server no bundle do
 // cliente só pra renderizar um ícone fixo (custava ~47kB extra no /painel/mapa).
-const WRENCH_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">' +
+const wrenchSvg = (cor: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">` +
   '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>' +
   "</svg>";
 
@@ -143,8 +166,14 @@ const POSTES_PROX_LAYER = "vm-postes-prox-layer";
 /* ─── constantes ──────────────────────────────────────────────────────────── */
 
 const VISTORIAS_SRC = "vm-vistorias-src";
-const VISTORIAS_POINTS = "vm-vistorias-points";
-const HEATMAP_LAYER = "vm-heatmap";
+// Camadas do marcador "Sinal", de baixo pra cima. O heatmap saiu: virava uma
+// mancha verde que escondia justamente o que o mapa precisa mostrar.
+const SIG_PULSO = "vm-sig-pulso";     // respiro só de quem está EM VISTORIA
+const SIG_SOMBRA = "vm-sig-sombra";   // profundidade — separa o pin do mapa
+const SIG_HOVER = "vm-sig-hover";     // halo sob o cursor
+const SIG_FOCO = "vm-sig-foco";       // anel do selecionado
+const SIG_ANEL = "vm-sig-anel";       // identidade do técnico + miolo branco
+const VISTORIAS_POINTS = "vm-vistorias-points"; // sprite de status + etiqueta
 const BUILDINGS_LAYER = "vm-3d-buildings";
 
 // O antigo "Padrão" (key "dark") foi REMOVIDO: ele e o 3D já usavam o mesmo
@@ -308,31 +337,6 @@ function updateRouteLineSource(map: mapboxgl.Map, trechos: [number, number][][])
   });
 }
 
-const SITUACAO_COR: Record<string, string> = {
-  A_VISTORIAR:         "#F97316",  // laranja — pendente, sem técnico
-  ATRIBUIDO:           "#EC4899",  // rosa — já tem técnico, aguardando ele iniciar
-  EM_DESLOCAMENTO:     "#00D4A0",  // teal — a caminho (mesma cor do carro/rota no modo 3D)
-  EM_VISTORIA:         "#3B82F6",  // azul
-  VISTORIADO:          "#00B388",  // verde
-  AGUARDANDO_REVISITA: "#F59E0B",  // âmbar
-  EM_REVISITA:         "#A855F7",  // roxo
-  REVISITADO:          "#0EA5E9",  // ciano
-  DEVOLVIDA:           "#DC2626",  // vermelho — devolvida pro técnico corrigir
-  REJEITADA:           "#6B7280",  // cinza — recusa aprovada, fora de circulação
-};
-const SITUACAO_LABEL: Record<string, string> = {
-  A_VISTORIAR:       "A vistoriar",
-  ATRIBUIDO:         "Atribuído",
-  EM_DESLOCAMENTO:   "Em deslocamento",
-  EM_VISTORIA:       "Em vistoria",
-  VISTORIADO:        "Vistoriado",
-  AGUARDANDO_REVISITA: "Ag. revisita",
-  EM_REVISITA:       "Em revisita",
-  REVISITADO:        "Revisitado",
-  DEVOLVIDA:         "Devolvida",
-  REJEITADA:         "Rejeitada",
-};
-
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 
 function relTime(iso?: string | null): string {
@@ -361,128 +365,10 @@ function statusLabel(s: PainelMapaTecnico["status_operacional"]): string {
   return "Offline";
 }
 
-/* ─── custom pin icons ────────────────────────────────────────────────────── */
+/* ─── camadas "Sinal" dos equipamentos ────────────────────────────────────── */
 
-// Supersampling: renderiza grande e o Mapbox exibe no tamanho lógico → nitidez.
-const PIN_RATIO = 4;
-const PIN_SIZE = 30; // tamanho lógico em px
-
-// Conceito "anel/donut flat": anel colorido grosso, miolo branco, glifo na cor.
-function makePinImage(color: string, inner: "dot" | "ring" | "check" | "warn" | "x"): { width: number; height: number; data: Uint8Array; pixelRatio: number } {
-  const S = PIN_SIZE;
-  const px = S * PIN_RATIO;
-  const cvs = document.createElement("canvas");
-  cvs.width = px; cvs.height = px;
-  const ctx = cvs.getContext("2d")!;
-  ctx.scale(PIN_RATIO, PIN_RATIO);
-  ctx.imageSmoothingEnabled = true;
-
-  const cx = S / 2;
-  const cy = S / 2;
-  const R = 9;            // raio externo do anel colorido
-  const RING_W = 3.4;     // espessura do anel colorido
-  const HOLE = R - RING_W; // raio do miolo branco
-
-  // 1. Halo externo translúcido (glow premium, bem sutil)
-  ctx.beginPath();
-  ctx.arc(cx, cy, R + 3, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.12;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  // 2. Disco colorido (base do anel) com sombra
-  ctx.save();
-  ctx.shadowColor = "rgba(15,23,42,0.30)";
-  ctx.shadowBlur = 4;
-  ctx.shadowOffsetY = 1.5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.restore();
-
-  // 3. Miolo branco (cria o anel/donut)
-  ctx.beginPath();
-  ctx.arc(cx, cy, HOLE, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-
-  // 4. Glifo interno NA COR do status
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  if (inner === "check") {
-    // check = Vistoriado
-    ctx.beginPath();
-    ctx.moveTo(cx - 2.6, cy + 0.2);
-    ctx.lineTo(cx - 0.7, cy + 2.2);
-    ctx.lineTo(cx + 3, cy - 2.4);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.9;
-    ctx.stroke();
-  } else if (inner === "dot") {
-    // ponto cheio = Em Vistoria (ativo)
-    ctx.beginPath();
-    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-  } else if (inner === "warn") {
-    // exclamação = Devolvida (aguardando correção do técnico)
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - 2.8);
-    ctx.lineTo(cx, cy + 0.4);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.9;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy + 2.7, 0.95, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-  } else if (inner === "x") {
-    // X = Rejeitada (recusa aprovada, fora de circulação)
-    ctx.beginPath();
-    ctx.moveTo(cx - 2.3, cy - 2.3);
-    ctx.lineTo(cx + 2.3, cy + 2.3);
-    ctx.moveTo(cx + 2.3, cy - 2.3);
-    ctx.lineTo(cx - 2.3, cy + 2.3);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.9;
-    ctx.stroke();
-  }
-  // inner === "ring" → miolo branco vazio = A Vistoriar (pendente)
-  ctx.restore();
-
-  const imgData = ctx.getImageData(0, 0, px, px);
-  return { width: px, height: px, data: new Uint8Array(imgData.data.buffer), pixelRatio: PIN_RATIO };
-}
-
-// Pins por SITUAÇÃO operacional (não por status de aprovação).
-const PIN_DEFS = [
-  { name: "vm-pin-a_vistoriar",         color: "#F97316", inner: "ring"  as const },
-  { name: "vm-pin-atribuido",           color: "#EC4899", inner: "dot"   as const },
-  { name: "vm-pin-em_vistoria",         color: "#3B82F6", inner: "dot"   as const },
-  { name: "vm-pin-vistoriado",          color: "#00B388", inner: "check" as const },
-  { name: "vm-pin-aguardando_revisita", color: "#F59E0B", inner: "ring"  as const },
-  { name: "vm-pin-em_revisita",         color: "#A855F7", inner: "dot"   as const },
-  { name: "vm-pin-revisitado",          color: "#0EA5E9", inner: "check" as const },
-  { name: "vm-pin-devolvida",           color: "#DC2626", inner: "warn"  as const },
-  { name: "vm-pin-rejeitada",           color: "#6B7280", inner: "x"     as const },
-  { name: "vm-pin-default",             color: "var(--vm-text-soft)", inner: "dot"   as const },
-] as const;
-
-function registerVistoriaPins(map: mapboxgl.Map) {
-  for (const p of PIN_DEFS) {
-    if (!map.hasImage(p.name)) {
-      try {
-        map.addImage(p.name, makePinImage(p.color, p.inner), { pixelRatio: PIN_RATIO });
-      } catch (e) {
-        console.warn("[vm] addImage failed for", p.name, e);
-      }
-    }
-  }
-}
-
+// Tudo que o marcador precisa sai do próprio dado — nenhuma imagem é gerada
+// por técnico, então a camada aguenta os 10 mil pontos do LIMIT do backend.
 function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
   return {
     type: "FeatureCollection" as const,
@@ -491,13 +377,59 @@ function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
       properties: {
         id: v.id,
         situacao: v.situacao,
-        color: SITUACAO_COR[v.situacao] ?? "#475569",
-        is_revisita: v.is_revisita ? 1 : 0,
+        icone: iconeDe(v.situacao, v.is_revisita),
+        cor_status: corSituacao(v.situacao),
+        // -1 (e não null) pra comparação de expressão funcionar sem coalesce.
+        tecnico_id: v.tecnico_id ?? -1,
+        tecnico_cor: v.tecnico_cor ?? ANEL_SEM_TECNICO,
+        tem_tecnico: v.tecnico_id ? 1 : 0,
+        atribuido: v.situacao === "ATRIBUIDO" ? 1 : 0,
         equipamento: v.equipamento,
       },
       geometry: { type: "Point" as const, coordinates: [v.longitude, v.latitude] },
     })),
   };
+}
+
+/** As expressões abaixo são montadas em JS; os casts centralizam a tipagem do GL. */
+const E = (v: unknown) => v as ExpressionSpecification;
+const F = (v: unknown) => v as FilterSpecification;
+
+/** Escala do marcador por zoom — mesma curva pro sprite e pros círculos. */
+const ZOOM_ESCALA = [
+  "interpolate", ["linear"], ["zoom"],
+  10, 0.55,
+  14, 0.78,
+  18, 1,
+];
+
+/** Escala final = zoom × ênfase (só o selecionado cresce; hover usa halo). */
+function escalaCom(selecionadoId: number | null): unknown {
+  if (selecionadoId == null) return ZOOM_ESCALA;
+  return ["*", ZOOM_ESCALA, ["case", ["==", ["get", "id"], selecionadoId], 1.18, 1]];
+}
+
+/** Raio do miolo branco — menor em ATRIBUÍDO, pra sobrar anel de identidade. */
+function raioAnel(escala: unknown): unknown {
+  return ["*", ["case", ["==", ["get", "atribuido"], 1], R_INTERNO_ATRIBUIDO, R_INTERNO], escala];
+}
+
+/** Espessura do anel = raio externo − raio do miolo (sempre fecha em R_EXTERNO). */
+function espessuraAnel(escala: unknown): unknown {
+  return [
+    "*",
+    ["case", ["==", ["get", "atribuido"], 1], R_EXTERNO - R_INTERNO_ATRIBUIDO, R_EXTERNO - R_INTERNO],
+    escala,
+  ];
+}
+
+/**
+ * Fator de opacidade por técnico destacado: as vistorias dele ficam cheias e o
+ * resto cai pra 25% — some o ruído sem sumir o contexto (ninguém pediu ocultar).
+ */
+function fatorDestaque(tecnicoId: number | null): unknown {
+  if (tecnicoId == null) return 1;
+  return ["case", ["==", ["get", "tecnico_id"], tecnicoId], 1, 0.25];
 }
 
 /* ─── marker animation ────────────────────────────────────────────────────── */
@@ -521,19 +453,27 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
   const isOnline = t.status_operacional === "em-operacao" || t.status_operacional === "em-vistoria";
   const gradId = `vmg-${t.users_id}`;
   const firstName = t.nome.split(/\s+/)[0] ?? t.nome;
+  // Mesma FORMA de sempre — só a cor passa a ser a identidade do técnico, a
+  // mesma do anel das vistorias dele. É o que liga pessoa ↔ equipamento sem
+  // precisar clicar em nada.
+  const cor = t.cor || "#00C896";
+  const claro = shade(cor, 0.14);
+  const escuro = shade(cor, -0.26);
 
   const root = document.createElement("div");
   root.className = "vm-pin-root";
+  root.dataset.cor = cor;
   root.style.cssText = "position:relative;width:54px;height:68px;cursor:pointer;";
 
   const pinWrap = document.createElement("div");
-  pinWrap.style.cssText = "position:absolute;inset:0;filter:drop-shadow(0 6px 14px rgba(0,150,136,.38));transition:filter .18s ease;";
+  const sombraBase = `drop-shadow(0 6px 14px ${tint(escuro, 0.42)})`;
+  pinWrap.style.cssText = `position:absolute;inset:0;filter:${sombraBase};transition:filter .18s ease;`;
   pinWrap.innerHTML = `
     <svg viewBox="0 0 54 68" width="54" height="68" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <defs>
         <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#00C896"/>
-          <stop offset="100%" stop-color="#008E74"/>
+          <stop offset="0%" stop-color="${claro}"/>
+          <stop offset="100%" stop-color="${escuro}"/>
         </linearGradient>
         <radialGradient id="${gradId}-hl" cx="35%" cy="30%" r="55%">
           <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".40"/>
@@ -545,7 +485,7 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
       <path d="M27 2C12.6 2 2 12.4 2 26c0 16.5 25 42.5 25 42.5S52 42.5 52 26C52 12.4 41.4 2 27 2Z"
             fill="url(#${gradId}-hl)"/>
       <circle cx="27" cy="26" r="15.5" fill="#FFFFFF"/>
-      <g transform="translate(20.5,13)" stroke="#008E74" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="translate(20.5,13)" stroke="${escuro}" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
         <rect x=".5" y=".5" width="12" height="5.5" rx="1.2"/>
         <path d="M3 3l1.2 1.1L6.2 1.8"/>
       </g>
@@ -564,9 +504,9 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
   label.style.cssText = `
     position:absolute;top:100%;left:50%;transform:translateX(-50%);
     margin-top:6px;padding:3px 10px;border-radius:999px;
-    background:rgba(6,11,11,0.90);border:1px solid rgba(0,200,150,0.18);
+    background:rgba(6,11,11,0.90);border:1px solid ${tint(claro, 0.4)};
     box-shadow:0 4px 12px rgba(0,0,0,.4);
-    color:#C8E8E4;font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;
+    color:#EDF3F2;font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;
     font-size:11px;font-weight:600;letter-spacing:.2px;
     white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;
     pointer-events:none;
@@ -576,10 +516,10 @@ function techMarkerEl(t: PainelMapaTecnico): HTMLElement {
   root.appendChild(pinWrap);
   root.appendChild(label);
   root.addEventListener("mouseenter", () => {
-    pinWrap.style.filter = "drop-shadow(0 10px 22px rgba(0,200,150,.75)) brightness(1.12)";
+    pinWrap.style.filter = `drop-shadow(0 10px 22px ${tint(claro, 0.75)}) brightness(1.12)`;
   });
   root.addEventListener("mouseleave", () => {
-    pinWrap.style.filter = "drop-shadow(0 6px 14px rgba(0,150,136,.38))";
+    pinWrap.style.filter = sombraBase;
   });
   return root;
 }
@@ -595,19 +535,26 @@ function instaladorMarkerEl(t: PainelInstalacoesMapaInstalador): HTMLElement {
   const isOnline = t.status_operacional === "em-instalacao" || t.status_operacional === "em-operacao";
   const gradId = `vmgi-${t.users_id}`;
   const firstName = t.nome.split(/\s+/)[0] ?? t.nome;
+  // Instalador também tem cor de identidade (mesma paleta). O papel continua
+  // legível pela chave de boca e pela etiqueta roxa — a cor agora diz QUEM é.
+  const cor = t.cor || "#A78BFA";
+  const claro = shade(cor, 0.14);
+  const escuro = shade(cor, -0.26);
 
   const root = document.createElement("div");
   root.className = "vm-pin-root";
+  root.dataset.cor = cor;
   root.style.cssText = "position:relative;width:54px;height:68px;cursor:pointer;";
 
   const pinWrap = document.createElement("div");
-  pinWrap.style.cssText = "position:absolute;inset:0;filter:drop-shadow(0 6px 14px rgba(124,58,237,.38));transition:filter .18s ease;";
+  const sombraBase = `drop-shadow(0 6px 14px ${tint(escuro, 0.42)})`;
+  pinWrap.style.cssText = `position:absolute;inset:0;filter:${sombraBase};transition:filter .18s ease;`;
   pinWrap.innerHTML = `
     <svg viewBox="0 0 54 68" width="54" height="68" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <defs>
         <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#A78BFA"/>
-          <stop offset="100%" stop-color="#7C3AED"/>
+          <stop offset="0%" stop-color="${claro}"/>
+          <stop offset="100%" stop-color="${escuro}"/>
         </linearGradient>
         <radialGradient id="${gradId}-hl" cx="35%" cy="30%" r="55%">
           <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".40"/>
@@ -626,7 +573,7 @@ function instaladorMarkerEl(t: PainelInstalacoesMapaInstalador): HTMLElement {
       </text>
     </svg>
     <div style="position:absolute;top:10px;left:50%;transform:translateX(-50%);width:15px;height:15px;pointer-events:none;">
-      ${WRENCH_SVG}
+      ${wrenchSvg(escuro)}
     </div>
     <div style="position:absolute;top:1px;right:1px;width:14px;height:14px;border-radius:50%;
                 background:${dotColor};border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.28);
@@ -637,7 +584,7 @@ function instaladorMarkerEl(t: PainelInstalacoesMapaInstalador): HTMLElement {
   label.style.cssText = `
     position:absolute;top:100%;left:50%;transform:translateX(-50%);
     margin-top:6px;padding:3px 10px;border-radius:999px;
-    background:rgba(43,18,74,0.90);border:1px solid rgba(124,58,237,0.25);
+    background:rgba(43,18,74,0.90);border:1px solid rgba(124,58,237,0.35);
     box-shadow:0 4px 12px rgba(0,0,0,.4);
     color:#E4D9FB;font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;
     font-size:11px;font-weight:600;letter-spacing:.2px;
@@ -649,10 +596,10 @@ function instaladorMarkerEl(t: PainelInstalacoesMapaInstalador): HTMLElement {
   root.appendChild(pinWrap);
   root.appendChild(label);
   root.addEventListener("mouseenter", () => {
-    pinWrap.style.filter = "drop-shadow(0 10px 22px rgba(124,58,237,.75)) brightness(1.12)";
+    pinWrap.style.filter = `drop-shadow(0 10px 22px ${tint(claro, 0.75)}) brightness(1.12)`;
   });
   root.addEventListener("mouseleave", () => {
-    pinWrap.style.filter = "drop-shadow(0 6px 14px rgba(124,58,237,.38))";
+    pinWrap.style.filter = sombraBase;
   });
   return root;
 }
@@ -668,6 +615,32 @@ if (typeof document !== "undefined" && !document.getElementById("vm-op-style")) 
     .mapboxgl-ctrl-group button:hover{background:rgba(0,179,136,0.08)!important}
     .mapboxgl-ctrl-logo{display:none!important}
     .mapboxgl-ctrl-attrib{display:none!important}
+
+    /* ── tela de carregamento do mapa (ver MapaLoading.tsx) ── */
+    .vm-ld{background:rgba(15,23,42,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+      background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+      background-size:40px 40px;box-shadow:inset 0 0 120px rgba(0,0,0,.55)}
+    .vm-ld-stack{display:flex;flex-direction:column;align-items:center;gap:18px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .vm-ld-radar{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center}
+    .vm-ld-ring{position:absolute;inset:0;border-radius:999px;border:2px solid rgba(0,212,160,.45);animation:vmRadar 3s ease-out infinite;opacity:0}
+    .vm-ld-ring:nth-of-type(2){animation-delay:1s}
+    .vm-ld-ring:nth-of-type(3){animation-delay:2s}
+    @keyframes vmRadar{0%{transform:scale(.18);opacity:.9}100%{transform:scale(1.05);opacity:0}}
+    .vm-ld-logo{position:relative;height:78px;width:auto;animation:vmFloat 2s ease-in-out infinite;filter:drop-shadow(0 10px 20px rgba(0,212,160,.42))}
+    @keyframes vmFloat{0%,100%{transform:translateY(-5px)}50%{transform:translateY(5px)}}
+    .vm-ld-sombra{position:absolute;bottom:22px;width:22px;height:6px;border-radius:999px;background:rgba(0,0,0,.55);filter:blur(3px);animation:vmSombra 2s ease-in-out infinite}
+    @keyframes vmSombra{0%,100%{transform:scaleX(.7);opacity:.35}50%{transform:scaleX(1.15);opacity:.7}}
+    .vm-ld-wm{margin:0;font-size:3rem;font-weight:800;letter-spacing:-.03em;line-height:1;color:#fff}
+    .vm-ld-wm b{color:#00D4A0;font-weight:800}
+    .vm-ld-lbl{margin:0;font-size:11px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:#94a3b8}
+    .vm-ld-bar{display:block;width:120px;height:2px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;position:relative}
+    .vm-ld-bar i{position:absolute;top:0;left:-40%;width:40%;height:100%;background:#00D4A0;border-radius:2px;animation:vmSlide 1.5s ease-in-out infinite}
+    @keyframes vmSlide{0%{left:-40%}100%{left:100%}}
+    .vm-ld-sub{margin:-6px 0 0;font-size:11px;color:#64748b}
+    @media (prefers-reduced-motion:reduce){
+      .vm-ld-ring,.vm-ld-logo,.vm-ld-sombra,.vm-ld-bar i{animation:none}
+      .vm-ld-ring:first-of-type{opacity:.5}
+    }
   `;
   document.head.appendChild(s);
 }
@@ -756,6 +729,13 @@ export default function PainelMapaPage() {
       setSelectedVistoriaRaw(atualizada);
     }
   }, [data, selectedVistoria]);
+
+  // Hover card da vistoria (equipamento sob o cursor no mapa)
+  const [hoveredVis, setHoveredVis] = useState<PainelMapaVistoria | null>(null);
+  const [hoveredVisPos, setHoveredVisPos] = useState<{ x: number; y: number } | null>(null);
+  // Tela de carregamento: primeiro load e troca de estilo — nunca no poll.
+  const [mapaCarregando, setMapaCarregando] = useState(true);
+  const [legendaAberta, setLegendaAberta] = useState(true);
 
   // Hover card do técnico
   const [hoveredTec, setHoveredTec] = useState<PainelMapaTecnico | null>(null);
@@ -1029,6 +1009,7 @@ export default function PainelMapaPage() {
       techMarkersRef.current.forEach((m) => { m.getElement().style.display = "none"; });
       const target3d = mapStyleFor("3d", readDarkTheme());
       if (prev !== "3d") {
+        setMapaCarregando(true);
         map.setStyle(target3d);
         map.once("style.load", () => {
           map.setProjection("mercator"); // setStyle reseta pra globe (default do estilo novo)
@@ -1036,6 +1017,8 @@ export default function PainelMapaPage() {
           add3DBuildings(map);
           ensureRouteLayers(map);
           ensureTechModelLayer(map, tech3DLayerRef);
+          aplicarEnfaseRef.current();
+          setMapaCarregando(false);
         });
       } else {
         add3DBuildings(map);
@@ -1050,6 +1033,7 @@ export default function PainelMapaPage() {
     const currentStyle = mapStyleFor(prev, readDarkTheme());
     if (targetStyle === currentStyle) return;
 
+    setMapaCarregando(true);
     map.setStyle(targetStyle);
     map.once("style.load", () => {
       map.setProjection("mercator"); // idem — reforça mesmo fora do 3D
@@ -1058,6 +1042,8 @@ export default function PainelMapaPage() {
       // Idem pra rota: setStyle descarta todas as layers, e a rota vale em
       // qualquer modo (o próximo poll repopula os dados da linha).
       ensureRouteLayers(map);
+      aplicarEnfaseRef.current();
+      setMapaCarregando(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLayer]);
@@ -1065,72 +1051,141 @@ export default function PainelMapaPage() {
   /* ── GL layer helpers ───────────────────────────────────────────────────── */
 
   const onPosteSelectRef = useRef<undefined>(undefined);
+  // map.on(tipo, camada, fn) sobrevive ao setStyle — sem esta trava, cada
+  // troca de estilo registraria os handlers de novo.
+  const handlersSinalRef = useRef(false);
 
   function ensureVistoriaLayers(map: mapboxgl.Map, vistorias: PainelMapaVistoria[]) {
     const geojson = buildGeoJSON(vistorias);
     if (map.getSource(VISTORIAS_SRC)) {
       (map.getSource(VISTORIAS_SRC) as GeoJSONSource).setData(geojson);
-    } else {
-      map.addSource(VISTORIAS_SRC, { type: "geojson", data: geojson });
+      return;
+    }
 
-      // Registra ícones customizados (canvas-drawn)
-      registerVistoriaPins(map);
+    map.addSource(VISTORIAS_SRC, { type: "geojson", data: geojson });
+    registrarSpritesSinal(map);
 
+    // Satélite/Híbrido nunca são claros; o modo Padrão segue o tema do painel.
+    const sobreEscuro = activeLayerRef.current !== "3d" || readDarkTheme();
+    // Satélite-v9 não declara fontes; sem isto a etiqueta simplesmente não sai.
+    try {
+      if (!map.getStyle()?.glyphs) {
+        map.setGlyphsUrl("mapbox://fonts/mapbox/{fontstack}/{range}.pbf");
+      }
+    } catch { /* estilo sem suporte — segue sem etiqueta */ }
+
+    // 1. Respiro de quem está EM VISTORIA agora (raio/opacidade animados no
+    //    efeito de pulso lá embaixo). É a ÚNICA animação dos equipamentos.
+    map.addLayer({
+      id: SIG_PULSO,
+      type: "circle",
+      source: VISTORIAS_SRC,
+      filter: F(["==", ["get", "situacao"], "EM_VISTORIA"]),
+      paint: {
+        "circle-color": E(["get", "cor_status"]),
+        "circle-radius": 16,
+        "circle-opacity": 0.28,
+        "circle-blur": 0.2,
+      },
+    });
+
+    // 2. Sombra — descola o marcador do mapa sem precisar de contorno grosso.
+    map.addLayer({
+      id: SIG_SOMBRA,
+      type: "circle",
+      source: VISTORIAS_SRC,
+      paint: {
+        "circle-color": "rgba(15,23,42,0.22)",
+        "circle-radius": E(["*", 16, ZOOM_ESCALA]),
+        "circle-blur": 0.45,
+        "circle-translate": [0, 1.5],
+      },
+    });
+
+    // 3/4. Halo de hover e anel de foco — filtros por id, trocados sem relayout.
+    for (const [id, raio, op] of [[SIG_HOVER, 20, 0.16], [SIG_FOCO, 23, 0.2]] as const) {
       map.addLayer({
-        id: HEATMAP_LAYER,
-        type: "heatmap",
+        id,
+        type: "circle",
         source: VISTORIAS_SRC,
-        maxzoom: 15,
+        filter: F(["==", ["get", "id"], -1]),
         paint: {
-          "heatmap-weight": 1,
-          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 14, 1.8],
-          "heatmap-color": [
-            "interpolate", ["linear"], ["heatmap-density"],
-            0,   "rgba(0,200,150,0)",
-            0.2, "rgba(0,200,150,0.15)",
-            0.5, "rgba(0,180,136,0.40)",
-            0.8, "rgba(0,150,100,0.68)",
-            1,   "rgba(0,110,70,0.88)",
-          ],
-          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 8, 18, 14, 40],
-          "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.65, 15, 0],
+          "circle-color": E(["get", "cor_status"]),
+          "circle-opacity": op,
+          "circle-radius": E(["*", raio, ZOOM_ESCALA]),
+          "circle-stroke-color": "#FFFFFF",
+          "circle-stroke-width": id === SIG_FOCO ? 2 : 1.5,
+          "circle-stroke-opacity": id === SIG_FOCO ? 0.95 : 0.8,
         },
       });
+    }
 
-      map.addLayer({
-        id: VISTORIAS_POINTS,
-        type: "symbol",
-        source: VISTORIAS_SRC,
-        layout: {
-          "icon-image": [
-            "match", ["get", "situacao"],
-            "A_VISTORIAR",         "vm-pin-a_vistoriar",
-            "ATRIBUIDO",           "vm-pin-atribuido",
-            "EM_VISTORIA",         "vm-pin-em_vistoria",
-            "VISTORIADO",          "vm-pin-vistoriado",
-            "AGUARDANDO_REVISITA", "vm-pin-aguardando_revisita",
-            "EM_REVISITA",         "vm-pin-em_revisita",
-            "REVISITADO",          "vm-pin-revisitado",
-            "DEVOLVIDA",           "vm-pin-devolvida",
-            "REJEITADA",           "vm-pin-rejeitada",
-            "vm-pin-default",
-          ],
-          "icon-anchor": "center",
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 0.55, 14, 0.75, 18, 1],
-        },
-      });
+    // 5. Anel de IDENTIDADE + miolo branco num só passe: fill branco = o vão
+    //    entre anel e núcleo, stroke = a cor do técnico. Em ATRIBUÍDO o raio
+    //    interno encolhe e o anel engrossa — de longe se lê QUEM, não o quê.
+    map.addLayer({
+      id: SIG_ANEL,
+      type: "circle",
+      source: VISTORIAS_SRC,
+      paint: {
+        "circle-color": "#FFFFFF",
+        "circle-radius": E(raioAnel(ZOOM_ESCALA)),
+        "circle-stroke-color": E(["get", "tecnico_cor"]),
+        "circle-stroke-width": E(espessuraAnel(ZOOM_ESCALA)),
+        "circle-stroke-opacity": E(["case", ["==", ["get", "tem_tecnico"], 1], 1, 0.6]),
+      },
+    });
 
+    // 6. Núcleo (status + glifo + selo de revisita) e a etiqueta do equipamento.
+    map.addLayer({
+      id: VISTORIAS_POINTS,
+      type: "symbol",
+      source: VISTORIAS_SRC,
+      layout: {
+        "icon-image": E(["get", "icone"]),
+        "icon-anchor": "center",
+        // O pin NUNCA some (sem cluster, sem heatmap). Mas entra no índice de
+        // colisão, então as etiquetas desviam dos pins vizinhos em vez de
+        // escrever por cima deles.
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": false,
+        "icon-size": E(ZOOM_ESCALA),
+        "text-field": E(["get", "equipamento"]),
+        "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+        "text-size": E(["interpolate", ["linear"], ["zoom"], 10, 9.5, 14, 10.5, 18, 12]),
+        "text-anchor": "top",
+        "text-offset": [0, 1.15],
+        "text-optional": true,   // sem espaço → cai a etiqueta, nunca o marcador
+        "text-padding": 3,
+        "text-max-width": 12,
+      },
+      paint: {
+        "text-color": sobreEscuro ? "#EAF2F6" : "#1F2937",
+        "text-halo-color": sobreEscuro ? "rgba(8,14,20,0.92)" : "rgba(255,255,255,0.95)",
+        "text-halo-width": 1.4,
+      },
+    });
+
+    if (!handlersSinalRef.current) {
+      handlersSinalRef.current = true;
       map.on("click", VISTORIAS_POINTS, (e) => {
-        const feat = e.features?.[0];
-        if (!feat) return;
-        const vId = feat.properties?.id as number;
+        const vId = e.features?.[0]?.properties?.id as number | undefined;
+        if (vId == null) return;
         const v = lastDataRef.current?.vistorias.find((x) => x.id === vId);
-        if (v) setSelectedVistoria(v);
+        if (v) { setSelectedVistoria(v); setSelectedTec(null); }
       });
-      map.on("mouseenter", VISTORIAS_POINTS, () => { map.getCanvas().style.cursor = "pointer"; });
-      map.on("mouseleave", VISTORIAS_POINTS, () => { map.getCanvas().style.cursor = ""; });
+      map.on("mousemove", VISTORIAS_POINTS, (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const vId = e.features?.[0]?.properties?.id as number | undefined;
+        const v = vId == null ? null : lastDataRef.current?.vistorias.find((x) => x.id === vId) ?? null;
+        setHoveredVis(v);
+        setHoveredVisPos({ ...cursorRef.current });
+      });
+      map.on("mouseleave", VISTORIAS_POINTS, () => {
+        map.getCanvas().style.cursor = "";
+        setHoveredVis(null);
+        setHoveredVisPos(null);
+      });
     }
   }
 
@@ -1301,6 +1356,9 @@ export default function PainelMapaPage() {
           lat: t.latitude!,
           speedKmh: t.speed_kmh,
           corHex: statusColor(t.status_operacional),
+          // Uniforme + capacete do boneco 3D. Disco, pulso e etiqueta seguem
+          // no corHex (status) — o carro não usa nem uma coisa nem outra.
+          corIdentidadeHex: t.cor,
           route,
           paradoDesdeMin: t.parado_desde_min,
         });
@@ -1327,11 +1385,14 @@ export default function PainelMapaPage() {
       visible.forEach((t) => {
         seen.add(t.users_id);
         const existing = techMarkersRef.current.get(t.users_id);
-        if (existing) {
+        // O pin é montado uma vez; se o admin trocar a cor de identidade em
+        // Colaboradores, refaz — senão o mapa ficaria na cor antiga até o F5.
+        if (existing && existing.getElement().dataset.cor === t.cor) {
           animateMarkerTo(existing, t.longitude!, t.latitude!);
           existing.getElement().style.display = in3D ? "none" : "";
           return;
         }
+        if (existing) { existing.remove(); techMarkersRef.current.delete(t.users_id); }
         const el = techMarkerEl(t);
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([t.longitude!, t.latitude!])
@@ -1366,12 +1427,97 @@ export default function PainelMapaPage() {
     const sync = () => {
       syncTechMarkers();
       ensureVistoriaLayers(map, vistoriasFiltradas);
+      // Equipamentos posicionados — pode tirar a tela de carregamento.
+      setMapaCarregando(false);
     };
 
     if (map.loaded()) sync();
     else map.once("load", sync);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, filtroTec, filtroPapel, vistoriasFiltradas]);
+
+  // Rede lenta / estilo que nunca dispara style.load: a tela de carregamento
+  // nunca pode ficar presa em cima do mapa.
+  useEffect(() => {
+    if (!mapaCarregando) return;
+    const id = window.setTimeout(() => setMapaCarregando(false), 12_000);
+    return () => window.clearTimeout(id);
+  }, [mapaCarregando]);
+
+  /* ── ênfase: seleção, hover e destaque por técnico ──────────────────────── */
+
+  // Vínculo nos dois sentidos: clicar no técnico destaca as vistorias dele;
+  // clicar numa vistoria destaca o técnico dela (e as outras dele junto).
+  const tecnicoDestacado = useMemo<number | null>(() => {
+    if (selectedTec) return selectedTec.users_id;
+    if (selectedVistoria?.tecnico_id) return selectedVistoria.tecnico_id;
+    return null;
+  }, [selectedTec, selectedVistoria]);
+
+  // Seleção e destaque por técnico. Guardado em ref porque a troca de estilo
+  // recria as camadas do zero e precisa reaplicar isto na hora — senão o
+  // destaque sumiria até o próximo poll.
+  const aplicarEnfaseRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const aplicar = () => {
+      const map = mapRef.current;
+      if (!map || !map.getLayer(SIG_ANEL)) return;
+      const selId = selectedVistoria?.id ?? null;
+      const escala = escalaCom(selId);
+      const fator = fatorDestaque(tecnicoDestacado);
+
+      map.setFilter(SIG_FOCO, F(["==", ["get", "id"], selId ?? -1]));
+      map.setPaintProperty(SIG_ANEL, "circle-radius", E(raioAnel(escala)));
+      map.setPaintProperty(SIG_ANEL, "circle-stroke-width", E(espessuraAnel(escala)));
+      map.setPaintProperty(SIG_ANEL, "circle-opacity", E(fator));
+      map.setPaintProperty(
+        SIG_ANEL,
+        "circle-stroke-opacity",
+        E(["*", ["case", ["==", ["get", "tem_tecnico"], 1], 1, 0.6], fator])
+      );
+      map.setPaintProperty(SIG_SOMBRA, "circle-opacity", E(["*", 1, fator]));
+      map.setPaintProperty(SIG_PULSO, "circle-opacity", E(["*", 0.28, fator]));
+      map.setPaintProperty(VISTORIAS_POINTS, "icon-opacity", E(fator));
+      map.setPaintProperty(VISTORIAS_POINTS, "text-opacity", E(fator));
+      map.setLayoutProperty(VISTORIAS_POINTS, "icon-size", E(escala));
+    };
+    aplicarEnfaseRef.current = aplicar;
+    aplicar();
+  }, [selectedVistoria, tecnicoDestacado, vistoriasFiltradas, activeLayer]);
+
+  // Hover fica FORA do efeito acima de propósito: mexer no icon-size force um
+  // relayout da camada de símbolos, e isso a cada movimento do mouse trava. O
+  // halo é uma camada de círculos — trocar o filtro dela é barato.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map?.getLayer(SIG_HOVER)) return;
+    map.setFilter(SIG_HOVER, F(["==", ["get", "id"], hoveredVis?.id ?? -1]));
+  }, [hoveredVis]);
+
+  /* ── respiro de quem está EM VISTORIA ───────────────────────────────────── */
+
+  const temEmVistoria = useMemo(
+    () => vistoriasFiltradas.some((v) => v.situacao === "EM_VISTORIA"),
+    [vistoriasFiltradas]
+  );
+
+  useEffect(() => {
+    if (!temEmVistoria) return;
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = () => {
+      const map = mapRef.current;
+      if (map?.getLayer(SIG_PULSO)) {
+        const f = ((performance.now() - t0) % 2400) / 2400;
+        map.setPaintProperty(SIG_PULSO, "circle-radius", 13 + f * 19);
+        map.setPaintProperty(SIG_PULSO, "circle-opacity", E(["*", 0.34 * (1 - f), fatorDestaque(tecnicoDestacado)]));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [temEmVistoria, tecnicoDestacado]);
 
   /* ── GPS correção ───────────────────────────────────────────────────────── */
 
@@ -1449,6 +1595,23 @@ export default function PainelMapaPage() {
     for (const v of data?.vistorias ?? []) acc[v.situacao] = (acc[v.situacao] ?? 0) + 1;
     return acc;
   }, [data]);
+
+  // Legenda: conta o que está DESENHADO agora (respeita filtro e busca).
+  const contagemFamilia = useMemo(() => {
+    const acc = {} as Record<FamiliaSinal, number>;
+    for (const f of FAMILIA_ORDEM) acc[f] = 0;
+    for (const v of vistoriasFiltradas) acc[familiaDe(v.situacao)] += 1;
+    return acc;
+  }, [vistoriasFiltradas]);
+
+  const destaqueInfo = useMemo(() => {
+    if (tecnicoDestacado == null) return null;
+    const tec = data?.tecnicos.find((t) => t.users_id === tecnicoDestacado);
+    const nome = tec?.nome ?? selectedVistoria?.tecnico_nome ?? "Técnico";
+    const cor = tec?.cor ?? selectedVistoria?.tecnico_cor ?? ANEL_SEM_TECNICO;
+    const n = vistoriasFiltradas.filter((v) => v.tecnico_id === tecnicoDestacado).length;
+    return { nome, cor, n };
+  }, [tecnicoDestacado, data, selectedVistoria, vistoriasFiltradas]);
 
   // Aba "Equipe" — vistoriadores e instaladores juntos na MESMA lista, só
   // diferenciados por cor/badge (nunca em abas separadas — pedido do
@@ -1604,7 +1767,9 @@ export default function PainelMapaPage() {
                   const selected = isInstalador
                     ? selecionadoNaLista === m.instalador?.users_id
                     : selectedTec?.users_id === m.tecnico?.users_id;
-                  const cor = isInstalador ? "#7C3AED" : "#00875F";
+                  // Cor de identidade da pessoa — a mesma do pin e do anel das
+                  // vistorias dela. O papel continua no badge à direita.
+                  const cor = (isInstalador ? m.instalador?.cor : m.tecnico?.cor) || (isInstalador ? "#7C3AED" : "#00875F");
                   return (
                     <button
                       key={m.key}
@@ -1632,11 +1797,7 @@ export default function PainelMapaPage() {
                       <div className="flex items-center gap-2">
                         <span
                           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
-                          style={{
-                            background: isInstalador
-                              ? "linear-gradient(135deg,#A78BFA,#7C3AED)"
-                              : "linear-gradient(135deg,#00C896,#008E74)",
-                          }}
+                          style={{ background: `linear-gradient(135deg,${shade(cor, 0.14)},${shade(cor, -0.26)})` }}
                         >
                           {initials(m.nome)}
                         </span>
@@ -1653,7 +1814,10 @@ export default function PainelMapaPage() {
                         </div>
                         <span
                           className="shrink-0 rounded-full px-1.5 py-[2px] text-[8px] font-bold uppercase tracking-wide"
-                          style={{ background: tint(cor, 0.14), color: cor }}
+                          style={{
+                            background: isInstalador ? "rgba(124,58,237,0.14)" : "rgba(0,179,136,0.14)",
+                            color: isInstalador ? "#7C3AED" : "#00875F",
+                          }}
                         >
                           {isInstalador ? "Instalador" : "Vistoriador"}
                         </span>
@@ -1705,26 +1869,15 @@ export default function PainelMapaPage() {
             <div className="shrink-0 px-2 pb-1.5">
               <div className="flex flex-wrap gap-1">
                 <FiltroPill active={filtroSit === "todas"} label="Todas" n={data?.vistorias.length ?? 0} color="var(--vm-text)" onClick={() => setFiltroSit("todas")} />
-                {(
-                  [
-                    ["A_VISTORIAR", "A vistoriar", "#F97316"],
-                    ["ATRIBUIDO", "Atribuído", "#EC4899"],
-                    ["EM_DESLOCAMENTO", "Em deslocamento", "#00D4A0"],
-                    ["EM_VISTORIA", "Em vistoria", "#3B82F6"],
-                    ["VISTORIADO", "Vistoriado", "#00B388"],
-                    ["AGUARDANDO_REVISITA", "Ag. revisita", "#F59E0B"],
-                    ["EM_REVISITA", "Em revisita", "#A855F7"],
-                    ["REVISITADO", "Revisitado", "#38BDF8"],
-                    ["DEVOLVIDA", "Devolvida", "#DC2626"],
-                    ["REJEITADA", "Rejeitada", "#6B7280"],
-                  ] as const
-                ).map(([key, label, cor]) => (
+                {/* As 10 situações continuam filtráveis uma a uma; a COR agora
+                    vem da família (5), que é o que o mapa desenha. */}
+                {SITUACOES.map((key) => (
                   <FiltroPill
                     key={key}
                     active={filtroSit === key}
-                    label={label}
+                    label={SITUACAO_LABEL[key]}
                     n={contagemSit[key] ?? 0}
-                    color={cor}
+                    color={corSituacao(key)}
                     onClick={() => setFiltroSit(key)}
                   />
                 ))}
@@ -1734,7 +1887,9 @@ export default function PainelMapaPage() {
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
               <div className="space-y-1">
                 {vistoriasFiltradas.map((v) => {
-                  const cor = SITUACAO_COR[v.situacao] ?? "#475569";
+                  const cor = corSituacao(v.situacao);
+                  const corTec = v.tecnico_cor ?? ANEL_SEM_TECNICO;
+                  const apagada = tecnicoDestacado != null && v.tecnico_id !== tecnicoDestacado;
                   return (
                     <div
                       key={v.id}
@@ -1743,6 +1898,7 @@ export default function PainelMapaPage() {
                         background: selectedVistoria?.id === v.id ? "rgba(0,179,136,0.10)" : "var(--vm-fill)",
                         border: `1px solid ${selectedVistoria?.id === v.id ? "rgba(0,179,136,0.22)" : "var(--vm-fill)"}`,
                         borderLeft: `3px solid ${cor}`,
+                        opacity: apagada ? 0.42 : 1,
                       }}
                     >
                       {/* clique para focar no mapa */}
@@ -1775,6 +1931,8 @@ export default function PainelMapaPage() {
                           <span className="truncate">{v.municipio ?? "—"}</span>
                           {v.tecnico_nome && <>
                             <span>·</span>
+                            {/* mesmo ponto de cor do anel do marcador no mapa */}
+                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: corTec }} />
                             <span className="truncate" style={{ color: "var(--vm-faint)" }}>{v.tecnico_nome}</span>
                           </>}
                         </div>
@@ -1928,6 +2086,106 @@ export default function PainelMapaPage() {
         })}
       </div>
 
+      {/* ── LEGENDA FLUTUANTE ─────────────────────────────────────────────── */}
+      <div
+        className="absolute z-10 overflow-hidden"
+        style={{ bottom: 76, left: 308, ...GLASS, borderRadius: 12, width: legendaAberta ? 218 : "auto" }}
+      >
+        <button
+          type="button"
+          onClick={() => setLegendaAberta((v) => !v)}
+          className="flex w-full items-center gap-1.5 px-3 py-2 text-[9.5px] font-bold uppercase tracking-[0.14em] transition"
+          style={{ color: "var(--vm-muted)" }}
+        >
+          <Info className="h-3 w-3" />
+          <span className="flex-1 text-left">Legenda</span>
+          <ChevronDown
+            className="h-3 w-3 transition-transform"
+            style={{ transform: legendaAberta ? "rotate(0deg)" : "rotate(180deg)" }}
+          />
+        </button>
+        {legendaAberta && (
+          <div className="px-3 pb-2.5">
+            {FAMILIA_ORDEM.map((f) => (
+              <div key={f} className="flex items-center gap-2 py-[3px]" title={FAMILIA_DESCRICAO[f]}>
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: FAMILIA_COR[f] }} />
+                <span className="flex-1 truncate text-[10.5px]" style={{ color: "var(--vm-text)" }}>
+                  {FAMILIA_LABEL[f]}
+                </span>
+                <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--vm-faint)" }}>
+                  {contagemFamilia[f]}
+                </span>
+              </div>
+            ))}
+            <div className="mt-1.5 flex items-center gap-2 border-t pt-1.5" style={{ borderColor: "rgba(127,127,127,0.18)" }}>
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ border: `2px solid ${destaqueInfo?.cor ?? "#7E4E8C"}` }}
+              />
+              <span className="text-[10px]" style={{ color: "var(--vm-faint)" }}>
+                anel = técnico responsável
+              </span>
+            </div>
+            {destaqueInfo && (
+              <div className="mt-1.5 flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: tint(destaqueInfo.cor, 0.12) }}>
+                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: destaqueInfo.cor }} />
+                <span className="min-w-0 flex-1 truncate text-[10.5px] font-semibold" style={{ color: "var(--vm-text)" }}>
+                  {destaqueInfo.nome}
+                </span>
+                <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--vm-muted)" }}>
+                  {destaqueInfo.n}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── HOVER CARD DO EQUIPAMENTO ─────────────────────────────────────── */}
+      {hoveredVis && hoveredVisPos && !selectedVistoria && (
+        <div
+          className="pointer-events-none fixed z-[200] w-[212px] rounded-2xl p-3"
+          style={{
+            left: Math.min(Math.max(hoveredVisPos.x - 106, 8), (typeof window !== "undefined" ? window.innerWidth : 1200) - 220),
+            top: hoveredVisPos.y - 12,
+            transform: "translateY(-100%)",
+            ...GLASS,
+          }}
+        >
+          <p className="truncate text-[12.5px] font-bold" style={{ color: "var(--vm-text)" }}>
+            {hoveredVis.equipamento}
+          </p>
+          <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: corSituacao(hoveredVis.situacao) }} />
+            <span>{SITUACAO_LABEL[hoveredVis.situacao]}</span>
+            <span style={{ color: "var(--vm-faint)" }}>·</span>
+            <span className="truncate">{hoveredVis.municipio ?? "—"}</span>
+          </div>
+          <div className="mt-1 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ background: hoveredVis.tecnico_cor ?? ANEL_SEM_TECNICO }}
+            />
+            <span className="truncate">{hoveredVis.tecnico_nome ?? "Sem atribuição"}</span>
+            {hoveredVis.is_revisita && (
+              <span
+                className="ml-auto shrink-0 rounded-full px-1.5 text-[8.5px] font-bold text-white"
+                style={{ background: "#111827" }}
+              >
+                R
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TELA DE CARREGAMENTO ──────────────────────────────────────────── */}
+      <MapaLoading
+        visivel={mapaCarregando}
+        equipamentos={data?.vistorias.length}
+        tecnicos={data?.tecnicos.length}
+      />
+
       {/* ── GPS EDIT MODE BANNER ──────────────────────────────────────────── */}
       <AnimatePresence>
         {gpsEditMode && (
@@ -1993,7 +2251,9 @@ export default function PainelMapaPage() {
           <div className="mb-2 flex items-center gap-2">
             <span
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white"
-              style={{ background: "linear-gradient(135deg,#00C896,#008E74)" }}
+              style={{
+                background: `linear-gradient(135deg,${shade(hoveredTec.cor, 0.14)},${shade(hoveredTec.cor, -0.26)})`,
+              }}
             >
               {initials(hoveredTec.nome)}
             </span>
@@ -2042,7 +2302,9 @@ export default function PainelMapaPage() {
                 <div className="flex items-center gap-2">
                   <span
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white"
-                    style={{ background: "linear-gradient(135deg,#00C896,#008E74)" }}
+                    style={{
+                      background: `linear-gradient(135deg,${shade(selectedTec.cor, 0.14)},${shade(selectedTec.cor, -0.26)})`,
+                    }}
                   >
                     {initials(selectedTec.nome)}
                   </span>
@@ -2159,8 +2421,8 @@ export default function PainelMapaPage() {
                     <span
                       className="shrink-0 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-wide"
                       style={{
-                        background: tint(SITUACAO_COR[selectedVistoria.situacao] ?? "#475569", 0.16),
-                        color: SITUACAO_COR[selectedVistoria.situacao] ?? "#475569",
+                        background: tint(corSituacao(selectedVistoria.situacao), 0.16),
+                        color: corSituacao(selectedVistoria.situacao),
                       }}
                     >
                       {SITUACAO_LABEL[selectedVistoria.situacao]}
@@ -2177,8 +2439,14 @@ export default function PainelMapaPage() {
                 <span
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
                   style={{
-                    background: selectedVistoria.tecnico_nome ? tint(PANEL.blue, 0.18) : "rgba(255,255,255,0.06)",
-                    color: selectedVistoria.tecnico_nome ? "#93C5FD" : PANEL.textSoft,
+                    // Mesma cor de identidade do anel do marcador — o card
+                    // confirma visualmente de quem é o pin que foi clicado.
+                    background: selectedVistoria.tecnico_cor
+                      ? tint(selectedVistoria.tecnico_cor, 0.24)
+                      : "rgba(255,255,255,0.06)",
+                    color: selectedVistoria.tecnico_cor
+                      ? shade(selectedVistoria.tecnico_cor, 0.45)
+                      : PANEL.textSoft,
                   }}
                 >
                   {selectedVistoria.tecnico_nome ? initials(selectedVistoria.tecnico_nome) : "—"}

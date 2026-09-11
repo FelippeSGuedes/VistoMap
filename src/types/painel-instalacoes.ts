@@ -30,6 +30,8 @@ export interface PainelInstalacoesMapaInstalador {
   minutos_atras: number | null;
   status_operacional: MapaInstaladorStatus;
   em_instalacao_count: number;
+  /** Cor de identidade (paleta neutra, fixa por usuário) — pin 2D do instalador. */
+  cor: string;
 }
 
 export type MapaPosteStatus = "liberado" | "em-instalacao";

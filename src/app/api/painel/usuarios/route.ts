@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
 import { getCategoriaPrefs, countSubscriptions } from "@/lib/glpi/pushPrefs";
+import { getCoresIdentidade, PALETA_IDENTIDADE } from "@/lib/glpi/tecnicoIdentidade";
 import type { NotifCategoria } from "@/lib/notifCategorias";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ export interface UsuarioPainel {
   categorias?: Record<NotifCategoria, boolean>;
   /** Só analistas — quantos navegadores já se inscreveram. */
   navegadores?: number;
+  /** Só técnicos — cor de identidade no mapa (anel dos marcadores, pin, uniforme 3D). */
+  cor?: string;
 }
 
 const G_ADMIN = "VistoMap-Administradores";
@@ -94,10 +97,12 @@ export async function GET(req: Request) {
     }
 
     const analistaIds = analistasRaw.map((a) => a.r.id);
-    const [prefs, subs] = await Promise.all([
+    const [prefs, subs, cores] = await Promise.all([
       getCategoriaPrefs(analistaIds),
       countSubscriptions(analistaIds),
+      getCoresIdentidade(tecnicos.map((t) => t.id)),
     ]);
+    for (const t of tecnicos) t.cor = cores.get(t.id);
 
     const analistas: UsuarioPainel[] = analistasRaw.map(({ r, grupos }) => ({
       id: r.id,
@@ -110,7 +115,12 @@ export async function GET(req: Request) {
       navegadores: subs.get(r.id) ?? 0,
     }));
 
-    return NextResponse.json({ analistas, tecnicos });
+    return NextResponse.json({
+      analistas,
+      tecnicos,
+      // Paleta curada de identidade — o seletor de cor do admin só oferece estas.
+      paleta: PALETA_IDENTIDADE,
+    });
   } catch (err) {
     return NextResponse.json(
       { message: "Falha ao listar usuários", error: String(err) },

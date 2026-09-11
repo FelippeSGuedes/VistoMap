@@ -552,6 +552,9 @@ export function SimulacaoDiaOverlay({
       lat,
       speedKmh,
       corHex: SIM.accent,
+      // A simulação é hipotética (ainda não há técnico de verdade em campo):
+      // o uniforme segue o acento da própria simulação, não uma identidade.
+      corIdentidadeHex: SIM.accent,
       route,
       paradoDesdeMin: null,
     }),

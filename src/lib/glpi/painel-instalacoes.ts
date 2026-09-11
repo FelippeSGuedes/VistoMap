@@ -11,6 +11,7 @@ import {
 } from "./constants";
 import { listInstalacoes } from "./instalacoes";
 import { countInstalacaoRejeicoesPendentes } from "./instalacaoRejeicoes";
+import { getCoresIdentidade } from "./tecnicoIdentidade";
 import type {
   MapaInstaladorStatus,
   PainelInstalacoesMapaInstalador,
@@ -160,6 +161,7 @@ async function fetchMapaInstaladores(): Promise<PainelInstalacoesMapaInstalador[
   );
 
   const now = Date.now();
+  const cores = await getCoresIdentidade(rows.map((r) => r.users_id));
   return rows.map((r) => {
     const nome = `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.username;
     const minutos = r.created_at ? Math.round((now - new Date(r.created_at).getTime()) / 60000) : null;
@@ -177,6 +179,7 @@ async function fetchMapaInstaladores(): Promise<PainelInstalacoesMapaInstalador[
       minutos_atras: minutos,
       status_operacional: resolveMapaInstaladorStatus(minutos, emInstalacaoCount, r.speed_kmh),
       em_instalacao_count: emInstalacaoCount,
+      cor: cores.get(r.users_id) ?? "#4F6D8F",
     };
   });
 }

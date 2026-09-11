@@ -313,6 +313,107 @@ function prepareCarTemplate(root: THREE.Object3D): THREE.Object3D {
 // ---------------------------------------------------------------------------
 let sharedPersonTemplate: THREE.Object3D | null = null;
 let sharedPersonPromise: Promise<THREE.Object3D> | null = null;
+/** Basecolor original do person1.glb — base da recoloração por identidade. */
+let sharedPersonBaseMap: THREE.Texture | null = null;
+
+// ---------------------------------------------------------------------------
+// Uniforme na cor do técnico.
+//
+// person1.glb é UMA malha com UM material: não dá pra pintar "só a roupa" por
+// submesh. Mas na textura o uniforme e o capacete são o ÚNICO verde saturado —
+// pele, botas, luvas e faixas refletivas caem fora dessa faixa de matiz. Então
+// a recoloração é um remapeamento de MATIZ na textura: o que é verde vira a
+// cor de identidade, mantendo a luminosidade (e com ela sombras, vincos e
+// costuras) exatamente como o artista pintou.
+//
+// Uma textura por cor, em cache de módulo: com ≤12 cores na paleta, o custo
+// total é pago uma vez por sessão, não por técnico nem por quadro.
+// ---------------------------------------------------------------------------
+const HUE_MIN = 118;
+const HUE_MAX = 172;
+const texturasIdentidade = new Map<string, THREE.Texture>();
+
+function rgbParaHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function hslParaRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+function texturaIdentidade(corHex: string): THREE.Texture | null {
+  const base = sharedPersonBaseMap;
+  if (!base) return null;
+  const chave = corHex.toUpperCase();
+  const emCache = texturasIdentidade.get(chave);
+  if (emCache) return emCache;
+
+  const img = base.image as (CanvasImageSource & { width?: number; height?: number }) | undefined;
+  if (!img?.width || !img.height) return null;
+
+  // 1024 é de sobra: a figura ocupa uns 60px de altura na tela, e o recorte
+  // barateia o remapeamento (que percorre pixel a pixel).
+  const larg = Math.min(1024, img.width);
+  const alt = Math.max(1, Math.round((img.height / img.width) * larg));
+  const cvs = document.createElement("canvas");
+  cvs.width = larg;
+  cvs.height = alt;
+  const ctx = cvs.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, larg, alt);
+
+  let dados: ImageData;
+  try {
+    dados = ctx.getImageData(0, 0, larg, alt);
+  } catch {
+    return null; // textura de outra origem — segue no verde padrão
+  }
+  const alvo = new THREE.Color(corHex);
+  const [alvoH, alvoS] = rgbParaHsl(alvo.r * 255, alvo.g * 255, alvo.b * 255);
+  const d = dados.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const [h, s, l] = rgbParaHsl(d[i], d[i + 1], d[i + 2]);
+    // Só o verde do tecido: saturado o bastante pra não pegar sombra cinza e
+    // longe do preto/branco pra preservar contorno e reflexo.
+    if (h >= HUE_MIN && h <= HUE_MAX && s > 0.22 && l > 0.06 && l < 0.86) {
+      const [r, g, b] = hslParaRgb(alvoH, Math.min(1, alvoS * 1.05), l);
+      d[i] = r; d[i + 1] = g; d[i + 2] = b;
+    }
+  }
+  ctx.putImageData(dados, 0, 0);
+
+  const tex = new THREE.CanvasTexture(cvs);
+  // glTF usa flipY=false; CanvasTexture nasce true. Herdar do original é o que
+  // mantém a UV alinhada — sem isso o uniforme sai de cabeça pra baixo.
+  tex.flipY = base.flipY;
+  tex.colorSpace = base.colorSpace;
+  tex.wrapS = base.wrapS;
+  tex.wrapT = base.wrapT;
+  tex.channel = base.channel;
+  tex.needsUpdate = true;
+  texturasIdentidade.set(chave, tex);
+  return tex;
+}
 
 function preparePersonTemplate(root: THREE.Object3D): THREE.Object3D {
   // Convenção glTF padrão: Y pra cima → Z pra cima (vertical do Mapbox).
@@ -343,6 +444,22 @@ function preparePersonTemplate(root: THREE.Object3D): THREE.Object3D {
     // Sem NORMAL no arquivo, a iluminação não tem o que calcular e a figura
     // sai chapada/preta. Calcular aqui é barato e roda uma vez só.
     if (!malha.geometry.getAttribute("normal")) malha.geometry.computeVertexNormals();
+
+    // Ajuste de material no TEMPLATE (antes ficava no buildIdlePin, repetido a
+    // cada pin). Metalness alto sem environment map renderiza PRETO — foi o
+    // que custou várias rodadas com a picape; com metalness 0 a superfície é
+    // dielétrica e não depende de reflexo pra ter cor. Os mapas de metal e
+    // rugosidade saem junto, senão a textura reintroduz metal pixel a pixel.
+    const m = malha.material as THREE.MeshStandardMaterial;
+    if (m?.isMeshStandardMaterial) {
+      m.metalness = 0;
+      m.metalnessMap = null;
+      m.roughness = 0.7;
+      m.roughnessMap = null;
+      m.envMapIntensity = 0;
+      m.needsUpdate = true;
+      if (m.map && !sharedPersonBaseMap) sharedPersonBaseMap = m.map;
+    }
   });
 
   if (DEBUG_LOG) {
@@ -428,6 +545,8 @@ export interface TechEntrySpec {
   speedKmh: number | null;
   /** Cor do status operacional do técnico (o painel é dono da semântica). */
   corHex: string;
+  /** Cor de identidade do técnico — uniforme e capacete da figura. */
+  corIdentidadeHex: string;
   /** Presente = "carro seguindo rota"; null = "pin parado". */
   route: RouteResult | null;
   /** Minutos parado no mesmo lugar (fetchParadoDesdeMin) — null fora do status "parado". */
@@ -553,6 +672,8 @@ interface TechEntry {
 
   nome: string;
   corHex: string;
+  /** Cor de identidade aplicada ao uniforme da figura (não ao disco/pulso). */
+  corIdentidadeHex: string;
   /** Minutos parado no mesmo lugar — null fora do status "parado". */
   paradoDesdeMin: number | null;
   /** Etiqueta flutuante com o nome, reposicionada a cada frame. */
@@ -572,27 +693,31 @@ function primeiroNome(nome: string): string {
   return (nome ?? "").trim().split(/\s+/)[0] || "Técnico";
 }
 
+/** Recursos criados POR PIN — só eles podem ser liberados (ver descartaPin). */
+interface RecursosPin {
+  vmGeos?: THREE.BufferGeometry[];
+  vmMats?: THREE.Material[];
+}
+
 /**
- * Libera geometria e material de um PIN parado.
+ * Libera SÓ o que o pin criou pra si: geometria do disco/pulso e os materiais
+ * clonados da figura.
  *
- * Só do pin: ele cria geometria/material próprios por técnico, porque a cor
- * vem do status. Sem descartar ao trocar o visual, cada mudança de status
- * vazaria buffers de GPU — e o status muda o tempo todo (parado ⇄ em
- * operação ⇄ em vistoria).
+ * A figura em si é um clone do template do módulo — clone compartilha
+ * geometria (e compartilharia material, se não fosse clonado). Sair
+ * traverse-ando e dando dispose em tudo apagaria o modelo pra todos os outros
+ * técnicos; por isso o que pode ser liberado fica registrado explicitamente no
+ * userData do grupo, em vez de ser descoberto pela árvore.
  *
- * NUNCA chamar num clone do carro: os clones compartilham geometria e
- * material com o template do módulo, e liberá-los apagaria o modelo pra
- * todos os outros técnicos. Por isso o chamador só invoca isto quando sabe
- * que o visual anterior era o pin.
+ * As TEXTURAS de identidade ficam de fora de propósito: são cache de módulo,
+ * compartilhadas por todo mundo daquela cor.
  */
 function descartaPin(raiz: THREE.Object3D): void {
-  raiz.traverse((o) => {
-    const malha = o as THREE.Mesh;
-    if (!malha.isMesh) return;
-    malha.geometry?.dispose();
-    const mats = Array.isArray(malha.material) ? malha.material : [malha.material];
-    mats.forEach((m) => m?.dispose());
-  });
+  const ud = raiz.userData as RecursosPin;
+  ud.vmGeos?.forEach((g) => g.dispose());
+  ud.vmMats?.forEach((m) => m.dispose());
+  ud.vmGeos = undefined;
+  ud.vmMats = undefined;
 }
 
 export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
@@ -817,7 +942,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
    * plano XY, que aqui é o chão — então deitam sozinhos, sem rotação. O
    * cilindro da haste é a exceção: ele nasce ao longo do Y e precisa girar.
    */
-  private buildIdlePin(corHex: string): {
+  private buildIdlePin(corHex: string, corIdentidadeHex: string): {
     object3d: THREE.Object3D;
     pulsos: THREE.Mesh[];
     nucleo: THREE.Object3D;
@@ -826,6 +951,9 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   } {
     const group = new THREE.Group();
     const cor = new THREE.Color(corHex);
+    const recursos = group.userData as RecursosPin;
+    recursos.vmGeos = [];
+    recursos.vmMats = [];
 
     // Disco no chão: ancora a figura num ponto exato. Sem ele o modelo
     // "flutua" ambíguo quando o mapa está inclinado.
@@ -835,6 +963,8 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     );
     disco.position.z = 0.05;
     group.add(disco);
+    recursos.vmGeos.push(disco.geometry);
+    recursos.vmMats.push(disco.material as THREE.Material);
 
     // UM pulso, discreto — o suficiente pra localizar de longe sem virar
     // enfeite. A versão anterior tinha dois pulsos, coluna de luz, núcleo
@@ -848,46 +978,43 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
     );
     pulso.position.z = 0.04;
     group.add(pulso);
+    recursos.vmGeos.push(pulso.geometry);
+    recursos.vmMats.push(pulso.material as THREE.Material);
 
     // A figura. Enquanto o GLB não chega, um marcador simples segura o lugar
     // — não some nem pisca quando o modelo termina de carregar.
     let figura: THREE.Object3D;
     if (sharedPersonTemplate) {
       figura = sharedPersonTemplate.clone(true);
-      figura.traverse((o) => {
-        const malha = o as THREE.Mesh;
-        if (!malha.isMesh) return;
-        // Material por técnico: é o que faz a figura acompanhar a cor do
-        // status. O GLB veio sem material nenhum, então nada se perde.
-        // TEXTURA PRESERVADA. Diferente do modelo anterior (que vinha sem
-        // material nenhum e por isso era pintado), person1.glb traz basecolor
-        // e mapas próprios — sobrescrever a cor apagaria o modelo inteiro.
-        //
-        // Só o metal é zerado: metalness alto sem environment map renderiza
-        // PRETO, e foi isso que custou várias rodadas com a picape. Com
-        // metalness 0 a superfície é dielétrica e não depende de reflexo pra
-        // ter cor. Os mapas de metal/rugosidade saem junto, senão a textura
-        // reintroduz metal pixel a pixel e o escalar não resolve.
-        //
-        // O status não se perde por não estar na figura: vive no disco, no
-        // pulso e no pontinho da etiqueta com o nome.
-        const m = malha.material as THREE.MeshStandardMaterial;
-        if (m && m.isMeshStandardMaterial) {
-          m.metalness = 0;
-          m.metalnessMap = null;
-          m.roughness = 0.7;
-          m.roughnessMap = null;
-          m.envMapIntensity = 0;
-          m.needsUpdate = true;
-        }
-      });
+      // Textura do uniforme na cor de identidade DESTE técnico. Como o clone
+      // compartilha o material do template, ele é clonado aqui — trocar o
+      // `.map` direto repintaria a equipe inteira de uma cor só.
+      //
+      // O STATUS não se perde por não estar na figura: vive no disco, no pulso
+      // e no pontinho da etiqueta com o nome. A figura responde a QUEM é.
+      const tex = texturaIdentidade(corIdentidadeHex);
+      if (tex) {
+        figura.traverse((o) => {
+          const malha = o as THREE.Mesh;
+          if (!malha.isMesh) return;
+          const base = malha.material as THREE.MeshStandardMaterial;
+          if (!base?.isMeshStandardMaterial) return;
+          const proprio = base.clone();
+          proprio.map = tex;
+          proprio.needsUpdate = true;
+          malha.material = proprio;
+          recursos.vmMats!.push(proprio);
+        });
+      }
     } else {
       figura = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.55, 1.1, 4, 12),
-        new THREE.MeshStandardMaterial({ color: cor, metalness: 0, roughness: 0.8 })
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(corIdentidadeHex), metalness: 0, roughness: 0.8 })
       );
       figura.rotation.x = Math.PI / 2;
       figura.position.z = 1.2;
+      recursos.vmGeos.push((figura as THREE.Mesh).geometry);
+      recursos.vmMats.push((figura as THREE.Mesh).material as THREE.Material);
     }
     // Suporte que recebe o billboard. A figura fica DENTRO dele pra nao
     // perder a rotacao de base do template (glTF Y-up → Z-up), e o suporte
@@ -903,8 +1030,9 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   /** Garante que o filho visual da entry bate com o kind atual (troca só quando muda). */
   private ensureVisual(e: TechEntry, corMudou = false): void {
     const wantCar = e.kind === "car";
-    // O pin parado é construído na cor do status, então uma mudança de status
-    // também exige reconstruir — não basta trocar entre carro e pin.
+    // O pin parado é construído na cor do status E na cor de identidade, então
+    // qualquer uma das duas mudando exige reconstruir — não basta trocar entre
+    // carro e pin.
     if (wantCar === e.visualIsCar && e.visual && !(corMudou && !wantCar)) return;
     if (e.visual) {
       e.object3d.remove(e.visual);
@@ -922,7 +1050,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       e.pinOrbita = undefined;
       e.pinColuna = undefined;
     } else {
-      const { object3d, pulsos, nucleo, orbita, coluna } = this.buildIdlePin(e.corHex);
+      const { object3d, pulsos, nucleo, orbita, coluna } = this.buildIdlePin(e.corHex, e.corIdentidadeHex);
       e.visual = object3d;
       e.wheels = null;
       // Limpa os efeitos do carro: senao a animacao continuaria mexendo em
@@ -964,6 +1092,7 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
       usersId: spec.usersId,
       nome: spec.nome,
       corHex: spec.corHex,
+      corIdentidadeHex: spec.corIdentidadeHex,
       paradoDesdeMin: spec.paradoDesdeMin,
       kind: spec.route ? "car" : "idle",
       object3d,
@@ -995,11 +1124,13 @@ export class TechModel3DLayer implements mapboxgl.CustomLayerInterface {
   private updateEntry(e: TechEntry, spec: TechEntrySpec): void {
     const newKind: "car" | "idle" = spec.route ? "car" : "idle";
     const routeChanged = e.route !== spec.route; // routeService devolve o MESMO objeto em cache; só muda por refetch
-    const corMudou = e.corHex !== spec.corHex;
+    const corMudou =
+      e.corHex !== spec.corHex || e.corIdentidadeHex !== spec.corIdentidadeHex;
     e.kind = newKind;
     e.route = spec.route;
     e.nome = spec.nome;
     e.corHex = spec.corHex;
+    e.corIdentidadeHex = spec.corIdentidadeHex;
     e.paradoDesdeMin = spec.paradoDesdeMin;
     this.ensureVisual(e, corMudou);
     this.ensureLabel(e);
