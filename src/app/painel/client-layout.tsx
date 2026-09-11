@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Ban,
   Bell,
   Calendar,
@@ -13,6 +14,7 @@ import {
   ChevronRight,
   ClipboardList,
   Clock,
+  Construction,
   HeartPulse,
   History,
   LayoutDashboard,
@@ -53,7 +55,7 @@ const ADMIN_ONLY: SessionRole[] = ["admin"];
 
 // Items simples do nav (sem grupo)
 const TOP_NAV = [
-  { href: "/painel/notificacoes",   label: "Notificações",    icon: Bell,                          roles: ADMIN_MOD },
+  { href: "/painel/notificacoes",   label: "Atividades",      icon: Bell,                          roles: ADMIN_MOD },
 ];
 
 const BOTTOM_NAV = [
@@ -97,11 +99,16 @@ const VISTORIAS_GROUP = [
   { href: "/painel/revisitas",           label: "Revisitas",            icon: RotateCw,       roles: ALL_ROLES },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },
   { href: "/painel/devolucoes",          label: "Devoluções",           icon: Undo2,          roles: ALL_ROLES },
-  { href: "/painel/rejeitadas",          label: "Vistorias Rejeitadas", icon: Ban,            roles: ALL_ROLES },
+  // Ocorrências: três naturezas diferentes na MESMA tela, cada entrada abrindo
+  // já no seu recorte. Separar em três rotas seria triplicar código e deixar
+  // duas telas vazias na maior parte do tempo (ver lib/glpi/ocorrencias.ts).
+  { href: "/painel/ocorrencias?tipo=impedimento", label: "Impedimentos", icon: Construction,  roles: ALL_ROLES },
+  { href: "/painel/ocorrencias?tipo=recusa",      label: "Recusas",      icon: Ban,           roles: ALL_ROLES },
+  { href: "/painel/ocorrencias?tipo=excecao",     label: "Exceções",     icon: AlertTriangle, roles: ALL_ROLES },
   { href: "/painel/cpfl",                label: "Validação CPFL",       icon: ShieldCheck,    roles: ALL_ROLES },
 ];
 
-const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href));
+const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href.split("?")[0]));
 
 // Sub-itens do grupo "Instalações" — módulo novo, fila própria (não é a
 // mesma tela/tabela de Vistorias Rejeitadas).
@@ -124,6 +131,10 @@ const PAGE_ROLES: Array<{ href: string; roles: SessionRole[] }> = [
   ...INSTALACOES_GROUP,
   ...CONFIG_GROUP,
   { href: "/painel/teste", roles: ADMIN_ONLY },
+  // Fora do menu, mas continuam valendo: /painel/rejeitadas segue existindo
+  // (é de onde sai o "reatribuir e reabrir") e links antigos não podem quebrar.
+  { href: "/painel/ocorrencias", roles: ALL_ROLES },
+  { href: "/painel/rejeitadas", roles: ALL_ROLES },
 ];
 
 function rolesForPath(pathname: string): SessionRole[] | null {
@@ -193,6 +204,7 @@ function NavItem({
   icon: Icon,
   exact,
   pathname,
+  queryAtual,
   T,
   indent = false,
   collapsed = false,
@@ -202,13 +214,19 @@ function NavItem({
   icon: React.ElementType;
   exact?: boolean;
   pathname: string;
+  /** Query string atual (sem "?") — só importa pros itens com recorte no href. */
+  queryAtual?: string;
   T: Theme;
   indent?: boolean;
   collapsed?: boolean;
 }) {
-  const active = exact
-    ? pathname === href
-    : pathname === href || pathname.startsWith(href + "/");
+  // href pode carregar recorte (".../ocorrencias?tipo=recusa"): o caminho
+  // decide se é a mesma página, a query decide QUAL dos itens acende.
+  const [caminho, consulta] = href.split("?");
+  const mesmaPagina = exact
+    ? pathname === caminho
+    : pathname === caminho || pathname.startsWith(caminho + "/");
+  const active = mesmaPagina && (!consulta || consulta === queryAtual);
 
   return (
     <li>
@@ -244,6 +262,9 @@ function NavItem({
 export default function PainelClientLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
+  // Os itens de Ocorrências apontam pro mesmo caminho com recortes diferentes
+  // (?tipo=…), então só a query diz qual deles deve acender.
+  const queryAtual = useSearchParams().toString();
   const { hydrated, session, logout } = useAuthStore();
 
   const [isDark, setIsDark] = useState(false);
@@ -615,6 +636,7 @@ export default function PainelClientLayout({ children }: { children: React.React
                         label={label}
                         icon={icon}
                         pathname={pathname}
+                        queryAtual={queryAtual}
                         T={T}
                         indent
                       />

@@ -16,6 +16,7 @@ import {
   routeAheadCoordinates,
   type RouteResult,
 } from "./routeService";
+import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
@@ -697,6 +698,9 @@ interface TechTodayMetrics {
 
 export default function PainelMapaPage() {
   const { session } = useAuthStore();
+  // Chegada por link de outra tela (ex.: "Ver no mapa" da Central de
+  // Ocorrências) — /painel/mapa?vistoria=123 abre já focado no equipamento.
+  const focoInicial = Number(useSearchParams().get("vistoria")) || null;
   const token = getMapboxToken();
   const mapElRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -845,6 +849,22 @@ export default function PainelMapaPage() {
   }, []);
 
 
+
+  // Foca uma vez só: o poll roda a cada 5s e não pode ficar puxando o mapa de
+  // volta toda vez que o usuário navegar pra outro canto.
+  const focoPendenteRef = useRef<number | null>(focoInicial);
+  useEffect(() => {
+    const alvo = focoPendenteRef.current;
+    const map = mapRef.current;
+    if (alvo == null || !map || !data) return;
+    const v = data.vistorias.find((x) => x.id === alvo);
+    if (!v) return;
+    focoPendenteRef.current = null;
+    setSelectedVistoria(v);
+    setSelectedTec(null);
+    setAba("vistorias");
+    map.flyTo({ center: [v.longitude, v.latitude], zoom: 17, duration: 900 });
+  }, [data, setSelectedVistoria]);
 
   /* ── init map ───────────────────────────────────────────────────────────── */
 
