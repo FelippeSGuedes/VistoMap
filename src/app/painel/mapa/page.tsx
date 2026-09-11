@@ -46,12 +46,14 @@ import {
   FAMILIA_COR,
   FAMILIA_DESCRICAO,
   FAMILIA_LABEL,
+  BORDA_ATRIBUIDO,
   FAMILIA_ORDEM,
   R_EXTERNO,
   R_INTERNO,
-  R_INTERNO_ATRIBUIDO,
+  R_NUCLEO_ATRIBUIDO,
   SITUACAO_LABEL,
   SITUACOES,
+  corMarcador,
   corSituacao,
   familiaDe,
   iconeDe,
@@ -378,7 +380,9 @@ function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
         id: v.id,
         situacao: v.situacao,
         icone: iconeDe(v.situacao, v.is_revisita),
-        cor_status: corSituacao(v.situacao),
+        // Cor dominante do marcador (halo de hover, anel de foco, pulso) —
+        // em ATRIBUÍDO é a do técnico, no resto é a da família de status.
+        cor_marcador: corMarcador(v.situacao, v.tecnico_cor),
         // -1 (e não null) pra comparação de expressão funcionar sem coalesce.
         tecnico_id: v.tecnico_id ?? -1,
         tecnico_cor: v.tecnico_cor ?? ANEL_SEM_TECNICO,
@@ -409,19 +413,31 @@ function escalaCom(selecionadoId: number | null): unknown {
   return ["*", ZOOM_ESCALA, ["case", ["==", ["get", "id"], selecionadoId], 1.18, 1]];
 }
 
-/** Raio do miolo branco — menor em ATRIBUÍDO, pra sobrar anel de identidade. */
+const EH_ATRIBUIDO = ["==", ["get", "atribuido"], 1];
+
+/**
+ * Disco do marcador. Em ATRIBUÍDO ele é o próprio núcleo, cheio na cor do
+ * técnico; nos outros estados é só o vão branco entre anel e núcleo.
+ */
 function raioAnel(escala: unknown): unknown {
-  return ["*", ["case", ["==", ["get", "atribuido"], 1], R_INTERNO_ATRIBUIDO, R_INTERNO], escala];
+  return ["*", ["case", EH_ATRIBUIDO, R_NUCLEO_ATRIBUIDO, R_INTERNO], escala];
 }
 
-/** Espessura do anel = raio externo − raio do miolo (sempre fecha em R_EXTERNO). */
+/** A borda sempre fecha em R_EXTERNO — todo marcador tem o mesmo tamanho. */
 function espessuraAnel(escala: unknown): unknown {
-  return [
-    "*",
-    ["case", ["==", ["get", "atribuido"], 1], R_EXTERNO - R_INTERNO_ATRIBUIDO, R_EXTERNO - R_INTERNO],
-    escala,
-  ];
+  return ["*", ["case", EH_ATRIBUIDO, BORDA_ATRIBUIDO, R_EXTERNO - R_INTERNO], escala];
 }
+
+/** ATRIBUÍDO inverte: dentro é o técnico, fora é um aro branco fino. */
+const COR_DISCO = ["case", EH_ATRIBUIDO, ["get", "tecnico_cor"], "#FFFFFF"];
+const COR_BORDA = ["case", EH_ATRIBUIDO, "#FFFFFF", ["get", "tecnico_cor"]];
+/** Sem técnico o anel é cinza-claro e recuado — o pino "não tem dono". */
+const OPACIDADE_BORDA = [
+  "case",
+  EH_ATRIBUIDO, 0.95,
+  ["==", ["get", "tem_tecnico"], 1], 1,
+  0.6,
+];
 
 /**
  * Fator de opacidade por técnico destacado: as vistorias dele ficam cheias e o
@@ -1083,7 +1099,7 @@ export default function PainelMapaPage() {
       source: VISTORIAS_SRC,
       filter: F(["==", ["get", "situacao"], "EM_VISTORIA"]),
       paint: {
-        "circle-color": E(["get", "cor_status"]),
+        "circle-color": E(["get", "cor_marcador"]),
         "circle-radius": 16,
         "circle-opacity": 0.28,
         "circle-blur": 0.2,
@@ -1111,7 +1127,7 @@ export default function PainelMapaPage() {
         source: VISTORIAS_SRC,
         filter: F(["==", ["get", "id"], -1]),
         paint: {
-          "circle-color": E(["get", "cor_status"]),
+          "circle-color": E(["get", "cor_marcador"]),
           "circle-opacity": op,
           "circle-radius": E(["*", raio, ZOOM_ESCALA]),
           "circle-stroke-color": "#FFFFFF",
@@ -1121,19 +1137,20 @@ export default function PainelMapaPage() {
       });
     }
 
-    // 5. Anel de IDENTIDADE + miolo branco num só passe: fill branco = o vão
-    //    entre anel e núcleo, stroke = a cor do técnico. Em ATRIBUÍDO o raio
-    //    interno encolhe e o anel engrossa — de longe se lê QUEM, não o quê.
+    // 5. Disco + borda num só passe. No caso geral: fill branco = o vão entre
+    //    anel e núcleo, stroke = a cor do técnico. Em ATRIBUÍDO inverte — o
+    //    disco inteiro fica na cor do técnico, com um aro branco fino. É a
+    //    diferença entre "o João está com isso" e "isso está em tal estado".
     map.addLayer({
       id: SIG_ANEL,
       type: "circle",
       source: VISTORIAS_SRC,
       paint: {
-        "circle-color": "#FFFFFF",
+        "circle-color": E(COR_DISCO),
         "circle-radius": E(raioAnel(ZOOM_ESCALA)),
-        "circle-stroke-color": E(["get", "tecnico_cor"]),
+        "circle-stroke-color": E(COR_BORDA),
         "circle-stroke-width": E(espessuraAnel(ZOOM_ESCALA)),
-        "circle-stroke-opacity": E(["case", ["==", ["get", "tem_tecnico"], 1], 1, 0.6]),
+        "circle-stroke-opacity": E(OPACIDADE_BORDA),
       },
     });
 
@@ -1476,11 +1493,7 @@ export default function PainelMapaPage() {
       map.setPaintProperty(SIG_ANEL, "circle-radius", E(raioAnel(escala)));
       map.setPaintProperty(SIG_ANEL, "circle-stroke-width", E(espessuraAnel(escala)));
       map.setPaintProperty(SIG_ANEL, "circle-opacity", E(fator));
-      map.setPaintProperty(
-        SIG_ANEL,
-        "circle-stroke-opacity",
-        E(["*", ["case", ["==", ["get", "tem_tecnico"], 1], 1, 0.6], fator])
-      );
+      map.setPaintProperty(SIG_ANEL, "circle-stroke-opacity", E(["*", OPACIDADE_BORDA, fator]));
       map.setPaintProperty(SIG_SOMBRA, "circle-opacity", E(["*", 1, fator]));
       map.setPaintProperty(SIG_PULSO, "circle-opacity", E(["*", 0.28, fator]));
       map.setPaintProperty(VISTORIAS_POINTS, "icon-opacity", E(fator));
@@ -1893,7 +1906,8 @@ export default function PainelMapaPage() {
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
               <div className="space-y-1">
                 {vistoriasFiltradas.map((v) => {
-                  const cor = corSituacao(v.situacao);
+                  // Mesma regra do mapa: atribuída aparece na cor do técnico.
+                  const cor = corMarcador(v.situacao, v.tecnico_cor);
                   const corTec = v.tecnico_cor ?? ANEL_SEM_TECNICO;
                   const apagada = tecnicoDestacado != null && v.tecnico_id !== tecnicoDestacado;
                   return (
@@ -2123,14 +2137,25 @@ export default function PainelMapaPage() {
                 </span>
               </div>
             ))}
-            <div className="mt-1.5 flex items-center gap-2 border-t pt-1.5" style={{ borderColor: "rgba(127,127,127,0.18)" }}>
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ border: `2px solid ${destaqueInfo?.cor ?? "#7E4E8C"}` }}
-              />
-              <span className="text-[10px]" style={{ color: "var(--vm-faint)" }}>
-                anel = técnico responsável
-              </span>
+            <div className="mt-1.5 space-y-1 border-t pt-1.5" style={{ borderColor: "rgba(127,127,127,0.18)" }}>
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ border: `2px solid ${destaqueInfo?.cor ?? "#7E4E8C"}` }}
+                />
+                <span className="text-[10px]" style={{ color: "var(--vm-faint)" }}>
+                  anel = técnico responsável
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: destaqueInfo?.cor ?? "#7E4E8C", boxShadow: "0 0 0 1.5px rgba(255,255,255,.9)" }}
+                />
+                <span className="text-[10px]" style={{ color: "var(--vm-faint)" }}>
+                  cheio = atribuída a ele
+                </span>
+              </div>
             </div>
             {destaqueInfo && (
               <div className="mt-1.5 flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: tint(destaqueInfo.cor, 0.12) }}>
@@ -2162,7 +2187,10 @@ export default function PainelMapaPage() {
             {hoveredVis.equipamento}
           </p>
           <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: corSituacao(hoveredVis.situacao) }} />
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ background: corMarcador(hoveredVis.situacao, hoveredVis.tecnico_cor) }}
+            />
             <span>{SITUACAO_LABEL[hoveredVis.situacao]}</span>
             <span style={{ color: "var(--vm-faint)" }}>·</span>
             <span className="truncate">{hoveredVis.municipio ?? "—"}</span>
@@ -2427,8 +2455,8 @@ export default function PainelMapaPage() {
                     <span
                       className="shrink-0 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-wide"
                       style={{
-                        background: tint(corSituacao(selectedVistoria.situacao), 0.16),
-                        color: corSituacao(selectedVistoria.situacao),
+                        background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor), 0.16),
+                        color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor),
                       }}
                     >
                       {SITUACAO_LABEL[selectedVistoria.situacao]}

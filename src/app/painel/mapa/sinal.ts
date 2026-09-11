@@ -104,6 +104,15 @@ export function corSituacao(s: string): string {
   return FAMILIA_COR[familiaDe(s)];
 }
 
+/**
+ * Cor com que a vistoria aparece em listas e chips — espelha o mapa: em
+ * ATRIBUÍDO manda a cor do técnico; no resto, a cor da família de status.
+ */
+export function corMarcador(situacao: string, tecnicoCor: string | null): string {
+  if (situacao === "ATRIBUIDO" && tecnicoCor) return tecnicoCor;
+  return corSituacao(situacao);
+}
+
 export function labelSituacao(s: string): string {
   return SITUACAO_LABEL[s as SituacaoOperacional] ?? s;
 }
@@ -119,12 +128,20 @@ export const ANEL_SEM_TECNICO = "#B8C0C8";
 
 /* ─── geometria do marcador (espaço lógico de 44px) ───────────────────────── */
 
-/** Raio externo do anel de identidade. */
+/** Raio externo do marcador — igual em todos os estados. */
 export const R_EXTERNO = 17;
 /** Raio do miolo branco — o "gap" entre anel e núcleo. */
 export const R_INTERNO = 14.4;
-/** Em ATRIBUÍDO o anel engrossa pra identidade dominar a leitura de longe. */
-export const R_INTERNO_ATRIBUIDO = 11.2;
+
+// ATRIBUÍDO é o único estado que INVERTE os dois canais: o marcador inteiro
+// fica na cor do técnico (disco cheio + aro branco fino pra descolar do mapa)
+// e o estado vem só do glifo. Faz sentido porque é o único estado em que não
+// há progresso pra mostrar — o que importa ali é de QUEM é o serviço. Bater o
+// olho numa região e ver "isso aqui é tudo do João" era o pedido.
+/** Raio do disco cheio na cor do técnico (ATRIBUÍDO). */
+export const R_NUCLEO_ATRIBUIDO = 15.6;
+/** Aro branco em volta desse disco — fecha no mesmo R_EXTERNO dos outros. */
+export const BORDA_ATRIBUIDO = R_EXTERNO - R_NUCLEO_ATRIBUIDO;
 
 const BOX = 44;
 const RATIO = 4;
@@ -171,13 +188,50 @@ function desenhaGlifo(ctx: CanvasRenderingContext2D, glifo: Glifo, cor: string) 
     ctx.moveTo(25.4, 18.6);
     ctx.lineTo(18.6, 25.4);
     ctx.stroke();
-  } else if (glifo === "atribuido") {
-    // Ponto pequeno na cor do status: o protagonista aqui é o anel grosso.
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, TAU);
-    ctx.fillStyle = cor;
-    ctx.fill();
   }
+}
+
+/** Retângulo arredondado — `ctx.roundRect` não está em todo WebView. */
+function caminhoArredondado(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, l: number, a: number, r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + l, y, x + l, y + a, r);
+  ctx.arcTo(x + l, y + a, x, y + a, r);
+  ctx.arcTo(x, y + a, x, y, r);
+  ctx.arcTo(x, y, x + l, y, r);
+  ctx.closePath();
+}
+
+/**
+ * Prancheta de vistoria (ATRIBUÍDO) — a MESMA do pin do técnico, o que amarra
+ * "pessoa" e "serviço dela" no mesmo símbolo.
+ *
+ * Desenhada em branco e com o check VAZADO (destination-out): o buraco deixa
+ * passar o disco de baixo, então o check sai na cor do técnico sem que o
+ * sprite precise conhecer essa cor — continuam sendo 20 imagens fixas pra
+ * qualquer tamanho de equipe.
+ */
+function desenhaPrancheta(ctx: CanvasRenderingContext2D) {
+  ctx.fillStyle = "#ffffff";
+  caminhoArredondado(ctx, 19.9, 15.3, 4.2, 3.0, 1.1); // presilha
+  ctx.fill();
+  caminhoArredondado(ctx, 17.2, 17.2, 9.6, 10.0, 2.1); // corpo
+  ctx.fill();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(19.4, 22.5);
+  ctx.lineTo(21.2, 24.3);
+  ctx.lineTo(24.7, 20.3);
+  ctx.stroke();
+  ctx.restore();
 }
 
 interface SpriteMapbox {
@@ -210,11 +264,9 @@ function makeSinalImage(situacao: SituacaoOperacional, revisita: boolean): Sprit
     ctx.strokeStyle = cor;
     ctx.stroke();
   } else if (glifo === "atribuido") {
-    ctx.beginPath();
-    ctx.arc(cx, cy, R_INTERNO_ATRIBUIDO, 0, TAU);
-    ctx.fillStyle = "#ffffff";
-    ctx.fill();
-    desenhaGlifo(ctx, glifo, cor);
+    // Nada de núcleo: o disco cheio na cor do técnico vem da camada de
+    // círculos. Aqui só entra a prancheta branca por cima.
+    desenhaPrancheta(ctx);
   } else {
     ctx.beginPath();
     ctx.arc(cx, cy, 12.5, 0, TAU);
