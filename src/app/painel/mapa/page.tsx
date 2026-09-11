@@ -43,11 +43,7 @@ import { StreetViewModal } from "@/components/painel/StreetViewModal";
 import { MapaLoading } from "./MapaLoading";
 import {
   ANEL_SEM_TECNICO,
-  FAMILIA_COR,
-  FAMILIA_DESCRICAO,
-  FAMILIA_LABEL,
   BORDA_ATRIBUIDO,
-  FAMILIA_ORDEM,
   R_EXTERNO,
   R_INTERNO,
   R_NUCLEO_ATRIBUIDO,
@@ -55,11 +51,9 @@ import {
   SITUACOES,
   corMarcador,
   corSituacao,
-  familiaDe,
   iconeDe,
   registrarSpritesSinal,
   shade,
-  type FamiliaSinal,
 } from "./sinal";
 import {
   Activity,
@@ -768,7 +762,6 @@ export default function PainelMapaPage() {
   const [hoveredVisPos, setHoveredVisPos] = useState<{ x: number; y: number } | null>(null);
   // Tela de carregamento: primeiro load e troca de estilo — nunca no poll.
   const [mapaCarregando, setMapaCarregando] = useState(true);
-  const [legendaAberta, setLegendaAberta] = useState(true);
 
   // Hover card do técnico
   const [hoveredTec, setHoveredTec] = useState<PainelMapaTecnico | null>(null);
@@ -1639,23 +1632,6 @@ export default function PainelMapaPage() {
     return acc;
   }, [data]);
 
-  // Legenda: conta o que está DESENHADO agora (respeita filtro e busca).
-  const contagemFamilia = useMemo(() => {
-    const acc = {} as Record<FamiliaSinal, number>;
-    for (const f of FAMILIA_ORDEM) acc[f] = 0;
-    for (const v of vistoriasFiltradas) acc[familiaDe(v.situacao)] += 1;
-    return acc;
-  }, [vistoriasFiltradas]);
-
-  const destaqueInfo = useMemo(() => {
-    if (tecnicoDestacado == null) return null;
-    const tec = data?.tecnicos.find((t) => t.users_id === tecnicoDestacado);
-    const nome = tec?.nome ?? selectedVistoria?.tecnico_nome ?? "Técnico";
-    const cor = tec?.cor ?? selectedVistoria?.tecnico_cor ?? ANEL_SEM_TECNICO;
-    const n = vistoriasFiltradas.filter((v) => v.tecnico_id === tecnicoDestacado).length;
-    return { nome, cor, n };
-  }, [tecnicoDestacado, data, selectedVistoria, vistoriasFiltradas]);
-
   // Aba "Equipe" — vistoriadores e instaladores juntos na MESMA lista, só
   // diferenciados por cor/badge (nunca em abas separadas — pedido do
   // usuário: a aba "Instalação" é só pra equipamento, não pra pessoas).
@@ -2128,72 +2104,6 @@ export default function PainelMapaPage() {
             </button>
           );
         })}
-      </div>
-
-      {/* ── LEGENDA FLUTUANTE ─────────────────────────────────────────────── */}
-      <div
-        className="absolute z-10 overflow-hidden"
-        style={{ bottom: 76, left: 308, ...GLASS, borderRadius: 12, width: legendaAberta ? 218 : "auto" }}
-      >
-        <button
-          type="button"
-          onClick={() => setLegendaAberta((v) => !v)}
-          className="flex w-full items-center gap-1.5 px-3 py-2 text-[9.5px] font-bold uppercase tracking-[0.14em] transition"
-          style={{ color: "var(--vm-muted)" }}
-        >
-          <Info className="h-3 w-3" />
-          <span className="flex-1 text-left">Legenda</span>
-          <ChevronDown
-            className="h-3 w-3 transition-transform"
-            style={{ transform: legendaAberta ? "rotate(0deg)" : "rotate(180deg)" }}
-          />
-        </button>
-        {legendaAberta && (
-          <div className="px-3 pb-2.5">
-            {FAMILIA_ORDEM.map((f) => (
-              <div key={f} className="flex items-center gap-2 py-[3px]" title={FAMILIA_DESCRICAO[f]}>
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: FAMILIA_COR[f] }} />
-                <span className="flex-1 truncate text-[10.5px]" style={{ color: "var(--vm-text)" }}>
-                  {FAMILIA_LABEL[f]}
-                </span>
-                <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--vm-faint)" }}>
-                  {contagemFamilia[f]}
-                </span>
-              </div>
-            ))}
-            <div className="mt-1.5 space-y-1 border-t pt-1.5" style={{ borderColor: "rgba(127,127,127,0.18)" }}>
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ border: `2px solid ${destaqueInfo?.cor ?? "#7E4E8C"}` }}
-                />
-                <span className="text-[10px]" style={{ color: "var(--vm-faint)" }}>
-                  anel = técnico responsável
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ background: destaqueInfo?.cor ?? "#7E4E8C", boxShadow: "0 0 0 1.5px rgba(255,255,255,.9)" }}
-                />
-                <span className="text-[10px]" style={{ color: "var(--vm-faint)" }}>
-                  cheio = atribuída a ele
-                </span>
-              </div>
-            </div>
-            {destaqueInfo && (
-              <div className="mt-1.5 flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: tint(destaqueInfo.cor, 0.12) }}>
-                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: destaqueInfo.cor }} />
-                <span className="min-w-0 flex-1 truncate text-[10.5px] font-semibold" style={{ color: "var(--vm-text)" }}>
-                  {destaqueInfo.nome}
-                </span>
-                <span className="text-[10px] font-bold tabular-nums" style={{ color: "var(--vm-muted)" }}>
-                  {destaqueInfo.n}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ── HOVER CARD DO EQUIPAMENTO ─────────────────────────────────────── */}
