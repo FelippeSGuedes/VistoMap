@@ -26,7 +26,6 @@ import type {
   PainelMapaResponse,
   PainelMapaTecnico,
   PainelMapaVistoria,
-  SituacaoOperacional,
 } from "@/types/painel-mapa";
 // Instalação — centralizada NESTE mesmo mapa (não é mais uma tela separada),
 // com pins de ícone/cor próprios. Fetch e sync 100% independentes do resto
@@ -47,10 +46,13 @@ import {
   R_EXTERNO,
   R_INTERNO,
   R_NUCLEO_ATRIBUIDO,
+  CHAVES_SINAL,
   SITUACAO_LABEL,
-  SITUACOES,
+  chaveSinal,
+  type ChaveSinal,
   corMarcador,
   corSituacao,
+  labelSituacao,
   iconeDe,
   registrarSpritesSinal,
   shade,
@@ -373,10 +375,10 @@ function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
       properties: {
         id: v.id,
         situacao: v.situacao,
-        icone: iconeDe(v.situacao, v.is_revisita),
+        icone: iconeDe(v.situacao, v.is_revisita, v.bloqueio),
         // Cor dominante do marcador (halo de hover, anel de foco, pulso) —
         // em ATRIBUÍDO é a do técnico, no resto é a da família de status.
-        cor_marcador: corMarcador(v.situacao, v.tecnico_cor),
+        cor_marcador: corMarcador(v.situacao, v.tecnico_cor, v.bloqueio),
         // -1 (e não null) pra comparação de expressão funcionar sem coalesce.
         tecnico_id: v.tecnico_id ?? -1,
         tecnico_cor: v.tecnico_cor ?? ANEL_SEM_TECNICO,
@@ -771,7 +773,7 @@ export default function PainelMapaPage() {
 
   // Painel lateral
   const [aba, setAba] = useState<"tecnicos" | "vistorias" | "instalacao">("tecnicos");
-  const [filtroSit, setFiltroSit] = useState<"todas" | SituacaoOperacional>("todas");
+  const [filtroSit, setFiltroSit] = useState<"todas" | ChaveSinal>("todas");
   const [filtroTec, setFiltroTec] = useState<"todos" | "online" | "parado" | "offline">("todos");
   // Aba "Equipe" mostra vistoriadores + instaladores juntos, diferenciados só
   // por cor — esse filtro decide qual papel aparece na lista/mapa.
@@ -1305,7 +1307,7 @@ export default function PainelMapaPage() {
   // do filtro selecionado, só a lista lateral respeitava.
   const SITUACAO_SORT: Record<string, number> = {
     DEVOLVIDA: -1, A_VISTORIAR: 0, ATRIBUIDO: 1, EM_VISTORIA: 2, VISTORIADO: 3,
-    AGUARDANDO_REVISITA: 4, EM_REVISITA: 5, REVISITADO: 6, REJEITADA: 7,
+    AGUARDANDO_REVISITA: 4, EM_REVISITA: 5, REVISITADO: 6, REJEITADA_IMP: 7, REJEITADA: 8,
   };
 
   const vistoriasFiltradas = useMemo(() => {
@@ -1313,7 +1315,7 @@ export default function PainelMapaPage() {
     const q = buscaVis.trim().toLowerCase();
     return all
       .filter((v) => {
-        if (filtroSit !== "todas" && v.situacao !== filtroSit) return false;
+        if (filtroSit !== "todas" && chaveSinal(v.situacao, v.bloqueio) !== filtroSit) return false;
         if (!q) return true;
         return (
           v.equipamento.toLowerCase().includes(q) ||
@@ -1321,7 +1323,11 @@ export default function PainelMapaPage() {
           (v.tecnico_nome ?? "").toLowerCase().includes(q)
         );
       })
-      .sort((a, b) => (SITUACAO_SORT[a.situacao] ?? 9) - (SITUACAO_SORT[b.situacao] ?? 9));
+      .sort(
+        (a, b) =>
+          (SITUACAO_SORT[chaveSinal(a.situacao, a.bloqueio)] ?? 9) -
+          (SITUACAO_SORT[chaveSinal(b.situacao, b.bloqueio)] ?? 9)
+      );
   }, [data, filtroSit, buscaVis]);
 
   // Espelha em ref pra reaproveitar em callbacks de troca de estilo do mapa
@@ -1628,7 +1634,10 @@ export default function PainelMapaPage() {
 
   const contagemSit = useMemo(() => {
     const acc: Record<string, number> = {};
-    for (const v of data?.vistorias ?? []) acc[v.situacao] = (acc[v.situacao] ?? 0) + 1;
+    for (const v of data?.vistorias ?? []) {
+      const k = chaveSinal(v.situacao, v.bloqueio);
+      acc[k] = (acc[k] ?? 0) + 1;
+    }
     return acc;
   }, [data]);
 
@@ -1890,7 +1899,7 @@ export default function PainelMapaPage() {
                 <FiltroPill active={filtroSit === "todas"} label="Todas" n={data?.vistorias.length ?? 0} color="var(--vm-text)" onClick={() => setFiltroSit("todas")} />
                 {/* As 10 situações continuam filtráveis uma a uma; a COR agora
                     vem da família (5), que é o que o mapa desenha. */}
-                {SITUACOES.map((key) => (
+                {CHAVES_SINAL.map((key) => (
                   <FiltroPill
                     key={key}
                     active={filtroSit === key}
@@ -1907,7 +1916,7 @@ export default function PainelMapaPage() {
               <div className="space-y-1">
                 {vistoriasFiltradas.map((v) => {
                   // Mesma regra do mapa: atribuída aparece na cor do técnico.
-                  const cor = corMarcador(v.situacao, v.tecnico_cor);
+                  const cor = corMarcador(v.situacao, v.tecnico_cor, v.bloqueio);
                   const corTec = v.tecnico_cor ?? ANEL_SEM_TECNICO;
                   const apagada = tecnicoDestacado != null && v.tecnico_id !== tecnicoDestacado;
                   return (
@@ -1943,7 +1952,7 @@ export default function PainelMapaPage() {
                             className="shrink-0 rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase"
                             style={{ background: `${cor}20`, color: cor }}
                           >
-                            {SITUACAO_LABEL[v.situacao]}
+                            {labelSituacao(v.situacao, v.bloqueio)}
                           </span>
                         </div>
                         <div className="mt-0.5 flex items-center gap-1 text-[9.5px]" style={{ color: "var(--vm-faint)" }}>
@@ -2123,9 +2132,9 @@ export default function PainelMapaPage() {
           <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
             <span
               className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: corMarcador(hoveredVis.situacao, hoveredVis.tecnico_cor) }}
+              style={{ background: corMarcador(hoveredVis.situacao, hoveredVis.tecnico_cor, hoveredVis.bloqueio) }}
             />
-            <span>{SITUACAO_LABEL[hoveredVis.situacao]}</span>
+            <span>{labelSituacao(hoveredVis.situacao, hoveredVis.bloqueio)}</span>
             <span style={{ color: "var(--vm-faint)" }}>·</span>
             <span className="truncate">{hoveredVis.municipio ?? "—"}</span>
           </div>
@@ -2389,11 +2398,11 @@ export default function PainelMapaPage() {
                     <span
                       className="shrink-0 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-wide"
                       style={{
-                        background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor), 0.16),
-                        color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor),
+                        background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio), 0.16),
+                        color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio),
                       }}
                     >
-                      {SITUACAO_LABEL[selectedVistoria.situacao]}
+                      {labelSituacao(selectedVistoria.situacao, selectedVistoria.bloqueio)}
                     </span>
                   </div>
                 </div>

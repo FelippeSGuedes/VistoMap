@@ -70,6 +70,13 @@ export interface PainelMapaVistoria {
   situacao_id: number;
   /** Situação operacional consolidada (deriva de situacao_id + flags). */
   situacao: SituacaoOperacional;
+  /**
+   * Natureza do bloqueio quando a vistoria saiu de circulação (situação
+   * REJEITADA): `impedimento` = o ambiente travou (condomínio, acesso),
+   * `recusa` = houve decisão explícita (sinal fora do padrão, morador
+   * recusou). null quando a vistoria não está bloqueada.
+   */
+  bloqueio: "impedimento" | "recusa" | null;
   /** Status de aprovação (Em análise / Aprovado / Reprovado) — pra UI. */
   status_aprovacao: "EM_ANALISE" | "APROVADO" | "REPROVADO" | "PENDENTE";
   /** Data da vistoria GLPI (datadavistoriafield). */

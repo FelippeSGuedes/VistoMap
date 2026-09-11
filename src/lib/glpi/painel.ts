@@ -28,6 +28,7 @@ import {
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import { getCoresIdentidade } from "./tecnicoIdentidade";
+import { RECUSA_MOTIVO_CATEGORIA, type RecusaMotivo } from "./recusaMotivos";
 import { nowBrasiliaSql } from "@/lib/timezone";
 import type {
   AdminStatus,
@@ -1459,6 +1460,8 @@ interface MapaVistoriaRow {
   tecnico_username: string | null;
   data_vistoria: string | null;
   rejeitada: number;
+  /** Motivo da recusa aprovada — decide impedimento x recusa (ver recusaMotivos). */
+  rejeitada_motivo: string | null;
 }
 
 function resolveSituacaoOperacional(
@@ -1722,7 +1725,8 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         u.realname AS tecnico_realname,
         u.name AS tecnico_username,
         f.datadavistoriafield AS data_vistoria,
-        (rec.id IS NOT NULL) AS rejeitada
+        (rec.id IS NOT NULL) AS rejeitada,
+        rec.motivo AS rejeitada_motivo
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
       LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -1829,6 +1833,13 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       tecnico_id: r.tecnico_id,
       tecnico_nome: tecnicoNome,
       tecnico_cor: hasTecnico ? coresIdentidade.get(Number(r.tecnico_id)) ?? null : null,
+      // Impedimento x recusa: mesma tabela, mesmo fluxo — o que separa é o
+      // MOTIVO. O mapa desenha os dois diferente porque significam coisas
+      // diferentes: impedimento é o ambiente que travou (pode destravar),
+      // recusa é decisão tomada (não volta).
+      bloqueio: r.rejeitada
+        ? RECUSA_MOTIVO_CATEGORIA[r.rejeitada_motivo as RecusaMotivo] ?? "recusa"
+        : null,
       situacao_id: Number(r.situacao_id ?? 0) || 0,
       situacao: resolveSituacaoOperacional(
         r.situacao_id,

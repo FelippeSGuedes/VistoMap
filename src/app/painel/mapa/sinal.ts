@@ -25,13 +25,16 @@ import type { SituacaoOperacional } from "@/types/painel-mapa";
 
 /* ─── famílias de status ──────────────────────────────────────────────────── */
 
-export type FamiliaSinal = "pendente" | "ativo" | "concluido" | "problema" | "fora";
+export type FamiliaSinal = "pendente" | "ativo" | "concluido" | "problema" | "bloqueado" | "fora";
 
 export const FAMILIA_COR: Record<FamiliaSinal, string> = {
   pendente: "#F97316",
   ativo: "#3B82F6",
   concluido: "#00B388",
   problema: "#DC2626",
+  // Âmbar queimado: "travado por fora", não "encerrado". Escuro o bastante
+  // pra não ser confundido com o laranja de PENDENTE.
+  bloqueado: "#B45309",
   fora: "#6B7280",
 };
 
@@ -40,10 +43,11 @@ export const FAMILIA_LABEL: Record<FamiliaSinal, string> = {
   ativo: "Ativo",
   concluido: "Concluído",
   problema: "Problema",
+  bloqueado: "Bloqueado",
   fora: "Fora",
 };
 
-export const FAMILIA_ORDEM: FamiliaSinal[] = ["pendente", "ativo", "concluido", "problema", "fora"];
+export const FAMILIA_ORDEM: FamiliaSinal[] = ["pendente", "ativo", "concluido", "problema", "bloqueado", "fora"];
 
 /** Descrição curta de cada família — usada na legenda flutuante. */
 export const FAMILIA_DESCRICAO: Record<FamiliaSinal, string> = {
@@ -51,10 +55,11 @@ export const FAMILIA_DESCRICAO: Record<FamiliaSinal, string> = {
   ativo: "Em deslocamento, em vistoria, em revisita",
   concluido: "Vistoriado, revisitado",
   problema: "Devolvida pro técnico corrigir",
-  fora: "Rejeitada — fora de circulação",
+  bloqueado: "Impedimento — o acesso travou a vistoria",
+  fora: "Recusa — decisão de não executar",
 };
 
-type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x";
+type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra";
 
 export const SITUACOES: SituacaoOperacional[] = [
   "A_VISTORIAR",
@@ -69,7 +74,22 @@ export const SITUACOES: SituacaoOperacional[] = [
   "REJEITADA",
 ];
 
-const SINAL: Record<SituacaoOperacional, { familia: FamiliaSinal; glifo: Glifo }> = {
+/**
+ * REJEITADA cobre duas naturezas MUITO diferentes que a situação sozinha não
+ * separa — e que o supervisor precisa distinguir de longe:
+ *   impedimento → o ambiente travou (condomínio, acesso). Pode destravar.
+ *   recusa      → houve decisão (sinal fora do padrão, morador recusou).
+ * Por isso existe uma chave sintética só pro desenho; a situação no banco
+ * continua sendo uma só, e os filtros continuam com as 10 de sempre.
+ */
+export type ChaveSinal = SituacaoOperacional | "REJEITADA_IMP";
+
+export function chaveSinal(situacao: string, bloqueio?: string | null): ChaveSinal {
+  if (situacao === "REJEITADA" && bloqueio === "impedimento") return "REJEITADA_IMP";
+  return (SINAL[situacao as ChaveSinal] ? situacao : "A_VISTORIAR") as ChaveSinal;
+}
+
+const SINAL: Record<ChaveSinal, { familia: FamiliaSinal; glifo: Glifo }> = {
   A_VISTORIAR:         { familia: "pendente",  glifo: "vazio" },
   ATRIBUIDO:           { familia: "pendente",  glifo: "atribuido" },
   AGUARDANDO_REVISITA: { familia: "pendente",  glifo: "vazio" },
@@ -80,9 +100,11 @@ const SINAL: Record<SituacaoOperacional, { familia: FamiliaSinal; glifo: Glifo }
   REVISITADO:          { familia: "concluido", glifo: "check" },
   DEVOLVIDA:           { familia: "problema",  glifo: "alerta" },
   REJEITADA:           { familia: "fora",      glifo: "x" },
+  REJEITADA_IMP:       { familia: "bloqueado", glifo: "barra" },
 };
 
-export const SITUACAO_LABEL: Record<SituacaoOperacional, string> = {
+export const SITUACAO_LABEL: Record<ChaveSinal, string> = {
+  REJEITADA_IMP:       "Impedimento",
   A_VISTORIAR:         "A vistoriar",
   ATRIBUIDO:           "Atribuído",
   EM_DESLOCAMENTO:     "Em deslocamento",
@@ -92,11 +114,11 @@ export const SITUACAO_LABEL: Record<SituacaoOperacional, string> = {
   EM_REVISITA:         "Em revisita",
   REVISITADO:          "Revisitado",
   DEVOLVIDA:           "Devolvida",
-  REJEITADA:           "Rejeitada",
+  REJEITADA:           "Recusa",
 };
 
 export function familiaDe(s: string): FamiliaSinal {
-  return SINAL[s as SituacaoOperacional]?.familia ?? "fora";
+  return SINAL[s as ChaveSinal]?.familia ?? "fora";
 }
 
 /** Cor de STATUS da situação — sempre a cor da família, nunca uma cor própria. */
@@ -108,19 +130,22 @@ export function corSituacao(s: string): string {
  * Cor com que a vistoria aparece em listas e chips — espelha o mapa: em
  * ATRIBUÍDO manda a cor do técnico; no resto, a cor da família de status.
  */
-export function corMarcador(situacao: string, tecnicoCor: string | null): string {
+export function corMarcador(
+  situacao: string,
+  tecnicoCor: string | null,
+  bloqueio?: string | null
+): string {
   if (situacao === "ATRIBUIDO" && tecnicoCor) return tecnicoCor;
-  return corSituacao(situacao);
+  return corSituacao(chaveSinal(situacao, bloqueio));
 }
 
-export function labelSituacao(s: string): string {
-  return SITUACAO_LABEL[s as SituacaoOperacional] ?? s;
+export function labelSituacao(situacao: string, bloqueio?: string | null): string {
+  return SITUACAO_LABEL[chaveSinal(situacao, bloqueio)] ?? situacao;
 }
 
 /** Nome do sprite de uma vistoria (o `-r` é o selo de revisita). */
-export function iconeDe(situacao: string, revisita: boolean): string {
-  const s = SINAL[situacao as SituacaoOperacional] ? situacao : "A_VISTORIAR";
-  return `vm-sig-${s}${revisita ? "-r" : ""}`;
+export function iconeDe(situacao: string, revisita: boolean, bloqueio?: string | null): string {
+  return `vm-sig-${chaveSinal(situacao, bloqueio)}${revisita ? "-r" : ""}`;
 }
 
 /** Cor neutra do anel quando a vistoria ainda não tem técnico. */
@@ -188,6 +213,14 @@ function desenhaGlifo(ctx: CanvasRenderingContext2D, glifo: Glifo, cor: string) 
     ctx.moveTo(25.4, 18.6);
     ctx.lineTo(18.6, 25.4);
     ctx.stroke();
+  } else if (glifo === "barra") {
+    // Barra grossa = "passagem bloqueada". Lê na hora e não se confunde nem
+    // com o × (encerrado) nem com o ! (devolvida).
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.moveTo(16.8, 22);
+    ctx.lineTo(27.2, 22);
+    ctx.stroke();
   }
 }
 
@@ -241,7 +274,7 @@ interface SpriteMapbox {
   pixelRatio: number;
 }
 
-function makeSinalImage(situacao: SituacaoOperacional, revisita: boolean): SpriteMapbox {
+function makeSinalImage(chave: ChaveSinal, revisita: boolean): SpriteMapbox {
   const px = BOX * RATIO;
   const cvs = document.createElement("canvas");
   cvs.width = px;
@@ -250,7 +283,7 @@ function makeSinalImage(situacao: SituacaoOperacional, revisita: boolean): Sprit
   ctx.scale(RATIO, RATIO);
   ctx.imageSmoothingEnabled = true;
 
-  const { familia, glifo } = SINAL[situacao];
+  const { familia, glifo } = SINAL[chave];
   const cor = FAMILIA_COR[familia];
   const cx = 22, cy = 22;
 
@@ -295,9 +328,12 @@ function makeSinalImage(situacao: SituacaoOperacional, revisita: boolean): Sprit
   return { width: px, height: px, data: new Uint8Array(img.data.buffer), pixelRatio: RATIO };
 }
 
-/** Registra as 20 imagens do miolo. Idempotente — roda a cada troca de estilo. */
+/** Todas as chaves desenháveis/filtráveis: as 10 situações + o impedimento. */
+export const CHAVES_SINAL: ChaveSinal[] = [...SITUACOES, "REJEITADA_IMP"];
+
+/** Registra as 22 imagens do miolo. Idempotente — roda a cada troca de estilo. */
 export function registrarSpritesSinal(map: MapboxMap): void {
-  for (const s of SITUACOES) {
+  for (const s of CHAVES_SINAL) {
     for (const rev of [false, true]) {
       const nome = `vm-sig-${s}${rev ? "-r" : ""}`;
       if (map.hasImage(nome)) continue;
