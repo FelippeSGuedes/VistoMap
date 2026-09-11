@@ -79,7 +79,7 @@ export async function GET(request: Request) {
 
   const url =
     `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json` +
-    `?access_token=${TOKEN}&language=pt-BR&types=address,street`;
+    `?access_token=${TOKEN}&language=pt-BR&types=address`;
 
   try {
     const resp = await fetch(url, { next: { revalidate: 30 } });
