@@ -399,18 +399,33 @@ function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
 const E = (v: unknown) => v as ExpressionSpecification;
 const F = (v: unknown) => v as FilterSpecification;
 
-/** Escala do marcador por zoom — mesma curva pro sprite e pros círculos. */
-const ZOOM_ESCALA = [
-  "interpolate", ["linear"], ["zoom"],
-  10, 0.55,
-  14, 0.78,
-  18, 1,
-];
+/**
+ * Escala do marcador por zoom.
+ *
+ * ARMADILHA CARA: a curva de zoom TEM que ser a raiz da expressão. Escrever
+ * `["*", raio, ["interpolate", ..., ["zoom"], ...]]` é inválido no Mapbox
+ * ("zoom expression may only be used as the input to a top-level step or
+ * interpolate") — e `addLayer` NÃO lança: ele só emite um erro no console e
+ * descarta a camada inteira em silêncio. Foi assim que disco, anel e sombra
+ * sumiram do mapa enquanto o sprite (cujo icon-size já estava na raiz)
+ * continuava aparecendo.
+ *
+ * Então o valor por feature entra nas PARADAS da curva, nunca multiplicando a
+ * curva.
+ */
+const ZOOM_PARADAS: Array<[number, number]> = [[10, 0.55], [14, 0.78], [18, 1]];
 
-/** Escala final = zoom × ênfase (só o selecionado cresce; hover usa halo). */
-function escalaCom(selecionadoId: number | null): unknown {
-  if (selecionadoId == null) return ZOOM_ESCALA;
-  return ["*", ZOOM_ESCALA, ["case", ["==", ["get", "id"], selecionadoId], 1.18, 1]];
+function porZoom(valor: unknown): unknown {
+  return [
+    "interpolate", ["linear"], ["zoom"],
+    ...ZOOM_PARADAS.flatMap(([z, f]) => [z, ["*", valor, f]]),
+  ];
+}
+
+/** O selecionado cresce 18%; o hover usa halo, pra não forçar relayout. */
+function comEnfase(valor: unknown, selecionadoId: number | null): unknown {
+  if (selecionadoId == null) return valor;
+  return ["*", valor, ["case", ["==", ["get", "id"], selecionadoId], 1.18, 1]];
 }
 
 const EH_ATRIBUIDO = ["==", ["get", "atribuido"], 1];
@@ -419,13 +434,15 @@ const EH_ATRIBUIDO = ["==", ["get", "atribuido"], 1];
  * Disco do marcador. Em ATRIBUÍDO ele é o próprio núcleo, cheio na cor do
  * técnico; nos outros estados é só o vão branco entre anel e núcleo.
  */
-function raioAnel(escala: unknown): unknown {
-  return ["*", ["case", EH_ATRIBUIDO, R_NUCLEO_ATRIBUIDO, R_INTERNO], escala];
+function raioDisco(selecionadoId: number | null): unknown {
+  return porZoom(comEnfase(["case", EH_ATRIBUIDO, R_NUCLEO_ATRIBUIDO, R_INTERNO], selecionadoId));
 }
 
 /** A borda sempre fecha em R_EXTERNO — todo marcador tem o mesmo tamanho. */
-function espessuraAnel(escala: unknown): unknown {
-  return ["*", ["case", EH_ATRIBUIDO, BORDA_ATRIBUIDO, R_EXTERNO - R_INTERNO], escala];
+function espessuraBorda(selecionadoId: number | null): unknown {
+  return porZoom(
+    comEnfase(["case", EH_ATRIBUIDO, BORDA_ATRIBUIDO, R_EXTERNO - R_INTERNO], selecionadoId)
+  );
 }
 
 /** ATRIBUÍDO inverte: dentro é o técnico, fora é um aro branco fino. */
@@ -1113,7 +1130,7 @@ export default function PainelMapaPage() {
       source: VISTORIAS_SRC,
       paint: {
         "circle-color": "rgba(15,23,42,0.22)",
-        "circle-radius": E(["*", 16, ZOOM_ESCALA]),
+        "circle-radius": E(porZoom(16)),
         "circle-blur": 0.45,
         "circle-translate": [0, 1.5],
       },
@@ -1129,7 +1146,7 @@ export default function PainelMapaPage() {
         paint: {
           "circle-color": E(["get", "cor_marcador"]),
           "circle-opacity": op,
-          "circle-radius": E(["*", raio, ZOOM_ESCALA]),
+          "circle-radius": E(porZoom(raio)),
           "circle-stroke-color": "#FFFFFF",
           "circle-stroke-width": id === SIG_FOCO ? 2 : 1.5,
           "circle-stroke-opacity": id === SIG_FOCO ? 0.95 : 0.8,
@@ -1147,9 +1164,9 @@ export default function PainelMapaPage() {
       source: VISTORIAS_SRC,
       paint: {
         "circle-color": E(COR_DISCO),
-        "circle-radius": E(raioAnel(ZOOM_ESCALA)),
+        "circle-radius": E(raioDisco(null)),
         "circle-stroke-color": E(COR_BORDA),
-        "circle-stroke-width": E(espessuraAnel(ZOOM_ESCALA)),
+        "circle-stroke-width": E(espessuraBorda(null)),
         "circle-stroke-opacity": E(OPACIDADE_BORDA),
       },
     });
@@ -1167,7 +1184,7 @@ export default function PainelMapaPage() {
         // escrever por cima deles.
         "icon-allow-overlap": true,
         "icon-ignore-placement": false,
-        "icon-size": E(ZOOM_ESCALA),
+        "icon-size": E(porZoom(1)),
         "text-field": E(["get", "equipamento"]),
         "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
         "text-size": E(["interpolate", ["linear"], ["zoom"], 10, 9.5, 14, 10.5, 18, 12]),
@@ -1183,6 +1200,13 @@ export default function PainelMapaPage() {
         "text-halo-width": 1.4,
       },
     });
+
+    // addLayer com paint/layout inválido não lança: o Mapbox descarta a camada
+    // e só deixa um erro no console. Sem esta conferência, o mapa simplesmente
+    // aparece sem os marcadores e ninguém sabe por quê.
+    for (const id of [SIG_PULSO, SIG_SOMBRA, SIG_HOVER, SIG_FOCO, SIG_ANEL, VISTORIAS_POINTS]) {
+      if (!map.getLayer(id)) console.error("[vm] camada recusada pelo Mapbox (expressão inválida):", id);
+    }
 
     if (!handlersSinalRef.current) {
       handlersSinalRef.current = true;
@@ -1486,19 +1510,19 @@ export default function PainelMapaPage() {
       const map = mapRef.current;
       if (!map || !map.getLayer(SIG_ANEL)) return;
       const selId = selectedVistoria?.id ?? null;
-      const escala = escalaCom(selId);
       const fator = fatorDestaque(tecnicoDestacado);
 
       map.setFilter(SIG_FOCO, F(["==", ["get", "id"], selId ?? -1]));
-      map.setPaintProperty(SIG_ANEL, "circle-radius", E(raioAnel(escala)));
-      map.setPaintProperty(SIG_ANEL, "circle-stroke-width", E(espessuraAnel(escala)));
+      map.setPaintProperty(SIG_ANEL, "circle-radius", E(raioDisco(selId)));
+      map.setPaintProperty(SIG_ANEL, "circle-stroke-width", E(espessuraBorda(selId)));
       map.setPaintProperty(SIG_ANEL, "circle-opacity", E(fator));
       map.setPaintProperty(SIG_ANEL, "circle-stroke-opacity", E(["*", OPACIDADE_BORDA, fator]));
       map.setPaintProperty(SIG_SOMBRA, "circle-opacity", E(["*", 1, fator]));
       map.setPaintProperty(SIG_PULSO, "circle-opacity", E(["*", 0.28, fator]));
       map.setPaintProperty(VISTORIAS_POINTS, "icon-opacity", E(fator));
       map.setPaintProperty(VISTORIAS_POINTS, "text-opacity", E(fator));
-      map.setLayoutProperty(VISTORIAS_POINTS, "icon-size", E(escala));
+      map.setLayoutProperty(VISTORIAS_POINTS, "icon-size", E(porZoom(comEnfase(1, selId))));
+      map.setPaintProperty(SIG_SOMBRA, "circle-radius", E(porZoom(comEnfase(16, selId))));
     };
     aplicarEnfaseRef.current = aplicar;
     aplicar();
