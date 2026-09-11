@@ -1054,6 +1054,7 @@ export default function PainelMapaPage() {
   // map.on(tipo, camada, fn) sobrevive ao setStyle — sem esta trava, cada
   // troca de estilo registraria os handlers de novo.
   const handlersSinalRef = useRef(false);
+  const hoveredVisIdRef = useRef<number | null>(null);
 
   function ensureVistoriaLayers(map: mapboxgl.Map, vistorias: PainelMapaVistoria[]) {
     const geojson = buildGeoJSON(vistorias);
@@ -1174,15 +1175,20 @@ export default function PainelMapaPage() {
         const v = lastDataRef.current?.vistorias.find((x) => x.id === vId);
         if (v) { setSelectedVistoria(v); setSelectedTec(null); }
       });
+      // mousemove dispara dezenas de vezes por segundo; só re-renderiza quando
+      // o equipamento sob o cursor MUDA. O card fica ancorado onde o ponteiro
+      // entrou, em vez de perseguir o mouse.
       map.on("mousemove", VISTORIAS_POINTS, (e) => {
         map.getCanvas().style.cursor = "pointer";
         const vId = e.features?.[0]?.properties?.id as number | undefined;
-        const v = vId == null ? null : lastDataRef.current?.vistorias.find((x) => x.id === vId) ?? null;
-        setHoveredVis(v);
+        if (vId == null || hoveredVisIdRef.current === vId) return;
+        hoveredVisIdRef.current = vId;
+        setHoveredVis(lastDataRef.current?.vistorias.find((x) => x.id === vId) ?? null);
         setHoveredVisPos({ ...cursorRef.current });
       });
       map.on("mouseleave", VISTORIAS_POINTS, () => {
         map.getCanvas().style.cursor = "";
+        hoveredVisIdRef.current = null;
         setHoveredVis(null);
         setHoveredVisPos(null);
       });
