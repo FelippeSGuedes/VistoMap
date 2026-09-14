@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import mapboxgl from "mapbox-gl";
+import { novoMapa } from "@/lib/mapaSeguro";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -609,7 +610,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
     );
     let alive = true;
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const { map } = novoMapa({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/empty-v9",
       center: [-48.5, -22.0] as [number, number],
@@ -623,7 +624,10 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
       touchZoomRotate: false,
       keyboard: false,
       attributionControl: false,
-    });
+    }, "painel/dashboard");
+    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
+    // pro backend (ver lib/mapaSeguro.ts).
+    if (!map) return;
     mapRef.current = map;
 
     const ro = new ResizeObserver(() => { if (alive) map.resize(); });
@@ -879,7 +883,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       "@keyframes vm-radar{0%{box-shadow:0 0 0 0 rgba(22,163,74,0.4)}70%{box-shadow:0 0 0 12px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}",
     );
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const { map } = novoMapa({
       container: containerRef.current,
       style: dashMapStyle("mapbox://styles/mapbox/light-v11"),
       center: [-47.0626, -22.9064],
@@ -890,7 +894,10 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       doubleClickZoom: false,
       touchZoomRotate: false,
       attributionControl: false,
-    });
+    }, "painel/dashboard");
+    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
+    // pro backend (ver lib/mapaSeguro.ts).
+    if (!map) return;
     mapRef.current = map;
     const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
     popupRef.current = popup;
@@ -1019,14 +1026,17 @@ function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidge
     );
     injectStyle("vm-noc-css", NOC_CSS);
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const { map } = novoMapa({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/empty-v9",
       center: [-48.5, -22.0] as [number, number],
       zoom: 5.6,
       interactive: false,
       attributionControl: false,
-    });
+    }, "painel/dashboard");
+    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
+    // pro backend (ver lib/mapaSeguro.ts).
+    if (!map) return;
     mapRef.current = map;
 
     const ro = new ResizeObserver(() => { if (alive) map.resize(); });
@@ -1272,14 +1282,17 @@ function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
     );
     injectStyle("vm-noc-css", NOC_CSS);
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const { map } = novoMapa({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/empty-v9",
       center: [-48.5, -22.0] as [number, number],
       zoom: 5.6,
       interactive: false,
       attributionControl: false,
-    });
+    }, "painel/dashboard");
+    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
+    // pro backend (ver lib/mapaSeguro.ts).
+    if (!map) return;
     mapRef.current = map;
 
     const ro = new ResizeObserver(() => { if (alive) map.resize(); });
@@ -1491,14 +1504,17 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
       ".vm-dash-rev .mapboxgl-ctrl-logo,.vm-dash-rev .mapboxgl-ctrl-attrib{display:none!important}",
     );
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const { map } = novoMapa({
       container: containerRef.current,
       style: dashMapStyle("mapbox://styles/mapbox/light-v11"),
       center: [-48.5, -22.0] as [number, number],
       zoom: 5.6,
       interactive: false,
       attributionControl: false,
-    });
+    }, "painel/dashboard");
+    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
+    // pro backend (ver lib/mapaSeguro.ts).
+    if (!map) return;
     mapRef.current = map;
     return () => {
       markersRef.current.forEach(mk => mk.remove());

@@ -22,7 +22,8 @@ import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import { fetchPostesProximos } from "@/services/postes";
 import { asset } from "@/utils/asset";
-import { diagnosticarWebGL, explicarFalhaWebGL } from "@/lib/webgl";
+import { explicarFalhaWebGL, type DiagnosticoWebGL } from "@/lib/webgl";
+import { novoMapa } from "@/lib/mapaSeguro";
 import type { Poste } from "@/types";
 import type {
   PainelMapaResponse,
@@ -770,7 +771,7 @@ export default function PainelMapaPage() {
   // Tela de carregamento: primeiro load e troca de estilo — nunca no poll.
   const [mapaCarregando, setMapaCarregando] = useState(true);
   // WebGL indisponível — a tela explica em vez de quebrar (ver lib/webgl.ts).
-  const [erroWebGL, setErroWebGL] = useState(false);
+  const [diagWebGL, setDiagWebGL] = useState<DiagnosticoWebGL | null>(null);
   const [semAntialias, setSemAntialias] = useState(false);
 
   // Hover card do técnico
@@ -882,30 +883,23 @@ export default function PainelMapaPage() {
     // o 3D precisa) entra nos atributos do contexto e é justamente o que falha
     // primeiro em GPU fraca — então aqui tenta com, tenta sem, e só desiste
     // depois disso, explicando o que fazer em vez de estourar um erro cru.
-    const diag = diagnosticarWebGL();
-    if (!diag.utilizavel) {
-      setErroWebGL(true);
+    // Usa o criador comum: diagnostica, cai pro modo compatível sem antialias
+    // se preciso, e reporta o motivo pro backend quando não dá (lib/mapaSeguro).
+    const { map, diagnostico } = novoMapa({
+      container,
+      style: mapStyleFor(activeLayerRef.current, readDarkTheme()),
+      center: DEFAULT_CENTER,
+      zoom: 10,
+      attributionControl: false,
+      pitchWithRotate: true,
+      antialias: true, // custom layer 3D (Three.js) precisa disso pra não serrilhar
+    }, "painel/mapa");
+    if (!map) {
+      setDiagWebGL(diagnostico);
       return;
     }
-    const comAntialias = diag.motivo === "ok";
-    if (!comAntialias) setSemAntialias(true);
+    if (!diagnostico.antialias) setSemAntialias(true);
 
-    let map: mapboxgl.Map;
-    try {
-      map = new mapboxgl.Map({
-        container,
-        style: mapStyleFor(activeLayerRef.current, readDarkTheme()),
-        center: DEFAULT_CENTER,
-        zoom: 10,
-        attributionControl: false,
-        pitchWithRotate: true,
-        antialias: comAntialias, // custom layer 3D (Three.js) precisa disso pra não serrilhar
-      });
-    } catch (err) {
-      console.error("[vm] mapa não inicializou", err);
-      setErroWebGL(true);
-      return;
-    }
     map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "top-right");
     mapRef.current = map;
     // CustomLayerInterface só funciona certo em projeção mercator — mapbox-gl v3
@@ -1752,8 +1746,8 @@ export default function PainelMapaPage() {
   // Sem WebGL não há mapa possível — mas há o que dizer. Antes disto, a
   // exceção do mapbox subia pro error boundary e o usuário via só
   // "Failed to initialize WebGL".
-  if (erroWebGL) {
-    const { titulo, passos } = explicarFalhaWebGL();
+  if (diagWebGL) {
+    const { titulo, passos } = explicarFalhaWebGL(diagWebGL);
     return (
       <div className="grid h-full place-items-center p-6">
         <div

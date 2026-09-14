@@ -47,7 +47,7 @@ import {
   X,
 } from "lucide-react";
 import { MAP_STYLE_DARK, getMapboxToken } from "@/services/maps";
-import { diagnosticarWebGL } from "@/lib/webgl";
+import { novoMapa } from "@/lib/mapaSeguro";
 import type { AgendamentoPlano, AgendamentoPreviewResponse } from "@/services/painel";
 import { TechModel3DLayer, type TechEntrySpec } from "@/app/painel/mapa/techModel3DLayer";
 import type { RouteResult } from "@/app/painel/mapa/routeService";
@@ -429,30 +429,25 @@ export function SimulacaoDiaOverlay({
       return;
     }
     mapboxgl.accessToken = token;
-    // O antialias (que o 3D pede) entra nos atributos do contexto WebGL e é o
-    // primeiro a falhar em GPU fraca. Melhor 3D serrilhado que simulação sem
-    // mapa — ver lib/webgl.ts.
-    const diag = diagnosticarWebGL();
-    if (!diag.utilizavel) {
-      setMapErro("O navegador não disponibilizou aceleração gráfica (WebGL 2). Ative a aceleração de hardware nas configurações e recarregue.");
+    const { map, diagnostico } = novoMapa({
+      container: containerRef.current,
+      style: MAP_STYLE_DARK,
+      center: SP_CENTER,
+      zoom: SP_ZOOM,
+      pitch: 0,
+      bearing: 0,
+      attributionControl: false,
+      antialias: true, // a camada 3D (Three.js) precisa disso pra não serrilhar
+    }, "painel/simulacao-dia");
+    if (!map) {
+      setMapErro(
+        diagnostico.motivo === "so-webgl1"
+          ? "A placa de vídeo deste computador só suporta WebGL 1, e o mapa precisa de WebGL 2."
+          : "O navegador não disponibilizou aceleração gráfica (WebGL 2). Ative a aceleração de hardware e recarregue."
+      );
       return;
     }
-    let map: mapboxgl.Map;
-    try {
-      map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: MAP_STYLE_DARK,
-        center: SP_CENTER,
-        zoom: SP_ZOOM,
-        pitch: 0,
-        bearing: 0,
-        attributionControl: false,
-        antialias: diag.motivo === "ok",
-      });
-    } catch (e) {
-      setMapErro(e instanceof Error ? e.message : String(e));
-      return;
-    }
+
     // CustomLayerInterface só funciona certo em mercator — o estilo escuro do v3 nasce em "globe".
     map.setProjection("mercator");
     mapRef.current = map;

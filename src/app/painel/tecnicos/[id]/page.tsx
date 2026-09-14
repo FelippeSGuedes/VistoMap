@@ -11,6 +11,7 @@
  */
 
 import mapboxgl from "mapbox-gl";
+import { novoMapa } from "@/lib/mapaSeguro";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -160,13 +161,16 @@ export default function TecnicoDetalhePage() {
     const token = getMapboxToken();
     if (!token) return;
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const { map } = novoMapa({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: DEFAULT_CENTER,
       zoom: 10,
       attributionControl: false,
-    });
+    }, "painel/tecnico-detalhe");
+    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
+    // pro backend (ver lib/mapaSeguro.ts).
+    if (!map) return;
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
     return () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import mapboxgl, { type LngLatLike, type Map as MapboxMap } from "mapbox-gl";
+import { novoMapa } from "@/lib/mapaSeguro";
 import { useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { MapPinned } from "lucide-react";
@@ -120,7 +121,7 @@ export function MapView({
     if (!containerRef.current || mapRef.current) return;
     if (!token) return;
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
+    const { map } = novoMapa({
       container: containerRef.current,
       style: MAP_STYLE,
       center: initialCenterRef.current,
@@ -128,7 +129,10 @@ export function MapView({
       attributionControl: false,
       pitchWithRotate: false,
       cooperativeGestures: false,
-    });
+    }, "app/vistoria-mapa");
+    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
+    // pro backend (ver lib/mapaSeguro.ts).
+    if (!map) return;
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(
       new mapboxgl.AttributionControl({ compact: true }),
