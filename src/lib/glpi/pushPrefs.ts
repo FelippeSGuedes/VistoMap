@@ -87,13 +87,26 @@ export async function ensurePushTables(): Promise<void> {
   ensured = true;
 }
 
-/** Mapa users_id → "tem pelo menos 1 categoria ativa" (elegibilidade geral). */
+/**
+ * Mapa users_id → "tem pelo menos 1 categoria ativa" (elegibilidade geral) —
+ * é o que /api/painel/push/status usa pra decidir se o navegador do analista
+ * deve sequer TENTAR se inscrever no push.
+ *
+ * Sem NENHUMA linha em notif_prefs = nunca abriu Configurações › Notificações
+ * = habilitado por padrão (mesma regra de getCategoriaPrefs/
+ * listEnabledSubscriptions, 2026-09-14). Sem este default, um analista que
+ * nunca visitou as configurações nunca chegava a se inscrever no push —
+ * o problema começava aqui, antes mesmo de qualquer categoria importar.
+ * Uma configuração explícita (mesmo que tudo desligado de propósito)
+ * continua sendo respeitada.
+ */
 export async function getNotificarFlags(
   usersIds: number[]
 ): Promise<Map<number, boolean>> {
   const m = new Map<number, boolean>();
   if (usersIds.length === 0) return m;
   await ensurePushTables();
+  for (const id of usersIds) m.set(id, true);
   const placeholders = usersIds.map(() => "?").join(",");
   const rows = await query<{ users_id: number; any_on: number }>(
     `SELECT users_id, MAX(ativo) AS any_on FROM \`${TABLE_NOTIF_PREFS}\`
@@ -104,7 +117,19 @@ export async function getNotificarFlags(
   return m;
 }
 
-/** Mapa users_id → {categoria: ativo}, para a grade de preferências do admin. */
+/**
+ * Mapa users_id → {categoria: ativo}, para a grade de preferências do admin
+ * e pro filtro de alertas (api/painel/alertas).
+ *
+ * Categoria SEM linha na tabela = HABILITADA por padrão (2026-09-14) — achado
+ * real em produção: um moderador (Matheus Rosa) nunca tinha aberto
+ * Configurações › Notificações, então `notif_prefs` não tinha nenhuma linha
+ * pra ele, e com o default antigo (ausente = desligado) ele nunca recebia
+ * toast nem push de recusa/impedimento — "às vezes aparece, às vezes não"
+ * dependia inteiramente de QUEM estava logado ter passado por lá antes.
+ * Uma linha explícita (o admin desligou de propósito em Configurações)
+ * continua sendo respeitada — só o "nunca configurou" virou opt-out.
+ */
 export async function getCategoriaPrefs(
   usersIds: number[]
 ): Promise<Map<number, Record<NotifCategoria, boolean>>> {
@@ -112,7 +137,7 @@ export async function getCategoriaPrefs(
   if (usersIds.length === 0) return m;
   await ensurePushTables();
   const vazio = () =>
-    Object.fromEntries(NOTIF_CATEGORIAS.map((c) => [c, false])) as Record<NotifCategoria, boolean>;
+    Object.fromEntries(NOTIF_CATEGORIAS.map((c) => [c, true])) as Record<NotifCategoria, boolean>;
   for (const id of usersIds) m.set(id, vazio());
 
   const placeholders = usersIds.map(() => "?").join(",");
@@ -201,13 +226,21 @@ export async function saveSubscription(input: {
 }
 
 /** Inscrições dos usuários com a categoria dada ativa (destinatários do push desse evento). */
+/**
+ * Inscrições que devem receber push desta categoria. LEFT JOIN + COALESCE (não
+ * INNER JOIN): sem linha em notif_prefs a categoria é HABILITADA por padrão
+ * — mesma regra de getCategoriaPrefs, ver comentário lá. Com INNER JOIN, um
+ * analista que nunca abriu Configurações › Notificações tinha o navegador
+ * inscrito (web_push_subs existe) mas NUNCA recebia push nenhum, silenciosamente.
+ */
 export async function listEnabledSubscriptions(categoria: NotifCategoria): Promise<WebPushSub[]> {
   await ensurePushTables();
   return query<WebPushSub>(
     `SELECT s.id, s.users_id, s.endpoint, s.p256dh, s.auth
        FROM \`${TABLE_SUBS}\` s
-       INNER JOIN \`${TABLE_NOTIF_PREFS}\` p
-               ON p.users_id = s.users_id AND p.categoria = ? AND p.ativo = 1`,
+       LEFT JOIN \`${TABLE_NOTIF_PREFS}\` p
+              ON p.users_id = s.users_id AND p.categoria = ?
+      WHERE COALESCE(p.ativo, 1) = 1`,
     [categoria]
   );
 }

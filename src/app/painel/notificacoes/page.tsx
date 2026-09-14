@@ -8,12 +8,16 @@
  * que ler cada um pra descobrir o que era. Agora ela faz só duas coisas:
  *
  *   1. diz de onde vem cada natureza de ocorrência e quantas existem;
- *   2. põe na frente o que está travado esperando decisão.
+ *   2. deixa decidir "Precisa de decisão" ALI MESMO — aprovar/reprovar sem
+ *      sair da página. Antes disso cada item era só um link pra Central de
+ *      Ocorrências, que exigia achar o mesmo item de novo numa lista — um
+ *      passo a mais que custou caro em campo (2026-09-14): a notificação
+ *      dizia "tem algo esperando" mas quem clicava não achava onde agir.
  *
- * O trabalho de fato acontece na Central de Ocorrências (/painel/ocorrencias),
- * onde cada tipo tem recorte, filtro, histórico de tentativas e evidência.
- * Notificação ≠ ocorrência: uma chama atenção, a outra é um fato operacional
- * registrado.
+ * O restante (filtro por tipo, histórico de tentativas, evidência) continua
+ * exclusivo da Central de Ocorrências (/painel/ocorrencias) — esta tela só
+ * cobre a decisão em si. Notificação ≠ ocorrência: uma chama atenção, a
+ * outra é um fato operacional registrado.
  *
  * Pedidos de exceção (fora do raio) não aparecem aqui — já chegam decididos e
  * já viram histórico na Auditoria automaticamente (2026-09-14).
@@ -23,7 +27,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Ban, Bell, CheckCircle2, ChevronRight, Clock,
-  Construction, RefreshCw, Undo2,
+  Construction, RefreshCw, Undo2, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
@@ -78,9 +82,16 @@ interface DevolucoesStats {
 
 export default function AtividadesPage() {
   const { session } = useAuthStore();
+  const isLeitura = session?.role === "leitura";
   const [dados, setDados] = useState<OcorrenciasResponse | null>(null);
   const [devolucoes, setDevolucoes] = useState<DevolucoesStats | null>(null);
   const [loading, setLoading] = useState(true);
+  // Ação inline por item — chave é o Ocorrencia.chave, não o id sozinho
+  // (recusa e futura outra origem podem colidir em id).
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const [reprovandoChave, setReprovandoChave] = useState<string | null>(null);
+  const [motivoReprova, setMotivoReprova] = useState("");
+  const [erroChave, setErroChave] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     if (!session?.token) return;
@@ -112,6 +123,32 @@ export default function AtividadesPage() {
   );
 
   const totalAberto = pendentes.length + (devolucoes?.pendentes ?? 0);
+
+  async function responder(o: Ocorrencia, acao: "aprovar" | "reprovar") {
+    if (!session?.token) return;
+    if (acao === "reprovar" && reprovandoChave !== o.chave) {
+      setReprovandoChave(o.chave);
+      setMotivoReprova("");
+      setErroChave(null);
+      return;
+    }
+    if (acao === "reprovar" && !motivoReprova.trim()) return;
+    setEnviando(o.chave);
+    setErroChave(null);
+    try {
+      await api.post(
+        `/painel/notificacoes/recusas/${o.id}/responder`,
+        { acao, motivo: acao === "reprovar" ? motivoReprova.trim() : undefined },
+        { headers: { Authorization: `Bearer ${session.token}` } }
+      );
+      setReprovandoChave(null);
+      await carregar();
+    } catch {
+      setErroChave(o.chave);
+    } finally {
+      setEnviando(null);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -173,29 +210,93 @@ export default function AtividadesPage() {
         ) : (
           <ul>
             {pendentes.map((o, i) => (
-              <li key={o.chave}>
-                <Link
-                  href={`/painel/ocorrencias?tipo=${o.tipo}`}
-                  className="flex items-center gap-3 px-5 py-3 transition hover:bg-[var(--vm-tile)]"
-                  style={{ borderTop: i === 0 ? "none" : "1px solid var(--vm-border)" }}
-                >
-                  <span
-                    className="shrink-0 rounded-md px-2 py-[3px] text-[9.5px] font-bold uppercase tracking-wide"
-                    style={{ background: tint(TIPO_COR[o.tipo], 0.13), color: TIPO_COR[o.tipo] }}
+              <li key={o.chave} style={{ borderTop: i === 0 ? "none" : "1px solid var(--vm-border)" }}>
+                <div className="flex items-center gap-3 px-5 py-3">
+                  <Link
+                    href={`/painel/ocorrencias?tipo=${o.tipo}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-lg transition hover:opacity-80"
+                    title="Ver detalhes na Central de Ocorrências"
                   >
-                    {o.tipo === "impedimento" ? "Impedimento" : "Recusa"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold" style={{ color: "var(--vm-text)" }}>{o.motivoLabel}</p>
-                    <p className="truncate text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
-                      {o.equipamento} · {o.tecnicoNome}
-                    </p>
-                  </div>
+                    <span
+                      className="shrink-0 rounded-md px-2 py-[3px] text-[9.5px] font-bold uppercase tracking-wide"
+                      style={{ background: tint(TIPO_COR[o.tipo], 0.13), color: TIPO_COR[o.tipo] }}
+                    >
+                      {o.tipo === "impedimento" ? "Impedimento" : "Recusa"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold" style={{ color: "var(--vm-text)" }}>{o.motivoLabel}</p>
+                      <p className="truncate text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
+                        {o.equipamento} · {o.tecnicoNome}
+                      </p>
+                    </div>
+                  </Link>
                   <span className="shrink-0 text-[11px]" style={{ color: "#DC2626" }}>
                     há {relativo(o.criadoEm)}
                   </span>
-                  <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint)" }} />
-                </Link>
+                  {/* Decisão AQUI — antes disso era só um link, e quem clicava
+                      tinha que achar de novo o mesmo item numa lista pra agir. */}
+                  {!isLeitura && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={enviando === o.chave}
+                        onClick={() => responder(o, "aprovar")}
+                        className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                        style={{ background: "#059669" }}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={enviando === o.chave}
+                        onClick={() => responder(o, "reprovar")}
+                        className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-bold transition hover:brightness-95 disabled:opacity-50"
+                        style={{ background: "rgba(220,38,38,0.10)", color: "#DC2626", border: "1px solid rgba(220,38,38,0.3)" }}
+                      >
+                        <Ban className="h-3.5 w-3.5" /> Reprovar
+                      </button>
+                    </div>
+                  )}
+                  <Link href={`/painel/ocorrencias?tipo=${o.tipo}`} title="Ver detalhes">
+                    <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint)" }} />
+                  </Link>
+                </div>
+
+                {reprovandoChave === o.chave && (
+                  <div className="mx-5 mb-3 rounded-xl p-3" style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)" }}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                        Motivo da reprovação
+                      </p>
+                      <button type="button" onClick={() => setReprovandoChave(null)} style={{ color: "var(--vm-faint)" }}>
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <textarea
+                      value={motivoReprova}
+                      onChange={(e) => setMotivoReprova(e.target.value)}
+                      rows={2}
+                      autoFocus
+                      placeholder="Explique por que não procede…"
+                      className="mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none"
+                      style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!motivoReprova.trim() || enviando === o.chave}
+                      onClick={() => responder(o, "reprovar")}
+                      className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                      style={{ background: "#DC2626" }}
+                    >
+                      {enviando === o.chave ? "Enviando…" : "Confirmar reprovação"}
+                    </button>
+                  </div>
+                )}
+                {erroChave === o.chave && (
+                  <p className="mx-5 mb-3 text-[11.5px] font-medium" style={{ color: "#DC2626" }}>
+                    Não foi possível registrar a decisão. Tente de novo.
+                  </p>
+                )}
               </li>
             ))}
             {(devolucoes?.pendentes ?? 0) > 0 && (
