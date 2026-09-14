@@ -16,7 +16,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Ban, Check, Clock, LocateFixed, Lock, Navigation, Wrench, X, XCircle } from "lucide-react";
+import { Ban, Check, Clock, LocateFixed, Lock, MessageCircleQuestion, Navigation, Wrench, X, XCircle } from "lucide-react";
 import type { Vistoria } from "@/types";
 import type { ApiError } from "@/services/api";
 import { api } from "@/services/api";
@@ -26,6 +26,7 @@ import { useOfflinePrep } from "@/hooks/useOfflinePrep";
 import { usePostesProximos } from "@/hooks/usePostesProximos";
 import { NavigationOptionsSheet } from "./NavigationOptionsSheet";
 import { RecusarVistoriaFlow } from "./RecusarVistoriaFlow";
+import { AssistenteVistoria, type AssistenteVistoriaHandle } from "./AssistenteVistoria";
 import { MudarPosteFlow } from "@/components/postes/MudarPosteFlow";
 import type { RecusaMotivo } from "@/lib/glpi/recusaMotivos";
 
@@ -133,6 +134,11 @@ export function GuidedArrival({
   // "achar" que não tem alternativa — evita recusa por preguiça.
   const posteGate = usePostesProximos();
   const [mudarPosteOpen, setMudarPosteOpen] = useState(false);
+  // Chat de impedimento (mesmo AssistenteVistoria da execução) — disponível
+  // JÁ NA CHEGADA, sem precisar "iniciar" a vistoria só pra achar o botão de
+  // ajuda. Ver comentário no topo de AssistenteVistoria.tsx.
+  const assistenteRef = useRef<AssistenteVistoriaHandle>(null);
+  const isRepetidor = (vistoria?.fields?.equipamentofield ?? "").trim().toLowerCase() === "repetidor";
   const [recusarOpen, setRecusarOpen] = useState(false);
   const [recusarMotivoFixo, setRecusarMotivoFixo] = useState<RecusaMotivo | undefined>(undefined);
 
@@ -558,6 +564,15 @@ export function GuidedArrival({
                   {starting ? "Iniciando…" : "Iniciar Vistoria"}
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => assistenteRef.current?.abrir()}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white/12 text-[13.5px] font-bold text-white ring-1 ring-inset ring-white/25 backdrop-blur"
+                >
+                  <MessageCircleQuestion className="h-4 w-4" />
+                  Estou tendo problemas com essa vistoria
+                </button>
+
                 {/* Gate automático: 0 postes em 100m → recusar direto. 1+ → só oferece trocar de poste. */}
                 {posteGate.fetched && posteGate.items.length === 0 && (
                   <button
@@ -605,6 +620,14 @@ export function GuidedArrival({
                       Selecionar rota
                     </>
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => assistenteRef.current?.abrir()}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white/10 text-[13.5px] font-bold text-white ring-1 ring-inset ring-white/20 backdrop-blur"
+                >
+                  <MessageCircleQuestion className="h-4 w-4" />
+                  Estou tendo problemas com essa vistoria
                 </button>
                 <button
                   type="button"
@@ -685,6 +708,20 @@ export function GuidedArrival({
             onClose={() => setRecusarOpen(false)}
             onAprovada={() => {
               setRecusarOpen(false);
+              onDataChanged?.();
+              onClose();
+            }}
+          />
+
+          <AssistenteVistoria
+            ref={assistenteRef}
+            vistoriaId={vistoria.id}
+            equipamento={vistoria.equipamento}
+            poste={vistoria.fields?.pspostefield}
+            municipio={vistoria.cidade}
+            isRepetidor={isRepetidor}
+            gatilhoOculto
+            onRegistrada={() => {
               onDataChanged?.();
               onClose();
             }}

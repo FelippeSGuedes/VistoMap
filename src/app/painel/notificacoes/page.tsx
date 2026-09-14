@@ -3,8 +3,8 @@
 /**
  * Central de Atividades.
  *
- * Esta página era a caixa onde TUDO vivia misturado — impedimento, recusa,
- * exceção e pedido de aprovação apareciam com a mesma cara, e o analista tinha
+ * Esta página era a caixa onde TUDO vivia misturado — impedimento, recusa
+ * e pedido de aprovação apareciam com a mesma cara, e o analista tinha
  * que ler cada um pra descobrir o que era. Agora ela faz só duas coisas:
  *
  *   1. diz de onde vem cada natureza de ocorrência e quantas existem;
@@ -14,12 +14,15 @@
  * onde cada tipo tem recorte, filtro, histórico de tentativas e evidência.
  * Notificação ≠ ocorrência: uma chama atenção, a outra é um fato operacional
  * registrado.
+ *
+ * Pedidos de exceção (fora do raio) não aparecem aqui — já chegam decididos e
+ * já viram histórico na Auditoria automaticamente (2026-09-14).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle, Ban, Bell, CheckCircle2, ChevronRight, Clock,
+  Ban, Bell, CheckCircle2, ChevronRight, Clock,
   Construction, RefreshCw, Undo2,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
@@ -29,7 +32,6 @@ import type { Ocorrencia, OcorrenciaTipo, OcorrenciasResponse } from "@/lib/glpi
 const TIPO_COR: Record<OcorrenciaTipo, string> = {
   impedimento: "#B45309",
   recusa: "#6B7280",
-  excecao: "#4F46E5",
 };
 
 const BLOCOS: Array<{
@@ -49,12 +51,6 @@ const BLOCOS: Array<{
     titulo: "Recusas",
     icone: Ban,
     descricao: "Houve decisão de não executar — sinal fora do padrão, morador, risco.",
-  },
-  {
-    tipo: "excecao",
-    titulo: "Exceções",
-    icone: AlertTriangle,
-    descricao: "Pedido de sair do fluxo esperado, como trabalhar fora do raio.",
   },
 ];
 
@@ -187,7 +183,7 @@ export default function AtividadesPage() {
                     className="shrink-0 rounded-md px-2 py-[3px] text-[9.5px] font-bold uppercase tracking-wide"
                     style={{ background: tint(TIPO_COR[o.tipo], 0.13), color: TIPO_COR[o.tipo] }}
                   >
-                    {o.tipo === "impedimento" ? "Impedimento" : o.tipo === "recusa" ? "Recusa" : "Exceção"}
+                    {o.tipo === "impedimento" ? "Impedimento" : "Recusa"}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold" style={{ color: "var(--vm-text)" }}>{o.motivoLabel}</p>

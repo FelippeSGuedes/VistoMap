@@ -5,7 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
-  AlertTriangle,
   Ban,
   Bell,
   Calendar,
@@ -99,12 +98,13 @@ const VISTORIAS_GROUP = [
   { href: "/painel/revisitas",           label: "Revisitas",            icon: RotateCw,       roles: ALL_ROLES },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },
   { href: "/painel/devolucoes",          label: "Devoluções",           icon: Undo2,          roles: ALL_ROLES },
-  // Ocorrências: três naturezas diferentes na MESMA tela, cada entrada abrindo
-  // já no seu recorte. Separar em três rotas seria triplicar código e deixar
-  // duas telas vazias na maior parte do tempo (ver lib/glpi/ocorrencias.ts).
+  // Ocorrências: duas naturezas diferentes na MESMA tela, cada entrada abrindo
+  // já no seu recorte. Exceção (pedido de trabalhar fora do raio) não tem
+  // entrada própria: 100% delas já chegam decididas e viram histórico direto
+  // na Auditoria — uma terceira tela pra algo que nunca pede ação era só
+  // duplicar sem necessidade (2026-09-14; ver lib/glpi/ocorrencias.ts).
   { href: "/painel/ocorrencias?tipo=impedimento", label: "Impedimentos", icon: Construction,  roles: ALL_ROLES },
   { href: "/painel/ocorrencias?tipo=recusa",      label: "Recusas",      icon: Ban,           roles: ALL_ROLES },
-  { href: "/painel/ocorrencias?tipo=excecao",     label: "Exceções",     icon: AlertTriangle, roles: ALL_ROLES },
   { href: "/painel/cpfl",                label: "Validação CPFL",       icon: ShieldCheck,    roles: ALL_ROLES },
 ];
 

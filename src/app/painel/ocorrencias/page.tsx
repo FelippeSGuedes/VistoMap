@@ -6,13 +6,18 @@
  * Substitui a leitura "caixa de entrada de notificações" por uma pergunta
  * operacional: POR QUE as vistorias não estão sendo concluídas?
  *
- * Três naturezas que antes apareciam iguais (ver lib/glpi/ocorrencias.ts):
- * impedimento (o ambiente travou), recusa (houve decisão) e exceção (pedido
- * de sair do fluxo). O tipo é a única coisa que ganha cor forte; prioridade e
- * status entram em tom baixo, pra tela não virar um mosaico.
+ * Duas naturezas que antes apareciam iguais (ver lib/glpi/ocorrencias.ts):
+ * impedimento (o ambiente travou) e recusa (houve decisão). O tipo é a única
+ * coisa que ganha cor forte; prioridade e status entram em tom baixo, pra
+ * tela não virar um mosaico.
+ *
+ * Pedidos de exceção (fora do raio) não entram aqui — já chegam decididos e
+ * já têm histórico na Auditoria; não duplica uma tela que nunca pede ação.
  *
  * Todo número aqui sai de dado real. Onde não há amostra, o indicador mostra
  * "—" e o insight simplesmente não aparece — nunca um número inventado.
+ * Poucos indicadores de propósito: cada um precisa responder uma pergunta
+ * na hora, sem precisar interpretar (2026-09-14).
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -40,17 +45,14 @@ import type {
 const TIPO_COR: Record<OcorrenciaTipo, string> = {
   impedimento: "#B45309",
   recusa: "#6B7280",
-  excecao: "#4F46E5",
 };
 const TIPO_LABEL: Record<OcorrenciaTipo, string> = {
   impedimento: "Impedimento",
   recusa: "Recusa",
-  excecao: "Exceção",
 };
 const TIPO_DESCRICAO: Record<OcorrenciaTipo, string> = {
   impedimento: "O ambiente travou a vistoria — acesso, condomínio, área restrita. Pode destravar.",
   recusa: "Houve decisão explícita de não executar — sinal fora do padrão, morador recusou, risco.",
-  excecao: "O técnico pediu pra sair do fluxo esperado e isso precisou de análise.",
 };
 
 const STATUS_LABEL: Record<OcorrenciaStatus, string> = {
@@ -97,7 +99,6 @@ const SEGMENTOS: Array<{ id: Segmento; label: string }> = [
   { id: "todas", label: "Todas" },
   { id: "impedimento", label: "Impedimentos" },
   { id: "recusa", label: "Recusas" },
-  { id: "excecao", label: "Exceções" },
 ];
 
 export default function OcorrenciasPage() {
@@ -260,16 +261,15 @@ function Conteudo() {
       </div>
 
       {/* ── indicadores ───────────────────────────────────────────────── */}
+      {/* Só 3: cada um responde uma pergunta na hora, sem precisar interpretar
+          (2026-09-14) — "novas em 7 dias" e "tempo médio" saíram por serem
+          números que exigiam explicação (ex.: "0 min" lendo como bug). */}
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
         <Indicador icon={Clock} label="Aguardando análise" valor={kpis.pendentes} cor="#DC2626"
           nota={kpis.pendentes === 0 ? "nada parado agora" : "precisa de decisão"} />
-        <Indicador icon={TrendingUp} label="Novas em 7 dias" valor={kpis.novas7d} cor={acento} />
         <Indicador icon={RotateCw} label="Vistorias reincidentes" valor={kpis.reincidentes} cor="#B45309"
           nota="travaram mais de uma vez" />
         <Indicador icon={CheckCircle2} label="Resolvidas" valor={kpis.resolvidas} cor="#059669" />
-        <Indicador icon={Layers} label="Tempo médio até resolver"
-          texto={duracao(kpis.tempoMedioHoras)} cor="#3B82F6"
-          nota={kpis.tempoMedioHoras == null ? "sem amostra ainda" : undefined} />
       </div>
 
       {/* ── insights (só com amostra suficiente) ──────────────────────── */}
@@ -650,12 +650,11 @@ function Detalhe({
     setEnviando(true);
     setErro(null);
     try {
-      const rota = o.origem === "recusa"
-        ? `/painel/notificacoes/recusas/${o.id}/responder`
-        : `/painel/notificacoes/${o.id}/responder`;
-      await api.post(rota, { acao, motivo: motivoReprova.trim() || undefined }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(
+        `/painel/notificacoes/recusas/${o.id}/responder`,
+        { acao, motivo: motivoReprova.trim() || undefined },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       onRespondida();
     } catch {
       setErro("Não foi possível registrar a decisão. Tente de novo.");
@@ -720,11 +719,6 @@ function Detalhe({
           {/* justificativa */}
           <Bloco titulo="O que o técnico relatou">
             <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--vm-text-soft)" }}>{o.justificativa}</p>
-            {o.distanciaM != null && (
-              <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
-                Distância do ponto autorizado: <strong style={{ color: "var(--vm-text)" }}>{o.distanciaM} m</strong>
-              </p>
-            )}
           </Bloco>
 
           {respostas.length > 0 && (
@@ -840,7 +834,7 @@ function Detalhe({
             </div>
           )}
 
-          {o.status === "APROVADO" && o.origem === "recusa" && (
+          {o.status === "APROVADO" && (
             <Link
               href="/painel/rejeitadas"
               className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-semibold transition hover:brightness-95"

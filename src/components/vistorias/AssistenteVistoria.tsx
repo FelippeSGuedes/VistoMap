@@ -4,9 +4,15 @@
  * AssistenteVistoria — balão flutuante único de ajuda + conversa guiada,
  * substituindo AjudaTriagemSheet (árvore estática) e os pontos de entrada
  * espalhados (link de texto em GuidedArrival, pílula em VistoriaExecucaoForm
- * e vistoria-corrigir). Só aparece durante a EXECUÇÃO de fato da vistoria
- * (preenchendo o formulário) — não em GuidedArrival, que é só navegação
- * até o poste, antes de existir o que ajudar (2026-09-10).
+ * e vistoria-corrigir).
+ *
+ * Também abre em GuidedArrival agora (2026-09-14): reportar um impedimento
+ * (condomínio, acesso difícil) não pode depender de "iniciar" a vistoria
+ * primeiro só para chegar no botão de ajuda — isso é o próprio atrito que a
+ * central de ocorrências existe pra medir. `gatilhoOculto` deixa quem chama
+ * esconder o balão flutuante padrão e abrir via `ref.abrir()` em vez disso —
+ * usado por GuidedArrival, que já tem seu próprio botão "Estou tendo
+ * problemas com essa vistoria" no rodapé.
  *
  * Design: parece uma conversa com um atendente, não um formulário. O
  * técnico só vê a pergunta ATUAL — as trocas já respondidas ficam acima
@@ -22,7 +28,7 @@
  */
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -80,6 +86,12 @@ interface AssistenteVistoriaProps {
   bottomOffset?: number;
   /** Impedimento/recusa APROVADO pelo analista — a vistoria saiu da fila, a tela host decide o que fazer (fechar, recarregar, etc.). */
   onRegistrada?: () => void;
+  /** Esconde o balão flutuante padrão — quem chama abre via ref.abrir() com seu próprio gatilho. */
+  gatilhoOculto?: boolean;
+}
+
+export interface AssistenteVistoriaHandle {
+  abrir: () => void;
 }
 
 const DIFICULDADE_OPCOES = [
@@ -98,7 +110,10 @@ function horaAgora(): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, isRepetidor = false, bottomOffset = 24, onRegistrada }: AssistenteVistoriaProps) {
+export const AssistenteVistoria = forwardRef<AssistenteVistoriaHandle, AssistenteVistoriaProps>(function AssistenteVistoria(
+  { vistoriaId, equipamento, poste, municipio, isRepetidor = false, bottomOffset = 24, onRegistrada, gatilhoOculto = false },
+  ref
+) {
   const [aberto, setAberto] = useState(false);
   const [step, setStep] = useState<StepId>("raiz");
   const [transcript, setTranscript] = useState<Msg[]>([]);
@@ -143,10 +158,12 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
     setDigitando(false);
   }
 
-  function abrir() {
+  const abrir = useCallback(() => {
     resetConversa();
     setAberto(true);
-  }
+  }, []);
+
+  useImperativeHandle(ref, () => ({ abrir }), [abrir]);
 
   function fechar() {
     setAberto(false);
@@ -191,7 +208,7 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
   return (
     <>
       {/* balão flutuante — discreto mas com um pulso sutil pra não passar despercebido */}
-      {!aberto && (
+      {!aberto && !gatilhoOculto && (
         <motion.button
           type="button"
           onClick={abrir}
@@ -335,7 +352,7 @@ export function AssistenteVistoria({ vistoriaId, equipamento, poste, municipio, 
       />
     </>
   );
-}
+});
 
 /* ─────────────────────────── bolhas do chat ─────────────────────────── */
 
