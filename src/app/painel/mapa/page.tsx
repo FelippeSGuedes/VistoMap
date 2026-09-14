@@ -22,6 +22,7 @@ import { DEFAULT_CENTER, getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import { fetchPostesProximos } from "@/services/postes";
 import { asset } from "@/utils/asset";
+import { diagnosticarWebGL, explicarFalhaWebGL } from "@/lib/webgl";
 import type { Poste } from "@/types";
 import type {
   PainelMapaResponse,
@@ -768,6 +769,9 @@ export default function PainelMapaPage() {
   const [hoveredVisPos, setHoveredVisPos] = useState<{ x: number; y: number } | null>(null);
   // Tela de carregamento: primeiro load e troca de estilo — nunca no poll.
   const [mapaCarregando, setMapaCarregando] = useState(true);
+  // WebGL indisponível — a tela explica em vez de quebrar (ver lib/webgl.ts).
+  const [erroWebGL, setErroWebGL] = useState(false);
+  const [semAntialias, setSemAntialias] = useState(false);
 
   // Hover card do técnico
   const [hoveredTec, setHoveredTec] = useState<PainelMapaTecnico | null>(null);
@@ -872,15 +876,36 @@ export default function PainelMapaPage() {
     if (!token || !mapElRef.current || mapRef.current) return;
     const container = mapElRef.current;
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
-      container,
-      style: mapStyleFor(activeLayerRef.current, readDarkTheme()),
-      center: DEFAULT_CENTER,
-      zoom: 10,
-      attributionControl: false,
-      pitchWithRotate: true,
-      antialias: true, // custom layer 3D (Three.js) precisa disso pra não serrilhar
-    });
+
+    // mapbox-gl v3 pede SÓ webgl2 e não tem fallback: se o contexto não vier,
+    // ele lança "Failed to initialize WebGL" e a tela morre. O antialias (que
+    // o 3D precisa) entra nos atributos do contexto e é justamente o que falha
+    // primeiro em GPU fraca — então aqui tenta com, tenta sem, e só desiste
+    // depois disso, explicando o que fazer em vez de estourar um erro cru.
+    const diag = diagnosticarWebGL();
+    if (!diag.utilizavel) {
+      setErroWebGL(true);
+      return;
+    }
+    const comAntialias = diag.motivo === "ok";
+    if (!comAntialias) setSemAntialias(true);
+
+    let map: mapboxgl.Map;
+    try {
+      map = new mapboxgl.Map({
+        container,
+        style: mapStyleFor(activeLayerRef.current, readDarkTheme()),
+        center: DEFAULT_CENTER,
+        zoom: 10,
+        attributionControl: false,
+        pitchWithRotate: true,
+        antialias: comAntialias, // custom layer 3D (Three.js) precisa disso pra não serrilhar
+      });
+    } catch (err) {
+      console.error("[vm] mapa não inicializou", err);
+      setErroWebGL(true);
+      return;
+    }
     map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), "top-right");
     mapRef.current = map;
     // CustomLayerInterface só funciona certo em projeção mercator — mapbox-gl v3
@@ -1724,6 +1749,60 @@ export default function PainelMapaPage() {
     );
   }
 
+  // Sem WebGL não há mapa possível — mas há o que dizer. Antes disto, a
+  // exceção do mapbox subia pro error boundary e o usuário via só
+  // "Failed to initialize WebGL".
+  if (erroWebGL) {
+    const { titulo, passos } = explicarFalhaWebGL();
+    return (
+      <div className="grid h-full place-items-center p-6">
+        <div
+          className="max-w-[560px] rounded-2xl p-6"
+          style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
+        >
+          <div className="mb-3 flex items-center gap-3">
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: "rgba(220,38,38,0.12)", color: "#DC2626" }}
+            >
+              <WifiOff className="h-5 w-5" />
+            </span>
+            <div>
+              <h1 className="text-[16px] font-bold" style={{ color: "var(--vm-text)" }}>{titulo}</h1>
+              <p className="text-[12.5px]" style={{ color: "var(--vm-muted)" }}>
+                O mapa precisa de aceleração gráfica (WebGL 2) e o navegador não a disponibilizou.
+              </p>
+            </div>
+          </div>
+          <ol className="space-y-2">
+            {passos.map((passo, i) => (
+              <li key={passo} className="flex gap-2.5 text-[12.5px]" style={{ color: "var(--vm-text-soft)" }}>
+                <span
+                  className="mt-[1px] flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full text-[9.5px] font-bold"
+                  style={{ background: "var(--vm-tile)", color: "var(--vm-muted)" }}
+                >
+                  {i + 1}
+                </span>
+                <span>{passo}</span>
+              </li>
+            ))}
+          </ol>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold text-white transition hover:brightness-110"
+            style={{ background: "#00B388" }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Tentar de novo
+          </button>
+          <p className="mt-3 text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
+            As demais telas do painel continuam funcionando normalmente — só o mapa depende disso.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* ── MAPA ─────────────────────────────────────────────────────────── */}
@@ -2173,6 +2252,17 @@ export default function PainelMapaPage() {
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Rodando em modo compatível: melhor avisar do que deixar o usuário
+          achar que o 3D "está estranho" sem motivo. */}
+      {semAntialias && (
+        <div
+          className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full px-3 py-1.5 text-[11px] font-semibold"
+          style={{ ...GLASS, borderRadius: 999, color: "var(--vm-muted)" }}
+        >
+          Modo compatível — sem suavização de bordas (aceleração gráfica limitada)
         </div>
       )}
 

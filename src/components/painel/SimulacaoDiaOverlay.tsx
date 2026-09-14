@@ -47,6 +47,7 @@ import {
   X,
 } from "lucide-react";
 import { MAP_STYLE_DARK, getMapboxToken } from "@/services/maps";
+import { diagnosticarWebGL } from "@/lib/webgl";
 import type { AgendamentoPlano, AgendamentoPreviewResponse } from "@/services/painel";
 import { TechModel3DLayer, type TechEntrySpec } from "@/app/painel/mapa/techModel3DLayer";
 import type { RouteResult } from "@/app/painel/mapa/routeService";
@@ -428,6 +429,14 @@ export function SimulacaoDiaOverlay({
       return;
     }
     mapboxgl.accessToken = token;
+    // O antialias (que o 3D pede) entra nos atributos do contexto WebGL e é o
+    // primeiro a falhar em GPU fraca. Melhor 3D serrilhado que simulação sem
+    // mapa — ver lib/webgl.ts.
+    const diag = diagnosticarWebGL();
+    if (!diag.utilizavel) {
+      setMapErro("O navegador não disponibilizou aceleração gráfica (WebGL 2). Ative a aceleração de hardware nas configurações e recarregue.");
+      return;
+    }
     let map: mapboxgl.Map;
     try {
       map = new mapboxgl.Map({
@@ -438,7 +447,7 @@ export function SimulacaoDiaOverlay({
         pitch: 0,
         bearing: 0,
         attributionControl: false,
-        antialias: true, // a camada 3D (Three.js) precisa disso pra não serrilhar
+        antialias: diag.motivo === "ok",
       });
     } catch (e) {
       setMapErro(e instanceof Error ? e.message : String(e));
