@@ -55,7 +55,7 @@ export const FAMILIA_DESCRICAO: Record<FamiliaSinal, string> = {
   ativo: "Em deslocamento, em vistoria, em revisita",
   concluido: "Vistoriado, revisitado",
   problema: "Devolvida pro técnico corrigir",
-  bloqueado: "Impedimento — o acesso travou a vistoria",
+  bloqueado: "Impedimento — já resolvido, ambiente impediu o acesso",
   fora: "Recusa — decisão de não executar",
 };
 

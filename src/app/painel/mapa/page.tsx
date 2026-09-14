@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import mapboxgl, {
   type ExpressionSpecification,
   type FilterSpecification,
@@ -71,6 +72,7 @@ import {
   Clock,
   Copy,
   Globe,
+  History,
   Info,
   Layers,
   MapPin,
@@ -142,6 +144,14 @@ function tint(hex: string, alpha: number) {
   const n = parseInt(hex.slice(1), 16);
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Backend devolve timestamp cru do MySQL ("2026-09-11 14:09:52", sem
+// timezone) — é UTC, mas `new Date(iso)` nesse formato é lido como horário
+// LOCAL do navegador. Mesmo fix usado em auditoria/notificações/devoluções.
+function fmtResolvidoEm(iso: string): string {
+  const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 /* ─── painel de seleção do mapa — paleta fixa (enterprise dark) ──────────── */
@@ -2231,6 +2241,11 @@ export default function PainelMapaPage() {
             <span style={{ color: "var(--vm-faint)" }}>·</span>
             <span className="truncate">{hoveredVis.municipio ?? "—"}</span>
           </div>
+          {hoveredVis.bloqueio && (
+            <p className="mt-0.5 text-[9.5px]" style={{ color: "var(--vm-faint)" }}>
+              Já resolvido{hoveredVis.bloqueio_resolvido_em ? ` em ${fmtResolvidoEm(hoveredVis.bloqueio_resolvido_em)}` : ""}
+            </p>
+          )}
           <div className="mt-1 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
             <span
               className="h-2 w-2 shrink-0 rounded-full"
@@ -2511,6 +2526,38 @@ export default function PainelMapaPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Impedimento/Recusa: o marcador só existe DEPOIS da decisão
+                  (nunca é uma pendência aberta) — mas a cor âmbar/cinza
+                  sozinha lê como "precisa de ação" pra quem vê de longe.
+                  Este bloco deixa explícito que já foi resolvido. */}
+              {selectedVistoria.bloqueio && (
+                <div
+                  className="mb-2.5 rounded-xl px-3 py-2.5"
+                  style={{ background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio), 0.10), border: `1px solid ${tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio), 0.28)}` }}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3 w-3 shrink-0" style={{ color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio) }} />
+                    <p className="text-[11px] font-semibold" style={{ color: PANEL.text }}>
+                      Já resolvido{selectedVistoria.bloqueio_resolvido_em ? ` em ${fmtResolvidoEm(selectedVistoria.bloqueio_resolvido_em)}` : ""}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-[10.5px] leading-snug" style={{ color: PANEL.textSoft }}>
+                    {selectedVistoria.bloqueio === "impedimento"
+                      ? "O ambiente impediu a vistoria e o analista já decidiu — não é uma pendência em aberto."
+                      : "Recusa decidida pelo analista — não retorna ao fluxo automaticamente."}
+                    {selectedVistoria.bloqueio_motivo_label ? ` Motivo: ${selectedVistoria.bloqueio_motivo_label}.` : ""}
+                  </p>
+                  <Link
+                    href={`/painel/auditoria?tipo=${selectedVistoria.bloqueio}`}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[10.5px] font-semibold hover:underline"
+                    style={{ color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio) }}
+                  >
+                    <History className="h-3 w-3" />
+                    Ver decisão na auditoria
+                  </Link>
+                </div>
+              )}
 
               {/* Técnico */}
               <div

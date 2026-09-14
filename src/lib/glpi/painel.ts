@@ -28,7 +28,7 @@ import {
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import { getCoresIdentidade } from "./tecnicoIdentidade";
-import { RECUSA_MOTIVO_CATEGORIA, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
+import { RECUSA_MOTIVO_CATEGORIA, RECUSA_MOTIVO_LABEL, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
 import { nowBrasiliaSql } from "@/lib/timezone";
 import type {
   AdminStatus,
@@ -1464,6 +1464,8 @@ interface MapaVistoriaRow {
   rejeitada_motivo: string | null;
   /** Categoria que o analista escolheu ao aprovar (impedimento/recusa) — tem prioridade sobre o palpite do motivo. */
   rejeitada_categoria: RecusaCategoria | null;
+  /** Quando a recusa foi aprovada — sempre preenchido junto com `rejeitada` (mesmo JOIN). */
+  rejeitada_resolvido_em: string | null;
 }
 
 function resolveSituacaoOperacional(
@@ -1729,7 +1731,8 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         f.datadavistoriafield AS data_vistoria,
         (rec.id IS NOT NULL) AS rejeitada,
         rec.motivo AS rejeitada_motivo,
-        rec.categoria AS rejeitada_categoria
+        rec.categoria AS rejeitada_categoria,
+        rec.resolvido_em AS rejeitada_resolvido_em
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
       LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -1844,6 +1847,13 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       // travou (pode destravar), recusa é decisão tomada (não volta).
       bloqueio: r.rejeitada
         ? r.rejeitada_categoria ?? RECUSA_MOTIVO_CATEGORIA[r.rejeitada_motivo as RecusaMotivo] ?? "recusa"
+        : null,
+      // O marcador só nasce depois da aprovação (JOIN em status='APROVADO')
+      // — essas duas colunas existem pra deixar isso explícito na UI, já
+      // que a cor sozinha (âmbar) lia como "pendente" pra quem via de longe.
+      bloqueio_resolvido_em: r.rejeitada ? r.rejeitada_resolvido_em : null,
+      bloqueio_motivo_label: r.rejeitada
+        ? RECUSA_MOTIVO_LABEL[r.rejeitada_motivo as RecusaMotivo] ?? null
         : null,
       situacao_id: Number(r.situacao_id ?? 0) || 0,
       situacao: resolveSituacaoOperacional(

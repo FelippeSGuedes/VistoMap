@@ -77,6 +77,15 @@ export interface PainelMapaVistoria {
    * recusou). null quando a vistoria não está bloqueada.
    */
   bloqueio: "impedimento" | "recusa" | null;
+  /**
+   * Quando o bloqueio foi decidido (recusas.resolvido_em) — o marcador só
+   * existe DEPOIS dessa decisão (ver JOIN em lib/glpi/painel.ts), então
+   * isso é sempre "já resolvido", nunca uma pendência aberta. null quando
+   * `bloqueio` é null.
+   */
+  bloqueio_resolvido_em: string | null;
+  /** Motivo legível da recusa/impedimento (RECUSA_MOTIVO_LABEL). null quando `bloqueio` é null. */
+  bloqueio_motivo_label: string | null;
   /** Status de aprovação (Em análise / Aprovado / Reprovado) — pra UI. */
   status_aprovacao: "EM_ANALISE" | "APROVADO" | "REPROVADO" | "PENDENTE";
   /** Data da vistoria GLPI (datadavistoriafield). */
