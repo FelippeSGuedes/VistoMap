@@ -7,8 +7,9 @@
  * decisão com histórico completo (KPIs, rankings, lista de tudo que já foi
  * decidido) — o que precisava de ação agora ficava em segundo plano, do
  * mesmo tamanho visual que registros de semanas atrás. Esta tela agora SÓ
- * mostra o que está PENDENTE. Histórico (o que já foi aprovado/reprovado,
- * rankings por motivo/técnico) mudou de casa: é a própria Auditoria, que já
+ * mostra o que está ATIVO (ver ehAtiva abaixo). Histórico de verdade — o
+ * que já foi decidido E já teve a última palavra (reatribuído ou reprovado),
+ * rankings por motivo/técnico — mudou de casa: é a própria Auditoria, que já
  * registra cada decisão — não faz sentido manter duas telas de histórico
  * pra mesma informação.
  *
@@ -20,6 +21,15 @@
  * o modal "Essa solicitação é Impedimento ou Recusa?") — o técnico continua
  * relatando do MESMO jeito de sempre. Exceção não passa por essa pergunta:
  * é uma decisão sim/não própria, sem categoria pra escolher.
+ *
+ * "Ativo" NÃO é sinônimo de PENDENTE (correção de 2026-09-14, depois de um
+ * relato de impedimento "sumido" da fila mesmo com o equipamento ainda sem
+ * técnico): aprovar uma recusa/impedimento decide a categoria, mas não
+ * resolve a operação — o equipamento fica desvinculado até alguém
+ * reatribuir (mesmo mecanismo de "Vistorias Rejeitadas", agora também
+ * tratável aqui). Só sai da fila quando reatribuído (REABERTA) ou
+ * reprovado (volta sozinho pro técnico original). Exceção não tem esse
+ * meio-termo — aprovar já solta o técnico pra vistoriar na hora.
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -79,6 +89,24 @@ function duracao(horas: number | null): string {
 
 const PRIORIDADE_PESO: Record<OcorrenciaPrioridade, number> = { critico: 0, atencao: 1, normal: 2 };
 
+/**
+ * "Ativa para tratamento" — não é só PENDENTE. Uma recusa/impedimento
+ * aprovado sai da dúvida (a categoria já foi decidida), mas o equipamento
+ * fica sem técnico até alguém reatribuir — igual Devolução, continua
+ * precisando de ação até resolver de vez. Exceção não tem esse estado
+ * intermediário (aprovar já solta o técnico pra vistoriar na hora), por
+ * isso só entra pela condição PENDENTE mesmo.
+ */
+function ehAtiva(o: Ocorrencia): boolean {
+  return o.status === "PENDENTE" || (o.status === "APROVADO" && o.origem === "recusa");
+}
+
+interface Tecnico {
+  users_id: number;
+  nome: string;
+  status_operacional: string;
+}
+
 /* ─── página ──────────────────────────────────────────────────────────────── */
 
 type Segmento = "todas" | OcorrenciaTipo;
@@ -104,6 +132,7 @@ function Conteudo() {
   const segmento = (params.get("tipo") as Segmento) || "todas";
 
   const [dados, setDados] = useState<OcorrenciasResponse | null>(null);
+  const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [filtroPrio, setFiltroPrio] = useState<"todas" | OcorrenciaPrioridade>("todas");
@@ -114,10 +143,13 @@ function Conteudo() {
     if (!session?.token) return;
     setLoading(true);
     try {
-      const r = await api.get<OcorrenciasResponse>("/painel/ocorrencias", {
-        headers: { Authorization: `Bearer ${session.token}` },
-      });
+      const headers = { Authorization: `Bearer ${session.token}` };
+      const [r, t] = await Promise.all([
+        api.get<OcorrenciasResponse>("/painel/ocorrencias", { headers }),
+        api.get<{ tecnicos: Tecnico[] }>("/painel/mapa", { headers }),
+      ]);
       setDados(r.data);
+      setTecnicos(t.data.tecnicos ?? []);
     } catch {
       /* mantém o que já estava na tela */
     } finally {
@@ -131,19 +163,32 @@ function Conteudo() {
     router.replace(id === "todas" ? "/painel/ocorrencias" : `/painel/ocorrencias?tipo=${id}`);
   };
 
-  // Só PENDENTE — é o único motivo desta tela existir agora. O que já foi
-  // decidido mora na Auditoria (link "Ver histórico" mais abaixo).
-  const pendentesDoSegmento = useMemo(
+  // PENDENTE (aguardando classificação) OU aprovada-sem-reatribuição (ver
+  // ehAtiva acima) — as duas continuam precisando de ação do analista. O
+  // que já foi decidido E reatribuído/reprovado mora na Auditoria (link
+  // "Ver histórico" mais abaixo).
+  const ativasDoSegmento = useMemo(
     () =>
       (dados?.ocorrencias ?? []).filter(
-        (o) => o.status === "PENDENTE" && (segmento === "todas" || o.tipo === segmento)
+        (o) => ehAtiva(o) && (segmento === "todas" || o.tipo === segmento)
       ),
     [dados, segmento]
   );
 
+  // Contagem dos chips de segmento — precisa vir do mesmo critério "ativa"
+  // usado na lista, não do agregado pendentes do backend (que só conta
+  // PENDENTE e por isso ficaria sub-contando a bolha aprovada-sem-técnico).
+  const contagemAtivasPorTipo = useMemo(() => {
+    const base: Record<OcorrenciaTipo, number> = { impedimento: 0, recusa: 0, excecao: 0 };
+    for (const o of dados?.ocorrencias ?? []) {
+      if (ehAtiva(o)) base[o.tipo] += 1;
+    }
+    return base;
+  }, [dados]);
+
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return pendentesDoSegmento
+    return ativasDoSegmento
       .filter((o) => {
         if (filtroPrio !== "todas" && o.prioridade !== filtroPrio) return false;
         if (!q) return true;
@@ -162,7 +207,7 @@ function Conteudo() {
         if (p !== 0) return p;
         return (b.horasAberto ?? 0) - (a.horasAberto ?? 0);
       });
-  }, [pendentesDoSegmento, busca, filtroPrio]);
+  }, [ativasDoSegmento, busca, filtroPrio]);
 
   // Tentativas anteriores da mesma vistoria — precisa do histórico completo
   // (não só pendentes) pra saber que essa já travou antes.
@@ -223,8 +268,8 @@ function Conteudo() {
           const ativo = segmento === s.id;
           const cor = s.id === "todas" ? "var(--vm-text)" : TIPO_COR[s.id];
           const n = s.id === "todas"
-            ? dados?.resumo.pendentes ?? 0
-            : dados?.resumo.porTipo[s.id].pendentes ?? 0;
+            ? contagemAtivasPorTipo.impedimento + contagemAtivasPorTipo.recusa + contagemAtivasPorTipo.excecao
+            : contagemAtivasPorTipo[s.id];
           return (
             <button
               key={s.id}
@@ -289,11 +334,11 @@ function Conteudo() {
           <div className="py-14 text-center">
             <CheckCircle2 className="mx-auto mb-2 h-6 w-6" style={{ color: "#059669" }} />
             <p className="text-[13px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>
-              {pendentesDoSegmento.length === 0 ? "Nada esperando decisão" : "Nada bate com esses filtros"}
+              {ativasDoSegmento.length === 0 ? "Nada esperando você" : "Nada bate com esses filtros"}
             </p>
             <p className="mt-1 text-[12px]" style={{ color: "var(--vm-faint)" }}>
-              {pendentesDoSegmento.length === 0
-                ? "Assim que um técnico registrar algo novo, aparece aqui."
+              {ativasDoSegmento.length === 0
+                ? "Sem decisão pendente e sem equipamento parado esperando reatribuição."
                 : "Ajuste a busca ou a prioridade."}
             </p>
           </div>
@@ -349,9 +394,15 @@ function Conteudo() {
                     </div>
                   </div>
                   <div className="hidden shrink-0 text-right sm:block">
-                    <p className="text-[11px] font-semibold" style={{ color: "#DC2626" }}>
-                      aberta há {duracao(o.horasAberto)}
-                    </p>
+                    {o.status === "PENDENTE" ? (
+                      <p className="text-[11px] font-semibold" style={{ color: "#DC2626" }}>
+                        aberta há {duracao(o.horasAberto)}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] font-semibold" style={{ color: "#B45309" }}>
+                        sem técnico
+                      </p>
+                    )}
                   </div>
                   <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint)" }} />
                 </button>
@@ -366,6 +417,7 @@ function Conteudo() {
         <Detalhe
           o={selecionada}
           historico={historico}
+          tecnicos={tecnicos}
           onFechar={() => setSelecionada(null)}
           onVerVistoria={() => setVistoriaAberta(selecionada)}
           onRespondida={() => { setSelecionada(null); void carregar(); }}
@@ -391,10 +443,11 @@ function corStatusPendente(): string {
 /* ─── detalhe ─────────────────────────────────────────────────────────────── */
 
 function Detalhe({
-  o, historico, onFechar, onVerVistoria, onRespondida, token, podeAgir,
+  o, historico, tecnicos, onFechar, onVerVistoria, onRespondida, token, podeAgir,
 }: {
   o: Ocorrencia;
   historico: Ocorrencia[];
+  tecnicos: Tecnico[];
   onFechar: () => void;
   onVerVistoria: () => void;
   onRespondida: () => void;
@@ -412,6 +465,32 @@ function Detalhe({
   const [categoriaEscolhida, setCategoriaEscolhida] = useState<"impedimento" | "recusa">(
     o.tipo === "excecao" ? "recusa" : o.tipo
   );
+
+  // Aprovada, sem técnico — reatribuir aqui reabre pra valer (mesmo endpoint
+  // de Vistorias Rejeitadas: marca a recusa como REABERTA além de trocar o
+  // técnico). Só existe pra origem="recusa" já aprovada — ver ehAtiva().
+  const [novoTecnico, setNovoTecnico] = useState<number | "">("");
+  const [motivoReatrib, setMotivoReatrib] = useState("");
+  const [reatribuindo, setReatribuindo] = useState(false);
+  const [erroReatrib, setErroReatrib] = useState<string | null>(null);
+
+  async function reatribuirEReabrir() {
+    if (!token || !novoTecnico || !motivoReatrib.trim()) return;
+    setReatribuindo(true);
+    setErroReatrib(null);
+    try {
+      await api.post(
+        `/painel/rejeitadas/${o.id}/reabrir`,
+        { tecnicoId: novoTecnico, motivo: motivoReatrib.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      onRespondida();
+    } catch {
+      setErroReatrib("Não foi possível reatribuir. Tente de novo.");
+    } finally {
+      setReatribuindo(false);
+    }
+  }
 
   async function responder(acao: "aprovar" | "reprovar") {
     if (!token) return;
@@ -482,12 +561,20 @@ function Detalhe({
         <div className="space-y-4 px-5 py-4">
           {/* estado */}
           <div className="grid grid-cols-2 gap-2">
-            <Campo label="Situação" valor="Aguardando análise" cor={corStatusPendente()} />
+            <Campo
+              label="Situação"
+              valor={o.status === "PENDENTE" ? "Aguardando análise" : "Aguardando reatribuição"}
+              cor={o.status === "PENDENTE" ? corStatusPendente() : "#B45309"}
+            />
             <Campo label="Prioridade"
               valor={o.prioridade === "critico" ? "Crítico" : o.prioridade === "atencao" ? "Atenção" : "Normal"}
               cor={o.prioridade === "critico" ? "#DC2626" : undefined} />
             <Campo label="Registrada em" valor={dataHora(o.criadoEm)} />
-            <Campo label="Aberta há" valor={duracao(o.horasAberto)} cor="#DC2626" />
+            {o.status === "PENDENTE" ? (
+              <Campo label="Aberta há" valor={duracao(o.horasAberto)} cor="#DC2626" />
+            ) : (
+              <Campo label="Decidida em" valor={dataHora(o.resolvidoEm)} />
+            )}
           </div>
 
           {/* técnico */}
@@ -495,7 +582,9 @@ function Detalhe({
             <span className="h-8 w-8 shrink-0 rounded-full" style={{ background: o.tecnicoCor ?? "#B8C0C8" }} />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold" style={{ color: "var(--vm-text)" }}>{o.tecnicoNome}</p>
-              <p className="text-[10.5px] uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>Técnico responsável</p>
+              <p className="text-[10.5px] uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                {o.status === "PENDENTE" ? "Técnico responsável" : "Quem relatou — sem técnico atribuído agora"}
+              </p>
             </div>
           </div>
 
@@ -577,7 +666,7 @@ function Detalhe({
           </div>
 
           {/* decisão */}
-          {podeAgir && (
+          {podeAgir && o.status === "PENDENTE" && (
             <div className="rounded-xl p-3" style={{ border: "1px solid var(--vm-border)", background: "var(--vm-tile)" }}>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
                 Decisão do analista
@@ -666,6 +755,55 @@ function Detalhe({
                   <Ban className="h-3.5 w-3.5" /> {reprovando ? "Confirmar reprovação" : "Reprovar"}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* reatribuir — já foi classificada (impedimento/recusa), o que
+              falta é mandar alguém de novo (ou deixar sem técnico de vez,
+              fora daqui: basta não fazer nada e ela permanece na fila). */}
+          {podeAgir && o.status === "APROVADO" && o.origem === "recusa" && (
+            <div className="rounded-xl p-3" style={{ border: "1px solid var(--vm-border)", background: "var(--vm-tile)" }}>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                Reatribuir e reabrir
+              </p>
+              <p className="mb-2.5 rounded-lg px-2.5 py-2 text-[11.5px] leading-relaxed" style={{ background: "rgba(59,130,246,0.1)", color: "var(--vm-text-soft)" }}>
+                Volta pra fila ("A Vistoriar") com o técnico escolhido e ele recebe uma notificação avisando.
+              </p>
+
+              <label className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Técnico</label>
+              <select
+                value={novoTecnico}
+                onChange={(e) => setNovoTecnico(e.target.value === "" ? "" : Number(e.target.value))}
+                className="mb-2.5 w-full appearance-none rounded-lg px-2.5 py-2 text-[12px] outline-none"
+                style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+              >
+                <option value="">Selecione…</option>
+                {tecnicos.map((t) => (
+                  <option key={t.users_id} value={t.users_id}>
+                    {t.nome} {t.status_operacional !== "offline" ? "●" : "○"}
+                  </option>
+                ))}
+              </select>
+
+              <textarea
+                value={motivoReatrib}
+                onChange={(e) => setMotivoReatrib(e.target.value)}
+                rows={2}
+                placeholder="Motivo da reabertura (obrigatório) — ex: condomínio liberou acesso…"
+                className="mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none"
+                style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+              />
+              {erroReatrib && <p className="mb-2 text-[11.5px] font-medium" style={{ color: "#DC2626" }}>{erroReatrib}</p>}
+              <button
+                type="button"
+                disabled={!novoTecnico || !motivoReatrib.trim() || reatribuindo}
+                onClick={reatribuirEReabrir}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[12px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                style={{ background: "#3B82F6" }}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Reatribuir e reabrir
+              </button>
             </div>
           )}
         </div>
