@@ -55,8 +55,8 @@ export const FAMILIA_DESCRICAO: Record<FamiliaSinal, string> = {
   ativo: "Em deslocamento, em vistoria, em revisita",
   concluido: "Vistoriado, revisitado",
   problema: "Devolvida pro técnico corrigir",
-  bloqueado: "Impedimento — já resolvido, ambiente impediu o acesso",
-  fora: "Recusa — decisão de não executar",
+  bloqueado: "Impedimento — classificado, sem técnico, aguarda reatribuição",
+  fora: "Recusa — classificada, sem técnico, aguarda reatribuição",
 };
 
 type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra";

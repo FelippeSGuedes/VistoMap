@@ -1466,6 +1466,8 @@ interface MapaVistoriaRow {
   rejeitada_categoria: RecusaCategoria | null;
   /** Quando a recusa foi aprovada — sempre preenchido junto com `rejeitada` (mesmo JOIN). */
   rejeitada_resolvido_em: string | null;
+  /** id da própria recusa — necessário pra reatribuir/reabrir (POST /api/painel/rejeitadas/[id]/reabrir). */
+  rejeitada_recusa_id: number | null;
 }
 
 function resolveSituacaoOperacional(
@@ -1732,7 +1734,8 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         (rec.id IS NOT NULL) AS rejeitada,
         rec.motivo AS rejeitada_motivo,
         rec.categoria AS rejeitada_categoria,
-        rec.resolvido_em AS rejeitada_resolvido_em
+        rec.resolvido_em AS rejeitada_resolvido_em,
+        rec.id AS rejeitada_recusa_id
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
       LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -1855,6 +1858,7 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
       bloqueio_motivo_label: r.rejeitada
         ? RECUSA_MOTIVO_LABEL[r.rejeitada_motivo as RecusaMotivo] ?? null
         : null,
+      bloqueio_recusa_id: r.rejeitada ? r.rejeitada_recusa_id : null,
       situacao_id: Number(r.situacao_id ?? 0) || 0,
       situacao: resolveSituacaoOperacional(
         r.situacao_id,

@@ -86,6 +86,8 @@ export interface PainelMapaVistoria {
   bloqueio_resolvido_em: string | null;
   /** Motivo legível da recusa/impedimento (RECUSA_MOTIVO_LABEL). null quando `bloqueio` é null. */
   bloqueio_motivo_label: string | null;
+  /** id da recusa aprovada — precisa dele pra reatribuir/reabrir (POST /api/painel/rejeitadas/[id]/reabrir). null quando `bloqueio` é null. */
+  bloqueio_recusa_id: number | null;
   /** Status de aprovação (Em análise / Aprovado / Reprovado) — pra UI. */
   status_aprovacao: "EM_ANALISE" | "APROVADO" | "REPROVADO" | "PENDENTE";
   /** Data da vistoria GLPI (datadavistoriafield). */

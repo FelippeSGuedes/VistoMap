@@ -2085,7 +2085,7 @@ export default function PainelMapaPage() {
                           style={{ background: "rgba(59,130,246,0.08)", color: "#3B82F6", border: "1px solid rgba(59,130,246,0.15)" }}
                         >
                           <UserCheck className="h-3 w-3" />
-                          Atribuir técnico
+                          {v.bloqueio ? "Reatribuir e reabrir" : "Atribuir técnico"}
                         </button>
                       )}
                     </div>
@@ -2243,7 +2243,7 @@ export default function PainelMapaPage() {
           </div>
           {hoveredVis.bloqueio && (
             <p className="mt-0.5 text-[9.5px]" style={{ color: "var(--vm-faint)" }}>
-              Já resolvido{hoveredVis.bloqueio_resolvido_em ? ` em ${fmtResolvidoEm(hoveredVis.bloqueio_resolvido_em)}` : ""}
+              Classificado{hoveredVis.bloqueio_resolvido_em ? ` em ${fmtResolvidoEm(hoveredVis.bloqueio_resolvido_em)}` : ""} · sem técnico
             </p>
           )}
           <div className="mt-1 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
@@ -2527,10 +2527,12 @@ export default function PainelMapaPage() {
                 </div>
               </div>
 
-              {/* Impedimento/Recusa: o marcador só existe DEPOIS da decisão
-                  (nunca é uma pendência aberta) — mas a cor âmbar/cinza
-                  sozinha lê como "precisa de ação" pra quem vê de longe.
-                  Este bloco deixa explícito que já foi resolvido. */}
+              {/* Impedimento/Recusa: a CLASSIFICAÇÃO já foi decidida (por
+                  isso o marcador existe), mas o equipamento continua sem
+                  técnico — alguém ainda precisa agir (reatribuir pra tentar
+                  de novo, ou deixar assim de vez). O botão "Reatribuir e
+                  reabrir" logo abaixo é a ação; este bloco só dá o contexto
+                  de por que caiu aqui. */}
               {selectedVistoria.bloqueio && (
                 <div
                   className="mb-2.5 rounded-xl px-3 py-2.5"
@@ -2539,13 +2541,13 @@ export default function PainelMapaPage() {
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="h-3 w-3 shrink-0" style={{ color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio) }} />
                     <p className="text-[11px] font-semibold" style={{ color: PANEL.text }}>
-                      Já resolvido{selectedVistoria.bloqueio_resolvido_em ? ` em ${fmtResolvidoEm(selectedVistoria.bloqueio_resolvido_em)}` : ""}
+                      {selectedVistoria.bloqueio === "impedimento" ? "Impedimento" : "Recusa"} classificado{selectedVistoria.bloqueio_resolvido_em ? ` em ${fmtResolvidoEm(selectedVistoria.bloqueio_resolvido_em)}` : ""}
                     </p>
                   </div>
                   <p className="mt-1 text-[10.5px] leading-snug" style={{ color: PANEL.textSoft }}>
                     {selectedVistoria.bloqueio === "impedimento"
-                      ? "O ambiente impediu a vistoria e o analista já decidiu — não é uma pendência em aberto."
-                      : "Recusa decidida pelo analista — não retorna ao fluxo automaticamente."}
+                      ? "O ambiente impediu a vistoria — pode destravar. Reatribua abaixo pra tentar de novo."
+                      : "Decisão de não executar — reatribua abaixo se quiser tentar de novo, ou deixe sem técnico."}
                     {selectedVistoria.bloqueio_motivo_label ? ` Motivo: ${selectedVistoria.bloqueio_motivo_label}.` : ""}
                   </p>
                   <Link
@@ -2658,7 +2660,7 @@ export default function PainelMapaPage() {
                   style={{ background: "rgba(255,255,255,0.06)", color: PANEL.text, borderRadius: 12, border: `1px solid ${PANEL.border}` }}
                 >
                   <UserCheck className="h-3.5 w-3.5" />
-                  Atribuir técnico
+                  {selectedVistoria.bloqueio ? "Reatribuir e reabrir" : "Atribuir técnico"}
                 </button>
               )}
 
@@ -2778,7 +2780,9 @@ export default function PainelMapaPage() {
                   <UserCheck className="h-5 w-5" style={{ color: "#3B82F6" }} />
                 </div>
                 <div>
-                  <h2 className="text-[14px] font-bold" style={{ color: "var(--vm-text)" }}>Atribuir técnico</h2>
+                  <h2 className="text-[14px] font-bold" style={{ color: "var(--vm-text)" }}>
+                    {atribuirVistoria.bloqueio ? "Reatribuir e reabrir" : "Atribuir técnico"}
+                  </h2>
                   <p className="truncate text-[11px]" style={{ color: "var(--vm-faint)", maxWidth: 200 }}>{atribuirVistoria.equipamento}</p>
                 </div>
               </div>
@@ -2786,6 +2790,18 @@ export default function PainelMapaPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {/* Impedimento/recusa não é um beco sem saída: reatribuir aqui
+                chama o MESMO endpoint de Vistorias Rejeitadas (marca a
+                recusa como REABERTA e volta a situação pra "A Vistoriar")
+                — sem isso o marcador continuaria âmbar pra sempre mesmo
+                depois de reatribuído, porque o mapa deriva o bloqueio da
+                recusa aprovada, não da situação atual. */}
+            {atribuirVistoria.bloqueio && (
+              <p className="mb-3 rounded-xl px-3 py-2 text-[11.5px] leading-relaxed" style={{ background: "rgba(59,130,246,0.1)", color: "var(--vm-text-soft)" }}>
+                Volta pra fila ("A Vistoriar") com o técnico escolhido e ele recebe uma notificação avisando.
+              </p>
+            )}
 
             <label className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Técnico</label>
             <div className="relative mb-3">
@@ -2832,7 +2848,14 @@ export default function PainelMapaPage() {
                   setAtribuirLoading(true);
                   try {
                     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-                    await fetch(`${base}/api/painel/central-vistorias/${atribuirVistoria.id}/reatribuir`, {
+                    // Bloqueada (impedimento/recusa aprovada): usa o mesmo
+                    // endpoint de Vistorias Rejeitadas — ele marca a recusa
+                    // como REABERTA além de reatribuir, senão o mapa
+                    // continuaria mostrando REJEITADA pra sempre.
+                    const url = atribuirVistoria.bloqueio && atribuirVistoria.bloqueio_recusa_id
+                      ? `${base}/api/painel/rejeitadas/${atribuirVistoria.bloqueio_recusa_id}/reabrir`
+                      : `${base}/api/painel/central-vistorias/${atribuirVistoria.id}/reatribuir`;
+                    await fetch(url, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
                       body: JSON.stringify({ tecnicoId: atribuirTecId, motivo: atribuirMotivo.trim() }),
@@ -2848,7 +2871,7 @@ export default function PainelMapaPage() {
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2 text-[12px] font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
               >
                 {atribuirLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
-                Confirmar
+                {atribuirVistoria.bloqueio ? "Reatribuir e reabrir" : "Confirmar"}
               </button>
             </div>
           </div>
