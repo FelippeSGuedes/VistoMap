@@ -407,12 +407,12 @@ export default function AtividadesPage() {
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
           {BLOCOS.map(({ tipo, titulo, icone: Icone, descricao }) => {
             const t = dados?.resumo.porTipo[tipo];
+            const pendentes = t?.pendentes ?? 0;
             const cor = TIPO_COR[tipo];
             return (
-              <Link
+              <div
                 key={tipo}
-                href={`/painel/ocorrencias?tipo=${tipo}`}
-                className="group rounded-2xl p-4 transition hover:brightness-[0.99]"
+                className="rounded-2xl p-4"
                 style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -423,28 +423,25 @@ export default function AtividadesPage() {
                     <Icone className="h-4.5 w-4.5" />
                   </span>
                   <div className="text-right">
-                    <p className="text-[22px] font-bold leading-none tabular-nums" style={{ color: "var(--vm-text)" }}>
-                      {t?.total ?? 0}
+                    <p className="text-[22px] font-bold leading-none tabular-nums" style={{ color: pendentes > 0 ? "#DC2626" : "var(--vm-text)" }}>
+                      {pendentes}
                     </p>
-                    <p className="mt-0.5 text-[10px] uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>no total</p>
+                    <p className="mt-0.5 text-[10px] uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                      {pendentes > 0 ? "aguardando" : "em aberto"}
+                    </p>
                   </div>
                 </div>
                 <p className="mt-2.5 text-[14px] font-bold" style={{ color: "var(--vm-text)" }}>{titulo}</p>
                 <p className="mt-0.5 text-[11.5px] leading-snug" style={{ color: "var(--vm-muted)" }}>{descricao}</p>
-                <div className="mt-2.5 flex items-center gap-2 text-[11px]">
-                  {(t?.pendentes ?? 0) > 0 ? (
-                    <span className="font-semibold" style={{ color: "#DC2626" }}>{t?.pendentes} aguardando análise</span>
-                  ) : (
-                    <span style={{ color: "var(--vm-faint)" }}>nada em aberto</span>
-                  )}
-                  {(t?.novas7d ?? 0) > 0 && (
-                    <>
-                      <span style={{ color: "var(--vm-faint)" }}>·</span>
-                      <span style={{ color: "var(--vm-muted)" }}>{t?.novas7d} em 7 dias</span>
-                    </>
-                  )}
+                <div className="mt-3 flex items-center gap-3 text-[11px] font-semibold">
+                  <Link href={`/painel/ocorrencias?tipo=${tipo}`} className="hover:underline" style={{ color: cor }}>
+                    Ver fila
+                  </Link>
+                  <Link href={`/painel/auditoria?tipo=${tipo}`} className="hover:underline" style={{ color: "var(--vm-muted)" }}>
+                    Ver histórico
+                  </Link>
                 </div>
-              </Link>
+              </div>
             );
           })}
 
@@ -462,31 +459,26 @@ export default function AtividadesPage() {
                 <Undo2 className="h-4.5 w-4.5" />
               </span>
               <div className="text-right">
-                <p className="text-[22px] font-bold leading-none tabular-nums" style={{ color: "var(--vm-text)" }}>
-                  {devolucoes?.total ?? 0}
+                <p className="text-[22px] font-bold leading-none tabular-nums" style={{ color: (devolucoes?.pendentes ?? 0) > 0 ? "#DC2626" : "var(--vm-text)" }}>
+                  {devolucoes?.pendentes ?? 0}
                 </p>
-                <p className="mt-0.5 text-[10px] uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>no total</p>
+                <p className="mt-0.5 text-[10px] uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                  {(devolucoes?.pendentes ?? 0) > 0 ? "aguardando" : "em aberto"}
+                </p>
               </div>
             </div>
             <p className="mt-2.5 text-[14px] font-bold" style={{ color: "var(--vm-text)" }}>Devoluções</p>
             <p className="mt-0.5 text-[11.5px] leading-snug" style={{ color: "var(--vm-muted)" }}>
               Vistoria devolvida pelo analista pro técnico corrigir — sentido oposto das outras.
             </p>
-            <div className="mt-2.5 text-[11px]">
-              {(devolucoes?.pendentes ?? 0) > 0 ? (
-                <span className="font-semibold" style={{ color: "#DC2626" }}>{devolucoes?.pendentes} aguardando correção</span>
-              ) : (
-                <span style={{ color: "var(--vm-faint)" }}>nada em aberto</span>
-              )}
-            </div>
           </Link>
         </div>
       </div>
 
       <p className="text-center text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
-        Ver tudo junto, com filtros e histórico de tentativas:{" "}
+        Ver a fila completa, com busca e prioridade:{" "}
         <Link href="/painel/ocorrencias" className="font-semibold underline" style={{ color: "#00875F" }}>
-          Central de Ocorrências
+          Fila de Decisão
         </Link>
       </p>
     </div>

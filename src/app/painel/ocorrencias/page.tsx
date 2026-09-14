@@ -1,35 +1,33 @@
 "use client";
 
 /**
- * Central de Ocorrências Operacionais.
+ * Fila de Decisão — Impedimento, Recusa e Exceção.
  *
- * Substitui a leitura "caixa de entrada de notificações" por uma pergunta
- * operacional: POR QUE as vistorias não estão sendo concluídas?
+ * Reprojetada em 2026-09-14: a versão anterior desta tela misturava fila de
+ * decisão com histórico completo (KPIs, rankings, lista de tudo que já foi
+ * decidido) — o que precisava de ação agora ficava em segundo plano, do
+ * mesmo tamanho visual que registros de semanas atrás. Esta tela agora SÓ
+ * mostra o que está PENDENTE. Histórico (o que já foi aprovado/reprovado,
+ * rankings por motivo/técnico) mudou de casa: é a própria Auditoria, que já
+ * registra cada decisão — não faz sentido manter duas telas de histórico
+ * pra mesma informação.
  *
  * Três naturezas (ver lib/glpi/ocorrencias.ts): impedimento (o ambiente
  * travou), recusa (houve decisão) e exceção (pedido de sair do fluxo,
- * geralmente com o técnico esperando a decisão em tempo real). O tipo é a
- * única coisa que ganha cor forte; prioridade e status entram em tom baixo,
- * pra tela não virar um mosaico.
+ * geralmente com o técnico esperando a decisão em tempo real).
  *
  * Impedimento x Recusa é uma DECISÃO DO ANALISTA no momento de aprovar (ver
- * o modal "Essa solicitação é Impedimento ou Recusa?"), não mais um cálculo
- * automático fixo em cima do motivo — o técnico continua relatando do MESMO
- * jeito de sempre. Exceção não passa por essa pergunta: é uma decisão
- * sim/não própria, sem categoria pra escolher.
- *
- * Todo número aqui sai de dado real. Onde não há amostra, o indicador mostra
- * "—" e o insight simplesmente não aparece — nunca um número inventado.
- * Poucos indicadores de propósito: cada um precisa responder uma pergunta
- * na hora, sem precisar interpretar (2026-09-14).
+ * o modal "Essa solicitação é Impedimento ou Recusa?") — o técnico continua
+ * relatando do MESMO jeito de sempre. Exceção não passa por essa pergunta:
+ * é uma decisão sim/não própria, sem categoria pra escolher.
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertTriangle, Ban, Camera, CheckCircle2, ChevronRight, Clock, ExternalLink,
-  Layers, MapPin, RefreshCw, RotateCw, Search, ShieldAlert, TrendingUp, User, X,
+  Ban, Camera, CheckCircle2, ChevronRight, ExternalLink,
+  History, MapPin, RefreshCw, Search, ShieldAlert, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
@@ -37,15 +35,13 @@ import { VistoriaDetalheModal } from "@/components/painel/VistoriaDetalheModal";
 import type {
   Ocorrencia,
   OcorrenciaPrioridade,
-  OcorrenciaStatus,
   OcorrenciaTipo,
   OcorrenciasResponse,
-  OcorrenciasResumo,
 } from "@/lib/glpi/ocorrencias";
 
 /* ─── linguagem visual ────────────────────────────────────────────────────── */
 
-/** Impedimento e recusa usam EXATAMENTE as cores do mapa — é a mesma coisa. */
+/** Mesmas cores em toda parte — mapa, Central de Atividades, Auditoria. */
 const TIPO_COR: Record<OcorrenciaTipo, string> = {
   impedimento: "#B45309",
   recusa: "#6B7280",
@@ -62,27 +58,9 @@ const TIPO_DESCRICAO: Record<OcorrenciaTipo, string> = {
   excecao: "O técnico pediu pra sair do fluxo esperado e isso precisou de análise.",
 };
 
-const STATUS_LABEL: Record<OcorrenciaStatus, string> = {
-  PENDENTE: "Aguardando análise",
-  APROVADO: "Aprovada",
-  REPROVADO: "Reprovada",
-  REABERTA: "Reaberta",
-};
-
 function tint(hex: string, alpha: number) {
   const n = parseInt(hex.replace("#", ""), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
-}
-
-function relativo(iso: string): string {
-  const t = new Date(iso.replace(" ", "T") + "Z").getTime();
-  if (!Number.isFinite(t)) return "—";
-  const min = Math.round((Date.now() - t) / 60000);
-  if (min < 1) return "agora";
-  if (min < 60) return `${min} min`;
-  const h = Math.round(min / 60);
-  if (h < 48) return `${h} h`;
-  return `${Math.round(h / 24)} d`;
 }
 
 function dataHora(iso: string | null): string {
@@ -98,6 +76,8 @@ function duracao(horas: number | null): string {
   if (horas < 48) return `${Math.round(horas)} h`;
   return `${Math.round(horas / 24)} d`;
 }
+
+const PRIORIDADE_PESO: Record<OcorrenciaPrioridade, number> = { critico: 0, atencao: 1, normal: 2 };
 
 /* ─── página ──────────────────────────────────────────────────────────────── */
 
@@ -126,10 +106,7 @@ function Conteudo() {
   const [dados, setDados] = useState<OcorrenciasResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<"todos" | OcorrenciaStatus>("todos");
   const [filtroPrio, setFiltroPrio] = useState<"todas" | OcorrenciaPrioridade>("todas");
-  const [filtroTec, setFiltroTec] = useState<number | "todos">("todos");
-  const [filtroMotivo, setFiltroMotivo] = useState<string | "todos">("todos");
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null);
   const [vistoriaAberta, setVistoriaAberta] = useState<Ocorrencia | null>(null);
 
@@ -151,41 +128,44 @@ function Conteudo() {
   useEffect(() => { carregar(); }, [carregar]);
 
   const trocarSegmento = (id: Segmento) => {
-    setFiltroMotivo("todos");
     router.replace(id === "todas" ? "/painel/ocorrencias" : `/painel/ocorrencias?tipo=${id}`);
   };
 
-  // O recorte do segmento vem ANTES dos filtros: os indicadores no topo
-  // precisam falar do que está sendo olhado, não do conjunto inteiro.
-  const doSegmento = useMemo(
-    () => (dados?.ocorrencias ?? []).filter((o) => segmento === "todas" || o.tipo === segmento),
+  // Só PENDENTE — é o único motivo desta tela existir agora. O que já foi
+  // decidido mora na Auditoria (link "Ver histórico" mais abaixo).
+  const pendentesDoSegmento = useMemo(
+    () =>
+      (dados?.ocorrencias ?? []).filter(
+        (o) => o.status === "PENDENTE" && (segmento === "todas" || o.tipo === segmento)
+      ),
     [dados, segmento]
   );
 
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return doSegmento.filter((o) => {
-      if (filtroStatus !== "todos" && o.status !== filtroStatus) return false;
-      if (filtroPrio !== "todas" && o.prioridade !== filtroPrio) return false;
-      if (filtroTec !== "todos" && o.tecnicoId !== filtroTec) return false;
-      if (filtroMotivo !== "todos" && o.motivo !== filtroMotivo) return false;
-      if (!q) return true;
-      return (
-        o.equipamento.toLowerCase().includes(q) ||
-        o.motivoLabel.toLowerCase().includes(q) ||
-        o.tecnicoNome.toLowerCase().includes(q) ||
-        (o.municipio ?? "").toLowerCase().includes(q) ||
-        o.justificativa.toLowerCase().includes(q)
-      );
-    });
-  }, [doSegmento, busca, filtroStatus, filtroPrio, filtroTec, filtroMotivo]);
+    return pendentesDoSegmento
+      .filter((o) => {
+        if (filtroPrio !== "todas" && o.prioridade !== filtroPrio) return false;
+        if (!q) return true;
+        return (
+          o.equipamento.toLowerCase().includes(q) ||
+          o.motivoLabel.toLowerCase().includes(q) ||
+          o.tecnicoNome.toLowerCase().includes(q) ||
+          (o.municipio ?? "").toLowerCase().includes(q) ||
+          o.justificativa.toLowerCase().includes(q)
+        );
+      })
+      // Urgência antes de data: um impedimento de ontem não pode ficar
+      // atrás de uma exceção que chegou há 2 minutos.
+      .sort((a, b) => {
+        const p = PRIORIDADE_PESO[a.prioridade] - PRIORIDADE_PESO[b.prioridade];
+        if (p !== 0) return p;
+        return (b.horasAberto ?? 0) - (a.horasAberto ?? 0);
+      });
+  }, [pendentesDoSegmento, busca, filtroPrio]);
 
-  const kpis = useMemo(() => resumirLocal(doSegmento), [doSegmento]);
-  const motivos = useMemo(() => rank(doSegmento, (o) => o.motivo, (o) => o.motivoLabel), [doSegmento]);
-  const porTecnico = useMemo(() => rank(doSegmento, (o) => String(o.tecnicoId), (o) => o.tecnicoNome, (o) => o.tecnicoCor), [doSegmento]);
-  const insights = useMemo(() => gerarInsights(doSegmento, motivos, porTecnico), [doSegmento, motivos, porTecnico]);
-
-  // Tentativas anteriores da mesma vistoria — o que mostra "isso já travou antes".
+  // Tentativas anteriores da mesma vistoria — precisa do histórico completo
+  // (não só pendentes) pra saber que essa já travou antes.
   const historico = useMemo(() => {
     if (!selecionada || !dados) return [];
     return dados.ocorrencias
@@ -193,8 +173,9 @@ function Conteudo() {
       .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
   }, [selecionada, dados]);
 
-  const titulo = segmento === "todas" ? "Ocorrências Operacionais" : TIPO_LABEL[segmento];
+  const titulo = segmento === "todas" ? "Fila de Decisão" : TIPO_LABEL[segmento];
   const acento = segmento === "todas" ? "#B45309" : TIPO_COR[segmento];
+  const linkHistorico = segmento === "todas" ? "/painel/auditoria" : `/painel/auditoria?tipo=${segmento}`;
 
   return (
     <div className="space-y-5">
@@ -211,20 +192,29 @@ function Conteudo() {
             <h1 className="text-[20px] font-bold" style={{ color: "var(--vm-text)" }}>{titulo}</h1>
             <p className="max-w-[68ch] text-[13px]" style={{ color: "var(--vm-muted)" }}>
               {segmento === "todas"
-                ? "Tudo que travou a execução das vistorias — impedimento, recusa e exceção, separados pelo que cada um significa."
+                ? "Só o que espera você agora — impedimento, recusa e exceção."
                 : TIPO_DESCRICAO[segmento]}
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={carregar}
-          className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:brightness-95"
-          style={{ border: "1px solid var(--vm-border)", background: "var(--vm-card)" }}
-          title="Atualizar"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} style={{ color: "var(--vm-muted)" }} />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href={linkHistorico}
+            className="flex h-9 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold transition hover:brightness-95"
+            style={{ border: "1px solid var(--vm-border)", background: "var(--vm-card)", color: "var(--vm-muted)" }}
+          >
+            <History className="h-3.5 w-3.5" /> Ver histórico
+          </Link>
+          <button
+            type="button"
+            onClick={carregar}
+            className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:brightness-95"
+            style={{ border: "1px solid var(--vm-border)", background: "var(--vm-card)" }}
+            title="Atualizar"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} style={{ color: "var(--vm-muted)" }} />
+          </button>
+        </div>
       </div>
 
       {/* ── segmentos ─────────────────────────────────────────────────── */}
@@ -233,9 +223,6 @@ function Conteudo() {
           const ativo = segmento === s.id;
           const cor = s.id === "todas" ? "var(--vm-text)" : TIPO_COR[s.id];
           const n = s.id === "todas"
-            ? dados?.ocorrencias.length ?? 0
-            : dados?.resumo.porTipo[s.id].total ?? 0;
-          const pend = s.id === "todas"
             ? dados?.resumo.pendentes ?? 0
             : dados?.resumo.porTipo[s.id].pendentes ?? 0;
           return (
@@ -254,77 +241,15 @@ function Conteudo() {
                 <span className="h-2 w-2 rounded-full" style={{ background: TIPO_COR[s.id] }} />
               )}
               {s.label}
-              <span className="text-[11px] font-bold tabular-nums" style={{ color: "var(--vm-faint)" }}>{n}</span>
-              {pend > 0 && (
-                <span
-                  className="rounded-full px-1.5 text-[9.5px] font-bold"
-                  style={{ background: "rgba(220,38,38,0.12)", color: "#DC2626" }}
-                >
-                  {pend} aberta{pend > 1 ? "s" : ""}
-                </span>
-              )}
+              <span
+                className="rounded-full px-1.5 text-[10px] font-bold tabular-nums"
+                style={{ background: n > 0 ? "rgba(220,38,38,0.12)" : "var(--vm-tile)", color: n > 0 ? "#DC2626" : "var(--vm-faint)" }}
+              >
+                {n}
+              </span>
             </button>
           );
         })}
-      </div>
-
-      {/* ── indicadores ───────────────────────────────────────────────── */}
-      {/* Só 3: cada um responde uma pergunta na hora, sem precisar interpretar
-          (2026-09-14) — "novas em 7 dias" e "tempo médio" saíram por serem
-          números que exigiam explicação (ex.: "0 min" lendo como bug). */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
-        <Indicador icon={Clock} label="Aguardando análise" valor={kpis.pendentes} cor="#DC2626"
-          nota={kpis.pendentes === 0 ? "nada parado agora" : "precisa de decisão"} />
-        <Indicador icon={RotateCw} label="Vistorias reincidentes" valor={kpis.reincidentes} cor="#B45309"
-          nota="travaram mais de uma vez" />
-        <Indicador icon={CheckCircle2} label="Resolvidas" valor={kpis.resolvidas} cor="#059669" />
-      </div>
-
-      {/* ── insights (só com amostra suficiente) ──────────────────────── */}
-      {insights.length > 0 && (
-        <div
-          className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl px-4 py-3"
-          style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)" }}
-        >
-          {insights.map((i) => (
-            <span key={i} className="text-[12.5px]" style={{ color: "var(--vm-text-soft)" }}>
-              {i}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* ── rankings ──────────────────────────────────────────────────── */}
-      <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
-        <Cartao titulo="Principais motivos" icone={AlertTriangle} cor={acento}
-          vazio={motivos.length === 0 ? "Nenhuma ocorrência neste recorte." : null}>
-          {motivos.slice(0, 8).map((m) => (
-            <BarraRank
-              key={m.chave}
-              label={m.label}
-              total={m.total}
-              max={motivos[0]?.total ?? 1}
-              cor={m.cor ?? acento}
-              ativo={filtroMotivo === m.chave}
-              onClick={() => setFiltroMotivo(filtroMotivo === m.chave ? "todos" : m.chave)}
-            />
-          ))}
-        </Cartao>
-
-        <Cartao titulo="Por técnico" icone={User} cor={acento}
-          vazio={porTecnico.length === 0 ? "Nenhuma ocorrência neste recorte." : null}>
-          {porTecnico.slice(0, 8).map((t) => (
-            <BarraRank
-              key={t.chave}
-              label={t.label}
-              total={t.total}
-              max={porTecnico[0]?.total ?? 1}
-              cor={t.cor ?? "var(--vm-text-soft)"}
-              ativo={filtroTec === Number(t.chave)}
-              onClick={() => setFiltroTec(filtroTec === Number(t.chave) ? "todos" : Number(t.chave))}
-            />
-          ))}
-        </Cartao>
       </div>
 
       {/* ── filtros ───────────────────────────────────────────────────── */}
@@ -338,40 +263,38 @@ function Conteudo() {
             type="search"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Equipamento, motivo, técnico, município, justificativa…"
+            placeholder="Equipamento, motivo, técnico, município…"
             className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none"
             style={{ color: "var(--vm-text)" }}
           />
         </div>
-        <Seletor valor={filtroStatus} onChange={(v) => setFiltroStatus(v as typeof filtroStatus)}
-          opcoes={[["todos", "Qualquer status"], ["PENDENTE", "Aguardando análise"], ["APROVADO", "Aprovada"], ["REPROVADO", "Reprovada"], ["REABERTA", "Reaberta"]]} />
-        <Seletor valor={filtroPrio} onChange={(v) => setFiltroPrio(v as typeof filtroPrio)}
-          opcoes={[["todas", "Qualquer prioridade"], ["critico", "Crítico"], ["atencao", "Atenção"], ["normal", "Normal"]]} />
-        {(filtroMotivo !== "todos" || filtroTec !== "todos") && (
-          <button
-            type="button"
-            onClick={() => { setFiltroMotivo("todos"); setFiltroTec("todos"); }}
-            className="rounded-xl px-3 py-2 text-[12px] font-semibold transition hover:brightness-95"
-            style={{ border: "1px solid var(--vm-border)", background: "var(--vm-card)", color: "var(--vm-muted)" }}
-          >
-            Limpar seleção do gráfico
-          </button>
-        )}
+        <select
+          value={filtroPrio}
+          onChange={(e) => setFiltroPrio(e.target.value as typeof filtroPrio)}
+          className="rounded-xl px-3 py-2 text-[12.5px] outline-none"
+          style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+        >
+          <option value="todas">Qualquer prioridade</option>
+          <option value="critico">Crítico</option>
+          <option value="atencao">Atenção</option>
+          <option value="normal">Normal</option>
+        </select>
       </div>
 
-      {/* ── lista ─────────────────────────────────────────────────────── */}
+      {/* ── fila ──────────────────────────────────────────────────────── */}
       <div className="rounded-2xl" style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}>
         {loading && !dados ? (
-          <p className="py-14 text-center text-[13px]" style={{ color: "var(--vm-faint)" }}>Carregando ocorrências…</p>
+          <p className="py-14 text-center text-[13px]" style={{ color: "var(--vm-faint)" }}>Carregando…</p>
         ) : filtradas.length === 0 ? (
           <div className="py-14 text-center">
+            <CheckCircle2 className="mx-auto mb-2 h-6 w-6" style={{ color: "#059669" }} />
             <p className="text-[13px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>
-              {doSegmento.length === 0 ? "Nenhuma ocorrência registrada" : "Nada bate com esses filtros"}
+              {pendentesDoSegmento.length === 0 ? "Nada esperando decisão" : "Nada bate com esses filtros"}
             </p>
             <p className="mt-1 text-[12px]" style={{ color: "var(--vm-faint)" }}>
-              {doSegmento.length === 0
-                ? "Quando um técnico registrar um impedimento, uma recusa ou uma exceção, ela aparece aqui."
-                : "Ajuste a busca ou limpe os filtros."}
+              {pendentesDoSegmento.length === 0
+                ? "Assim que um técnico registrar algo novo, aparece aqui."
+                : "Ajuste a busca ou a prioridade."}
             </p>
           </div>
         ) : (
@@ -426,10 +349,9 @@ function Conteudo() {
                     </div>
                   </div>
                   <div className="hidden shrink-0 text-right sm:block">
-                    <p className="text-[11px] font-semibold" style={{ color: corStatus(o.status) }}>
-                      {STATUS_LABEL[o.status]}
+                    <p className="text-[11px] font-semibold" style={{ color: "#DC2626" }}>
+                      aberta há {duracao(o.horasAberto)}
                     </p>
-                    <p className="text-[10.5px]" style={{ color: "var(--vm-faint)" }}>{relativo(o.criadoEm)}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--vm-faint)" }} />
                 </button>
@@ -438,12 +360,6 @@ function Conteudo() {
           </ul>
         )}
       </div>
-
-      {filtradas.length > 0 && (
-        <p className="text-center text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
-          {filtradas.length} de {doSegmento.length} ocorrência{doSegmento.length > 1 ? "s" : ""} neste recorte
-        </p>
-      )}
 
       {/* ── detalhe ───────────────────────────────────────────────────── */}
       {selecionada && (
@@ -468,170 +384,8 @@ function Conteudo() {
   );
 }
 
-/* ─── agregações ──────────────────────────────────────────────────────────── */
-
-function resumirLocal(lista: Ocorrencia[]) {
-  const seteDias = 7 * 24 * 3_600_000;
-  const agora = Date.now();
-  let pendentes = 0, novas7d = 0, resolvidas = 0, soma = 0, amostra = 0;
-  const reincidentes = new Set<number>();
-  for (const o of lista) {
-    if (o.status === "PENDENTE") pendentes += 1;
-    if (agora - new Date(o.criadoEm.replace(" ", "T") + "Z").getTime() <= seteDias) novas7d += 1;
-    if (o.status === "APROVADO" || o.status === "REPROVADO") {
-      resolvidas += 1;
-      if (o.resolvidoEm) {
-        const h = (new Date(o.resolvidoEm.replace(" ", "T") + "Z").getTime()
-          - new Date(o.criadoEm.replace(" ", "T") + "Z").getTime()) / 3_600_000;
-        if (Number.isFinite(h) && h >= 0) { soma += h; amostra += 1; }
-      }
-    }
-    if (o.totalTentativas > 1) reincidentes.add(o.vistoriaId);
-  }
-  return {
-    pendentes, novas7d, resolvidas,
-    reincidentes: reincidentes.size,
-    tempoMedioHoras: amostra > 0 ? soma / amostra : null,
-  };
-}
-
-interface ItemRank { chave: string; label: string; total: number; cor?: string | null }
-
-function rank(
-  lista: Ocorrencia[],
-  chave: (o: Ocorrencia) => string,
-  label: (o: Ocorrencia) => string,
-  cor?: (o: Ocorrencia) => string | null
-): ItemRank[] {
-  const m = new Map<string, ItemRank>();
-  for (const o of lista) {
-    const k = chave(o);
-    const atual = m.get(k) ?? { chave: k, label: label(o), total: 0, cor: cor?.(o) ?? null };
-    atual.total += 1;
-    m.set(k, atual);
-  }
-  return [...m.values()].sort((a, b) => b.total - a.total);
-}
-
-/**
- * Insights só existem com amostra que sustente o número. Abaixo disso, uma
- * porcentagem sobre 3 registros é ruído disfarçado de informação — então a
- * faixa simplesmente não aparece.
- */
-const AMOSTRA_MINIMA = 10;
-
-function gerarInsights(lista: Ocorrencia[], motivos: ItemRank[], tecnicos: ItemRank[]): string[] {
-  const out: string[] = [];
-  const total = lista.length;
-  if (total < AMOSTRA_MINIMA) return out;
-
-  const topMotivo = motivos[0];
-  if (topMotivo) {
-    const pct = Math.round((topMotivo.total / total) * 100);
-    if (pct >= 20) out.push(`${pct}% das ocorrências são "${topMotivo.label}".`);
-  }
-  const reincidentes = new Set(lista.filter((o) => o.totalTentativas > 1).map((o) => o.vistoriaId));
-  if (reincidentes.size > 0) {
-    out.push(`${reincidentes.size} vistoria${reincidentes.size > 1 ? "s travaram" : " travou"} mais de uma vez.`);
-  }
-  const topTec = tecnicos[0];
-  if (topTec && topTec.total >= 3 && topTec.total / total >= 0.25) {
-    out.push(`${topTec.label} concentra ${topTec.total} das ${total} ocorrências.`);
-  }
-  const antiga = lista
-    .filter((o) => o.status === "PENDENTE" && o.horasAberto != null)
-    .sort((a, b) => (b.horasAberto ?? 0) - (a.horasAberto ?? 0))[0];
-  if (antiga) out.push(`A mais antiga sem decisão está aberta há ${duracao(antiga.horasAberto)}.`);
-  return out;
-}
-
-function corStatus(s: OcorrenciaStatus): string {
-  if (s === "PENDENTE") return "#DC2626";
-  if (s === "APROVADO") return "#059669";
-  if (s === "REPROVADO") return "#B45309";
-  return "var(--vm-muted)";
-}
-
-/* ─── peças ───────────────────────────────────────────────────────────────── */
-
-function Indicador({
-  icon: Icon, label, valor, texto, cor, nota,
-}: {
-  icon: React.ElementType; label: string; valor?: number; texto?: string; cor: string; nota?: string;
-}) {
-  return (
-    <div className="rounded-2xl p-4" style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}>
-      <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5" style={{ color: cor }} />
-        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>{label}</span>
-      </div>
-      <p className="mt-1.5 text-[24px] font-bold leading-none tabular-nums" style={{ color: "var(--vm-text)" }}>
-        {texto ?? valor ?? 0}
-      </p>
-      {nota && <p className="mt-1 text-[10.5px]" style={{ color: "var(--vm-faint)" }}>{nota}</p>}
-    </div>
-  );
-}
-
-function Cartao({
-  titulo, icone: Icone, cor, vazio, children,
-}: {
-  titulo: string; icone: React.ElementType; cor: string; vazio: string | null; children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl p-5" style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}>
-      <div className="mb-3 flex items-center gap-2">
-        <Icone className="h-4 w-4" style={{ color: cor }} />
-        <h2 className="text-[13.5px] font-bold" style={{ color: "var(--vm-text)" }}>{titulo}</h2>
-      </div>
-      {vazio ? (
-        <p className="py-6 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>{vazio}</p>
-      ) : (
-        <div className="space-y-2">{children}</div>
-      )}
-    </div>
-  );
-}
-
-function BarraRank({
-  label, total, max, cor, ativo, onClick,
-}: {
-  label: string; total: number; max: number; cor: string; ativo: boolean; onClick: () => void;
-}) {
-  const pct = Math.max(4, Math.round((total / Math.max(max, 1)) * 100));
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="block w-full rounded-lg px-1.5 py-1 text-left transition hover:bg-[var(--vm-tile)]"
-      style={ativo ? { background: "var(--vm-tile)" } : undefined}
-    >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-[12px]" style={{ color: ativo ? "var(--vm-text)" : "var(--vm-text-soft)" }}>{label}</span>
-        <span className="shrink-0 text-[12px] font-bold tabular-nums" style={{ color: "var(--vm-text)" }}>{total}</span>
-      </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2, rgba(127,127,127,0.12))" }}>
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cor }} />
-      </div>
-    </button>
-  );
-}
-
-function Seletor({
-  valor, onChange, opcoes,
-}: {
-  valor: string; onChange: (v: string) => void; opcoes: Array<[string, string]>;
-}) {
-  return (
-    <select
-      value={valor}
-      onChange={(e) => onChange(e.target.value)}
-      className="rounded-xl px-3 py-2 text-[12.5px] outline-none"
-      style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
-    >
-      {opcoes.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-    </select>
-  );
+function corStatusPendente(): string {
+  return "#DC2626";
 }
 
 /* ─── detalhe ─────────────────────────────────────────────────────────────── */
@@ -728,13 +482,12 @@ function Detalhe({
         <div className="space-y-4 px-5 py-4">
           {/* estado */}
           <div className="grid grid-cols-2 gap-2">
-            <Campo label="Situação" valor={STATUS_LABEL[o.status]} cor={corStatus(o.status)} />
+            <Campo label="Situação" valor="Aguardando análise" cor={corStatusPendente()} />
             <Campo label="Prioridade"
               valor={o.prioridade === "critico" ? "Crítico" : o.prioridade === "atencao" ? "Atenção" : "Normal"}
               cor={o.prioridade === "critico" ? "#DC2626" : undefined} />
             <Campo label="Registrada em" valor={dataHora(o.criadoEm)} />
-            <Campo label={o.status === "PENDENTE" ? "Aberta há" : "Resolvida em"}
-              valor={o.status === "PENDENTE" ? duracao(o.horasAberto) : dataHora(o.resolvidoEm)} />
+            <Campo label="Aberta há" valor={duracao(o.horasAberto)} cor="#DC2626" />
           </div>
 
           {/* técnico */}
@@ -769,12 +522,6 @@ function Detalhe({
             </Bloco>
           )}
 
-          {o.motivoReprovacao && (
-            <Bloco titulo="Motivo da reprovação">
-              <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--vm-text-soft)" }}>{o.motivoReprovacao}</p>
-            </Bloco>
-          )}
-
           {o.fotoUrl && (
             <Bloco titulo="Evidência">
               <a href={o.fotoUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-xl" style={{ border: "1px solid var(--vm-border)" }}>
@@ -799,7 +546,7 @@ function Detalhe({
                     <div className="min-w-0">
                       <p className="text-[12px] font-semibold" style={{ color: "var(--vm-text)" }}>{h.motivoLabel}</p>
                       <p className="text-[11px]" style={{ color: "var(--vm-faint)" }}>
-                        {dataHora(h.criadoEm)} · {h.tecnicoNome} · {STATUS_LABEL[h.status]}
+                        {dataHora(h.criadoEm)} · {h.tecnicoNome} · {h.status === "PENDENTE" ? "Aguardando análise" : h.status === "APROVADO" ? "Aprovada" : h.status === "REPROVADO" ? "Reprovada" : "Reaberta"}
                       </p>
                     </div>
                   </li>
@@ -830,7 +577,7 @@ function Detalhe({
           </div>
 
           {/* decisão */}
-          {o.status === "PENDENTE" && podeAgir && (
+          {podeAgir && (
             <div className="rounded-xl p-3" style={{ border: "1px solid var(--vm-border)", background: "var(--vm-tile)" }}>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
                 Decisão do analista
@@ -920,16 +667,6 @@ function Detalhe({
                 </button>
               </div>
             </div>
-          )}
-
-          {o.status === "APROVADO" && o.origem === "recusa" && (
-            <Link
-              href="/painel/rejeitadas"
-              className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-semibold transition hover:brightness-95"
-              style={{ border: "1px solid var(--vm-border)", background: "var(--vm-tile)", color: "var(--vm-text)" }}
-            >
-              <RotateCw className="h-3.5 w-3.5" /> Reatribuir e reabrir esta vistoria
-            </Link>
           )}
         </div>
       </aside>

@@ -79,6 +79,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     ator: { id: adminId, nome: adminNome, role: "admin" },
     acao: body.acao === "aprovar" ? "recusa-aprovada" : "recusa-reprovada",
     alvo: { tipo: "vistoria", id: String(recusa.vistoriaId), label: recusa.equipamento },
+    // Só em aprovar: é o que permite o filtro Impedimentos/Recusas da
+    // Auditoria separar os dois sem depender de casar texto em `descricao`.
+    categoria: body.acao === "aprovar" ? (body.categoria as RecusaCategoria) : undefined,
     descricao:
       body.acao === "aprovar"
         ? `${CATEGORIA_LABEL[body.categoria as RecusaCategoria]} — vistoria de ${recusa.tecnicoNome} sai de circulação. ${recusa.justificativa}`

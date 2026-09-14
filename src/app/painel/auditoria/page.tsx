@@ -8,7 +8,8 @@
  */
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { painelService } from "@/services/painel";
 import {
   Activity,
@@ -26,8 +27,25 @@ import { ACAO_META as ACAO, initials } from "@/lib/auditMeta";
 /* ─── Configuração por tipo de ação ─────────────────────────────────── */
 /* (movida para @/lib/auditMeta — compartilhada com /painel/tecnicos/[id]) */
 
-const TIPO_FILTROS: Array<{ id: AuditEntry["acao"] | "todos"; label: string }> = [
+type OcorrenciaTipoFiltro = "impedimento" | "recusa" | "excecao";
+type FiltroId = AuditEntry["acao"] | "todos" | OcorrenciaTipoFiltro;
+
+function ehOcorrencia(id: FiltroId): id is OcorrenciaTipoFiltro {
+  return id === "impedimento" || id === "recusa" || id === "excecao";
+}
+
+/**
+ * Impedimentos/Recusas/Exceções (2026-09-14): mesmas cores da Central de
+ * Ocorrências e do mapa — cor = mesmo significado em qualquer tela. Vêm
+ * ANTES dos filtros de evento porque respondem "onde foi parar o histórico
+ * disso" — a razão de existir dessa mudança (a Central de Ocorrências virou
+ * só fila de decisão; o histórico mora aqui agora).
+ */
+const TIPO_FILTROS: Array<{ id: FiltroId; label: string; cor?: string }> = [
   { id: "todos",               label: "Todos" },
+  { id: "impedimento",         label: "Impedimentos", cor: "#B45309" },
+  { id: "recusa",              label: "Recusas",      cor: "#6B7280" },
+  { id: "excecao",             label: "Exceções",     cor: "#4F46E5" },
   { id: "vistoria-atribuida",  label: "Atribuições" },
   { id: "revisita-criada",     label: "Revisitas" },
   { id: "vistoria-reprovada",  label: "Reprovações" },
@@ -179,32 +197,56 @@ function DiaSeparador({ label, count }: { label: string; count: number }) {
 
 /* ─── Página ─────────────────────────────────────────────────────────── */
 export default function AuditoriaPage() {
+  return (
+    <Suspense fallback={null}>
+      <AuditoriaConteudo />
+    </Suspense>
+  );
+}
+
+function AuditoriaConteudo() {
+  const params = useSearchParams();
+  // Deep-link de "Ver histórico" (Ocorrências/Atividades) — chega já com o
+  // filtro certo, sem o analista precisar reencontrar o chip.
+  const tipoInicial = params.get("tipo");
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
-  const [tipoFiltro, setTipoFiltro] = useState<AuditEntry["acao"] | "todos">("todos");
+  const [tipoFiltro, setTipoFiltro] = useState<FiltroId>(
+    tipoInicial === "impedimento" || tipoInicial === "recusa" || tipoInicial === "excecao"
+      ? tipoInicial
+      : "todos"
+  );
   const topo = useRef<HTMLDivElement>(null);
 
-  const load = async () => {
+  // Impedimento/Recusa/Exceção somam só ~240 dos 5000+ eventos do log — se
+  // filtrasse só dentro da janela genérica de 300 mais recentes (dominada
+  // por vistoria-atribuida/em-deslocamento), a maioria ficaria de fora sem
+  // avisar. Por isso pede direto ao servidor quando um desses 3 está ativo.
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await painelService.fetchAudit({ limit: 300 });
+      const data = await painelService.fetchAudit(
+        ehOcorrencia(tipoFiltro) ? { tipo: tipoFiltro, limit: 300 } : { limit: 300 }
+      );
       setEntries(data);
     } finally {
       setLoading(false);
     }
-  };
+  }, [tipoFiltro]);
 
   useEffect(() => {
     load();
     const id = window.setInterval(load, 20_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [load]);
 
   const lista = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter((e) => {
-      if (tipoFiltro !== "todos" && e.acao !== tipoFiltro) return false;
+      // Impedimento/Recusa/Exceção: o servidor já devolveu exatamente o
+      // recorte certo — só falta a busca por texto.
+      if (!ehOcorrencia(tipoFiltro) && tipoFiltro !== "todos" && e.acao !== tipoFiltro) return false;
       if (!q) return true;
       return (
         e.ator.nome.toLowerCase().includes(q) ||
@@ -308,20 +350,26 @@ export default function AuditoriaPage() {
           <Filter className="ml-1 h-3 w-3 shrink-0" style={{ color: "var(--vm-faint-b)" }} strokeWidth={2.2} />
           {TIPO_FILTROS.map((f) => {
             const active = tipoFiltro === f.id;
-            const cfg = f.id !== "todos" ? ACAO[f.id as AuditEntry["acao"]] : null;
-            const cor = cfg?.fg ?? "#00B388";
-            const count = f.id === "todos" ? lista.length : lista.filter((e) => e.acao === f.id).length;
+            const cfg = !f.cor && f.id !== "todos" ? ACAO[f.id as AuditEntry["acao"]] : null;
+            const cor = f.cor ?? cfg?.fg ?? "#00B388";
+            const dot = f.cor ?? cfg?.dot;
+            // Contagem só no chip ATIVO: Impedimento/Recusa/Exceção busca um
+            // recorte próprio no servidor, então `entries` deixa de ser "as
+            // mesmas 300 de sempre" — o número de um chip INATIVO não seria
+            // confiável (é a contagem de outro recorte, não a dele).
             return (
-              <button key={f.id} type="button" onClick={() => setTipoFiltro(f.id as AuditEntry["acao"] | "todos")}
+              <button key={f.id} type="button" onClick={() => setTipoFiltro(f.id)}
                 className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition"
                 style={{
                   background: active ? `${cor}22` : "transparent",
                   color: active ? cor : "#7A8896",
                   border: active ? `1px solid ${cor}50` : "1px solid transparent",
                 }}>
-                {cfg && <span className="h-1.5 w-1.5 rounded-full" style={{ background: cfg.dot }} />}
+                {dot && <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />}
                 {f.label}
-                <span className="tabular-nums text-[9.5px]" style={{ color: active ? cor : "var(--vm-faint-b)" }}>{count}</span>
+                {active && (
+                  <span className="tabular-nums text-[9.5px]" style={{ color: cor }}>{lista.length}</span>
+                )}
               </button>
             );
           })}

@@ -17,10 +17,16 @@ export async function GET(req: Request) {
     const alvo_id = searchParams.get("alvo_id") ?? undefined;
     const ator_idParam = searchParams.get("ator_id");
     const ator_id = ator_idParam ? Number(ator_idParam) : undefined;
+    const tipoParam = searchParams.get("tipo");
+    const tipo =
+      tipoParam === "impedimento" || tipoParam === "recusa" || tipoParam === "excecao"
+        ? tipoParam
+        : undefined;
     const entries = await fetchAudit({
       acao,
       alvo_id,
       ator_id,
+      tipo,
       limit: Number.isFinite(limit) ? limit : 100,
       offset: Number.isFinite(offset) ? offset : 0,
     });

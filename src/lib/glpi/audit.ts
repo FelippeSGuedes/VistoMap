@@ -39,6 +39,22 @@ export async function ensureAuditTable(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `
   );
+
+  // Migração defensiva: categoria escolhida pelo analista ao aprovar uma
+  // recusa (impedimento/recusa — ver lib/glpi/recusas.ts). Só em
+  // 'recusa-aprovada'; permite o filtro "Impedimentos"/"Recusas" da
+  // Auditoria separar os dois sem depender de casar texto em `descricao`.
+  const cols = await query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM information_schema.columns
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [TABLE_AUDIT]
+  );
+  if (!cols.some((c) => c.COLUMN_NAME === "categoria")) {
+    await execute(
+      `ALTER TABLE \`${TABLE_AUDIT}\` ADD COLUMN categoria ENUM('impedimento','recusa') NULL DEFAULT NULL AFTER acao`
+    );
+  }
+
   ensured = true;
 }
 
@@ -48,6 +64,8 @@ export interface AuditInsertInput {
   alvo?: { tipo: "vistoria" | "tecnico" | "revisita" | "sistema" | "instalacao"; id: string | number; label: string };
   descricao?: string;
   diff?: Array<{ campo: string; antes?: string; depois?: string }>;
+  /** Só em acao='recusa-aprovada' — decisão do analista (ver lib/glpi/recusas.ts). */
+  categoria?: "impedimento" | "recusa";
 }
 
 /**
@@ -59,13 +77,14 @@ export async function auditInsert(input: AuditInsertInput): Promise<void> {
     await ensureAuditTable();
     await execute(
       `INSERT INTO \`${TABLE_AUDIT}\`
-         (ator_id, ator_nome, ator_role, acao, alvo_tipo, alvo_id, alvo_label, descricao, diff_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (ator_id, ator_nome, ator_role, acao, categoria, alvo_tipo, alvo_id, alvo_label, descricao, diff_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         Number(input.ator.id) || 0,
         input.ator.nome,
         input.ator.role,
         input.acao,
+        input.categoria ?? null,
         input.alvo?.tipo ?? null,
         input.alvo ? String(input.alvo.id) : null,
         input.alvo?.label ?? null,
@@ -82,6 +101,15 @@ export interface FetchAuditFilters {
   acao?: string;
   ator_id?: number;
   alvo_id?: string;
+  /**
+   * Agrupamento por natureza de ocorrência (2026-09-14) — separado do
+   * histórico completo, que ficou lotado demais na Central de Ocorrências.
+   * "Impedimento"/"Recusa" nasce indefinido (o pedido é o mesmo evento pros
+   * dois) e só se define quando o analista aprova (`categoria`); por isso o
+   * pedido/reprovação de recusa aparece nos DOIS filtros — ainda não se
+   * sabe em qual das duas categorias ele ia cair.
+   */
+  tipo?: "impedimento" | "recusa" | "excecao";
   limit?: number;
   offset?: number;
 }
@@ -118,6 +146,16 @@ export async function fetchAudit(
   if (filters.alvo_id) {
     where.push("alvo_id = ?");
     params.push(filters.alvo_id);
+  }
+  if (filters.tipo === "excecao") {
+    where.push("acao IN ('override-solicitado','override-aprovado','override-reprovado')");
+  } else if (filters.tipo === "impedimento" || filters.tipo === "recusa") {
+    // Pedido e reprovação ainda não têm categoria definida — aparecem nos
+    // dois filtros. Só a aprovação (categoria já gravada) separa de fato.
+    where.push(
+      "(acao IN ('recusa-solicitada','recusa-reprovada') OR (acao = 'recusa-aprovada' AND categoria = ?))"
+    );
+    params.push(filters.tipo);
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
