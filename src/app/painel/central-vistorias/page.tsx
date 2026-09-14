@@ -308,6 +308,15 @@ export default function CentralVistoriasPage() {
   const [desatribuindo, setDesatribuindo] = useState<Vistoria | null>(null);
   const [desatribuirLoading, setDesatribuirLoading] = useState(false);
 
+  // Desatribuir em massa — mesma regra de elegibilidade do botão individual
+  // (só quem ainda não começou o trabalho de campo: ATRIBUÍDO ou EM
+  // DESLOCAMENTO com técnico). O checkbox só existe nesses cards, então não
+  // dá pra selecionar por engano algo já em vistoria/concluído.
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
+  const [desatribLoteOpen, setDesatribLoteOpen] = useState(false);
+  const [desatribLoteLoading, setDesatribLoteLoading] = useState(false);
+  const [desatribLoteErro, setDesatribLoteErro] = useState<string | null>(null);
+
   // Devolver
   const [devolvendo, setDevolvendo] = useState<Vistoria | null>(null);
   const [devItens, setDevItens] = useState<string[]>([]);
@@ -370,6 +379,25 @@ export default function CentralVistoriasPage() {
     );
   }), [vistorias, busca, filtroSit]);
 
+  const elegiveisDesatribuir = useMemo(
+    () => filtradas.filter((v) => (v.situacao_id === 1 || v.situacao_id === 7) && !!v.tecnico_nome),
+    [filtradas]
+  );
+  const todosElegiveisMarcados =
+    elegiveisDesatribuir.length > 0 && elegiveisDesatribuir.every((v) => selecionados.has(v.id));
+
+  function toggleSelecionado(id: number) {
+    setSelecionados((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleTodosElegiveis() {
+    setSelecionados(todosElegiveisMarcados ? new Set() : new Set(elegiveisDesatribuir.map((v) => v.id)));
+  }
+
   async function handleCancelar() {
     if (!cancelando || cancelConfirm !== "CANCELAR") return;
     setCancelLoading(true);
@@ -412,6 +440,31 @@ export default function CentralVistoriasPage() {
       await fetchData();
     } catch { /* TODO: toast */ }
     finally { setDesatribuirLoading(false); }
+  }
+
+  async function handleDesatribuirLote() {
+    if (selecionados.size === 0) return;
+    setDesatribLoteLoading(true);
+    setDesatribLoteErro(null);
+    try {
+      const ids = Array.from(selecionados);
+      const resultados = await Promise.allSettled(
+        ids.map((id) => api.post("/painel/atribuir", { vistoria_id: id, tecnico_id: 0 }, { headers }))
+      );
+      const falhas = resultados.filter((r) => r.status === "rejected").length;
+      await fetchData();
+      if (falhas > 0) {
+        // Mantém o modal aberto e a seleção como está: reenviar de novo só
+        // reafeta as que falharam (desatribuir quem já foi desatribuído é
+        // inofensivo — idempotente).
+        setDesatribLoteErro(`${falhas} de ${ids.length} não foram desatribuídas. Tente de novo.`);
+      } else {
+        setDesatribLoteOpen(false);
+        setSelecionados(new Set());
+      }
+    } finally {
+      setDesatribLoteLoading(false);
+    }
   }
 
   function toggleDevItem(key: string) {
@@ -580,6 +633,14 @@ export default function CentralVistoriasPage() {
             style={{ color: "var(--vm-faint)" }}
           />
         </div>
+        {elegiveisDesatribuir.length > 0 && (
+          <CheckboxRow
+            label={`Selecionar ${elegiveisDesatribuir.length} sem trabalho iniciado`}
+            checked={todosElegiveisMarcados}
+            onToggle={toggleTodosElegiveis}
+            accent="#6B7280"
+          />
+        )}
       </div>
 
       {/* Grid de cards */}
@@ -601,6 +662,9 @@ export default function CentralVistoriasPage() {
             const cor = corDoEstado(estado);
             const semAcoes = !v.tecnico_nome && v.situacao_id <= 1;
             const bg = bgDoEstado(estado);
+            // Mesma regra do botão "Desatribuir" individual — só quem ainda
+            // não começou o trabalho de campo pode entrar na seleção em massa.
+            const elegivelDesatribuir = (v.situacao_id === 1 || v.situacao_id === 7) && !!v.tecnico_nome;
             return (
               <div
                 key={v.id}
@@ -631,14 +695,26 @@ export default function CentralVistoriasPage() {
                 <div className="relative z-10 flex flex-1 flex-col p-4">
                   {/* equipamento + badge */}
                   <div className="mb-2 flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-[14px] font-bold" style={{ color: "var(--vm-text)" }} title={v.equipamento}>
-                        {v.equipamento}
-                      </h3>
-                      <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px]" style={{ color: "var(--vm-muted)" }}>
-                        <MapPin className="h-3 w-3 shrink-0" />
-                        {v.municipio ?? "—"}
-                      </p>
+                    <div className="flex min-w-0 flex-1 items-start gap-2">
+                      {elegivelDesatribuir && (
+                        <input
+                          type="checkbox"
+                          checked={selecionados.has(v.id)}
+                          onChange={() => toggleSelecionado(v.id)}
+                          className="mt-1 h-4 w-4 shrink-0 rounded"
+                          style={{ accentColor: "#6B7280" }}
+                          title="Selecionar para desatribuir em massa"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-[14px] font-bold" style={{ color: "var(--vm-text)" }} title={v.equipamento}>
+                          {v.equipamento}
+                        </h3>
+                        <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px]" style={{ color: "var(--vm-muted)" }}>
+                          <MapPin className="h-3 w-3 shrink-0" />
+                          {v.municipio ?? "—"}
+                        </p>
+                      </div>
                     </div>
                     <SituacaoBadge estado={estado} />
                   </div>
@@ -730,6 +806,118 @@ export default function CentralVistoriasPage() {
             );
           })}
         </div>
+      )}
+
+      {/* Barra flutuante de seleção — desatribuir em massa */}
+      {selecionados.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-[250] -translate-x-1/2">
+          <div
+            className="flex items-center gap-3 rounded-[18px] px-4 py-2.5"
+            style={{ background: "#1F2937", boxShadow: "0 8px 32px rgba(0,0,0,0.35)" }}
+          >
+            <span
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-bold text-white"
+              style={{ background: "#6B7280" }}
+            >
+              {selecionados.size}
+            </span>
+            <span className="text-[12.5px] font-medium text-white/90">
+              vistoria{selecionados.size !== 1 ? "s" : ""} selecionada{selecionados.size !== 1 ? "s" : ""}
+            </span>
+            <div className="mx-1 h-4 w-px" style={{ background: "rgba(255,255,255,0.15)" }} />
+            <button
+              type="button"
+              onClick={() => setSelecionados(new Set())}
+              className="text-[11px] font-medium text-white/60 transition hover:text-white/80"
+            >
+              Desmarcar
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDesatribLoteErro(null); setDesatribLoteOpen(true); }}
+              className="flex h-7 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-bold text-white transition hover:brightness-110"
+              style={{ background: "#6B7280" }}
+            >
+              <X className="h-3 w-3" />
+              Desatribuir em massa
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Desatribuir em massa */}
+      {desatribLoteOpen && (
+        <ModalShell>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: tint("#6B7280", 0.15), color: "#6B7280" }}
+              >
+                <X className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-[15px] font-bold" style={{ color: "var(--vm-text)" }}>Desatribuir em massa</h2>
+                <p className="text-[11px]" style={{ color: "var(--vm-muted)" }}>
+                  {selecionados.size} vistoria{selecionados.size !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+            <button type="button" onClick={() => setDesatribLoteOpen(false)} style={{ color: "var(--vm-faint)" }}>
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div
+            className="mb-3 rounded-xl px-3 py-2.5 text-[12px]"
+            style={{ background: tint("#6B7280", 0.1), color: "var(--vm-text-soft)" }}
+          >
+            Tira o técnico de {selecionados.size} poste{selecionados.size !== 1 ? "s" : ""} e volta todos pra fila, sem técnico.
+            O histórico de cada um (fotos, devoluções, recusas) continua intacto — isso só desvincula quem está responsável agora.
+          </div>
+
+          <div className="mb-4 max-h-40 overflow-y-auto rounded-xl" style={{ border: "1px solid var(--vm-border)" }}>
+            {Array.from(selecionados).map((id) => {
+              const v = vistorias.find((x) => x.id === id);
+              if (!v) return null;
+              return (
+                <div
+                  key={id}
+                  className="flex items-center justify-between gap-2 border-b px-3 py-2 text-[12px] last:border-b-0"
+                  style={{ borderColor: "var(--vm-border-soft)" }}
+                >
+                  <span className="truncate" style={{ color: "var(--vm-text-soft)" }}>{v.equipamento}</span>
+                  <span className="shrink-0 truncate" style={{ color: "var(--vm-faint)" }}>{v.tecnico_nome}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {desatribLoteErro && (
+            <p className="mb-3 text-[11.5px] font-medium" style={{ color: "#DC2626" }}>{desatribLoteErro}</p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDesatribLoteOpen(false)}
+              className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold transition hover:brightness-95"
+              style={{ border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              disabled={desatribLoteLoading}
+              onClick={handleDesatribuirLote}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
+              style={{ background: "#6B7280" }}
+            >
+              {desatribLoteLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+              Confirmar desatribuição em massa
+            </button>
+          </div>
+        </ModalShell>
       )}
 
       {/* Modal Cancelar */}
