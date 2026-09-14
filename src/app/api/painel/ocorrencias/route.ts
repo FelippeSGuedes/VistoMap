@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * GET /api/painel/ocorrencias — impedimentos e recusas unificados (exceções
- * de raio já chegam decididas e vivem só na Auditoria, ver lib/glpi/ocorrencias.ts).
+ * GET /api/painel/ocorrencias — impedimento, recusa e exceção unificados
+ * (ver lib/glpi/ocorrencias.ts).
  *
  * Devolve tudo de uma vez (com o resumo já agregado no servidor): a tela é um
  * painel operacional, não uma lista paginada, e os filtros precisam contar o

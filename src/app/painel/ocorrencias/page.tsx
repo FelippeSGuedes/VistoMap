@@ -6,13 +6,17 @@
  * Substitui a leitura "caixa de entrada de notificações" por uma pergunta
  * operacional: POR QUE as vistorias não estão sendo concluídas?
  *
- * Duas naturezas que antes apareciam iguais (ver lib/glpi/ocorrencias.ts):
- * impedimento (o ambiente travou) e recusa (houve decisão). O tipo é a única
- * coisa que ganha cor forte; prioridade e status entram em tom baixo, pra
- * tela não virar um mosaico.
+ * Três naturezas (ver lib/glpi/ocorrencias.ts): impedimento (o ambiente
+ * travou), recusa (houve decisão) e exceção (pedido de sair do fluxo,
+ * geralmente com o técnico esperando a decisão em tempo real). O tipo é a
+ * única coisa que ganha cor forte; prioridade e status entram em tom baixo,
+ * pra tela não virar um mosaico.
  *
- * Pedidos de exceção (fora do raio) não entram aqui — já chegam decididos e
- * já têm histórico na Auditoria; não duplica uma tela que nunca pede ação.
+ * Impedimento x Recusa é uma DECISÃO DO ANALISTA no momento de aprovar (ver
+ * o modal "Essa solicitação é Impedimento ou Recusa?"), não mais um cálculo
+ * automático fixo em cima do motivo — o técnico continua relatando do MESMO
+ * jeito de sempre. Exceção não passa por essa pergunta: é uma decisão
+ * sim/não própria, sem categoria pra escolher.
  *
  * Todo número aqui sai de dado real. Onde não há amostra, o indicador mostra
  * "—" e o insight simplesmente não aparece — nunca um número inventado.
@@ -45,14 +49,17 @@ import type {
 const TIPO_COR: Record<OcorrenciaTipo, string> = {
   impedimento: "#B45309",
   recusa: "#6B7280",
+  excecao: "#4F46E5",
 };
 const TIPO_LABEL: Record<OcorrenciaTipo, string> = {
   impedimento: "Impedimento",
   recusa: "Recusa",
+  excecao: "Exceção",
 };
 const TIPO_DESCRICAO: Record<OcorrenciaTipo, string> = {
   impedimento: "O ambiente travou a vistoria — acesso, condomínio, área restrita. Pode destravar.",
   recusa: "Houve decisão explícita de não executar — sinal fora do padrão, morador recusou, risco.",
+  excecao: "O técnico pediu pra sair do fluxo esperado e isso precisou de análise.",
 };
 
 const STATUS_LABEL: Record<OcorrenciaStatus, string> = {
@@ -99,6 +106,7 @@ const SEGMENTOS: Array<{ id: Segmento; label: string }> = [
   { id: "todas", label: "Todas" },
   { id: "impedimento", label: "Impedimentos" },
   { id: "recusa", label: "Recusas" },
+  { id: "excecao", label: "Exceções" },
 ];
 
 export default function OcorrenciasPage() {
@@ -643,16 +651,38 @@ function Detalhe({
   const [reprovando, setReprovando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Só origem="recusa" pergunta isso — exceção (fora do raio) é um sim/não
+  // simples, sem categoria pra escolher. Pré-seleciona o palpite automático
+  // quando existe: na maioria das vezes o analista só confirma.
+  const [escolhendoCategoria, setEscolhendoCategoria] = useState(false);
+  const [categoriaEscolhida, setCategoriaEscolhida] = useState<"impedimento" | "recusa">(
+    o.tipo === "excecao" ? "recusa" : o.tipo
+  );
 
   async function responder(acao: "aprovar" | "reprovar") {
     if (!token) return;
-    if (acao === "reprovar" && !motivoReprova.trim()) { setReprovando(true); return; }
+    if (acao === "reprovar" && !motivoReprova.trim()) {
+      setReprovando(true);
+      setEscolhendoCategoria(false); // mutuamente exclusivo com o seletor de categoria
+      return;
+    }
+    if (acao === "aprovar" && o.origem === "recusa" && !escolhendoCategoria) {
+      setEscolhendoCategoria(true);
+      return;
+    }
     setEnviando(true);
     setErro(null);
     try {
+      const rota = o.origem === "recusa"
+        ? `/painel/notificacoes/recusas/${o.id}/responder`
+        : `/painel/notificacoes/${o.id}/responder`;
       await api.post(
-        `/painel/notificacoes/recusas/${o.id}/responder`,
-        { acao, motivo: motivoReprova.trim() || undefined },
+        rota,
+        {
+          acao,
+          motivo: motivoReprova.trim() || undefined,
+          categoria: acao === "aprovar" && o.origem === "recusa" ? categoriaEscolhida : undefined,
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       onRespondida();
@@ -719,6 +749,11 @@ function Detalhe({
           {/* justificativa */}
           <Bloco titulo="O que o técnico relatou">
             <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--vm-text-soft)" }}>{o.justificativa}</p>
+            {o.distanciaM != null && (
+              <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
+                Distância do ponto autorizado: <strong style={{ color: "var(--vm-text)" }}>{o.distanciaM} m</strong>
+              </p>
+            )}
           </Bloco>
 
           {respostas.length > 0 && (
@@ -800,6 +835,56 @@ function Detalhe({
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
                 Decisão do analista
               </p>
+
+              {/* Aprovar (recusa) pede a categoria ANTES de enviar — o técnico
+                  só relata o que aconteceu, quem classifica é quem aprova. */}
+              {escolhendoCategoria && (
+                <div className="mb-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <p className="text-[12px] font-semibold" style={{ color: "var(--vm-text)" }}>
+                      Essa solicitação se enquadra em Impedimento ou Recusa?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setEscolhendoCategoria(false)}
+                      className="text-[11px] font-semibold underline-offset-2 hover:underline"
+                      style={{ color: "var(--vm-faint)" }}
+                    >
+                      voltar
+                    </button>
+                  </div>
+                  <p className="mb-2 text-[11px]" style={{ color: "var(--vm-faint)" }}>
+                    Impedimento: o ambiente travou (acesso, condomínio) — pode destravar depois.
+                    Recusa: houve decisão explícita — sai de circulação de vez.
+                  </p>
+                  <div className="mb-2 grid grid-cols-2 gap-2">
+                    {(["impedimento", "recusa"] as const).map((c) => {
+                      const ativo = categoriaEscolhida === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setCategoriaEscolhida(c)}
+                          className="rounded-lg px-3 py-2.5 text-left text-[12.5px] font-bold transition"
+                          style={{
+                            background: ativo ? tint(TIPO_COR[c], 0.14) : "var(--vm-card)",
+                            color: ativo ? TIPO_COR[c] : "var(--vm-text-soft)",
+                            border: `1.5px solid ${ativo ? TIPO_COR[c] : "var(--vm-border)"}`,
+                          }}
+                        >
+                          {TIPO_LABEL[c]}
+                          {o.categoriaSugerida && o.tipo === c && (
+                            <span className="mt-0.5 block text-[9.5px] font-medium uppercase tracking-wide" style={{ opacity: 0.75 }}>
+                              sugestão automática
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {reprovando && (
                 <textarea
                   value={motivoReprova}
@@ -812,15 +897,18 @@ function Detalhe({
               )}
               {erro && <p className="mb-2 text-[11.5px] font-medium" style={{ color: "#DC2626" }}>{erro}</p>}
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={enviando}
-                  onClick={() => responder("aprovar")}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
-                  style={{ background: "#059669" }}
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
-                </button>
+                {!reprovando && (
+                  <button
+                    type="button"
+                    disabled={enviando}
+                    onClick={() => responder("aprovar")}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                    style={{ background: "#059669" }}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {escolhendoCategoria ? `Confirmar ${TIPO_LABEL[categoriaEscolhida]}` : "Aprovar"}
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={enviando}
@@ -834,7 +922,7 @@ function Detalhe({
             </div>
           )}
 
-          {o.status === "APROVADO" && (
+          {o.status === "APROVADO" && o.origem === "recusa" && (
             <Link
               href="/painel/rejeitadas"
               className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-semibold transition hover:brightness-95"

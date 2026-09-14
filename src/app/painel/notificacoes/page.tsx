@@ -3,9 +3,9 @@
 /**
  * Central de Atividades.
  *
- * Esta página era a caixa onde TUDO vivia misturado — impedimento, recusa
- * e pedido de aprovação apareciam com a mesma cara, e o analista tinha
- * que ler cada um pra descobrir o que era. Agora ela faz só duas coisas:
+ * Esta página era a caixa onde TUDO vivia misturado — impedimento, recusa,
+ * exceção e pedido de aprovação apareciam com a mesma cara, e o analista
+ * tinha que ler cada um pra descobrir o que era. Agora ela faz só duas coisas:
  *
  *   1. diz de onde vem cada natureza de ocorrência e quantas existem;
  *   2. deixa decidir "Precisa de decisão" ALI MESMO — aprovar/reprovar sem
@@ -14,19 +14,21 @@
  *      passo a mais que custou caro em campo (2026-09-14): a notificação
  *      dizia "tem algo esperando" mas quem clicava não achava onde agir.
  *
+ * Aprovar um impedimento/recusa pede a categoria (Impedimento ou Recusa) na
+ * hora — é o analista quem decide, o técnico só relata o que aconteceu.
+ * Exceção (fora do raio) não passa por essa pergunta: aprova/reprova direto,
+ * é uma decisão sim/não sobre deixar o técnico prosseguir.
+ *
  * O restante (filtro por tipo, histórico de tentativas, evidência) continua
  * exclusivo da Central de Ocorrências (/painel/ocorrencias) — esta tela só
  * cobre a decisão em si. Notificação ≠ ocorrência: uma chama atenção, a
  * outra é um fato operacional registrado.
- *
- * Pedidos de exceção (fora do raio) não aparecem aqui — já chegam decididos e
- * já viram histórico na Auditoria automaticamente (2026-09-14).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Ban, Bell, CheckCircle2, ChevronRight, Clock,
+  AlertTriangle, Ban, Bell, CheckCircle2, ChevronRight, Clock,
   Construction, RefreshCw, Undo2, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
@@ -36,6 +38,13 @@ import type { Ocorrencia, OcorrenciaTipo, OcorrenciasResponse } from "@/lib/glpi
 const TIPO_COR: Record<OcorrenciaTipo, string> = {
   impedimento: "#B45309",
   recusa: "#6B7280",
+  excecao: "#4F46E5",
+};
+
+const TIPO_LABEL: Record<OcorrenciaTipo, string> = {
+  impedimento: "Impedimento",
+  recusa: "Recusa",
+  excecao: "Exceção",
 };
 
 const BLOCOS: Array<{
@@ -55,6 +64,12 @@ const BLOCOS: Array<{
     titulo: "Recusas",
     icone: Ban,
     descricao: "Houve decisão de não executar — sinal fora do padrão, morador, risco.",
+  },
+  {
+    tipo: "excecao",
+    titulo: "Exceções",
+    icone: AlertTriangle,
+    descricao: "Pedido de sair do fluxo esperado, como trabalhar fora do raio.",
   },
 ];
 
@@ -87,11 +102,14 @@ export default function AtividadesPage() {
   const [devolucoes, setDevolucoes] = useState<DevolucoesStats | null>(null);
   const [loading, setLoading] = useState(true);
   // Ação inline por item — chave é o Ocorrencia.chave, não o id sozinho
-  // (recusa e futura outra origem podem colidir em id).
+  // (recusa e override colidem em id, cada um na sua tabela).
   const [enviando, setEnviando] = useState<string | null>(null);
   const [reprovandoChave, setReprovandoChave] = useState<string | null>(null);
   const [motivoReprova, setMotivoReprova] = useState("");
   const [erroChave, setErroChave] = useState<string | null>(null);
+  // Categoria só pra origem="recusa" — exceção aprova direto, sem perguntar.
+  const [escolhendoChave, setEscolhendoChave] = useState<string | null>(null);
+  const [categoriaEscolhida, setCategoriaEscolhida] = useState<"impedimento" | "recusa">("impedimento");
 
   const carregar = useCallback(async () => {
     if (!session?.token) return;
@@ -128,20 +146,37 @@ export default function AtividadesPage() {
     if (!session?.token) return;
     if (acao === "reprovar" && reprovandoChave !== o.chave) {
       setReprovandoChave(o.chave);
+      setEscolhendoChave(null); // mutuamente exclusivo com o seletor de categoria
       setMotivoReprova("");
       setErroChave(null);
       return;
     }
     if (acao === "reprovar" && !motivoReprova.trim()) return;
+    // Aprovar impedimento/recusa pede a categoria ANTES de enviar — exceção
+    // (origem="override") não tem essa pergunta, aprova direto.
+    if (acao === "aprovar" && o.origem === "recusa" && escolhendoChave !== o.chave) {
+      setEscolhendoChave(o.chave);
+      setCategoriaEscolhida(o.tipo === "excecao" ? "recusa" : o.tipo);
+      setReprovandoChave(null);
+      return;
+    }
     setEnviando(o.chave);
     setErroChave(null);
     try {
+      const rota = o.origem === "recusa"
+        ? `/painel/notificacoes/recusas/${o.id}/responder`
+        : `/painel/notificacoes/${o.id}/responder`;
       await api.post(
-        `/painel/notificacoes/recusas/${o.id}/responder`,
-        { acao, motivo: acao === "reprovar" ? motivoReprova.trim() : undefined },
+        rota,
+        {
+          acao,
+          motivo: acao === "reprovar" ? motivoReprova.trim() : undefined,
+          categoria: acao === "aprovar" && o.origem === "recusa" ? categoriaEscolhida : undefined,
+        },
         { headers: { Authorization: `Bearer ${session.token}` } }
       );
       setReprovandoChave(null);
+      setEscolhendoChave(null);
       await carregar();
     } catch {
       setErroChave(o.chave);
@@ -221,7 +256,7 @@ export default function AtividadesPage() {
                       className="shrink-0 rounded-md px-2 py-[3px] text-[9.5px] font-bold uppercase tracking-wide"
                       style={{ background: tint(TIPO_COR[o.tipo], 0.13), color: TIPO_COR[o.tipo] }}
                     >
-                      {o.tipo === "impedimento" ? "Impedimento" : "Recusa"}
+                      {TIPO_LABEL[o.tipo]}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-semibold" style={{ color: "var(--vm-text)" }}>{o.motivoLabel}</p>
@@ -244,7 +279,8 @@ export default function AtividadesPage() {
                         className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
                         style={{ background: "#059669" }}
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {escolhendoChave === o.chave ? `Confirmar ${TIPO_LABEL[categoriaEscolhida]}` : "Aprovar"}
                       </button>
                       <button
                         type="button"
@@ -262,6 +298,43 @@ export default function AtividadesPage() {
                   </Link>
                 </div>
 
+                {escolhendoChave === o.chave && (
+                  <div className="mx-5 mb-3 rounded-xl p-3" style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)" }}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[12px] font-semibold" style={{ color: "var(--vm-text)" }}>
+                        Essa solicitação se enquadra em Impedimento ou Recusa?
+                      </p>
+                      <button type="button" onClick={() => setEscolhendoChave(null)} style={{ color: "var(--vm-faint)" }}>
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["impedimento", "recusa"] as const).map((c) => {
+                        const ativo = categoriaEscolhida === c;
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setCategoriaEscolhida(c)}
+                            className="rounded-lg px-3 py-2.5 text-left text-[12.5px] font-bold transition"
+                            style={{
+                              background: ativo ? tint(TIPO_COR[c], 0.14) : "var(--vm-card)",
+                              color: ativo ? TIPO_COR[c] : "var(--vm-text-soft)",
+                              border: `1.5px solid ${ativo ? TIPO_COR[c] : "var(--vm-border)"}`,
+                            }}
+                          >
+                            {TIPO_LABEL[c]}
+                            {o.categoriaSugerida && o.tipo === c && (
+                              <span className="mt-0.5 block text-[9.5px] font-medium uppercase tracking-wide" style={{ opacity: 0.75 }}>
+                                sugestão automática
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 {reprovandoChave === o.chave && (
                   <div className="mx-5 mb-3 rounded-xl p-3" style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)" }}>
                     <div className="mb-2 flex items-center justify-between">

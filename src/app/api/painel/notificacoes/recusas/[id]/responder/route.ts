@@ -3,6 +3,7 @@ import { requirePainelRole } from "@/lib/painel-auth";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS } from "@/lib/glpi/constants";
 import { fetchRecusaPorId, resolverRecusa } from "@/lib/glpi/recusas";
+import { CATEGORIA_LABEL, type RecusaCategoria } from "@/lib/glpi/recusaMotivos";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 
@@ -12,13 +13,17 @@ export const runtime = "nodejs";
 interface ResponderBody {
   acao: "aprovar" | "reprovar";
   motivo?: string;
+  /** Obrigatória em "aprovar" — decisão do analista, ver recusas.ts. */
+  categoria?: RecusaCategoria;
 }
 
 /**
  * POST /api/painel/notificacoes/recusas/[id]/responder  (admin)
  *
  * Aprovar: a vistoria já está desvinculada (feito no momento da recusa) —
- * fica assim, some de circulação de vez ("Rejeitada").
+ * fica assim, some de circulação de vez ("Rejeitada"). Exige `categoria`:
+ * é o analista quem decide se o caso é Impedimento ou Recusa (2026-09-14) —
+ * o técnico só relata o que aconteceu, quem classifica é quem aprova.
  * Reprovar: reatribui de volta pro MESMO técnico que recusou, com o
  * motivo da reprovação — ele vê e pode tentar de novo (ou escalar).
  */
@@ -45,6 +50,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
   if (body.acao === "reprovar" && !body.motivo?.trim()) {
     return NextResponse.json({ message: "Informe o motivo da reprovação" }, { status: 400 });
   }
+  if (body.acao === "aprovar" && !["impedimento", "recusa"].includes(body.categoria ?? "")) {
+    return NextResponse.json(
+      { message: "Informe se é Impedimento ou Recusa" },
+      { status: 400 }
+    );
+  }
 
   const recusa = await fetchRecusaPorId(recusaId);
   if (!recusa) return NextResponse.json({ message: "Recusa não encontrada" }, { status: 404 });
@@ -53,7 +64,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const novoStatus = body.acao === "aprovar" ? "APROVADO" : "REPROVADO";
-  await resolverRecusa(recusaId, novoStatus, body.motivo);
+  await resolverRecusa(recusaId, novoStatus, body.motivo, body.categoria);
 
   if (body.acao === "reprovar") {
     // Volta pra fila do MESMO técnico — ele vê o motivo e tenta de novo.
@@ -70,7 +81,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     alvo: { tipo: "vistoria", id: String(recusa.vistoriaId), label: recusa.equipamento },
     descricao:
       body.acao === "aprovar"
-        ? `Recusa aprovada — vistoria de ${recusa.tecnicoNome} sai de circulação. ${recusa.justificativa}`
+        ? `${CATEGORIA_LABEL[body.categoria as RecusaCategoria]} — vistoria de ${recusa.tecnicoNome} sai de circulação. ${recusa.justificativa}`
         : `Recusa reprovada — volta pra fila de ${recusa.tecnicoNome}. Motivo: ${body.motivo}`,
   });
   if (body.acao === "reprovar") {

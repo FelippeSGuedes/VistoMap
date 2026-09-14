@@ -3,53 +3,76 @@ import { query } from "@/lib/db";
 import { TABLE_FIELDS } from "./constants";
 import { listRecusas } from "./recusas";
 import { getCoresIdentidade } from "./tecnicoIdentidade";
+import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 import { sanitizeFolderName } from "@/lib/sanitize";
 import { signUploadUrl } from "@/lib/uploadUrl";
 import {
   RECUSA_MOTIVO_CATEGORIA,
   RECUSA_MOTIVO_LABEL,
+  type RecusaCategoria,
   type RecusaMotivo,
 } from "./recusaMotivos";
 
 /**
  * Ocorrências operacionais — a leitura unificada de "o que travou a operação".
  *
- * Duas naturezas DIFERENTES que antes viviam misturadas numa caixa de
- * notificações, e que o supervisor precisa distinguir na hora:
+ * Três naturezas:
  *
  *   IMPEDIMENTO  o ambiente travou a vistoria — condomínio fechado, área sem
  *                acesso, nenhum poste alternativo. Ninguém decidiu nada; pode
  *                destravar depois.
  *   RECUSA       houve decisão explícita — sinal fora do padrão CPFL, morador
  *                recusou, risco que o técnico optou por não correr.
+ *   EXCEÇÃO      o técnico pediu pra sair do fluxo esperado (trabalhar fora do
+ *                raio do geofence) e precisou de análise — geralmente com o
+ *                técnico PARADO NO LOCAL esperando a decisão em tempo real.
  *
- * As duas saem da MESMA tabela (`recusas`) — o que as separa é o motivo, já
- * classificado em recusaMotivos.ts. Nenhuma tabela nova.
+ * Impedimento x Recusa saem da MESMA tabela (`recusas`) — o técnico reporta
+ * do MESMO jeito sempre (chat, motivo, respostas); quem decide a categoria
+ * final é o ANALISTA, no momento de aprovar (`categoria` em recusas.ts) — não
+ * mais um cálculo automático fixo em cima do motivo. Enquanto não há decisão
+ * (pendente, ou registro anterior a 2026-09-14), a leitura usa o palpite
+ * automático de recusaMotivos.ts como categoria provisória.
  *
- * Pedidos de exceção (trabalhar fora do raio do geofence) NÃO entram aqui:
- * 100% deles já chegam decididos (aprovado/reprovado, nunca pendente) e já
- * são gravados na Auditoria no momento da decisão (ver
- * api/painel/notificacoes/[reqId]/responder) — manter uma segunda tela só
- * de histórico pra algo que nunca pede ação era duplicar sem necessidade
- * (2026-09-14).
+ * Exceção vem de `override_requests`, tabela própria: é uma pergunta
+ * sim/não (deixa o técnico prosseguir fora do raio ou não), não uma
+ * categorização — nunca passa pela pergunta Impedimento x Recusa.
+ *
+ * IMPORTANTE (correção de 2026-09-14): pedido de exceção nasce PENDENTE e
+ * fica bloqueando o técnico em tempo real até alguém decidir — não é só
+ * histórico. Uma tentativa anterior desta leitura excluiu exceção daqui
+ * assumindo que "sempre chega decidida", com base numa amostra que por
+ * coincidência só tinha casos já resolvidos — a notificação de pedido de
+ * exceção parou de levar a algum lugar acionável. Corrigido: exceção volta
+ * a contar como ocorrência de verdade, inclusive nos pendentes que disparam
+ * "Precisa de decisão".
  */
 
-export type OcorrenciaTipo = "impedimento" | "recusa";
+export type OcorrenciaTipo = "impedimento" | "recusa" | "excecao";
+export type OcorrenciaOrigem = "recusa" | "override";
 export type OcorrenciaStatus = "PENDENTE" | "APROVADO" | "REPROVADO" | "REABERTA";
 export type OcorrenciaPrioridade = "normal" | "atencao" | "critico";
 
-export const OCORRENCIA_TIPOS: OcorrenciaTipo[] = ["impedimento", "recusa"];
+export const OCORRENCIA_TIPOS: OcorrenciaTipo[] = ["impedimento", "recusa", "excecao"];
 
 export const TIPO_LABEL: Record<OcorrenciaTipo, string> = {
   impedimento: "Impedimento",
   recusa: "Recusa",
+  excecao: "Exceção",
 };
 
 export interface Ocorrencia {
-  /** Único — id da própria tabela de recusas. */
+  /** Único entre as origens — o id sozinho só é único DENTRO da própria tabela. */
   chave: string;
+  origem: OcorrenciaOrigem;
   id: number;
   tipo: OcorrenciaTipo;
+  /**
+   * true quando `tipo` é o palpite automático (recusaMotivos.ts) porque o
+   * analista ainda não decidiu — a UI usa isso pra saber se deve perguntar
+   * "Impedimento ou Recusa?" ao aprovar (só faz sentido pra origem="recusa").
+   */
+  categoriaSugerida: boolean;
   motivo: string;
   motivoLabel: string;
   vistoriaId: number;
@@ -65,6 +88,8 @@ export interface Ocorrencia {
   justificativa: string;
   respostas: Record<string, string>;
   motivoReprovacao: string | null;
+  /** Só exceção de raio tem distância; o resto é null. */
+  distanciaM: number | null;
   fotoUrl: string | null;
   status: OcorrenciaStatus;
   criadoEm: string;
@@ -136,12 +161,37 @@ function calcPrioridade(
   return "normal";
 }
 
+interface OverrideRow {
+  id: number;
+  vistoria_id: number;
+  users_id: number;
+  equipamento: string;
+  tecnico_nome: string;
+  justificativa: string;
+  status: "PENDENTE" | "APROVADO" | "REPROVADO";
+  motivo_reprovacao: string | null;
+  distancia_m: number | null;
+  exception_label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface LocalRow {
   items_id: number;
   endereco: string | null;
   municipio: string | null;
   lat: string | null;
   lng: string | null;
+}
+
+/** "FORA DO RAIO (989 m)" → "Fora do raio permitido"; o número vira distanciaM. */
+function rotuloExcecao(label: string | null, distanciaM: number | null): string {
+  const cru = (label ?? "").trim();
+  if (!cru) return "Exceção de localização";
+  if (/^FORA DO RAIO/i.test(cru)) return "Fora do raio permitido";
+  if (/^DEVOLUCAO_NAO_POSSO_DESLOCAR$/i.test(cru)) return "Não pode se deslocar (devolução)";
+  // Rótulo desconhecido: mostra como veio, sem a distância repetida.
+  return distanciaM != null ? cru.replace(/\s*\(\d+\s*m\)\s*$/i, "") : cru;
 }
 
 function horasEntre(de: string, ate: number): number {
@@ -156,10 +206,23 @@ function horasEntre(de: string, ate: number): number {
  * paginada — e o volume total é de centenas, não milhões.
  */
 export async function fetchOcorrencias(limite = 400): Promise<OcorrenciasResponse> {
-  const recusas = await listRecusas({ limit: limite });
+  await ensureOverrideTable();
 
-  // Local vem da vistoria (a tabela de recusas não guarda lugar nenhum).
-  const vistoriaIds = [...new Set(recusas.map((r) => r.vistoriaId).filter((v) => v > 0))];
+  const [recusas, overrides] = await Promise.all([
+    listRecusas({ limit: limite }),
+    query<OverrideRow>(
+      `SELECT id, vistoria_id, users_id, equipamento, tecnico_nome, justificativa,
+              status, motivo_reprovacao, distancia_m, exception_label, created_at, updated_at
+         FROM \`glpi_plugin_vistomap_override_requests\`
+        ORDER BY created_at DESC
+        LIMIT ${Math.min(Math.max(limite, 1), 1000)}`
+    ),
+  ]);
+
+  // Local vem da vistoria (as tabelas de ocorrência não guardam lugar nenhum).
+  const vistoriaIds = [
+    ...new Set([...recusas.map((r) => r.vistoriaId), ...overrides.map((o) => o.vistoria_id)].filter((v) => v > 0)),
+  ];
   const localPorId = new Map<number, LocalRow>();
   if (vistoriaIds.length > 0) {
     const marcadores = vistoriaIds.map(() => "?").join(",");
@@ -176,7 +239,10 @@ export async function fetchOcorrencias(limite = 400): Promise<OcorrenciasRespons
     for (const l of linhas) localPorId.set(l.items_id, l);
   }
 
-  const cores = await getCoresIdentidade(recusas.map((r) => r.tecnicoId));
+  const cores = await getCoresIdentidade([
+    ...recusas.map((r) => r.tecnicoId),
+    ...overrides.map((o) => o.users_id),
+  ]);
 
   const numero = (v: string | null): number | null => {
     if (!v) return null;
@@ -188,34 +254,70 @@ export async function fetchOcorrencias(limite = 400): Promise<OcorrenciasRespons
 
   interface Parcial extends Omit<Ocorrencia, "tentativa" | "totalTentativas" | "prioridade"> {}
 
-  const parciais: Parcial[] = recusas.map((r): Parcial => {
-    const motivo = r.motivo as RecusaMotivo;
-    const local = localPorId.get(r.vistoriaId);
-    return {
-      chave: `recusa-${r.id}`,
-      id: r.id,
-      tipo: RECUSA_MOTIVO_CATEGORIA[motivo] ?? "recusa",
-      motivo: r.motivo,
-      motivoLabel: RECUSA_MOTIVO_LABEL[motivo] ?? r.motivo,
-      vistoriaId: r.vistoriaId,
-      equipamento: r.equipamento,
-      municipio: local?.municipio ?? null,
-      endereco: local?.endereco ?? null,
-      latitude: numero(local?.lat ?? null),
-      longitude: numero(local?.lng ?? null),
-      tecnicoId: r.tecnicoId,
-      tecnicoNome: r.tecnicoNome,
-      tecnicoCor: cores.get(r.tecnicoId) ?? null,
-      justificativa: r.justificativa,
-      respostas: r.respostas,
-      motivoReprovacao: r.motivoReprovacao,
-      fotoUrl: r.fotoPath ? signUploadUrl(sanitizeFolderName(r.equipamento), r.fotoPath) : null,
-      status: r.status,
-      criadoEm: r.criadoEm,
-      resolvidoEm: r.resolvidoEm,
-      horasAberto: r.status === "PENDENTE" ? horasEntre(r.criadoEm, agora) : null,
-    };
-  });
+  const parciais: Parcial[] = [
+    ...recusas.map((r): Parcial => {
+      const motivo = r.motivo as RecusaMotivo;
+      const local = localPorId.get(r.vistoriaId);
+      const sugestao: RecusaCategoria = RECUSA_MOTIVO_CATEGORIA[motivo] ?? "recusa";
+      return {
+        chave: `recusa-${r.id}`,
+        origem: "recusa",
+        id: r.id,
+        tipo: r.categoria ?? sugestao,
+        categoriaSugerida: r.categoria == null,
+        motivo: r.motivo,
+        motivoLabel: RECUSA_MOTIVO_LABEL[motivo] ?? r.motivo,
+        vistoriaId: r.vistoriaId,
+        equipamento: r.equipamento,
+        municipio: local?.municipio ?? null,
+        endereco: local?.endereco ?? null,
+        latitude: numero(local?.lat ?? null),
+        longitude: numero(local?.lng ?? null),
+        tecnicoId: r.tecnicoId,
+        tecnicoNome: r.tecnicoNome,
+        tecnicoCor: cores.get(r.tecnicoId) ?? null,
+        justificativa: r.justificativa,
+        respostas: r.respostas,
+        motivoReprovacao: r.motivoReprovacao,
+        distanciaM: null,
+        fotoUrl: r.fotoPath ? signUploadUrl(sanitizeFolderName(r.equipamento), r.fotoPath) : null,
+        status: r.status,
+        criadoEm: r.criadoEm,
+        resolvidoEm: r.resolvidoEm,
+        horasAberto: r.status === "PENDENTE" ? horasEntre(r.criadoEm, agora) : null,
+      };
+    }),
+    ...overrides.map((o): Parcial => {
+      const local = localPorId.get(o.vistoria_id);
+      return {
+        chave: `override-${o.id}`,
+        origem: "override",
+        id: o.id,
+        tipo: "excecao",
+        categoriaSugerida: false,
+        motivo: o.exception_label ?? "EXCECAO",
+        motivoLabel: rotuloExcecao(o.exception_label, o.distancia_m),
+        vistoriaId: o.vistoria_id,
+        equipamento: o.equipamento,
+        municipio: local?.municipio ?? null,
+        endereco: local?.endereco ?? null,
+        latitude: numero(local?.lat ?? null),
+        longitude: numero(local?.lng ?? null),
+        tecnicoId: o.users_id,
+        tecnicoNome: o.tecnico_nome,
+        tecnicoCor: cores.get(o.users_id) ?? null,
+        justificativa: o.justificativa,
+        respostas: {},
+        motivoReprovacao: o.motivo_reprovacao,
+        distanciaM: o.distancia_m,
+        fotoUrl: null,
+        status: o.status,
+        criadoEm: o.created_at,
+        resolvidoEm: o.status === "PENDENTE" ? null : o.updated_at,
+        horasAberto: o.status === "PENDENTE" ? horasEntre(o.created_at, agora) : null,
+      };
+    }),
+  ];
 
   // Tentativas: a MESMA vistoria pode travar várias vezes. Não é uma vistoria
   // nova a cada vez — é a evolução da mesma ocorrência, e é isso que mostra
@@ -253,6 +355,7 @@ function resumir(lista: Ocorrencia[], agora: number): OcorrenciasResumo {
   const porTipo = {
     impedimento: { total: 0, pendentes: 0, novas7d: 0 },
     recusa: { total: 0, pendentes: 0, novas7d: 0 },
+    excecao: { total: 0, pendentes: 0, novas7d: 0 },
   } as OcorrenciasResumo["porTipo"];
 
   const motivos = new Map<string, MotivoAgregado>();

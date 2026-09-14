@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Ban,
   Bell,
   Calendar,
@@ -98,13 +99,15 @@ const VISTORIAS_GROUP = [
   { href: "/painel/revisitas",           label: "Revisitas",            icon: RotateCw,       roles: ALL_ROLES },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },
   { href: "/painel/devolucoes",          label: "Devoluções",           icon: Undo2,          roles: ALL_ROLES },
-  // Ocorrências: duas naturezas diferentes na MESMA tela, cada entrada abrindo
-  // já no seu recorte. Exceção (pedido de trabalhar fora do raio) não tem
-  // entrada própria: 100% delas já chegam decididas e viram histórico direto
-  // na Auditoria — uma terceira tela pra algo que nunca pede ação era só
-  // duplicar sem necessidade (2026-09-14; ver lib/glpi/ocorrencias.ts).
+  // Ocorrências: três naturezas diferentes na MESMA tela, cada entrada abrindo
+  // já no seu recorte (ver lib/glpi/ocorrencias.ts). Exceção (pedido de
+  // trabalhar fora do raio) nasce PENDENTE e prende o técnico esperando em
+  // tempo real — corrigido em 2026-09-14 depois de sumir da notificação por
+  // engano (uma leitura anterior tinha assumido, errado, que exceção "sempre
+  // chega decidida").
   { href: "/painel/ocorrencias?tipo=impedimento", label: "Impedimentos", icon: Construction,  roles: ALL_ROLES },
   { href: "/painel/ocorrencias?tipo=recusa",      label: "Recusas",      icon: Ban,           roles: ALL_ROLES },
+  { href: "/painel/ocorrencias?tipo=excecao",     label: "Exceções",     icon: AlertTriangle, roles: ALL_ROLES },
   { href: "/painel/cpfl",                label: "Validação CPFL",       icon: ShieldCheck,    roles: ALL_ROLES },
 ];
 

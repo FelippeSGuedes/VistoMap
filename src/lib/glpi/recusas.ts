@@ -1,5 +1,6 @@
 import "server-only";
 import { execute, query } from "@/lib/db";
+import type { RecusaCategoria } from "./recusaMotivos";
 
 /**
  * Recusas — técnico declara que uma vistoria é impossível de fazer
@@ -11,6 +12,15 @@ import { execute, query } from "@/lib/db";
  * Enquanto PENDENTE, o técnico fica desvinculado da vistoria (some da
  * fila dele) — aprovada, some de circulação de vez; reprovada, volta
  * pra fila do mesmo técnico.
+ *
+ * Impedimento x Recusa (2026-09-14): passou a ser uma DECISÃO DO ANALISTA
+ * no momento de aprovar, não mais um cálculo automático fixo em cima do
+ * `motivo`. O técnico continua reportando do MESMO jeito de sempre (chat,
+ * motivo, respostas) — só quem decide a categoria final é o analista, que
+ * tem o contexto completo pra isso. `categoria` fica NULL até a aprovação;
+ * antes disso (e pra todo o histórico anterior a esta mudança), a leitura
+ * cai de volta pro palpite automático de recusaMotivos.ts — nunca some uma
+ * classificação, só passa a poder ser corrigida por quem decide de fato.
  */
 
 const TABLE = "glpi_plugin_vistomap_recusas";
@@ -67,6 +77,15 @@ export async function ensureRecusasTable(): Promise<void> {
     );
   }
 
+  // Migração defensiva: categoria escolhida pelo analista na aprovação
+  // (ver comentário no topo do arquivo). NULL = ainda não decidida, ou
+  // registro anterior a esta mudança — cai no palpite automático.
+  if (!names.has("categoria")) {
+    await execute(
+      `ALTER TABLE \`${TABLE}\` ADD COLUMN categoria ENUM('impedimento','recusa') NULL DEFAULT NULL AFTER motivo_reprovacao`
+    );
+  }
+
   ensured = true;
 }
 
@@ -113,6 +132,8 @@ export interface RecusaRow {
   foto_path: string | null;
   status: "PENDENTE" | "APROVADO" | "REPROVADO" | "REABERTA";
   motivo_reprovacao: string | null;
+  /** Escolha do analista na aprovação — NULL = ainda não decidida/histórico. */
+  categoria: RecusaCategoria | null;
   criado_em: string;
   resolvido_em: string | null;
 }
@@ -129,6 +150,8 @@ export interface Recusa {
   fotoPath: string | null;
   status: "PENDENTE" | "APROVADO" | "REPROVADO" | "REABERTA";
   motivoReprovacao: string | null;
+  /** Escolha do analista na aprovação — NULL = ainda não decidida/histórico (ver recusaMotivos.ts pro palpite automático). */
+  categoria: RecusaCategoria | null;
   criadoEm: string;
   resolvidoEm: string | null;
 }
@@ -152,6 +175,7 @@ function mapRow(r: RecusaRow): Recusa {
     fotoPath: r.foto_path,
     status: r.status,
     motivoReprovacao: r.motivo_reprovacao,
+    categoria: r.categoria,
     criadoEm: r.criado_em,
     resolvidoEm: r.resolvido_em,
   };
@@ -172,15 +196,27 @@ export async function fetchRecusaPorId(id: number): Promise<Recusa | null> {
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
+/**
+ * `categoria` só faz sentido em APROVADO — é a resposta do analista pra
+ * "essa solicitação se enquadra em impedimento ou recusa?" (ver topo do
+ * arquivo). Reprovado não precisa: a vistoria simplesmente volta pro
+ * técnico, não entra na estatística de impedimento/recusa.
+ */
 export async function resolverRecusa(
   id: number,
   status: "APROVADO" | "REPROVADO",
-  motivoReprovacao?: string
+  motivoReprovacao?: string,
+  categoria?: RecusaCategoria
 ): Promise<void> {
   await ensureRecusasTable();
   await execute(
-    `UPDATE \`${TABLE}\` SET status = ?, motivo_reprovacao = ?, resolvido_em = NOW() WHERE id = ?`,
-    [status, status === "REPROVADO" ? (motivoReprovacao ?? "").trim() : null, id]
+    `UPDATE \`${TABLE}\` SET status = ?, motivo_reprovacao = ?, categoria = ?, resolvido_em = NOW() WHERE id = ?`,
+    [
+      status,
+      status === "REPROVADO" ? (motivoReprovacao ?? "").trim() : null,
+      status === "APROVADO" ? categoria ?? null : null,
+      id,
+    ]
   );
 }
 
