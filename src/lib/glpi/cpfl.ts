@@ -33,7 +33,6 @@ import {
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
   STATUS_VISTORIA_APROVADO,
-  STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
@@ -50,21 +49,14 @@ import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 /** Etapa da vistoria no ciclo da concessionária. */
 export type EtapaCPFL = "AGUARDANDO" | "APROVADA" | "REPROVADA";
 
-/**
- * Ids de statusvistoria que valem como "aprovada" pra qualquer leitura desta
- * tela. Inclui Aprovado com Pendências (7) — mesma decisão, só com uma
- * observação anexada (2026-09-15); ver constants.ts.
- */
-const STATUS_APROVADOS = [STATUS_VISTORIA_APROVADO, STATUS_VISTORIA_APROVADO_COM_PENDENCIAS];
-
-const STATUS_POR_ETAPA: Record<EtapaCPFL, number[]> = {
-  AGUARDANDO: [STATUS_VISTORIA_EM_ANALISE],
-  APROVADA: STATUS_APROVADOS,
-  REPROVADA: [STATUS_VISTORIA_REPROVADO],
+const STATUS_POR_ETAPA: Record<EtapaCPFL, number> = {
+  AGUARDANDO: STATUS_VISTORIA_EM_ANALISE,
+  APROVADA: STATUS_VISTORIA_APROVADO,
+  REPROVADA: STATUS_VISTORIA_REPROVADO,
 };
 
 function etapaDoStatus(statusId: number | null): EtapaCPFL {
-  if (STATUS_APROVADOS.includes(Number(statusId))) return "APROVADA";
+  if (Number(statusId) === STATUS_VISTORIA_APROVADO) return "APROVADA";
   if (Number(statusId) === STATUS_VISTORIA_REPROVADO) return "REPROVADA";
   return "AGUARDANDO";
 }
@@ -158,14 +150,13 @@ function limpa(v: string | null): string | null {
 function montarWhere(filtros: CPFLFilters): { where: string[]; params: unknown[] } {
   const where = [
     "ne.is_deleted = 0",
-    `f.plugin_fields_statusvistoriafielddropdowns_id IN (${STATUS_VISTORIA_EM_ANALISE}, ${STATUS_VISTORIA_APROVADO}, ${STATUS_VISTORIA_APROVADO_COM_PENDENCIAS}, ${STATUS_VISTORIA_REPROVADO})`,
+    `f.plugin_fields_statusvistoriafielddropdowns_id IN (${STATUS_VISTORIA_EM_ANALISE}, ${STATUS_VISTORIA_APROVADO}, ${STATUS_VISTORIA_REPROVADO})`,
   ];
   const params: unknown[] = [];
 
   if (filtros.etapa) {
-    const ids = STATUS_POR_ETAPA[filtros.etapa];
-    where.push(`f.plugin_fields_statusvistoriafielddropdowns_id IN (${ids.map(() => "?").join(",")})`);
-    params.push(...ids);
+    where.push("f.plugin_fields_statusvistoriafielddropdowns_id = ?");
+    params.push(STATUS_POR_ETAPA[filtros.etapa]);
   }
   if (filtros.municipio) {
     where.push("TRIM(f.municipiofield) = ?");
@@ -348,9 +339,8 @@ export async function fetchCPFLStats(
     const total = Number(r.total) || 0;
     stats.total += total;
     stats.aguardandoMais30d += Number(r.mais30) || 0;
-    const etapa = etapaDoStatus(r.status_id);
-    if (etapa === "APROVADA") stats.aprovadas += total;
-    else if (etapa === "REPROVADA") stats.reprovadas += total;
+    if (Number(r.status_id) === STATUS_VISTORIA_APROVADO) stats.aprovadas += total;
+    else if (Number(r.status_id) === STATUS_VISTORIA_REPROVADO) stats.reprovadas += total;
     else stats.aguardando += total;
   }
 

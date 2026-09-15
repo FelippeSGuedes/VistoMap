@@ -302,13 +302,6 @@ export default function RevisitasPage() {
   );
   const [editarOpen, setEditarOpen] = useState<RevisitaPendente | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-
-  // Aprovar — pergunta "possui pendências/observações?" antes de aprovar
-  // (2026-09-15). NÃO mantém o comportamento de sempre (1 clique, sem
-  // preenchimento extra); SIM abre a caixa de texto.
-  const [aprovando, setAprovando] = useState<RevisitaPendente | null>(null);
-  const [temPendencias, setTemPendencias] = useState(false);
-  const [pendenciasTexto, setPendenciasTexto] = useState("");
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   const carregar = async () => {
@@ -373,21 +366,17 @@ export default function RevisitasPage() {
     }
   };
 
-  const handleAprovar = async (r: RevisitaPendente, pendencias?: string) => {
+  const handleAprovar = async (r: RevisitaPendente) => {
+    if (!confirm(`Aprovar ${r.equipamento}? Sai da fila de revisitas.`)) return;
     setSubmitting(r.id);
     try {
-      const res = await painelService.aprovarVistoria(r.id, pendencias);
+      const res = await painelService.aprovarVistoria(r.id);
       setToast(
-        pendencias
-          ? `${r.equipamento} aprovada com pendências.`
-          : res.eraRevisita
-            ? `Revisita de ${r.equipamento} aprovada · situação: Revisitado.`
-            : `${r.equipamento} aprovada · situação: Vistoriado.`
+        res.eraRevisita
+          ? `Revisita de ${r.equipamento} aprovada · situação: Revisitado.`
+          : `${r.equipamento} aprovada · situação: Vistoriado.`
       );
       setTimeout(() => setToast(null), 3000);
-      setAprovando(null);
-      setTemPendencias(false);
-      setPendenciasTexto("");
       carregar();
     } catch (err) {
       const msg =
@@ -521,7 +510,7 @@ export default function RevisitasPage() {
                 onAtribuir={() => setAtribuirOpen(r)}
                 onEditar={() => setEditarOpen(r)}
                 onRegerar={() => handleRegerarPdf(r)}
-                onAprovar={() => { setAprovando(r); setTemPendencias(false); setPendenciasTexto(""); }}
+                onAprovar={() => handleAprovar(r)}
                 submitting={submitting === r.id}
                 podeAgir={podeAgir}
               />
@@ -593,108 +582,6 @@ export default function RevisitasPage() {
                 })}
                 {tecnicos.filter((t) => t.status !== "offline").length === 0 && (
                   <p className="px-2 py-4 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>Nenhum técnico disponível no momento.</p>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL APROVAR — pergunta pendências/observações antes de aprovar */}
-      <AnimatePresence>
-        {aprovando && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center p-6"
-            style={{ background: "var(--vm-backdrop)", backdropFilter: "blur(12px)" }}
-            onClick={() => setAprovando(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 14 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.97, y: 8 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-[420px] overflow-hidden rounded-[24px]"
-              style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)", boxShadow: "0 24px 60px rgba(6,59,59,0.2)" }}
-            >
-              <header className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: "var(--vm-border-soft)" }}>
-                <div>
-                  <p className="text-[9.5px] font-bold uppercase tracking-[0.18em]" style={{ color: "#00875F" }}>
-                    Aprovar projeto
-                  </p>
-                  <h3 className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]" style={{ color: "var(--vm-ink)" }}>
-                    {aprovando.equipamento}
-                  </h3>
-                  <p className="text-[11px]" style={{ color: "var(--vm-muted)" }}>
-                    {aprovando.municipio} · {aprovando.glpiId}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setAprovando(null)} className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-black/5" style={{ color: "var(--vm-muted)" }}>
-                  <X className="h-4 w-4" />
-                </button>
-              </header>
-
-              <div className="p-5">
-                <p className="mb-3 text-[13px] font-semibold" style={{ color: "var(--vm-ink)" }}>
-                  Possui pendências ou observações?
-                </p>
-
-                {!temPendencias ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={submitting === aprovando.id}
-                      onClick={() => handleAprovar(aprovando)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
-                      style={{ background: "linear-gradient(135deg,#00C99B,#00875F)" }}
-                    >
-                      {submitting === aprovando.id ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      Não
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTemPendencias(true)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold transition hover:brightness-95"
-                      style={{ background: "var(--vm-orange-tint)", color: "#C2410C", border: "1px solid rgba(249,115,22,0.3)" }}
-                    >
-                      <AlertTriangle className="h-4 w-4" />
-                      Sim
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <textarea
-                      autoFocus
-                      value={pendenciasTexto}
-                      onChange={(e) => setPendenciasTexto(e.target.value)}
-                      rows={4}
-                      placeholder="Descreva as pendências ou observações relacionadas ao projeto…"
-                      className="mb-3 w-full resize-none rounded-xl px-3 py-2.5 text-[13px] outline-none focus:ring-1"
-                      style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)", color: "var(--vm-ink)" }}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setTemPendencias(false); setPendenciasTexto(""); }}
-                        className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold transition hover:brightness-95"
-                        style={{ border: "1px solid var(--vm-border)", color: "var(--vm-muted)" }}
-                      >
-                        Voltar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!pendenciasTexto.trim() || submitting === aprovando.id}
-                        onClick={() => handleAprovar(aprovando, pendenciasTexto.trim())}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
-                        style={{ background: "linear-gradient(135deg,#00C99B,#00875F)" }}
-                      >
-                        {submitting === aprovando.id ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                        Confirmar aprovação
-                      </button>
-                    </div>
-                  </>
                 )}
               </div>
             </motion.div>

@@ -250,14 +250,14 @@ export async function editarVistoria(input: EditarVistoriaInput) {
   return data;
 }
 
-export async function aprovarVistoria(vistoriaId: number | string, pendencias?: string) {
+export async function aprovarVistoria(vistoriaId: number | string) {
   const id = String(vistoriaId).replace(/^NE-|^rev-/, "");
   const { data } = await api.post<{
     ok: true;
     affected: number;
     eraRevisita: boolean;
     situacaoFinal: number;
-  }>(`/painel/vistoria/${id}/aprovar`, pendencias ? { pendencias } : {});
+  }>(`/painel/vistoria/${id}/aprovar`);
   return data;
 }
 

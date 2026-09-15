@@ -59,25 +59,18 @@ export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
 
 /**
  * Status do plugin: 1=Pendente (inicial), 3=Aprovado, 4=Reprovado,
- * 5=Em análise, 6=AGUARDANDO VISTORIA, 7=Aprovado com Pendências.
+ * 5=Em análise, 6=AGUARDANDO VISTORIA.
  *
  * 3/4 são a decisão da CONCESSIONÁRIA, registrada por ela direto no GLPI —
  * o VistoMap só lê (ver src/lib/glpi/cpfl.ts). Não confundir com a aprovação
  * INTERNA do analista (aprovarVistoria), que deixa o status em 5 e marca
  * aux.approval_status.
- *
- * 7 também é escrito pelo VistoMap (aprovarVistoria) — é a MESMA aprovação
- * interna, só que o analista já sabe de uma pendência/observação no ato e
- * registra em `observaescpflfield` em vez de deixar em branco (2026-09-15).
- * Tem o mesmo peso de "Aprovado" em toda leitura que trata status por nome
- * (cpfl.ts etc.) — só muda o rótulo exibido.
  */
 export const STATUS_VISTORIA_PENDENTE = 1;
 export const STATUS_VISTORIA_APROVADO = 3;
 export const STATUS_VISTORIA_REPROVADO = 4;
 export const STATUS_VISTORIA_EM_ANALISE = 5;
 export const STATUS_VISTORIA_AGUARDANDO_VISTORIA = 6;
-export const STATUS_VISTORIA_APROVADO_COM_PENDENCIAS = 7;
 
 /** Pendência: 1 = "Pendência CPFL", 2 = "Pendência Nansen", 3 = "Sem Pendências". */
 export const PENDENCIA_CPFL = 1;
