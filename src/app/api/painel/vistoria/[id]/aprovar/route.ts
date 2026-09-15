@@ -14,11 +14,16 @@ function parseId(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+interface AprovarBody {
+  /** Preenchido = "possui pendências/observações" (pergunta feita ao aprovar, 2026-09-15). */
+  pendencias?: string;
+}
+
 /**
  * Aprovar vistoria (admin):
- *  - statusvistoria → Aprovado
- *  - situaodavistoria → Vistoriado (ou Revisitado se era revisita)
- *  - dataaprovaoconcessionriafield = agora
+ *  - statusvistoria → Em Análise (ou Aprovado com Pendências, se `pendencias` vier preenchido)
+ *  - situaodavistoria → Revisitado
+ *  - observaescpflfield → texto de `pendencias`, só quando informado
  *  - aux.approval_status = APROVADO; aux.is_repeat = 0
  *
  * Sai da fila de revisitas + da fila principal.
@@ -35,6 +40,14 @@ export async function POST(
     return NextResponse.json({ message: "ID inválido" }, { status: 400 });
   }
 
+  let body: AprovarBody = {};
+  try {
+    body = (await req.json()) as AprovarBody;
+  } catch {
+    /* corpo vazio = aprovação sem pendências (comportamento atual) */
+  }
+  const pendencias = body.pendencias?.trim() || undefined;
+
   try {
     const [actor, neRow] = await Promise.all([
       getActorFromRequest(req),
@@ -44,7 +57,7 @@ export async function POST(
       ).then((r) => r[0]),
     ]);
 
-    const result = await aprovarVistoria(id, actor?.id);
+    const result = await aprovarVistoria(id, actor?.id, pendencias);
 
     void auditInsert({
       ator: actor ?? { id: 0, nome: "Sistema", role: "admin" },
@@ -54,9 +67,11 @@ export async function POST(
         id: String(id),
         label: neRow?.name ?? `NE-${id}`,
       },
-      descricao: result.eraRevisita
-        ? "Revisita aprovada · situação → Revisitado"
-        : "Vistoria aprovada · situação → Vistoriado",
+      descricao: pendencias
+        ? `Aprovado com pendências: ${pendencias}`
+        : result.eraRevisita
+          ? "Revisita aprovada · situação → Revisitado"
+          : "Vistoria aprovada · situação → Vistoriado",
     });
 
     return NextResponse.json({ ok: true, ...result });

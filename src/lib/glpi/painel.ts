@@ -18,6 +18,7 @@ import {
   STATUS_VISTORIA_PENDENTE,
   STATUS_VISTORIA_APROVADO,
   STATUS_VISTORIA_EM_ANALISE,
+  STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
   TABLE_PROJETOS_PLUGIN,
@@ -794,17 +795,21 @@ export async function atualizarCamposVistoria(
  * Aprova uma vistoria (admin internamente, antes do envio à CPFL).
  *
  * Comportamento alinhado ao fluxo operacional real:
- *   - statusvistoria = Em Análise (5)
+ *   - statusvistoria = Em Análise (5) — ou Aprovado com Pendências (7) se o
+ *     analista já sabe de uma pendência/observação no ato (`pendencias`
+ *     preenchido, 2026-09-15)
  *   - situaodavistoria = Revisitado (6) — caso encerrado pelo admin
  *   - pendencia = Pendência CPFL (1)
  *   - datadavistoriafield = agora
  *   - dataenvioconcessionriafield = agora
+ *   - observaescpflfield = texto de `pendencias`, só quando informado
  *   - NÃO preenche dataaprovaoconcessionria (esse campo é da CPFL)
  *   - aux.approval_status = 'APROVADO'; is_repeat = 0 (sai da fila revisitas)
  */
 export async function aprovarVistoria(
   vistoriaId: number,
-  avaliadorId?: number
+  avaliadorId?: number,
+  pendencias?: string
 ): Promise<{
   affected: number;
   eraRevisita: boolean;
@@ -817,6 +822,7 @@ export async function aprovarVistoria(
   );
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
   const now = nowBrasiliaSql();
+  const textoPendencias = pendencias?.trim() || null;
 
   const sets = [
     "plugin_fields_statusvistoriafielddropdowns_id = ?",
@@ -826,12 +832,16 @@ export async function aprovarVistoria(
     "dataenvioconcessionriafield = ?",
   ];
   const params: unknown[] = [
-    STATUS_VISTORIA_EM_ANALISE,
+    textoPendencias ? STATUS_VISTORIA_APROVADO_COM_PENDENCIAS : STATUS_VISTORIA_EM_ANALISE,
     PENDENCIA_CPFL,
     SITUACAO_REVISITADO,
     now,
     now,
   ];
+  if (textoPendencias) {
+    sets.push("observaescpflfield = ?");
+    params.push(textoPendencias);
+  }
   if (avaliadorId != null && avaliadorId > 0) {
     sets.push(`\`${AVALIADOR_CPFL_USER_COLUMN}\` = ?`);
     params.push(avaliadorId);
