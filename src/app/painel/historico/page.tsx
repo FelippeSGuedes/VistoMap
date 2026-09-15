@@ -42,6 +42,13 @@ function fmtDia(iso: string): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
+/** YYYY-MM-DD de N dias atrás (0 = hoje). */
+function diasAtras(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 const PERIODOS = [
   { id: 7, label: "7 dias" },
   { id: 30, label: "30 dias" },
@@ -56,7 +63,7 @@ export default function HistoricoPainelPage() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    painelService.fetchHistorico(dias).then((d) => {
+    painelService.fetchHistorico(diasAtras(dias - 1), diasAtras(0)).then((d) => {
       if (alive) {
         setData(d);
         setLoading(false);

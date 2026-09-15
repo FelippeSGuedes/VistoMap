@@ -98,22 +98,34 @@ function haversineKm(
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-export async function fetchHistoricoAnalytics(
-  dias = 30,
-  /**
-   * Janela usada só pra totais/taxas/médias (Padrão Diário, gauges de
-   * Equipe ao Vivo no dashboard) — por padrão igual a `dias`, mas o
-   * dashboard principal manda um valor MENOR que `dias` quando também
-   * precisa de uma janela anterior pra calcular variação % (Widget de
-   * Vistorias Finalizadas): `serieDiaria` cobre `dias` dias completos,
-   * mas totais/taxas/médias só devem refletir os últimos `diasAgregado`
-   * (2026-09-15 — filtro de período único do dashboard).
-   */
-  diasAgregado = dias
-): Promise<HistoricoAnalytics> {
-  const inicio = isoDaysAgo(dias);
-  const inicioAgregado = isoDaysAgo(diasAgregado);
+/** Todas as datas YYYY-MM-DD entre `inicio` e `fim`, ambos inclusive. */
+function eachDateInclusive(inicio: string, fim: string): string[] {
+  const out: string[] = [];
+  const cur = new Date(`${inicio}T00:00:00Z`);
+  const end = new Date(`${fim}T00:00:00Z`);
+  while (cur.getTime() <= end.getTime()) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
 
+export async function fetchHistoricoAnalytics(
+  /** Início do período real (agregados, ranking, km, motivos), YYYY-MM-DD. */
+  inicio: string,
+  /** Fim do período real, YYYY-MM-DD inclusive. Default: hoje. */
+  fim: string = isoDaysAgo(0),
+  /**
+   * Início alternativo, SÓ pra `serieDiaria` — por padrão igual a `inicio`,
+   * mas o dashboard manda uma data mais antiga aqui quando também precisa
+   * de uma janela anterior pra calcular variação % (Widget de Vistorias
+   * Finalizadas): a série cobre `inicioSerie..fim` completo, mas
+   * totais/taxas/médias/ranking/km/motivos só refletem `inicio..fim`, o
+   * período de fato selecionado (2026-09-15 — filtro de período único do
+   * dashboard, com Hoje/7 dias/30 dias/Personalizado).
+   */
+  inicioSerie: string = inicio
+): Promise<HistoricoAnalytics> {
   /* ── Séries diárias ─────────────────────────────────────────── */
   // Conta por dia agrupando por status name.
   const serieRows = await query<{
@@ -133,10 +145,11 @@ export async function fetchHistoricoAnalytics(
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
+         AND DATE(f.datadavistoriafield) <= ?
        GROUP BY DATE(f.datadavistoriafield), sv.name, f.\`${SITUACAO_COLUMN}\`
        ORDER BY dia
     `,
-    [inicio]
+    [inicioSerie, fim]
   );
 
   // Constrói série dia-a-dia (preenche dias faltantes com 0).
@@ -144,8 +157,8 @@ export async function fetchHistoricoAnalytics(
     string,
     { finalizadas: number; aprovadas: number; reprovadas: number }
   >();
-  for (let i = dias - 1; i >= 0; i--) {
-    diasMap.set(isoDaysAgo(i), { finalizadas: 0, aprovadas: 0, reprovadas: 0 });
+  for (const dia of eachDateInclusive(inicioSerie, fim)) {
+    diasMap.set(dia, { finalizadas: 0, aprovadas: 0, reprovadas: 0 });
   }
   for (const r of serieRows) {
     const ref = diasMap.get(r.dia);
@@ -197,8 +210,9 @@ export async function fetchHistoricoAnalytics(
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
+         AND DATE(f.datadavistoriafield) <= ?
     `,
-    [inicioAgregado]
+    [inicio, fim]
   );
 
   const finalizadas = Number(agg?.finalizadas ?? 0);
@@ -264,13 +278,14 @@ export async function fetchHistoricoAnalytics(
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
+         AND DATE(f.datadavistoriafield) <= ?
          AND f.users_id_vistoriadorafield > 0
          AND (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
        GROUP BY f.users_id_vistoriadorafield
        ORDER BY total DESC
        LIMIT 50
     `,
-    [inicio]
+    [inicio, fim]
   );
 
   /* ── Km percorrido — Haversine sobre pings GPS ─────────────── */
@@ -288,9 +303,10 @@ export async function fetchHistoricoAnalytics(
         SELECT users_id, latitude, longitude, created_at
           FROM glpi_plugin_vistomap_locations
          WHERE DATE(created_at) >= ?
+           AND DATE(created_at) <= ?
          ORDER BY users_id, created_at
       `,
-      [inicio]
+      [inicio, fim]
     );
     // Soma distâncias entre pings consecutivos do mesmo técnico.
     let prevUser: number | null = null;
@@ -337,9 +353,10 @@ export async function fetchHistoricoAnalytics(
           FROM glpi_plugin_vistomap_audit
          WHERE acao IN ('vistoria-em-deslocamento','vistoria-iniciada','vistoria-finalizada')
            AND ts >= ?
+           AND ts < DATE_ADD(?, INTERVAL 1 DAY)
          GROUP BY alvo_id
       `,
-      [inicio]
+      [inicio, fim]
     );
     for (const r of evRows) {
       const ator = Number(r.ator_id) || 0;
@@ -407,11 +424,11 @@ export async function fetchHistoricoAnalytics(
          )
          AND (
               f.datadavistoriafield IS NULL
-           OR DATE(f.datadavistoriafield) >= ?
+           OR (DATE(f.datadavistoriafield) >= ? AND DATE(f.datadavistoriafield) <= ?)
          )
        LIMIT 2000
     `,
-    [inicio]
+    [inicio, fim]
   );
   const motivosReprovacao = agregarMotivos(motivosRows.map((r) => r.motivo));
 
@@ -421,11 +438,12 @@ export async function fetchHistoricoAnalytics(
   const revisitaPct = finalizadas > 0
     ? Math.round((revisitasFinalizadas / finalizadas) * 100)
     : 0;
-  const diariaVistorias = Math.round(finalizadas / Math.max(diasAgregado, 1));
-  const semanalVistorias = Math.round(finalizadas / Math.max(diasAgregado / 7, 1));
+  const diasNoPeriodo = eachDateInclusive(inicio, fim).length;
+  const diariaVistorias = Math.round(finalizadas / Math.max(diasNoPeriodo, 1));
+  const semanalVistorias = Math.round(finalizadas / Math.max(diasNoPeriodo / 7, 1));
 
   return {
-    periodo: { inicio: inicioAgregado, fim: isoDaysAgo(0), dias: diasAgregado },
+    periodo: { inicio, fim, dias: diasNoPeriodo },
     totais: {
       vistoriasFinalizadas: finalizadas,
       revisitasFinalizadas,

@@ -24,6 +24,13 @@ import { fetchInstaladoresAtivos } from "@/services/painel-instalacoes";
 import type { TecnicoAtivo } from "@/types";
 import { api } from "@/services/api";
 
+/** YYYY-MM-DD de N dias atrás (0 = hoje). */
+function diasAtras(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 interface ExpedienteAtivo {
   id: number;
   users_id: number;
@@ -105,7 +112,7 @@ export default function TecnicosPage() {
     const load = async () => {
       const [t, h, e, inst] = await Promise.all([
         painelService.fetchTecnicos(),
-        painelService.fetchHistorico(30),
+        painelService.fetchHistorico(diasAtras(29), diasAtras(0)),
         api
           .get<{ ativos: ExpedienteAtivo[] }>("/painel/expediente/ativos")
           .then((r) => r.data.ativos)

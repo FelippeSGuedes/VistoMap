@@ -388,9 +388,19 @@ export async function fetchTopTecnicosDashboard(
   );
 }
 
-export async function fetchHistorico(dias = 30, diasAgregado?: number): Promise<HistoricoAnalytics> {
+/**
+ * `inicio`/`fim` (YYYY-MM-DD, ambos inclusive) definem o período real
+ * (default: sem params, o backend cai em "últimos 30 dias"). `inicioSerie`
+ * é só pra série diária — usado quando o chamador também precisa de uma
+ * janela anterior pra calcular variação % (ver rota /painel/historico).
+ */
+export async function fetchHistorico(
+  inicio?: string,
+  fim?: string,
+  inicioSerie?: string
+): Promise<HistoricoAnalytics> {
   const fb: HistoricoAnalytics = {
-    periodo: { inicio: "", fim: "", dias },
+    periodo: { inicio: inicio ?? "", fim: fim ?? "", dias: 30 },
     totais: { vistoriasFinalizadas: 0, revisitasFinalizadas: 0, aprovadas: 0, reprovadas: 0, pdfsGerados: 0 },
     taxas: { aprovacaoPct: 0, revisitaPct: 0 },
     medias: { diariaVistorias: 0, semanalVistorias: 0 },
@@ -400,9 +410,12 @@ export async function fetchHistorico(dias = 30, diasAgregado?: number): Promise<
     kmOperacional: 0,
     motivosReprovacao: [],
   };
-  const qs = diasAgregado != null ? `dias=${dias}&diasAgregado=${diasAgregado}` : `dias=${dias}`;
+  const params = new URLSearchParams();
+  if (inicio) params.set("inicio", inicio);
+  if (fim) params.set("fim", fim);
+  if (inicioSerie) params.set("inicioSerie", inicioSerie);
   return tryReal(
-    api.get<HistoricoAnalytics>(`/painel/historico?${qs}`).then((r) => r.data),
+    api.get<HistoricoAnalytics>(`/painel/historico?${params.toString()}`).then((r) => r.data),
     fb
   );
 }
