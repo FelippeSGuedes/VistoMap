@@ -24,6 +24,18 @@ export interface EditarVistoriaModalProps {
     alturadaantenafield?: string;
     aterramentofield?: string;
     observaofield?: string;
+    // Adicionados em 2026-09-15 pra tratativa de "Pendência Nansen" em
+    // /painel/cpfl — mesmo whitelist ampliado em EDITAVEL_COLS (painel.ts).
+    pspostefield?: string;
+    municipiofield?: string;
+    latitudefield?: string;
+    longitudefield?: string;
+    alturadopostemfield?: string;
+    materialfield?: string;
+    danfield?: string;
+    instalartpfield?: string;
+    rsrpifield?: string;
+    rsrpllfield?: string;
   };
   onClose: () => void;
   onSaved?: (result: { affected: number; regeneradoPdf: boolean }) => void;
@@ -35,10 +47,20 @@ const FIELDS: Array<{
   multiline?: boolean;
   placeholder?: string;
 }> = [
+  { key: "pspostefield", label: "PS do poste", placeholder: "PS-000000" },
+  { key: "municipiofield", label: "Município", placeholder: "Cidade" },
   { key: "endereofield", label: "Endereço", placeholder: "Rua, número, bairro…" },
-  { key: "motivofield", label: "Motivo", placeholder: "Motivo operacional…" },
+  { key: "latitudefield", label: "Latitude", placeholder: "-23.5505" },
+  { key: "longitudefield", label: "Longitude", placeholder: "-46.6333" },
+  { key: "alturadopostemfield", label: "Altura do poste", placeholder: "9 m" },
   { key: "alturadaantenafield", label: "Altura da antena", placeholder: "12 m" },
+  { key: "materialfield", label: "Material / Tipo da estrutura", placeholder: "Concreto…" },
   { key: "aterramentofield", label: "Aterramento", placeholder: "1 (Sim) / 0 (Não)" },
+  { key: "danfield", label: "Resistência (daN)", placeholder: "300" },
+  { key: "instalartpfield", label: "Instalação de TP", placeholder: "1 (Sim) / 0 (Não)" },
+  { key: "rsrpifield", label: "RSRP Claro", placeholder: "-95" },
+  { key: "rsrpllfield", label: "RSRP Vivo", placeholder: "-95" },
+  { key: "motivofield", label: "Motivo", placeholder: "Motivo operacional…" },
   { key: "observaofield", label: "Observações", placeholder: "Notas adicionais…", multiline: true },
 ];
 

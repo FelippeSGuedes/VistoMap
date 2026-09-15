@@ -233,6 +233,18 @@ export interface EditarVistoriaInput {
     alturadaantenafield?: string;
     aterramentofield?: string;
     observaofield?: string;
+    // Adicionados em 2026-09-15 pra tratativa de "Pendência Nansen" em
+    // /painel/cpfl — ver EDITAVEL_COLS em lib/glpi/painel.ts.
+    pspostefield?: string;
+    latitudefield?: string;
+    longitudefield?: string;
+    municipiofield?: string;
+    alturadopostemfield?: string;
+    materialfield?: string;
+    danfield?: string;
+    instalartpfield?: string;
+    rsrpifield?: string;
+    rsrpllfield?: string;
   };
   regenerar_pdf?: boolean;
 }
@@ -247,6 +259,19 @@ export async function editarVistoria(input: EditarVistoriaInput) {
     campos: input.campos,
     regenerar_pdf: input.regenerar_pdf,
   });
+  return data;
+}
+
+/**
+ * Finaliza a tratativa de "Pendência Nansen" (ver /painel/cpfl): marca
+ * pendência = Sem Pendências, grava a data de resolução e agenda a
+ * regeneração do projeto (PDF).
+ */
+export async function resolverPendenciaCpfl(vistoriaId: number | string) {
+  const id = String(vistoriaId).replace(/^NE-/, "");
+  const { data } = await api.post<{ ok: true; affected: number }>(
+    `/painel/vistoria/${id}/resolver-pendencia`
+  );
   return data;
 }
 
@@ -618,6 +643,7 @@ export const painelService = {
   editarVistoria,
   aprovarVistoria,
   reprovarVistoria,
+  resolverPendenciaCpfl,
   fetchRealizadas,
   fetchStatus,
   fetchCPFL,

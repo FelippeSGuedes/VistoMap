@@ -7,9 +7,18 @@
  * mais voltava. Havia 308 vistorias paradas em "Em análise" sem nenhuma tela
  * que as acompanhasse, e nenhum jeito de ver há quanto tempo estavam lá.
  *
- * A tela é SOMENTE LEITURA de propósito: quem aprova/reprova é a CPFL, direto
- * no GLPI. Aqui não existe botão de aprovar — se existisse, o painel estaria
- * inventando uma decisão que não é dele.
+ * A tela é SOMENTE LEITURA sobre a decisão da CPFL de propósito: quem
+ * aprova/reprova é a CPFL, direto no GLPI — não existe (nem vai existir)
+ * botão pra isso aqui.
+ *
+ * EXCEÇÃO (2026-09-15): "Pendência Nansen" não é decisão da CPFL — é o
+ * apontamento de que ALGO nos dados/fotos está errado, e quem resolve isso é
+ * o time interno (Nansen), não a concessionária. Por isso só ESSE recorte
+ * ganhou tratativa própria (corrigir campos, solicitar devolução ao técnico,
+ * finalizar — que regera o projeto e fecha a pendência). Continua sem
+ * inventar decisão nenhuma da CPFL: o status "Aprovado com Pendências" já
+ * foi dado por quem aprovou o projeto (plugin GLPI); aqui só se resolve o
+ * que falta pra ele virar "Sem Pendências".
  *
  * O dado que dá valor à tela não é o total, é a ESPERA: por isso a ordenação
  * padrão é da mais antiga para a mais nova e o tempo parado ganha destaque.
@@ -24,17 +33,24 @@ import {
   CheckCircle2,
   Clock,
   FileText,
+  Loader2,
   MapPin,
+  Pencil,
   RefreshCw,
   Search,
   Send,
   ShieldCheck,
+  Undo2,
   User,
+  Wrench,
   X,
   XCircle,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { api } from "@/services/api";
+import { useAuthStore } from "@/store/auth";
+import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
+import { DEVOLUCAO_ITENS, DEVOLUCAO_MOTIVOS } from "@/lib/glpi/devolucaoItens";
 import type { CPFLStats, EtapaCPFL, VistoriaCPFL } from "@/services/painel";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
@@ -94,7 +110,14 @@ const STATS_VAZIO: CPFLStats = {
   aguardandoMais30d: 0,
 };
 
+/** "Aprovado com Pendências" + pendência ainda em Nansen — o único recorte que ganha tratativa própria (ver comentário no topo do arquivo). */
+function ehPendenciaNansen(v: VistoriaCPFL): boolean {
+  return v.etapa === "APROVADA" && v.pendencia === "Pendência Nansen";
+}
+
 export default function ValidacaoCPFLPage() {
+  const { session } = useAuthStore();
+  const podeAgir = session?.role !== "leitura";
   const [items, setItems] = useState<VistoriaCPFL[]>([]);
   const [stats, setStats] = useState<CPFLStats>(STATS_VAZIO);
   const [loading, setLoading] = useState(true);
@@ -103,10 +126,13 @@ export default function ValidacaoCPFLPage() {
   const [etapa, setEtapa] = useState<EtapaCPFL | "TODAS">("TODAS");
   const [q, setQ] = useState("");
   const [municipio, setMunicipio] = useState<string>("");
+  const [soPendenciaNansen, setSoPendenciaNansen] = useState(false);
 
   const [sincronizando, setSincronizando] = useState(false);
   const [recuperandoAvaliador, setRecuperandoAvaliador] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  const [tratando, setTratando] = useState<VistoriaCPFL | null>(null);
 
   async function carregar() {
     setLoading(true);
@@ -144,9 +170,12 @@ export default function ValidacaoCPFLPage() {
 
   // Filtro no cliente: o conjunto é pequeno (centenas) e evita ida ao servidor
   // a cada tecla. Quando crescer, vira filtro no banco — a API já aceita.
+  const totalPendenciaNansen = useMemo(() => items.filter(ehPendenciaNansen).length, [items]);
+
   const filtrados = useMemo(() => {
     const termo = q.trim().toLowerCase();
     return items.filter((i) => {
+      if (soPendenciaNansen && !ehPendenciaNansen(i)) return false;
       if (etapa !== "TODAS" && i.etapa !== etapa) return false;
       if (municipio && i.municipio !== municipio) return false;
       if (!termo) return true;
@@ -157,7 +186,7 @@ export default function ValidacaoCPFLPage() {
         (i.tecnico?.nome ?? "").toLowerCase().includes(termo)
       );
     });
-  }, [items, etapa, municipio, q]);
+  }, [items, etapa, municipio, q, soPendenciaNansen]);
 
   async function abrirPdf(item: VistoriaCPFL) {
     if (!item.pdfPath) return;
@@ -383,6 +412,22 @@ export default function ValidacaoCPFLPage() {
           </select>
         )}
 
+        {totalPendenciaNansen > 0 && (
+          <button
+            type="button"
+            onClick={() => setSoPendenciaNansen((v) => !v)}
+            className="flex h-9 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-bold transition"
+            style={{
+              background: soPendenciaNansen ? "#0F766E" : "var(--vm-teal-tint)",
+              color: soPendenciaNansen ? "#fff" : "#0F766E",
+              border: `1px solid ${soPendenciaNansen ? "#0F766E" : "rgba(15,118,110,0.3)"}`,
+            }}
+          >
+            <Wrench className="h-3.5 w-3.5" />
+            Pendência Nansen ({totalPendenciaNansen})
+          </button>
+        )}
+
         <span className="ml-auto text-[11.5px] font-semibold" style={{ color: "var(--vm-muted)" }}>
           {filtrados.length} de {items.length}
         </span>
@@ -418,11 +463,27 @@ export default function ValidacaoCPFLPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {filtrados.map((v) => (
-              <CardCPFL key={v.id} v={v} onPdf={() => void abrirPdf(v)} />
+              <CardCPFL
+                key={v.id}
+                v={v}
+                onPdf={() => void abrirPdf(v)}
+                onTratar={podeAgir && ehPendenciaNansen(v) ? () => setTratando(v) : undefined}
+              />
             ))}
           </AnimatePresence>
         </div>
       )}
+
+      <TratativaDrawer
+        item={tratando}
+        onClose={() => setTratando(null)}
+        onResolved={(msg) => {
+          setTratando(null);
+          setToast(msg);
+          setTimeout(() => setToast(null), 8000);
+          void carregar();
+        }}
+      />
     </div>
   );
 }
@@ -452,7 +513,15 @@ function StatPill({
   );
 }
 
-function CardCPFL({ v, onPdf }: { v: VistoriaCPFL; onPdf: () => void }) {
+function CardCPFL({
+  v,
+  onPdf,
+  onTratar,
+}: {
+  v: VistoriaCPFL;
+  onPdf: () => void;
+  onTratar?: () => void;
+}) {
   const meta = ETAPA_META[v.etapa];
   const Icone = meta.icon;
   const espera = corDaEspera(v.diasAguardando);
@@ -558,16 +627,30 @@ function CardCPFL({ v, onPdf }: { v: VistoriaCPFL; onPdf: () => void }) {
         {v.pendencia && (
           <span
             className="rounded-lg px-2 py-1 text-[10.5px] font-semibold"
-            style={{ background: "var(--vm-tile-2)", color: "var(--vm-text-soft)" }}
+            style={{
+              background: v.pendencia === "Pendência Nansen" ? "var(--vm-teal-tint)" : "var(--vm-tile-2)",
+              color: v.pendencia === "Pendência Nansen" ? "#0F766E" : "var(--vm-text-soft)",
+            }}
           >
             {v.pendencia}
           </span>
+        )}
+        {onTratar && (
+          <button
+            type="button"
+            onClick={onTratar}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold text-white transition hover:brightness-110"
+            style={{ background: "#0F766E" }}
+          >
+            <Wrench className="h-3 w-3" />
+            Tratar
+          </button>
         )}
         {v.pdfPath && (
           <button
             type="button"
             onClick={onPdf}
-            className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold transition hover:brightness-95"
+            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold transition hover:brightness-95 ${onTratar ? "" : "ml-auto"}`}
             style={{ background: "var(--vm-tile-2)", color: "#2563EB" }}
           >
             <FileText className="h-3 w-3" />
@@ -576,5 +659,364 @@ function CardCPFL({ v, onPdf }: { v: VistoriaCPFL; onPdf: () => void }) {
         )}
       </div>
     </motion.div>
+  );
+}
+
+/**
+ * Tratativa de "Pendência Nansen" — a única escrita desta tela (ver
+ * comentário no topo do arquivo). Três ações independentes:
+ *   - Corrigir dados: edita campos direto aqui (fica no drawer — a pendência
+ *     só fecha quando o analista confirmar em "Finalizar").
+ *   - Solicitar devolução: quando precisa o técnico voltar ao local (foto
+ *     ruim, dropdown errado etc.) — mesmo mecanismo de Central de Vistorias.
+ *   - Finalizar: marca "Sem Pendências", grava a data de resolução e agenda
+ *     a regeneração do projeto — fecha o drawer e atualiza a lista.
+ */
+function TratativaDrawer({
+  item,
+  onClose,
+  onResolved,
+}: {
+  item: VistoriaCPFL | null;
+  onClose: () => void;
+  onResolved: (mensagem: string) => void;
+}) {
+  const [detalhe, setDetalhe] = useState<{ fields?: Record<string, string> } | null>(null);
+  const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
+  const [editarOpen, setEditarOpen] = useState(false);
+  const [salvoAgora, setSalvoAgora] = useState<string | null>(null);
+
+  const [modo, setModo] = useState<"menu" | "devolver">("menu");
+  const [devItens, setDevItens] = useState<string[]>([]);
+  const [devMotivos, setDevMotivos] = useState<string[]>([]);
+  const [devMotivoOutro, setDevMotivoOutro] = useState("");
+  const [devLoading, setDevLoading] = useState(false);
+  const [devErro, setDevErro] = useState<string | null>(null);
+
+  const [finalizando, setFinalizando] = useState(false);
+  const [finalizarErro, setFinalizarErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!item) return;
+    setModo("menu");
+    setDevItens([]);
+    setDevMotivos([]);
+    setDevMotivoOutro("");
+    setDevErro(null);
+    setFinalizarErro(null);
+    setSalvoAgora(null);
+    setCarregandoDetalhe(true);
+    api
+      .get<{ vistoria: { fields?: Record<string, string> } }>(`/painel/vistoria/${item.id}`)
+      .then((r) => setDetalhe(r.data.vistoria))
+      .catch(() => setDetalhe(null))
+      .finally(() => setCarregandoDetalhe(false));
+  }, [item]);
+
+  function toggleDevItem(key: string) {
+    setDevItens((cur) => (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]));
+  }
+  function toggleDevMotivo(m: string) {
+    setDevMotivos((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
+  }
+
+  async function handleDevolver() {
+    if (!item) return;
+    if (devItens.length === 0) { setDevErro("Selecione ao menos um item errado."); return; }
+    if (devMotivos.length === 0) { setDevErro("Selecione ao menos um motivo."); return; }
+    if (devMotivos.includes("Outro") && !devMotivoOutro.trim()) { setDevErro('Descreva o motivo em "Outro".'); return; }
+    setDevLoading(true);
+    setDevErro(null);
+    try {
+      await api.post(`/painel/central-vistorias/${item.id}/devolver`, {
+        itens: devItens,
+        motivos: devMotivos,
+        motivoOutro: devMotivoOutro.trim() || undefined,
+      });
+      onResolved(`${item.equipamento}: devolução solicitada — o técnico foi notificado.`);
+    } catch (e) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Falha ao solicitar devolução.";
+      setDevErro(msg);
+    } finally {
+      setDevLoading(false);
+    }
+  }
+
+  async function handleFinalizar() {
+    if (!item) return;
+    setFinalizando(true);
+    setFinalizarErro(null);
+    try {
+      await painelService.resolverPendenciaCpfl(item.id);
+      onResolved(`${item.equipamento}: pendência resolvida — o projeto será regenerado automaticamente.`);
+    } catch (e) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Falha ao finalizar a pendência.";
+      setFinalizarErro(msg);
+    } finally {
+      setFinalizando(false);
+    }
+  }
+
+  return (
+    <>
+      <AnimatePresence>
+        {item && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] flex justify-end"
+            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
+            onClick={onClose}
+          >
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", stiffness: 380, damping: 36 }}
+              className="flex h-full w-full max-w-[480px] flex-col"
+              style={{ background: "var(--vm-card)", borderLeft: "1px solid var(--vm-border)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="flex items-start justify-between gap-3 border-b px-5 py-4"
+                style={{ borderColor: "var(--vm-border-soft)" }}
+              >
+                <div className="min-w-0">
+                  <p className="text-[9.5px] font-bold uppercase tracking-[0.18em]" style={{ color: "#0F766E" }}>
+                    Pendência Nansen
+                  </p>
+                  <h2 className="mt-0.5 truncate text-[16px] font-bold" style={{ color: "var(--vm-text)" }}>
+                    {item?.equipamento}
+                  </h2>
+                  <p className="mt-0.5 truncate text-[12px]" style={{ color: "var(--vm-muted)" }}>
+                    {item?.endereco ?? item?.municipio}
+                  </p>
+                </div>
+                <button type="button" onClick={onClose} style={{ color: "var(--vm-faint)" }}>
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                {carregandoDetalhe ? (
+                  <div
+                    className="flex items-center justify-center gap-2 py-10 text-[13px]"
+                    style={{ color: "var(--vm-faint)" }}
+                  >
+                    <Loader2 className="h-4 w-4 animate-spin" /> Carregando dados da vistoria…
+                  </div>
+                ) : modo === "menu" ? (
+                  <div className="space-y-3">
+                    <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--vm-text-soft)" }}>
+                      A CPFL aprovou o projeto, mas apontou uma pendência a resolver. Corrija os dados
+                      diretamente ou devolva pro técnico refazer em campo — depois finalize pra fechar a
+                      pendência e regerar o projeto.
+                    </p>
+
+                    {salvoAgora && (
+                      <div
+                        className="rounded-xl px-3 py-2.5 text-[11.5px] font-medium"
+                        style={{ background: "var(--vm-indigo-tint)", color: "#4338CA" }}
+                      >
+                        {salvoAgora}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setEditarOpen(true)}
+                      className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition hover:brightness-95"
+                      style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)" }}
+                    >
+                      <span
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                        style={{ background: "var(--vm-indigo-tint)", color: "#4338CA" }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </span>
+                      <span>
+                        <span className="block text-[13px] font-bold" style={{ color: "var(--vm-text)" }}>
+                          Corrigir dados
+                        </span>
+                        <span className="block text-[11px]" style={{ color: "var(--vm-muted)" }}>
+                          Ajustar endereço, medições e outros campos direto aqui.
+                        </span>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setModo("devolver")}
+                      className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition hover:brightness-95"
+                      style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)" }}
+                    >
+                      <span
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                        style={{ background: "var(--vm-orange-tint)", color: "#C2410C" }}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </span>
+                      <span>
+                        <span className="block text-[13px] font-bold" style={{ color: "var(--vm-text)" }}>
+                          Solicitar devolução
+                        </span>
+                        <span className="block text-[11px]" style={{ color: "var(--vm-muted)" }}>
+                          Precisa o técnico voltar no local (foto ruim, poste errado…).
+                        </span>
+                      </span>
+                    </button>
+
+                    <div
+                      className="mt-5 rounded-xl p-3.5"
+                      style={{ background: "var(--vm-teal-tint)", border: "1px solid rgba(15,118,110,0.25)" }}
+                    >
+                      <p className="mb-2 text-[12.5px] font-bold" style={{ color: "#0F766E" }}>
+                        Já corrigiu tudo?
+                      </p>
+                      <p className="mb-3 text-[11.5px] leading-relaxed" style={{ color: "var(--vm-text-soft)" }}>
+                        Finalizar marca a pendência como resolvida e regera o projeto automaticamente com
+                        os dados atualizados.
+                      </p>
+                      {finalizarErro && (
+                        <p className="mb-2 text-[11.5px] font-medium" style={{ color: "#DC2626" }}>
+                          {finalizarErro}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        disabled={finalizando}
+                        onClick={() => void handleFinalizar()}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                        style={{ background: "#0F766E" }}
+                      >
+                        {finalizando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        Finalizar — projeto será regerado
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setModo("menu")}
+                      className="text-[11.5px] font-semibold underline-offset-2 hover:underline"
+                      style={{ color: "var(--vm-faint)" }}
+                    >
+                      ← voltar
+                    </button>
+
+                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                      O que está errado?
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {DEVOLUCAO_ITENS.map((it) => {
+                        const ativo = devItens.includes(it.key);
+                        return (
+                          <button
+                            key={it.key}
+                            type="button"
+                            onClick={() => toggleDevItem(it.key)}
+                            className="rounded-lg px-2.5 py-2 text-left text-[11.5px] font-semibold transition"
+                            style={{
+                              background: ativo ? "rgba(194,65,12,0.12)" : "var(--vm-tile)",
+                              color: ativo ? "#C2410C" : "var(--vm-text-soft)",
+                              border: `1px solid ${ativo ? "rgba(194,65,12,0.4)" : "var(--vm-border)"}`,
+                            }}
+                          >
+                            {it.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <p className="mt-3 text-[9.5px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
+                      Motivo
+                    </p>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {DEVOLUCAO_MOTIVOS.map((m) => {
+                        const ativo = devMotivos.includes(m);
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => toggleDevMotivo(m)}
+                            className="rounded-lg px-2.5 py-2 text-left text-[11.5px] font-semibold transition"
+                            style={{
+                              background: ativo ? "rgba(194,65,12,0.12)" : "var(--vm-tile)",
+                              color: ativo ? "#C2410C" : "var(--vm-text-soft)",
+                              border: `1px solid ${ativo ? "rgba(194,65,12,0.4)" : "var(--vm-border)"}`,
+                            }}
+                          >
+                            {m}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {devMotivos.includes("Outro") && (
+                      <textarea
+                        value={devMotivoOutro}
+                        onChange={(e) => setDevMotivoOutro(e.target.value)}
+                        placeholder="Descreva o motivo…"
+                        rows={2}
+                        className="mt-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none"
+                        style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+                      />
+                    )}
+
+                    {devErro && (
+                      <p className="mt-2 text-[11.5px] font-medium" style={{ color: "#DC2626" }}>
+                        {devErro}
+                      </p>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={devLoading}
+                      onClick={() => void handleDevolver()}
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                      style={{ background: "#C2410C" }}
+                    >
+                      {devLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                      Confirmar devolução ao técnico
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <EditarVistoriaModal
+        open={editarOpen}
+        vistoriaId={item?.id ?? null}
+        equipamento={item?.equipamento}
+        municipio={item?.municipio}
+        initial={detalhe?.fields ?? {}}
+        onClose={() => setEditarOpen(false)}
+        onSaved={(r) => {
+          setEditarOpen(false);
+          // Só fecha o modal de edição — a pendência continua aberta até o
+          // analista clicar "Finalizar" (o próprio drawer segue aberto).
+          setSalvoAgora(
+            r.regeneradoPdf
+              ? `Dados corrigidos — PDF marcado para regeneração. Clique em "Finalizar" quando terminar.`
+              : `${r.affected} campo(s) atualizado(s). Clique em "Finalizar" quando terminar.`
+          );
+          if (item) {
+            api
+              .get<{ vistoria: { fields?: Record<string, string> } }>(`/painel/vistoria/${item.id}`)
+              .then((res) => setDetalhe(res.data.vistoria))
+              .catch(() => {});
+          }
+        }}
+      />
+    </>
   );
 }

@@ -6,6 +6,8 @@ import {
   DROPDOWN_TABLES,
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
+  PENDENCIA_NANSEN,
+  PENDENCIA_SEM,
   SITUACAO_A_VISTORIAR,
   SITUACAO_AGUARDANDO_REVISITA,
   SITUACAO_COLUMN,
@@ -734,6 +736,17 @@ export interface AtualizarCamposInput {
   latitudefield?: string;
   longitudefield?: string;
   pspostefield?: string;
+  // Adicionados em 2026-09-15 pra tratativa de "Pendência Nansen" em
+  // /painel/cpfl — mesmo mecanismo, só ampliando o whitelist pros campos
+  // que a CPFL costuma apontar como errados e que NÃO dependem de dropdown
+  // (esses continuam só via devolução, pro técnico corrigir em campo).
+  municipiofield?: string;
+  alturadopostemfield?: string;
+  materialfield?: string;
+  danfield?: string;
+  instalartpfield?: string;
+  rsrpifield?: string;
+  rsrpllfield?: string;
 }
 
 const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
@@ -745,6 +758,13 @@ const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "latitudefield",
   "longitudefield",
   "pspostefield",
+  "municipiofield",
+  "alturadopostemfield",
+  "materialfield",
+  "danfield",
+  "instalartpfield",
+  "rsrpifield",
+  "rsrpllfield",
 ]);
 
 export async function atualizarCamposVistoria(
@@ -894,6 +914,49 @@ export async function reprovarVistoria(
         SET approval_status = 'REPROVADO',
             is_repeat = 1,
             project_status = 'PENDENTE'
+      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
+    [vistoriaId]
+  );
+
+  return { affected: r.affectedRows };
+}
+
+/**
+ * Resolve uma "Pendência Nansen" (fluxo de tratativa em /painel/cpfl,
+ * 2026-09-15): o analista já corrigiu em campo o que a CPFL apontou como
+ * errado (via edição direta ou devolução pro técnico) — fecha o ciclo:
+ *   - pendência → Sem Pendências
+ *   - dataderesoluodapendnciafield = agora
+ *   - aux.project_status = 'PENDENTE' (worker regera o PDF com os dados corrigidos)
+ *
+ * Só permite quando a pendência ATUAL é "Pendência Nansen" — evita fechar
+ * por engano uma pendência de outra natureza (ex: "Pendência CPFL", que
+ * segue outro fluxo, fora do plugin GLPI de vistomapprojetos).
+ */
+export async function resolverPendenciaNansen(
+  vistoriaId: number
+): Promise<{ affected: number }> {
+  const [row] = await query<{ pendencia_id: number | null }>(
+    `SELECT plugin_fields_pendnciafielddropdowns_id AS pendencia_id
+       FROM \`${TABLE_FIELDS}\` WHERE items_id = ? LIMIT 1`,
+    [vistoriaId]
+  );
+  if (Number(row?.pendencia_id) !== PENDENCIA_NANSEN) {
+    throw new Error('Só é possível finalizar quando a pendência atual é "Pendência Nansen".');
+  }
+
+  const now = nowBrasiliaSql();
+  const r = await execute(
+    `UPDATE \`${TABLE_FIELDS}\`
+        SET plugin_fields_pendnciafielddropdowns_id = ?,
+            dataderesoluodapendnciafield = ?
+      WHERE items_id = ?`,
+    [PENDENCIA_SEM, now, vistoriaId]
+  );
+
+  await execute(
+    `UPDATE \`${TABLE_AUX}\`
+        SET project_status = 'PENDENTE'
       WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
     [vistoriaId]
   );
