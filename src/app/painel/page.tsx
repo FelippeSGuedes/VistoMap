@@ -470,7 +470,7 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
       { key: "pendentes",  label: "Pendentes",   value: s?.pendentes ?? 0,  color: "#F59E0B", icon: ClipboardList, href: "/painel/vistorias" },
       { key: "emVistoria", label: "Em vistoria", value: s?.emVistoria ?? 0,  color: "#3B82F6", icon: Activity,      href: "/painel/andamento" },
       { key: "concluidas", label: "Concluídas",  value: concluidas,          color: "#10B981", icon: CheckCircle2,  href: "/painel/realizadas" },
-      { key: "revisitas",  label: "Revisitas",   value: revisitas,           color: "#A855F7", icon: RotateCw,      href: "/painel/revisitas" },
+      { key: "revisitas",  label: "Reprovado CPFL", value: revisitas,        color: "#A855F7", icon: RotateCw,      href: "/painel/revisitas" },
       { key: "devolucoes", label: "Devoluções",  value: s?.devolvidas ?? 0,  color: "#DC2626", icon: Undo2,         href: "/painel/devolucoes" },
       { key: "rejeicoes",  label: "Rejeições",   value: s?.rejeitadas ?? 0,  color: "#6B7280", icon: Ban,           href: "/painel/rejeitadas" },
     ];
@@ -983,7 +983,7 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">
         {[
           { title: "Aprovação", value: taxaAprov,    color: "#16a34a", caption: "aprovadas no período" },
-          { title: "Revisitas", value: taxaRevisita, color: "#f59e0b", caption: "pendentes (30d)" },
+          { title: "Reprovado CPFL", value: taxaRevisita, color: "#f59e0b", caption: "pendentes (30d)" },
         ].map(g => (
           <div key={g.title} className="flex flex-col items-center rounded-xl bg-[var(--vm-tile)] p-3">
             <p className="mb-2 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-[var(--vm-faint)]">{g.title}</p>
@@ -1559,7 +1559,7 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
         <div className="flex items-center gap-2">
           <RotateCw className="h-3.5 w-3.5 text-orange-500" strokeWidth={2} />
           <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">
-            Revisitas
+            Reprovado CPFL
             {hasRevisitas && (
               <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-bold text-orange-600">
                 {revisitas.length}
@@ -1585,7 +1585,7 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
               <Sparkles className="h-5 w-5 text-emerald-500" strokeWidth={1.5} />
             </div>
             <p className="text-[12px] font-semibold text-[var(--vm-text-soft)]">Operação em dia</p>
-            <p className="text-[10.5px] text-[var(--vm-faint)]">Sem revisitas pendentes.</p>
+            <p className="text-[10.5px] text-[var(--vm-faint)]">Sem reprovados CPFL pendentes.</p>
           </div>
         )}
       </div>
@@ -1797,7 +1797,7 @@ export default function PainelOverviewPage() {
     { label: "Backlog",     raw: stats ? stats.pendentes  : undefined, value: stats ? fmtNum(stats.pendentes)  : "—",  sub: "aguardando atribuição",  color: "#F59E0B", icon: ClipboardList, href: "/painel/vistorias" },
     { label: "Em vistoria", raw: stats ? stats.emVistoria : undefined, value: stats ? fmtNum(stats.emVistoria) : "—",  sub: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, color: "#3B82F6", icon: Activity,    href: "/painel/mapa" },
     { label: "Concluídas",  raw: stats ? stats.vistoriadas : undefined, value: stats ? fmtNum(stats.vistoriadas): "—",  sub: "aguardando aprovação",   color: "#10B981", icon: CheckCircle2, href: "/painel/historico" },
-    { label: "Revisitas",   raw: stats ? (stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0) : undefined, value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
+    { label: "Reprovado CPFL", raw: stats ? (stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0) : undefined, value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
     { label: "Municípios",  raw: stats ? stats.municipiosAtivos : undefined, value: stats ? fmtNum(stats.municipiosAtivos)   : "—", sub: "com equipamentos ativos", color: "#8B5CF6", icon: Building2, href: undefined as string | undefined },
     { label: "Equipe",      raw: stats ? stats.tecnicosAtivos : undefined, value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
   ];

@@ -87,6 +87,19 @@ export async function GET(req: Request) {
         )
       WHERE ne.is_deleted = 0
         AND f.\`${SITUACAO_COLUMN}\` IN (2, 5, 7)
+        -- Impedimento/recusa nunca muda a situação nativa (é só um sinal
+        -- derivado no mapa/ocorrências) — sem esse filtro, um equipamento
+        -- barrado ficava "Em Andamento" pra sempre, mesmo dias depois de
+        -- resolvido, porque o técnico já parou de vistoriar mas o campo
+        -- de situação continuava travado no valor de antes (achado
+        -- 2026-09-15: 9 equipamentos presos, um deles há 5 dias).
+        -- PENDENTE (aguardando decisão) e APROVADO (decidido, fora de
+        -- circulação) saem daqui; REPROVADO não — a vistoria volta pro
+        -- mesmo técnico tentar de novo, e aí sim está em andamento.
+        AND NOT EXISTS (
+          SELECT 1 FROM \`glpi_plugin_vistomap_recusas\` rec
+           WHERE rec.vistoria_id = ne.id AND rec.status IN ('PENDENTE', 'APROVADO')
+        )
       ORDER BY COALESCE(aud_ini.ts, aud_des.ts, now()) DESC
       LIMIT 200
       `
