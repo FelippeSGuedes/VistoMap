@@ -106,26 +106,6 @@ function RevisitaCard({
       {/* CABEÇALHO DO CARD */}
       <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 pl-6">
         <div className="min-w-0 flex-1">
-          {/* Badge de tipo */}
-          <div className="mb-1.5 flex items-center gap-2">
-            <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[9px] font-bold uppercase tracking-[0.14em]"
-              style={{ background: pri.bg, color: pri.fg }}
-            >
-              <RotateCw className="h-2.5 w-2.5" strokeWidth={2.5} />
-              Revisita · {pri.label}
-            </span>
-            {isCritica && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full px-1.5 py-[2px] text-[8.5px] font-bold uppercase tracking-[0.12em]"
-                style={{ background: "var(--vm-red-tint)", color: "#B91C1C" }}
-              >
-                <Zap className="h-2 w-2" />
-                Urgente
-              </span>
-            )}
-          </div>
-
           {/* Equipamento */}
           <h3
             className="truncate text-[15px] font-semibold tracking-[-0.3px]"
@@ -150,33 +130,37 @@ function RevisitaCard({
           </div>
         </div>
 
-        {/* Técnico atribuído (ou vazio) */}
-        <div className="shrink-0">
+        {/* Prioridade + técnico — uma única coluna à direita, um dado embaixo do outro */}
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-[0.14em]"
+            style={{ background: pri.bg, color: pri.fg }}
+          >
+            {isCritica && <Zap className="h-2.5 w-2.5" strokeWidth={2.5} />}
+            {pri.label}
+          </span>
+
           {r.tecnicoAtribuido ? (
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center gap-1.5">
+              <span className="max-w-[76px] truncate text-[10.5px] font-medium" style={{ color: "var(--vm-muted-b)" }}>
+                {r.tecnicoAtribuido.nome.split(" ")[0]}
+              </span>
               <span
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-[11px] font-bold text-white"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white"
                 style={{ background: "linear-gradient(145deg,#00C99B,#00875F)" }}
               >
                 {initials(r.tecnicoAtribuido.nome)}
-              </span>
-              <span className="max-w-[64px] truncate text-center text-[9.5px] font-medium" style={{ color: "var(--vm-muted-b)" }}>
-                {r.tecnicoAtribuido.nome.split(" ")[0]}
               </span>
             </div>
           ) : podeAgir ? (
             <button
               type="button"
               onClick={onAtribuir}
-              className="flex flex-col items-center gap-1 opacity-60 transition hover:opacity-100"
+              className="flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10.5px] font-semibold transition hover:opacity-70"
+              style={{ color: "var(--vm-faint)" }}
             >
-              <span
-                className="flex h-9 w-9 items-center justify-center rounded-xl"
-                style={{ background: "var(--vm-tile-3)", border: "1.5px dashed var(--vm-ph-icon)" }}
-              >
-                <UserPlus className="h-4 w-4" style={{ color: "var(--vm-faint)" }} strokeWidth={1.8} />
-              </span>
-              <span className="text-[9.5px] font-medium" style={{ color: "var(--vm-faint)" }}>Atribuir</span>
+              <UserPlus className="h-3 w-3" strokeWidth={1.8} />
+              Atribuir
             </button>
           ) : null}
         </div>
@@ -238,7 +222,10 @@ function RevisitaCard({
         )}
       </div>
 
-      {/* AÇÕES — leitura só visualiza, sem botões de ação */}
+      {/* AÇÕES — leitura só visualiza, sem botões de ação. As 3 secundárias
+          usam o mesmo tom neutro de propósito: cores diferentes por botão
+          competiam entre si e com o bloco de motivo acima — só "Aprovar"
+          (o que fecha o caso) precisa se destacar. */}
       {podeAgir && (
         <div
           className="flex items-center gap-1.5 border-t px-4 py-2.5 pl-6"
@@ -247,8 +234,8 @@ function RevisitaCard({
           <button
             type="button"
             onClick={onEditar}
-            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
-            style={{ background: "var(--vm-indigo-tint)", color: "#4338CA", border: "1px solid rgba(99,102,241,0.2)" }}
+            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:brightness-95"
+            style={{ background: "var(--vm-tile-3)", color: "var(--vm-muted-b)", border: "1px solid var(--vm-border-soft)" }}
           >
             <Wrench className="h-3 w-3" strokeWidth={2.2} />
             Corrigir Campos
@@ -256,18 +243,18 @@ function RevisitaCard({
           <button
             type="button"
             onClick={onAtribuir}
-            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80"
-            style={{ background: "var(--vm-accent-tint)", color: "#00875F", border: "1px solid rgba(0,179,136,0.2)" }}
+            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:brightness-95"
+            style={{ background: "var(--vm-tile-3)", color: "var(--vm-muted-b)", border: "1px solid var(--vm-border-soft)" }}
           >
             <UserPlus className="h-3 w-3" strokeWidth={2.2} />
-            {r.tecnicoAtribuido ? "Reatribuir" : "Atribuir Revisita"}
+            {r.tecnicoAtribuido ? "Reatribuir" : "Atribuir"}
           </button>
           <button
             type="button"
             onClick={onRegerar}
             disabled={submitting}
-            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
-            style={{ background: "var(--vm-teal-tint)", color: "#0F766E", border: "1px solid rgba(15,118,110,0.18)" }}
+            className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:brightness-95 disabled:opacity-40"
+            style={{ background: "var(--vm-tile-3)", color: "var(--vm-muted-b)", border: "1px solid var(--vm-border-soft)" }}
           >
             <RefreshCcw className={`h-3 w-3 ${submitting ? "animate-spin" : ""}`} strokeWidth={2.2} />
             Regenerar Projeto
@@ -276,11 +263,11 @@ function RevisitaCard({
             type="button"
             onClick={onAprovar}
             disabled={submitting}
-            className="ml-auto flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
-            style={{ background: "linear-gradient(135deg,#00C99B,#00875F)", color: "#fff", border: "1px solid rgba(0,135,95,0.45)" }}
+            className="ml-auto flex h-7 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold text-white transition hover:brightness-110 disabled:opacity-40"
+            style={{ background: "linear-gradient(135deg,#00C99B,#00875F)", boxShadow: "0 2px 8px rgba(0,135,95,0.28)" }}
           >
             <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
-            Aprovar Revisita
+            Aprovar
           </button>
         </div>
       )}
@@ -351,7 +338,7 @@ export default function RevisitasPage() {
         tecnico_id: t.id,
         regenerar_pdf: false,
       });
-      setToast(`Revisita de ${r.equipamento} atribuída a ${t.nome}.`);
+      setToast(`${r.equipamento} atribuído a ${t.nome}.`);
       setTimeout(() => setToast(null), 3000);
       setAtribuirOpen(null);
       carregar();
@@ -367,13 +354,13 @@ export default function RevisitasPage() {
   };
 
   const handleAprovar = async (r: RevisitaPendente) => {
-    if (!confirm(`Aprovar ${r.equipamento}? Sai da fila de revisitas.`)) return;
+    if (!confirm(`Aprovar ${r.equipamento}? Sai da fila de reprovações.`)) return;
     setSubmitting(r.id);
     try {
       const res = await painelService.aprovarVistoria(r.id);
       setToast(
         res.eraRevisita
-          ? `Revisita de ${r.equipamento} aprovada · situação: Revisitado.`
+          ? `${r.equipamento} aprovado · situação: Revisitado.`
           : `${r.equipamento} aprovada · situação: Vistoriado.`
       );
       setTimeout(() => setToast(null), 3000);
@@ -427,7 +414,7 @@ export default function RevisitasPage() {
             </span>
           </div>
           <h1 className="text-[28px] font-semibold tracking-[-0.5px]" style={{ color: "var(--vm-ink)" }}>
-            Central de Revisitas
+            Central de Reprovações
           </h1>
           <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--vm-muted-b)" }}>
             Cada equipamento reprovado é um caso a tratar. Corrija, revise e decida o próximo passo operacional.
@@ -495,10 +482,10 @@ export default function RevisitasPage() {
           >
             <Sparkles className="mb-3 h-8 w-8" style={{ color: "#00B388" }} strokeWidth={1.5} />
             <p className="text-[14px] font-semibold" style={{ color: "var(--vm-ink)" }}>
-              {query ? "Nenhuma revisita encontrada" : "Operação em dia"}
+              {query ? "Nenhum reprovado encontrado" : "Operação em dia"}
             </p>
             <p className="mt-1 text-[12px]" style={{ color: "var(--vm-faint)" }}>
-              {query ? "Tente outro termo de busca." : "Nenhuma revisita pendente no momento."}
+              {query ? "Tente outro termo de busca." : "Nenhum reprovado pendente no momento."}
             </p>
           </motion.div>
         ) : (
@@ -541,7 +528,7 @@ export default function RevisitasPage() {
               <header className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: "var(--vm-border-soft)" }}>
                 <div>
                   <p className="text-[9.5px] font-bold uppercase tracking-[0.18em]" style={{ color: "#C2410C" }}>
-                    Atribuir revisita
+                    Atribuir reprovação
                   </p>
                   <h3 className="mt-0.5 text-[16px] font-semibold tracking-[-0.3px]" style={{ color: "var(--vm-ink)" }}>
                     {atribuirOpen.equipamento}

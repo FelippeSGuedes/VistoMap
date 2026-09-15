@@ -96,7 +96,7 @@ const VISTORIAS_GROUP = [
   { href: "/painel/vistorias",           label: "Pendentes",            icon: ClipboardList, roles: ADMIN_MOD },
   { href: "/painel/agendamentos",        label: "Agendamentos",         icon: Calendar,       roles: ALL_ROLES },
   { href: "/painel/realizadas",          label: "Concluídas",           icon: CheckCircle2,   roles: ALL_ROLES },
-  { href: "/painel/revisitas",           label: "Reprovado CPFL",       icon: RotateCw,       roles: ALL_ROLES },
+  { href: "/painel/revisitas",           label: "Reprovados CPFL",       icon: RotateCw,       roles: ALL_ROLES },
   { href: "/painel/central-vistorias",   label: "Central de Vistorias", icon: Wrench,         roles: ADMIN_MOD },
   { href: "/painel/devolucoes",          label: "Devoluções",           icon: Undo2,          roles: ALL_ROLES },
   // Ocorrências: três naturezas diferentes na MESMA tela, cada entrada abrindo
