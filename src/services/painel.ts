@@ -388,7 +388,7 @@ export async function fetchTopTecnicosDashboard(
   );
 }
 
-export async function fetchHistorico(dias = 30): Promise<HistoricoAnalytics> {
+export async function fetchHistorico(dias = 30, diasAgregado?: number): Promise<HistoricoAnalytics> {
   const fb: HistoricoAnalytics = {
     periodo: { inicio: "", fim: "", dias },
     totais: { vistoriasFinalizadas: 0, revisitasFinalizadas: 0, aprovadas: 0, reprovadas: 0, pdfsGerados: 0 },
@@ -400,8 +400,9 @@ export async function fetchHistorico(dias = 30): Promise<HistoricoAnalytics> {
     kmOperacional: 0,
     motivosReprovacao: [],
   };
+  const qs = diasAgregado != null ? `dias=${dias}&diasAgregado=${diasAgregado}` : `dias=${dias}`;
   return tryReal(
-    api.get<HistoricoAnalytics>(`/painel/historico?dias=${dias}`).then((r) => r.data),
+    api.get<HistoricoAnalytics>(`/painel/historico?${qs}`).then((r) => r.data),
     fb
   );
 }

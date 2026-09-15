@@ -99,9 +99,20 @@ function haversineKm(
 }
 
 export async function fetchHistoricoAnalytics(
-  dias = 30
+  dias = 30,
+  /**
+   * Janela usada só pra totais/taxas/médias (Padrão Diário, gauges de
+   * Equipe ao Vivo no dashboard) — por padrão igual a `dias`, mas o
+   * dashboard principal manda um valor MENOR que `dias` quando também
+   * precisa de uma janela anterior pra calcular variação % (Widget de
+   * Vistorias Finalizadas): `serieDiaria` cobre `dias` dias completos,
+   * mas totais/taxas/médias só devem refletir os últimos `diasAgregado`
+   * (2026-09-15 — filtro de período único do dashboard).
+   */
+  diasAgregado = dias
 ): Promise<HistoricoAnalytics> {
   const inicio = isoDaysAgo(dias);
+  const inicioAgregado = isoDaysAgo(diasAgregado);
 
   /* ── Séries diárias ─────────────────────────────────────────── */
   // Conta por dia agrupando por status name.
@@ -187,7 +198,7 @@ export async function fetchHistoricoAnalytics(
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
     `,
-    [inicio]
+    [inicioAgregado]
   );
 
   const finalizadas = Number(agg?.finalizadas ?? 0);
@@ -410,11 +421,11 @@ export async function fetchHistoricoAnalytics(
   const revisitaPct = finalizadas > 0
     ? Math.round((revisitasFinalizadas / finalizadas) * 100)
     : 0;
-  const diariaVistorias = Math.round(finalizadas / Math.max(dias, 1));
-  const semanalVistorias = Math.round(finalizadas / Math.max(dias / 7, 1));
+  const diariaVistorias = Math.round(finalizadas / Math.max(diasAgregado, 1));
+  const semanalVistorias = Math.round(finalizadas / Math.max(diasAgregado / 7, 1));
 
   return {
-    periodo: { inicio, fim: isoDaysAgo(0), dias },
+    periodo: { inicio: inicioAgregado, fim: isoDaysAgo(0), dias: diasAgregado },
     totais: {
       vistoriasFinalizadas: finalizadas,
       revisitasFinalizadas,

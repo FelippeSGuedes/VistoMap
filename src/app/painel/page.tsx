@@ -15,7 +15,6 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   ClipboardList,
   Clock,
   FileText,
@@ -38,7 +37,6 @@ import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/
 import type {
   HistoricoAnalytics,
   TopTecnicosDashboard,
-  TopTecnicosPeriodo,
 } from "@/services/painel";
 import { getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
@@ -89,6 +87,18 @@ function initials(nome: string): string {
 /* ─── constants ─────────────────────────────────────────────────────────── */
 
 const ACCENT = "#00D084";
+
+/**
+ * Filtro de período único do dashboard (2026-09-15): antes cada widget
+ * histórico tinha sua própria janela fixa (Vistorias Finalizadas em 14
+ * dias, Padrão Diário em 30, Top Técnicos com um seletor só dele) — a
+ * nível gerencial isso não batia, cada card contava uma história de um
+ * recorte diferente. Os widgets AO VIVO (Equipe ao Vivo/mapa, Atividade ao
+ * vivo, Reprovados CPFL, Pendentes CPFL, distribuição do pipeline, KPIs do
+ * topo) ficam de fora de propósito: mostram o agora, não um período.
+ */
+const PERIODOS_GLOBAIS = [7, 14, 30, 90] as const;
+type PeriodoGlobalDias = (typeof PERIODOS_GLOBAIS)[number];
 
 // Tema para os mapas dos widgets (JS, fora do CSS var).
 function dashDark(): boolean {
@@ -557,9 +567,11 @@ interface HeatmapMapWidgetProps {
   topMunicipios: Array<{ municipio: string; total: number }>;
   totais: { vistoriasFinalizadas: number; pdfsGerados: number };
   mediaSemanal: number;
+  /** Período ativo no filtro global do dashboard — só pro rótulo do título. */
+  dias: number;
 }
 
-function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWidgetProps) {
+function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, dias }: HeatmapMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const popupRef     = useRef<mapboxgl.Popup | null>(null);
@@ -786,7 +798,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal }: HeatmapMapWid
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Padrão Diário · 30 dias</span>
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Padrão Diário · {dias} dias</span>
           </div>
           <div className="flex items-center gap-1 text-[9.5px] text-[var(--vm-faint)]">
             {(dashDark()
@@ -858,9 +870,11 @@ interface TeamMapWidgetProps {
   tecnicosAtivos: TecnicoAtivo[];
   taxaAprov: number;
   taxaRevisita: number;
+  /** Período ativo no filtro global — só pra legenda das duas taxas (o mapa em si é ao vivo). */
+  dias: number;
 }
 
-function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: TeamMapWidgetProps) {
+function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita, dias }: TeamMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
@@ -982,8 +996,8 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita }: Te
       )}
       <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">
         {[
-          { title: "Aprovação", value: taxaAprov,    color: "#16a34a", caption: "aprovadas no período" },
-          { title: "Reprovados CPFL", value: taxaRevisita, color: "#f59e0b", caption: "pendentes (30d)" },
+          { title: "Aprovação", value: taxaAprov,    color: "#16a34a", caption: `aprovadas em ${dias}d` },
+          { title: "Reprovados CPFL", value: taxaRevisita, color: "#f59e0b", caption: `pendentes (${dias}d)` },
         ].map(g => (
           <div key={g.title} className="flex flex-col items-center rounded-xl bg-[var(--vm-tile)] p-3">
             <p className="mb-2 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-[var(--vm-faint)]">{g.title}</p>
@@ -1680,6 +1694,11 @@ function ParticlesCanvas() {
    ══════════════════════════════════════════════════════════════════════════ */
 
 export default function PainelOverviewPage() {
+  // Filtro de período único — controla todo widget histórico da página (ver
+  // comentário em PERIODOS_GLOBAIS). Estado vive aqui, no topo, porque tanto
+  // o efeito principal (historico) quanto o de Top Técnicos dependem dele.
+  const [periodoGlobal, setPeriodoGlobal] = useState<PeriodoGlobalDias>(30);
+
   const [stats,        setStats]        = useState<PainelStats | null>(null);
   const [tecnicos,     setTecnicos]     = useState<TecnicoAtivo[]>([]);
   const [revisitas,    setRevisitas]    = useState<RevisitaPendente[]>([]);
@@ -1697,7 +1716,12 @@ export default function PainelOverviewPage() {
         painelService.fetchTecnicos(),
         painelService.fetchRevisitas(),
         painelService.fetchAudit({ limit: 8 }),
-        painelService.fetchHistorico(30),
+        // Pede o DOBRO do período pra série diária (dá pra comparar "este
+        // período" com "o anterior" no Widget de Vistorias Finalizadas),
+        // mas passa diasAgregado = periodoGlobal pra que totais/taxas/
+        // médias (Padrão Diário, gauges de Equipe ao Vivo) reflitam
+        // exatamente o período selecionado, não o dobro.
+        painelService.fetchHistorico(periodoGlobal * 2, periodoGlobal),
         api.get<PainelMapaResponse>("/painel/mapa").then(res => res.data).catch(() => null),
       ]);
       if (!alive) return;
@@ -1709,7 +1733,7 @@ export default function PainelOverviewPage() {
     const poll = window.setInterval(load, 20_000);
     const tick = window.setInterval(() => setNow(new Date()), 1_000);
     return () => { alive = false; clearInterval(poll); clearInterval(tick); };
-  }, []);
+  }, [periodoGlobal]);
 
   // Instalação — poll totalmente independente do bloco acima (nunca entra
   // no Promise.all da Vistoria), pra garantir zero interferência se essa
@@ -1727,28 +1751,31 @@ export default function PainelOverviewPage() {
     return () => { alive = false; clearInterval(poll); };
   }, []);
 
-  // Top Técnicos turbinado — período PRÓPRIO do widget (Hoje/Semana/30d/
-  // Personalizado), independente do fetchHistorico(30) fixo acima. Poll
-  // totalmente isolado, mesmo motivo do bloco de instalação: zero
-  // interferência se essa chamada atrasar ou falhar.
-  const [topTecsPeriodo, setTopTecsPeriodo] = useState<TopTecnicosPeriodo>("mes");
-  const [topTecsCustomInicio, setTopTecsCustomInicio] = useState("");
-  const [topTecsCustomFim, setTopTecsCustomFim] = useState("");
+  // Top Técnicos — antes tinha um seletor de período PRÓPRIO (Hoje/Semana/
+  // 30d/Personalizado); agora segue o filtro global igual todo o resto,
+  // sempre via "personalizado" com inicio/fim calculados daqui. Poll
+  // continua isolado do bloco principal (zero interferência se atrasar).
+  const topTecsRange = useMemo(() => {
+    const fim = new Date();
+    const inicio = new Date();
+    inicio.setDate(inicio.getDate() - (periodoGlobal - 1));
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    return { inicio: fmt(inicio), fim: fmt(fim) };
+  }, [periodoGlobal]);
   const [topTecsDash, setTopTecsDash] = useState<TopTecnicosDashboard | null>(null);
   const [topTecsLoading, setTopTecsLoading] = useState(true);
   useEffect(() => {
-    if (topTecsPeriodo === "personalizado" && (!topTecsCustomInicio || !topTecsCustomFim)) return;
     let alive = true;
     setTopTecsLoading(true);
     const load = () =>
       painelService
-        .fetchTopTecnicosDashboard(topTecsPeriodo, topTecsCustomInicio, topTecsCustomFim)
+        .fetchTopTecnicosDashboard("personalizado", topTecsRange.inicio, topTecsRange.fim)
         .then((d) => { if (alive) setTopTecsDash(d); })
         .finally(() => { if (alive) setTopTecsLoading(false); });
     load();
     const poll = window.setInterval(load, 30_000);
     return () => { alive = false; clearInterval(poll); };
-  }, [topTecsPeriodo, topTecsCustomInicio, topTecsCustomFim]);
+  }, [topTecsRange]);
 
   /* ── derived ── */
   const emCampo    = useMemo(() => tecnicos.filter(t => t.status === "em-campo").length, [tecnicos]);
@@ -1767,9 +1794,12 @@ export default function PainelOverviewPage() {
 
   const velocity = useMemo(() => {
     if (!historico) return { values: [] as number[], labels: [] as string[], avg: 0, peak: 0, total: 0, totalPrev: 0, delta: 0 };
+    // serieDiaria tem 2×periodoGlobal dias (ver fetchHistorico acima) —
+    // metade mais recente é "este período", a outra metade é "o anterior",
+    // pra manter o comparativo de variação % também seguindo o filtro.
     const all    = historico.serieDiaria;
-    const last   = all.slice(-14);
-    const prev   = all.slice(-28, -14);
+    const last   = all.slice(-periodoGlobal);
+    const prev   = all.slice(-periodoGlobal * 2, -periodoGlobal);
     const values = last.map(d => d.finalizadas);
     const labels = last.map(d => diaCurto(d.dia));
     const avg    = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
@@ -1778,7 +1808,7 @@ export default function PainelOverviewPage() {
     const totalPrev = prev.reduce((a, b) => a + b.finalizadas, 0);
     const delta  = totalPrev > 0 ? ((total - totalPrev) / totalPrev) * 100 : 0;
     return { values, labels, avg, peak, total, totalPrev, delta };
-  }, [historico]);
+  }, [historico, periodoGlobal]);
 
   const alertaRevisitas = revisitas.filter(
     r => r.prioridade === "CRITICA" || r.prioridade === "ALTA",
@@ -2003,6 +2033,40 @@ export default function PainelOverviewPage() {
 
       </div>
 
+      {/* ════════════ FILTRO DE PERÍODO — controla os widgets históricos abaixo ════════════
+          Não mexe em nada ao vivo (Equipe ao Vivo/mapa, Atividade ao vivo,
+          Reprovados CPFL, Pendentes CPFL, distribuição do pipeline, KPIs do
+          topo) — só nos que mostram um recorte de dias (ver PERIODOS_GLOBAIS). */}
+      <div
+        className="vm-rise flex flex-wrap items-center gap-3 rounded-2xl px-5 py-3"
+        style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
+      >
+        <div className="flex items-center gap-1.5" style={{ color: "var(--vm-muted)" }}>
+          <CalendarDays className="h-3.5 w-3.5" />
+          <span className="text-[12px] font-semibold">Período de análise</span>
+        </div>
+        <div className="flex items-center gap-0.5 rounded-xl p-0.5" style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)" }}>
+          {PERIODOS_GLOBAIS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriodoGlobal(p)}
+              className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition"
+              style={{
+                background: periodoGlobal === p ? "var(--vm-card)" : "transparent",
+                color: periodoGlobal === p ? "var(--vm-text)" : "var(--vm-muted)",
+                boxShadow: periodoGlobal === p ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+              }}
+            >
+              {p}d
+            </button>
+          ))}
+        </div>
+        <span className="text-[10.5px]" style={{ color: "var(--vm-faint)" }}>
+          Vale pra Vistorias Finalizadas, Padrão Diário e Top Técnicos — indicadores ao vivo continuam mostrando agora.
+        </span>
+      </div>
+
       {/* ════════════ LINHA 1: Velocity | Heatmap SP | Equipe ════════════ */}
       <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" style={{ animationDelay: "0.08s" }}>
 
@@ -2024,7 +2088,7 @@ export default function PainelOverviewPage() {
             <div>
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-                <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias Finalizadas · 14 dias</span>
+                <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias Finalizadas · {periodoGlobal} dias</span>
               </div>
               <div className="mt-3 flex items-end gap-3">
                 <span
@@ -2110,6 +2174,7 @@ export default function PainelOverviewPage() {
             topMunicipios={historico.topMunicipios.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
             totais={historico.totais}
             mediaSemanal={historico.medias.semanalVistorias}
+            dias={periodoGlobal}
           />
         ) : (
           <Card><div className="flex-1 p-5"><Skeleton h={280} /></div></Card>
@@ -2121,6 +2186,7 @@ export default function PainelOverviewPage() {
           tecnicosAtivos={tecnicos.filter(t => t.status === "em-campo" || t.status === "base")}
           taxaAprov={taxaAprov}
           taxaRevisita={taxaRevisita}
+          dias={periodoGlobal}
         />
       </div>
 
@@ -2138,45 +2204,12 @@ export default function PainelOverviewPage() {
           <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2.5">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos</span>
+              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos · {periodoGlobal} dias</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <select
-                  value={topTecsPeriodo}
-                  onChange={(e) => setTopTecsPeriodo(e.target.value as TopTecnicosPeriodo)}
-                  className="appearance-none rounded-full border border-[var(--vm-border)] bg-[var(--vm-tile)] py-1 pl-2.5 pr-6 text-[10px] font-semibold text-[var(--vm-text)] outline-none"
-                >
-                  <option value="hoje">Hoje</option>
-                  <option value="semana">Última semana</option>
-                  <option value="mes">Últimos 30 dias</option>
-                  <option value="personalizado">Personalizado</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--vm-faint)]" />
-              </div>
               <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
             </div>
           </div>
-          {topTecsPeriodo === "personalizado" && (
-            <div className="flex items-center gap-1.5 px-5 pb-2.5 text-[10.5px] text-[var(--vm-faint)]">
-              <CalendarDays className="h-3 w-3 shrink-0" />
-              <input
-                type="date"
-                value={topTecsCustomInicio}
-                max={topTecsCustomFim || undefined}
-                onChange={(e) => setTopTecsCustomInicio(e.target.value)}
-                className="rounded-lg border border-[var(--vm-border)] bg-[var(--vm-tile)] px-1.5 py-0.5 text-[10.5px] text-[var(--vm-text)] outline-none"
-              />
-              <span>até</span>
-              <input
-                type="date"
-                value={topTecsCustomFim}
-                min={topTecsCustomInicio || undefined}
-                onChange={(e) => setTopTecsCustomFim(e.target.value)}
-                className="rounded-lg border border-[var(--vm-border)] bg-[var(--vm-tile)] px-1.5 py-0.5 text-[10.5px] text-[var(--vm-text)] outline-none"
-              />
-            </div>
-          )}
           <div className="flex flex-col gap-0 px-3 pb-3">
             {topTecs.length > 0 ? (
               topTecs.map((t, i) => {
