@@ -1160,12 +1160,21 @@ export async function atribuirVistoria(
   // que foi reportado).
   const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_A_VISTORIAR;
 
+  // statusvistoria (nativo) também precisa voltar pro início — achado
+  // 2026-09-15: atribuir um técnico pra um equipamento que estava
+  // "Reprovado"/"Aprovado"/"Em análise" (id 3/4/5) atualizava situação e
+  // técnico certinho, mas deixava esse campo intocado; a fila do próprio
+  // técnico (listVistorias em equipments.ts) EXCLUI justamente esses 3
+  // valores, então a vistoria sumia da lista dele mesmo aparecendo
+  // "atribuída" pro analista. Caso real: VIN-G-A-009 atribuído ao Danilo
+  // e nunca apareceu porque ficou com status_id=4 (Reprovado).
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET users_id_vistoriadorafield = ?,
-            \`${SITUACAO_COLUMN}\` = ?
+            \`${SITUACAO_COLUMN}\` = ?,
+            plugin_fields_statusvistoriafielddropdowns_id = ?
       WHERE items_id = ?`,
-    [tecnicoId, situacao, vistoriaId]
+    [tecnicoId, situacao, STATUS_VISTORIA_PENDENTE, vistoriaId]
   );
   if (marcarProjetoPendente) {
     await execute(
@@ -2124,8 +2133,16 @@ export async function devolverVistoria(
 }
 
 /**
- * Reatribui a vistoria a outro técnico.
- * Mantém o estado/situação atual — apenas troca o vistoriador.
+ * Reatribui a vistoria a outro técnico — volta pra situação "A Vistoriar"
+ * e reseta statusvistoria pra "Pendente" (inicial).
+ *
+ * O reset do statusvistoria foi adicionado em 2026-09-15: essa função é
+ * usada tanto pelo mapa/Central de Vistorias quanto por
+ * /api/painel/rejeitadas/[id]/reabrir (impedimento/recusa) — sem tocar
+ * nesse campo, um equipamento que estava "Reprovado"/"Aprovado"/"Em
+ * análise" (statusvistoria 3/4/5) ficava com técnico e situação corretos,
+ * mas sumia da fila do próprio técnico mesmo assim: listVistorias (em
+ * equipments.ts) exclui explicitamente esses 3 valores de statusvistoria.
  */
 export async function reatribuirVistoria(
   vistoriaId: number,
@@ -2134,9 +2151,10 @@ export async function reatribuirVistoria(
   await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET users_id_vistoriadorafield = ?,
-            \`${SITUACAO_COLUMN}\`    = ?
+            \`${SITUACAO_COLUMN}\`    = ?,
+            plugin_fields_statusvistoriafielddropdowns_id = ?
       WHERE items_id = ?`,
-    [novoTecnicoId, SITUACAO_A_VISTORIAR, vistoriaId]
+    [novoTecnicoId, SITUACAO_A_VISTORIAR, STATUS_VISTORIA_PENDENTE, vistoriaId]
   );
 }
 
