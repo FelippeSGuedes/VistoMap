@@ -1,57 +1,51 @@
 "use client";
 
 /**
- * /painel/cpfl — Validação da Concessionária.
+ * /painel/cpfl — Pendências Nansen.
  *
- * Fecha um buraco de processo: o fluxo terminava em "enviei pra CPFL" e nunca
- * mais voltava. Havia 308 vistorias paradas em "Em análise" sem nenhuma tela
- * que as acompanhasse, e nenhum jeito de ver há quanto tempo estavam lá.
+ * Reformulada em 2026-09-15: até então esta tela era um painel de
+ * acompanhamento GERAL da concessionária (Aguardando/Aprovadas/Reprovadas,
+ * dias parado, sincronizar status, recuperar avaliador) — 100% leitura, já
+ * que quem aprova/reprova é a CPFL, direto no GLPI.
  *
- * A tela é SOMENTE LEITURA sobre a decisão da CPFL de propósito: quem
- * aprova/reprova é a CPFL, direto no GLPI — não existe (nem vai existir)
- * botão pra isso aqui.
+ * Isso saiu daqui de propósito (pedido do usuário: "remodelação completa
+ * ... sendo focal apenas para isso"). O motivo de fundo: "Pendência Nansen"
+ * NÃO é decisão da CPFL — é o apontamento de que algo nos dados/fotos está
+ * errado, e quem resolve é o time interno (Nansen), não a concessionária.
+ * Por isso é o ÚNICO recorte que faz sentido virar fila de ação; o resto
+ * era só um espelho do que a CPFL já decidiu, sem nada pra fazer aqui.
  *
- * EXCEÇÃO (2026-09-15): "Pendência Nansen" não é decisão da CPFL — é o
- * apontamento de que ALGO nos dados/fotos está errado, e quem resolve isso é
- * o time interno (Nansen), não a concessionária. Por isso só ESSE recorte
- * ganhou tratativa própria (corrigir campos, solicitar devolução ao técnico,
- * finalizar — que regera o projeto e fecha a pendência). Continua sem
- * inventar decisão nenhuma da CPFL: o status "Aprovado com Pendências" já
- * foi dado por quem aprovou o projeto (plugin GLPI); aqui só se resolve o
- * que falta pra ele virar "Sem Pendências".
- *
- * O dado que dá valor à tela não é o total, é a ESPERA: por isso a ordenação
- * padrão é da mais antiga para a mais nova e o tempo parado ganha destaque.
+ * A tela agora é 100% isso: uma fila de projetos aprovados com pendência
+ * ainda em aberto do lado da Nansen, ordenada pela mais antiga primeiro (é
+ * a espera que importa, não o total). Continua sem inventar decisão da
+ * CPFL — o status "Aprovado com Pendências" já foi dado por quem aprovou o
+ * projeto (plugin GLPI); aqui só se resolve o que falta pra virar "Sem
+ * Pendências" (corrigir dados, devolver pro técnico, ou as duas coisas).
  */
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Building2,
   Calendar,
   CheckCircle2,
-  Clock,
   FileText,
   Loader2,
   MapPin,
   Pencil,
   RefreshCw,
   Search,
-  Send,
-  ShieldCheck,
   Undo2,
   User,
   Wrench,
   X,
-  XCircle,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/store/auth";
 import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 import { DEVOLUCAO_ITENS, DEVOLUCAO_MOTIVOS } from "@/lib/glpi/devolucaoItens";
-import type { CPFLStats, EtapaCPFL, VistoriaCPFL } from "@/services/painel";
+import type { VistoriaCPFL } from "@/services/painel";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 
@@ -59,6 +53,13 @@ function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(String(iso).replace(" ", "T"));
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+}
+
+function diasDesde(iso: string | null): number | null {
+  if (!iso) return null;
+  const d = new Date(String(iso).replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000));
 }
 
 /**
@@ -71,22 +72,6 @@ function corDaEspera(dias: number | null): { fg: string; bg: string } {
   if (dias >= 15) return { fg: "#D97706", bg: "var(--vm-orange-tint)" };
   return { fg: "var(--vm-text-soft)", bg: "var(--vm-tile-2)" };
 }
-
-const ETAPA_META: Record<
-  EtapaCPFL,
-  { label: string; color: string; bg: string; icon: typeof CheckCircle2 }
-> = {
-  AGUARDANDO: { label: "Aguardando CPFL", color: "#D97706", bg: "var(--vm-orange-tint)", icon: Clock },
-  APROVADA:   { label: "Aprovada",        color: "#00875F", bg: "var(--vm-accent-tint)", icon: CheckCircle2 },
-  REPROVADA:  { label: "Reprovada",       color: "#B91C1C", bg: "var(--vm-red-tint)",    icon: XCircle },
-};
-
-const FILTROS: Array<{ id: EtapaCPFL | "TODAS"; label: string }> = [
-  { id: "TODAS", label: "Todas" },
-  { id: "AGUARDANDO", label: "Aguardando" },
-  { id: "APROVADA", label: "Aprovadas" },
-  { id: "REPROVADA", label: "Reprovadas" },
-];
 
 /**
  * Mesmo tratamento de PDF de /painel/realizadas: a rota exige Bearer, que uma
@@ -102,15 +87,7 @@ function pdfFileParam(dbPath: string): string {
 
 /* ─── página ─────────────────────────────────────────────────────── */
 
-const STATS_VAZIO: CPFLStats = {
-  total: 0,
-  aguardando: 0,
-  aprovadas: 0,
-  reprovadas: 0,
-  aguardandoMais30d: 0,
-};
-
-/** "Aprovado com Pendências" + pendência ainda em Nansen — o único recorte que ganha tratativa própria (ver comentário no topo do arquivo). */
+/** "Aprovado com Pendências" + pendência ainda em Nansen — o único recorte que esta tela mostra (ver comentário no topo do arquivo). */
 function ehPendenciaNansen(v: VistoriaCPFL): boolean {
   return v.etapa === "APROVADA" && v.pendencia === "Pendência Nansen";
 }
@@ -119,17 +96,11 @@ export default function ValidacaoCPFLPage() {
   const { session } = useAuthStore();
   const podeAgir = session?.role !== "leitura";
   const [items, setItems] = useState<VistoriaCPFL[]>([]);
-  const [stats, setStats] = useState<CPFLStats>(STATS_VAZIO);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  const [etapa, setEtapa] = useState<EtapaCPFL | "TODAS">("TODAS");
   const [q, setQ] = useState("");
   const [municipio, setMunicipio] = useState<string>("");
-  const [soPendenciaNansen, setSoPendenciaNansen] = useState(false);
-
-  const [sincronizando, setSincronizando] = useState(false);
-  const [recuperandoAvaliador, setRecuperandoAvaliador] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [tratando, setTratando] = useState<VistoriaCPFL | null>(null);
@@ -139,8 +110,7 @@ export default function ValidacaoCPFLPage() {
     setErro(null);
     try {
       const r = await painelService.fetchCPFL({ limit: 5000 });
-      setItems(r.items);
-      setStats(r.stats);
+      setItems(r.items.filter(ehPendenciaNansen));
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -152,41 +122,27 @@ export default function ValidacaoCPFLPage() {
     void carregar();
   }, []);
 
-  // ?etapa=AGUARDANDO permite que o botão do e-mail de lembrete caia direto na
-  // tela já filtrada. Lido de window em vez de useSearchParams de propósito:
-  // useSearchParams exige fronteira de Suspense no app router e derruba o
-  // build estático — aqui não vale o custo, é só um parâmetro de entrada.
-  useEffect(() => {
-    const alvo = new URLSearchParams(window.location.search).get("etapa");
-    if (alvo === "AGUARDANDO" || alvo === "APROVADA" || alvo === "REPROVADA") {
-      setEtapa(alvo);
-    }
-  }, []);
-
   const municipios = useMemo(
     () => Array.from(new Set(items.map((i) => i.municipio).filter((m) => m && m !== "—"))).sort(),
     [items]
   );
 
-  // Filtro no cliente: o conjunto é pequeno (centenas) e evita ida ao servidor
-  // a cada tecla. Quando crescer, vira filtro no banco — a API já aceita.
-  const totalPendenciaNansen = useMemo(() => items.filter(ehPendenciaNansen).length, [items]);
-
+  // Ordem por urgência: quem espera tratativa há mais tempo primeiro.
   const filtrados = useMemo(() => {
     const termo = q.trim().toLowerCase();
-    return items.filter((i) => {
-      if (soPendenciaNansen && !ehPendenciaNansen(i)) return false;
-      if (etapa !== "TODAS" && i.etapa !== etapa) return false;
-      if (municipio && i.municipio !== municipio) return false;
-      if (!termo) return true;
-      return (
-        i.equipamento.toLowerCase().includes(termo) ||
-        i.municipio.toLowerCase().includes(termo) ||
-        (i.endereco ?? "").toLowerCase().includes(termo) ||
-        (i.tecnico?.nome ?? "").toLowerCase().includes(termo)
-      );
-    });
-  }, [items, etapa, municipio, q, soPendenciaNansen]);
+    return items
+      .filter((i) => {
+        if (municipio && i.municipio !== municipio) return false;
+        if (!termo) return true;
+        return (
+          i.equipamento.toLowerCase().includes(termo) ||
+          i.municipio.toLowerCase().includes(termo) ||
+          (i.endereco ?? "").toLowerCase().includes(termo) ||
+          (i.tecnico?.nome ?? "").toLowerCase().includes(termo)
+        );
+      })
+      .sort((a, b) => (diasDesde(b.dataAprovacao) ?? 0) - (diasDesde(a.dataAprovacao) ?? 0));
+  }, [items, municipio, q]);
 
   async function abrirPdf(item: VistoriaCPFL) {
     if (!item.pdfPath) return;
@@ -202,58 +158,6 @@ export default function ValidacaoCPFLPage() {
     }
   }
 
-  // Não é "aprovar" — é corrigir o status NATIVO do GLPI (states_id) de
-  // equipamento que a CPFL JÁ aprovou (statusvistoria + data preenchida)
-  // mas que nunca avançou pra "Liberado para Instalação" porque nada
-  // fazia essa ponte automaticamente (achado 2026-09-10). Continua sem
-  // inventar decisão nenhuma da CPFL — só propaga uma que já existe.
-  async function handleSincronizar() {
-    setSincronizando(true);
-    try {
-      const r = await painelService.sincronizarStatusCPFL();
-      setToast(
-        r.liberados.length === 0
-          ? "Nada pra corrigir — todo mundo aprovado já está com o status certo."
-          : `${r.liberados.length} equipamento(s) corrigido(s) pra "Liberado para Instalação": ${r.liberados
-              .map((e) => e.equipamento)
-              .join(", ")}`
-      );
-    } catch (e) {
-      setToast(`❌ Falha ao sincronizar: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSincronizando(false);
-      setTimeout(() => setToast(null), 8000);
-    }
-  }
-
-  // A CPFL aprova direto no GLPI dela — o único jeito de saber quem foi é
-  // o histórico nativo do GLPI (glpi_logs). Best-effort de propósito: só
-  // grava quando o histórico não deixa margem pra dúvida (ver
-  // recuperarAvaliadorViaLogsGlpi em painel.ts); o resto fica reportado,
-  // nunca "no chute".
-  async function handleRecuperarAvaliador() {
-    setRecuperandoAvaliador(true);
-    try {
-      const r = await painelService.recuperarAvaliadorCPFL();
-      const partes: string[] = [];
-      if (r.recuperados.length > 0) {
-        partes.push(
-          `${r.recuperados.length} recuperado(s): ${r.recuperados.map((x) => `${x.equipamento} → ${x.avaliador}`).join(", ")}`
-        );
-      }
-      if (r.naoRecuperados.length > 0) {
-        partes.push(`${r.naoRecuperados.length} sem confirmação suficiente no histórico do GLPI`);
-      }
-      setToast(partes.length > 0 ? partes.join(" · ") : "Nada pendente — nenhum aprovado sem avaliador registrado.");
-      if (r.recuperados.length > 0) void carregar();
-    } catch (e) {
-      setToast(`❌ Falha ao recuperar avaliador: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setRecuperandoAvaliador(false);
-      setTimeout(() => setToast(null), 10000);
-    }
-  }
-
   return (
     <div className="space-y-5">
       {/* ── CABEÇALHO ── */}
@@ -264,52 +168,29 @@ export default function ValidacaoCPFLPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2">
-              <span className="inline-block h-px w-8" style={{ background: "var(--vm-accent)" }} />
-              <span
-                className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                style={{ color: "var(--vm-accent)" }}
-              >
-                Concessionária
+              <span className="inline-block h-px w-8" style={{ background: "#0F766E" }} />
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: "#0F766E" }}>
+                Aprovado com pendências
               </span>
             </div>
             <h1 className="text-[22px] font-bold leading-tight" style={{ color: "var(--vm-text)" }}>
-              Validação CPFL
+              Pendências Nansen
             </h1>
+            <p className="mt-1 max-w-[62ch] text-[12.5px]" style={{ color: "var(--vm-muted)" }}>
+              Projetos que a CPFL aprovou com ressalva — corrija os dados ou devolva pro técnico, depois
+              finalize pra fechar a pendência e regerar o projeto.
+            </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => void handleSincronizar()}
-              disabled={sincronizando}
-              title='Corrige o status geral (states_id) de equipamentos já aprovados pela CPFL que ficaram presos em "Vistoriado" — não aprova nada, só propaga uma aprovação que já existe.'
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold text-white transition hover:brightness-105 disabled:opacity-50"
-              style={{ background: "var(--vm-accent)" }}
-            >
-              <ShieldCheck className={`h-3.5 w-3.5 ${sincronizando ? "animate-pulse" : ""}`} />
-              {sincronizando ? "Sincronizando…" : "Sincronizar status"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleRecuperarAvaliador()}
-              disabled={recuperandoAvaliador}
-              title='Tenta recuperar, pelo histórico nativo do GLPI, o nome de quem aprovou vistorias que a CPFL aprovou direto no GLPI dela (sem passar pelo VistoMap) — best-effort, só grava quando o histórico não deixa margem pra dúvida.'
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition hover:brightness-95 disabled:opacity-50"
-              style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
-            >
-              <User className={`h-3.5 w-3.5 ${recuperandoAvaliador ? "animate-pulse" : ""}`} />
-              {recuperandoAvaliador ? "Buscando…" : "Recuperar avaliador"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void carregar()}
-              disabled={loading}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition hover:brightness-95 disabled:opacity-50"
-              style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-              Atualizar
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void carregar()}
+            disabled={loading}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition hover:brightness-95 disabled:opacity-50"
+            style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text-soft)" }}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Atualizar
+          </button>
         </div>
 
         {toast && (
@@ -320,18 +201,6 @@ export default function ValidacaoCPFLPage() {
             {toast}
           </div>
         )}
-
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatPill label="Aguardando" value={stats.aguardando} color="#D97706" bg="rgba(217,119,6,0.10)" />
-          <StatPill label="Aprovadas"  value={stats.aprovadas}  color="#34D399" bg="rgba(52,211,153,0.10)" />
-          <StatPill label="Reprovadas" value={stats.reprovadas} color="#F87171" bg="rgba(248,113,113,0.10)" />
-          <StatPill
-            label="Parado +30 dias"
-            value={stats.aguardandoMais30d}
-            color="#DC2626"
-            bg="rgba(220,38,38,0.10)"
-          />
-        </div>
       </div>
 
       {/* ── ERRO ── */}
@@ -342,7 +211,7 @@ export default function ValidacaoCPFLPage() {
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
           <div className="min-w-0">
-            <p className="text-[13px] font-bold text-red-700">Falha ao carregar a validação CPFL</p>
+            <p className="text-[13px] font-bold text-red-700">Falha ao carregar as pendências</p>
             <p className="mt-0.5 break-all font-mono text-[11px] text-red-500">{erro}</p>
           </div>
         </div>
@@ -368,30 +237,6 @@ export default function ValidacaoCPFLPage() {
           )}
         </div>
 
-        <div
-          className="flex items-center gap-0.5 rounded-xl p-0.5"
-          style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)" }}
-        >
-          {FILTROS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setEtapa(f.id)}
-              className="rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition"
-              style={{
-                background: etapa === f.id ? "var(--vm-card)" : "transparent",
-                color:
-                  etapa === f.id
-                    ? f.id === "TODAS"
-                      ? "var(--vm-text)"
-                      : ETAPA_META[f.id].color
-                    : "var(--vm-text-soft)",
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
         {municipios.length > 1 && (
           <select
             value={municipio}
@@ -410,22 +255,6 @@ export default function ValidacaoCPFLPage() {
               </option>
             ))}
           </select>
-        )}
-
-        {totalPendenciaNansen > 0 && (
-          <button
-            type="button"
-            onClick={() => setSoPendenciaNansen((v) => !v)}
-            className="flex h-9 items-center gap-1.5 rounded-xl px-3 text-[11.5px] font-bold transition"
-            style={{
-              background: soPendenciaNansen ? "#0F766E" : "var(--vm-teal-tint)",
-              color: soPendenciaNansen ? "#fff" : "#0F766E",
-              border: `1px solid ${soPendenciaNansen ? "#0F766E" : "rgba(15,118,110,0.3)"}`,
-            }}
-          >
-            <Wrench className="h-3.5 w-3.5" />
-            Pendência Nansen ({totalPendenciaNansen})
-          </button>
         )}
 
         <span className="ml-auto text-[11.5px] font-semibold" style={{ color: "var(--vm-muted)" }}>
@@ -449,14 +278,14 @@ export default function ValidacaoCPFLPage() {
           className="flex flex-col items-center justify-center gap-2 rounded-2xl px-6 py-14 text-center"
           style={{ background: "var(--vm-tile)", border: "1px dashed var(--vm-border)" }}
         >
-          <ShieldCheck className="h-7 w-7" style={{ color: "var(--vm-faint)" }} />
+          <CheckCircle2 className="h-7 w-7" style={{ color: "#0F766E" }} />
           <p className="text-[13.5px] font-bold" style={{ color: "var(--vm-text)" }}>
-            Nenhuma vistoria nesse recorte
+            {items.length === 0 ? "Nenhuma pendência Nansen agora" : "Nada bate com esses filtros"}
           </p>
           <p className="max-w-[420px] text-[12px]" style={{ color: "var(--vm-muted)" }}>
             {items.length === 0
-              ? "Nada foi enviado à concessionária ainda."
-              : "Os filtros atuais não deixaram nenhuma vistoria de fora do recorte."}
+              ? "Assim que a CPFL aprovar um projeto com ressalva, ele aparece aqui."
+              : "Ajuste a busca ou o município."}
           </p>
         </div>
       ) : (
@@ -467,7 +296,7 @@ export default function ValidacaoCPFLPage() {
                 key={v.id}
                 v={v}
                 onPdf={() => void abrirPdf(v)}
-                onTratar={podeAgir && ehPendenciaNansen(v) ? () => setTratando(v) : undefined}
+                onTratar={podeAgir ? () => setTratando(v) : undefined}
               />
             ))}
           </AnimatePresence>
@@ -490,29 +319,6 @@ export default function ValidacaoCPFLPage() {
 
 /* ─── componentes ────────────────────────────────────────────────── */
 
-function StatPill({
-  label,
-  value,
-  color,
-  bg,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  bg: string;
-}) {
-  return (
-    <div className="rounded-xl p-3" style={{ background: bg, border: "1px solid var(--vm-border)" }}>
-      <p className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: "var(--vm-faint)" }}>
-        {label}
-      </p>
-      <p className="mt-1 text-[22px] font-bold leading-none tabular-nums" style={{ color }}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function CardCPFL({
   v,
   onPdf,
@@ -522,9 +328,8 @@ function CardCPFL({
   onPdf: () => void;
   onTratar?: () => void;
 }) {
-  const meta = ETAPA_META[v.etapa];
-  const Icone = meta.icon;
-  const espera = corDaEspera(v.diasAguardando);
+  const dias = diasDesde(v.dataAprovacao);
+  const espera = corDaEspera(dias);
 
   return (
     <motion.div
@@ -551,10 +356,10 @@ function CardCPFL({
         </div>
         <span
           className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold"
-          style={{ background: meta.bg, color: meta.color }}
+          style={{ background: espera.bg, color: espera.fg }}
         >
-          <Icone className="h-3 w-3" />
-          {meta.label}
+          <Calendar className="h-3 w-3" />
+          {dias == null ? "sem data" : `há ${dias} dia${dias === 1 ? "" : "s"}`}
         </span>
       </div>
 
@@ -562,10 +367,6 @@ function CardCPFL({
         className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11.5px]"
         style={{ color: "var(--vm-text-soft)" }}
       >
-        <span className="flex items-center gap-1">
-          <Building2 className="h-3 w-3 shrink-0" />
-          {v.municipio}
-        </span>
         <span className="flex items-center gap-1">
           <User className="h-3 w-3 shrink-0" />
           {v.tecnico?.nome ?? <span style={{ color: "var(--vm-faint)" }}>sem técnico</span>}
@@ -581,60 +382,31 @@ function CardCPFL({
             </span>
           )}
         </span>
-      </div>
-
-      <div
-        className="mt-2.5 grid grid-cols-2 gap-2 border-t pt-2.5 text-[11px]"
-        style={{ borderColor: "var(--vm-border-soft)", color: "var(--vm-muted)" }}
-      >
         <span className="flex items-center gap-1">
-          <Send className="h-3 w-3 shrink-0" />
-          Enviado {fmtDate(v.dataEnvio)}
+          <Calendar className="h-3 w-3 shrink-0" />
+          Aprovado {fmtDate(v.dataAprovacao)}
         </span>
-        {v.etapa === "APROVADA" ? (
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3 shrink-0" />
-            Aprovado {fmtDate(v.dataAprovacao)}
-          </span>
-        ) : (
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3 shrink-0" />
-            Vistoria {fmtDate(v.dataVistoria)}
-          </span>
-        )}
       </div>
 
-      {/* Analista do VistoMap que aprovou/reprovou em /painel/revisitas — só
-          aparece quando a decisão passou por lá (a maioria vem de aprovação
-          direta da CPFL no GLPI, fora do alcance do VistoMap). */}
+      {/* Quem aprovou com pendência (users_id_avaliadordavistoriacpflfield,
+          gravado pelo plugin GLPI ao aprovar) — nem sempre preenchido. */}
       {v.avaliadorInterno && (
         <div className="mt-1.5 flex items-center gap-1 text-[11px]" style={{ color: "var(--vm-muted)" }}>
-          <ShieldCheck className="h-3 w-3 shrink-0" />
-          Aprovado internamente por {v.avaliadorInterno}
+          <CheckCircle2 className="h-3 w-3 shrink-0" />
+          Aprovado por {v.avaliadorInterno}
         </div>
       )}
 
-      <div className="mt-auto flex items-center gap-1.5 pt-3">
-        {v.etapa === "AGUARDANDO" && (
-          <span
-            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold"
-            style={{ background: espera.bg, color: espera.fg }}
-          >
-            <Clock className="h-3 w-3" />
-            {v.diasAguardando == null ? "sem data de envio" : `${v.diasAguardando} dias parada`}
-          </span>
-        )}
-        {v.pendencia && (
-          <span
-            className="rounded-lg px-2 py-1 text-[10.5px] font-semibold"
-            style={{
-              background: v.pendencia === "Pendência Nansen" ? "var(--vm-teal-tint)" : "var(--vm-tile-2)",
-              color: v.pendencia === "Pendência Nansen" ? "#0F766E" : "var(--vm-text-soft)",
-            }}
-          >
-            {v.pendencia}
-          </span>
-        )}
+      <div
+        className="mt-2.5 flex items-center gap-1.5 border-t pt-2.5"
+        style={{ borderColor: "var(--vm-border-soft)" }}
+      >
+        <span
+          className="rounded-lg px-2 py-1 text-[10.5px] font-semibold"
+          style={{ background: "var(--vm-teal-tint)", color: "#0F766E" }}
+        >
+          {v.pendencia}
+        </span>
         {onTratar && (
           <button
             type="button"

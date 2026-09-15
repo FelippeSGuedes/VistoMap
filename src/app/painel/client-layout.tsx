@@ -108,7 +108,7 @@ const VISTORIAS_GROUP = [
   { href: "/painel/ocorrencias?tipo=impedimento", label: "Impedimentos", icon: Construction,  roles: ALL_ROLES },
   { href: "/painel/ocorrencias?tipo=recusa",      label: "Recusas",      icon: Ban,           roles: ALL_ROLES },
   { href: "/painel/ocorrencias?tipo=excecao",     label: "Exceções",     icon: AlertTriangle, roles: ALL_ROLES },
-  { href: "/painel/cpfl",                label: "Validação CPFL",       icon: ShieldCheck,    roles: ALL_ROLES },
+  { href: "/painel/cpfl",                label: "Pendências Nansen",    icon: Wrench,         roles: ALL_ROLES },
 ];
 
 const VISTORIAS_HREFS = new Set(VISTORIAS_GROUP.map((i) => i.href.split("?")[0]));
