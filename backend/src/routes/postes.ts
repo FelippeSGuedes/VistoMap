@@ -106,6 +106,48 @@ function buildDescricaoMudanca(args: {
   return linhas.join("\n");
 }
 
+/** yesno do GLPI é string "1"/"0" — ver UPDATABLE_COLUMNS no Next (aterramentofield é o mesmo padrão). */
+function toYesNo(v: boolean | null): "1" | "0" | null {
+  return v == null ? null : v ? "1" : "0";
+}
+
+/**
+ * Regra confirmada em produção (2026-09-16): dos 4064 équipements com
+ * Alimentação já preenchida, 100% seguem essa correlação com Rede
+ * Secundária, zero exceção — por isso dá pra derivar em vez de perguntar
+ * pro técnico.
+ */
+function derivarAlimentacao(temRedeSecundaria: boolean | null): "BT" | "MT" | null {
+  return temRedeSecundaria == null ? null : temRedeSecundaria ? "BT" : "MT";
+}
+
+/**
+ * Regra confirmada em produção (2026-09-16): sem Rede Secundária (MT), o
+ * poste precisa de TP — dos équipements já preenchidos, 164/167 (MT) e
+ * 4422/4423 (BT) já seguem essa correlação, as poucas exceções são
+ * divergência de cadastro antiga, não contra-exemplo da regra física.
+ */
+function derivarInstalarTp(temRedeSecundaria: boolean | null): "1" | "0" | null {
+  return temRedeSecundaria == null ? null : temRedeSecundaria ? "0" : "1";
+}
+
+/** Campos GLPI derivados do poste PostGIS — usado tanto em poste_novo quanto payload_glpi. */
+function derivarCamposRedeGlpi(posteNovo: {
+  tem_rede_primaria: boolean | null;
+  tem_rede_secundaria: boolean | null;
+  tem_transformador: boolean | null;
+  tem_religador: boolean | null;
+}) {
+  return {
+    redeprimriafield: toYesNo(posteNovo.tem_rede_primaria),
+    redesecundriafield: toYesNo(posteNovo.tem_rede_secundaria),
+    transformadorfield: toYesNo(posteNovo.tem_transformador),
+    religadorfield: toYesNo(posteNovo.tem_religador),
+    alimentacaodoequipamento: derivarAlimentacao(posteNovo.tem_rede_secundaria),
+    instalartpfield: derivarInstalarTp(posteNovo.tem_rede_secundaria),
+  };
+}
+
 /* ─── Routes ──────────────────────────────────────────────────────────────── */
 
 const postesRoutes: FastifyPluginAsync = async (fastify) => {
@@ -144,6 +186,13 @@ const postesRoutes: FastifyPluginAsync = async (fastify) => {
           latitudefield: p.latitudefield,
           longitudefield: p.longitudefield,
           distancia_m: Math.round(p.distancia_m * 10) / 10,
+          // Booleanos brutos — o picker offline (queueMudancaPoste em
+          // services/postes.ts) precisa deles pra derivar os campos GLPI
+          // sem round-trip ao servidor.
+          tem_rede_secundaria: p.tem_rede_secundaria,
+          tem_rede_primaria: p.tem_rede_primaria,
+          tem_transformador: p.tem_transformador,
+          tem_religador: p.tem_religador,
         })),
       });
     }
@@ -250,6 +299,7 @@ const postesRoutes: FastifyPluginAsync = async (fastify) => {
         alturadopostemfield: posteNovo.alturadaantenafield,
         latitudefield: posteNovo.latitudefield,
         longitudefield: posteNovo.longitudefield,
+        ...derivarCamposRedeGlpi(posteNovo),
         // bloco a ser concatenado em observaofield (DESCRIÇÃO):
         observaofield_append: descricao,
       };
@@ -282,6 +332,7 @@ const postesRoutes: FastifyPluginAsync = async (fastify) => {
           alturadopostemfield: posteNovo.alturadaantenafield,
           latitudefield: posteNovo.latitudefield,
           longitudefield: posteNovo.longitudefield,
+          ...derivarCamposRedeGlpi(posteNovo),
         },
         descricao_glpi: descricao,
         payload_glpi: payloadGlpi,

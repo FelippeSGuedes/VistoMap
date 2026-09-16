@@ -270,6 +270,12 @@ function CorrigirDevolucaoInner() {
             latitude: posteMudanca.poste_novo.latitudefield,
             longitude: posteMudanca.poste_novo.longitudefield,
             descricao_glpi: posteMudanca.descricao_glpi,
+            redeprimriafield: posteMudanca.poste_novo.redeprimriafield,
+            redesecundriafield: posteMudanca.poste_novo.redesecundriafield,
+            transformadorfield: posteMudanca.poste_novo.transformadorfield,
+            religadorfield: posteMudanca.poste_novo.religadorfield,
+            alimentacaodoequipamento: posteMudanca.poste_novo.alimentacaodoequipamento,
+            instalartpfield: posteMudanca.poste_novo.instalartpfield,
           }
         : undefined;
       await vistoriasService.corrigirDevolucao(id, campos, arquivos, mudancaPoste);

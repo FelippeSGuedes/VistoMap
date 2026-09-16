@@ -16,6 +16,11 @@ export interface PosteRow {
   /** WKT/GeoJSON gerado sob demanda — não armazenado no objeto JS. */
   geom?: string;
   raw?: Record<string, unknown> | null;
+  /** Indicadores de rede da CPFL (backfill 2026-09-16) — usados pra derivar os campos GLPI na troca de poste. */
+  tem_rede_secundaria: boolean | null;
+  tem_rede_primaria: boolean | null;
+  tem_transformador: boolean | null;
+  tem_religador: boolean | null;
   created_at: string;
   updated_at: string;
 }

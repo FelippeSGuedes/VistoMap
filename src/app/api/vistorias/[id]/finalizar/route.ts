@@ -48,6 +48,10 @@ interface FinalizarPayload {
   rsrpifield?: string;
   rsrpllfield?: string;
   motivofield?: string;
+  redeprimriafield?: string;
+  redesecundriafield?: string;
+  transformadorfield?: string;
+  religadorfield?: string;
   dropdowns?: Partial<Record<DropdownKey, string>>;
   finalizadaEm?: string;
 }
@@ -207,6 +211,10 @@ export async function POST(
       rsrpifield: payload.rsrpifield,
       rsrpllfield: payload.rsrpllfield,
       motivofield: payload.motivofield,
+      redeprimriafield: payload.redeprimriafield,
+      redesecundriafield: payload.redesecundriafield,
+      transformadorfield: payload.transformadorfield,
+      religadorfield: payload.religadorfield,
       datadavistoriafield: datavistoria,
       dataenvioconcessionriafield: datavistoria,
       plugin_fields_statusvistoriafielddropdowns_id: STATUS_VISTORIA_EM_ANALISE,

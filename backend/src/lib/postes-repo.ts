@@ -20,6 +20,10 @@ function castRow(r: Record<string, unknown>): PosteRow {
     latitudefield: Number(r.latitudefield),
     longitudefield: Number(r.longitudefield),
     raw: (r.raw as Record<string, unknown> | null) ?? null,
+    tem_rede_secundaria: (r.tem_rede_secundaria as boolean | null) ?? null,
+    tem_rede_primaria: (r.tem_rede_primaria as boolean | null) ?? null,
+    tem_transformador: (r.tem_transformador as boolean | null) ?? null,
+    tem_religador: (r.tem_religador as boolean | null) ?? null,
     created_at: String(r.created_at),
     updated_at: String(r.updated_at),
   };
@@ -58,6 +62,10 @@ export async function buscarProximos(
         latitudefield,
         longitudefield,
         raw,
+        tem_rede_secundaria,
+        tem_rede_primaria,
+        tem_transformador,
+        tem_religador,
         created_at,
         updated_at,
         ST_Distance(geom::geography, ST_MakePoint(?, ?)::geography) AS distancia_m
@@ -156,7 +164,9 @@ export async function buscarPorId(id: number): Promise<PosteRow | null> {
       SELECT
         id, pspostefield, materialfield, alturadaantenafield,
         municipiofield, municipiofield_norm,
-        latitudefield, longitudefield, raw, created_at, updated_at
+        latitudefield, longitudefield, raw,
+        tem_rede_secundaria, tem_rede_primaria, tem_transformador, tem_religador,
+        created_at, updated_at
       FROM postes
       WHERE id = ?
       LIMIT 1

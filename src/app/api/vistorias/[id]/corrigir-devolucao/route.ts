@@ -72,6 +72,12 @@ interface MudancaPostePayload {
   latitude: number;
   longitude: number;
   descricao_glpi: string;
+  redeprimriafield: "1" | "0" | null;
+  redesecundriafield: "1" | "0" | null;
+  transformadorfield: "1" | "0" | null;
+  religadorfield: "1" | "0" | null;
+  alimentacaodoequipamento: "BT" | "MT" | null;
+  instalartpfield: "1" | "0" | null;
 }
 
 interface CorrigirPayload {
@@ -173,6 +179,15 @@ export async function POST(
       if (mudancaPoste.alturadopostemfield) updateInput.alturadopostemfield = mudancaPoste.alturadopostemfield;
       updateInput.latitudefield = mudancaPoste.latitude;
       updateInput.longitudefield = mudancaPoste.longitude;
+      // "0" é um yesno válido (Não) — checa != null, não truthy, senão some.
+      if (mudancaPoste.redeprimriafield != null) updateInput.redeprimriafield = mudancaPoste.redeprimriafield;
+      if (mudancaPoste.redesecundriafield != null) updateInput.redesecundriafield = mudancaPoste.redesecundriafield;
+      if (mudancaPoste.transformadorfield != null) updateInput.transformadorfield = mudancaPoste.transformadorfield;
+      if (mudancaPoste.religadorfield != null) updateInput.religadorfield = mudancaPoste.religadorfield;
+      if (mudancaPoste.instalartpfield != null) updateInput.instalartpfield = mudancaPoste.instalartpfield;
+      if (mudancaPoste.alimentacaodoequipamento) {
+        dropdownsInput.alimentacaodoequipamento = mudancaPoste.alimentacaodoequipamento;
+      }
       const observacaoBase = updateInput.observaofield ?? vistoria.fields.observaofield ?? "";
       updateInput.observaofield = observacaoBase
         ? `${observacaoBase}\n\n${mudancaPoste.descricao_glpi}`

@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from "axios";
 import { getAuthToken } from "./api";
 import type {
+  CamposRedeGlpi,
   MotivoMudanca,
   MudancaPosteResponse,
   Poste,
@@ -156,6 +157,30 @@ export async function registrarMudancaPoste(
   }
 }
 
+/**
+ * Deriva os campos de rede/alimentação prontos pro GLPI a partir dos
+ * booleanos brutos do poste — MESMA regra usada server-side (ver
+ * derivarCamposRedeGlpi em backend/src/routes/postes.ts). Precisa existir
+ * aqui também porque o fallback offline (queueMudancaPoste) nunca chega a
+ * chamar o servidor pra pedir essa derivação.
+ */
+function derivarCamposRedeGlpi(posteNovo: Poste): CamposRedeGlpi {
+  const toYesNo = (v: boolean | null | undefined): "1" | "0" | null =>
+    v == null ? null : v ? "1" : "0";
+  const temRedeSecundaria = posteNovo.tem_rede_secundaria;
+  return {
+    redeprimriafield: toYesNo(posteNovo.tem_rede_primaria),
+    redesecundriafield: toYesNo(temRedeSecundaria),
+    transformadorfield: toYesNo(posteNovo.tem_transformador),
+    religadorfield: toYesNo(posteNovo.tem_religador),
+    alimentacaodoequipamento:
+      temRedeSecundaria == null ? null : temRedeSecundaria ? "BT" : "MT",
+    // Sem Rede Secundária (MT) -> precisa de TP. Regra confirmada 2026-09-16.
+    instalartpfield:
+      temRedeSecundaria == null ? null : temRedeSecundaria ? "0" : "1",
+  };
+}
+
 async function queueMudancaPoste(
   input: RegistrarMudancaInput,
   posteNovo: Poste
@@ -178,12 +203,14 @@ async function queueMudancaPoste(
     `(${input.municipio_antigo ?? "?"} → ${posteNovo.municipiofield}). Motivo: ${input.motivo}` +
     (input.observacao ? ` — ${input.observacao}` : "");
 
+  const camposRede = derivarCamposRedeGlpi(posteNovo);
+
   return {
     ok: true,
     mudanca_id: -1,
     distancia_m: 0,
     raio_max_m: 0,
-    poste_novo: posteNovo,
+    poste_novo: { ...posteNovo, ...camposRede },
     descricao_glpi: descricao,
     payload_glpi: {
       vistoria_id: input.vistoria_id,
@@ -194,6 +221,7 @@ async function queueMudancaPoste(
       latitudefield: posteNovo.latitudefield,
       longitudefield: posteNovo.longitudefield,
       observaofield_append: descricao,
+      ...camposRede,
     },
     queued: true,
   };

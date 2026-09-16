@@ -70,6 +70,15 @@ interface FormState {
   tensao: string;
   alimentacaodoequipamento: string;
   localdeinstalacao: string;
+  /**
+   * yesno "1"/"0" — invisíveis pro técnico, só existem quando o poste foi
+   * trocado nesta vistoria (ver handlePosteMudado). Derivados do PostGIS,
+   * não editáveis diretamente.
+   */
+  redeprimriafield: string;
+  redesecundriafield: string;
+  transformadorfield: string;
+  religadorfield: string;
 }
 
 /**
@@ -128,6 +137,10 @@ const EMPTY: FormState = {
   tensao: "",
   alimentacaodoequipamento: "",
   localdeinstalacao: "",
+  redeprimriafield: "",
+  redesecundriafield: "",
+  transformadorfield: "",
+  religadorfield: "",
 };
 
 interface VistoriaExecucaoFormProps {
@@ -274,6 +287,16 @@ export function VistoriaExecucaoForm({
       municipiofield: p.municipiofield,
       alturadopostemfield: p.alturadopostemfield ?? f.alturadopostemfield,
       tipodematerial: p.materialfield ?? f.tipodematerial,
+      // Derivados do PostGIS pela troca — invisíveis, só carregam pro envio.
+      redeprimriafield: p.redeprimriafield ?? f.redeprimriafield,
+      redesecundriafield: p.redesecundriafield ?? f.redesecundriafield,
+      transformadorfield: p.transformadorfield ?? f.transformadorfield,
+      religadorfield: p.religadorfield ?? f.religadorfield,
+      alimentacaodoequipamento: p.alimentacaodoequipamento ?? f.alimentacaodoequipamento,
+      // Instalação de TP já é um campo visível/editável do formulário — aqui
+      // só pré-preenche a partir da regra (sem Rede Secundária => TP), o
+      // técnico continua podendo mudar pelo toggle normal se divergir em campo.
+      instalartpfield: p.instalartpfield ?? f.instalartpfield,
       observaofield: f.observaofield
         ? `${f.observaofield}\n\n${response.descricao_glpi}`
         : response.descricao_glpi,
@@ -372,6 +395,7 @@ export function VistoriaExecucaoForm({
         "tipoifield",
         "tipollfield",
         "tensovfield",
+        "alimentacaodoequipamento",
       ];
       for (const k of dropdownKeys) {
         if (form[k].trim()) dropdowns[k] = form[k].trim();
@@ -393,6 +417,10 @@ export function VistoriaExecucaoForm({
           danfield: form.danfield || undefined,
           rsrpifield: form.rsrpifield || undefined,
           rsrpllfield: form.rsrpllfield || undefined,
+          redeprimriafield: form.redeprimriafield || undefined,
+          redesecundriafield: form.redesecundriafield || undefined,
+          transformadorfield: form.transformadorfield || undefined,
+          religadorfield: form.religadorfield || undefined,
           dropdowns,
           finalizadaEm: new Date().toISOString(),
         },

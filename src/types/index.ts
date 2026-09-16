@@ -186,6 +186,10 @@ export interface VistoriaPayload {
   danfield?: string;
   rsrpifield?: string;
   rsrpllfield?: string;
+  redeprimriafield?: string;
+  redesecundriafield?: string;
+  transformadorfield?: string;
+  religadorfield?: string;
   dropdowns?: Partial<Record<DropdownKey, string>>;
   finalizadaEm: string;
 }
@@ -200,6 +204,29 @@ export interface Poste {
   latitudefield: number;
   longitudefield: number;
   distancia_m?: number;
+  /**
+   * Indicadores de rede da CPFL (PostGIS, backfill 2026-09-16) — vêm em
+   * `/postes/proximos` pro picker/fallback offline derivar os campos GLPI
+   * na troca de poste sem round-trip ao servidor. Opcionais porque
+   * `MudancaPosteResponse.poste_novo` (que também usa este tipo) já vem
+   * com os campos GLPI derivados prontos (ver `CamposRedeGlpi`), não com
+   * esses booleanos brutos.
+   */
+  tem_rede_secundaria?: boolean | null;
+  tem_rede_primaria?: boolean | null;
+  tem_transformador?: boolean | null;
+  tem_religador?: boolean | null;
+}
+
+/** Campos de rede/alimentação já no formato GLPI (yesno "1"/"0", dropdown "BT"/"MT") — derivados server-side na troca de poste. */
+export interface CamposRedeGlpi {
+  redeprimriafield: "1" | "0" | null;
+  redesecundriafield: "1" | "0" | null;
+  transformadorfield: "1" | "0" | null;
+  religadorfield: "1" | "0" | null;
+  alimentacaodoequipamento: "BT" | "MT" | null;
+  /** Sem Rede Secundária (MT) → precisa de TP. Regra confirmada 2026-09-16. */
+  instalartpfield: "1" | "0" | null;
 }
 
 export interface PostesProximosResponse {
@@ -236,7 +263,7 @@ export interface MudancaPosteResponse {
   mudanca_id: number;
   distancia_m: number;
   raio_max_m: number;
-  poste_novo: Poste;
+  poste_novo: Poste & CamposRedeGlpi;
   descricao_glpi: string;
   payload_glpi: {
     vistoria_id: string;
@@ -247,7 +274,7 @@ export interface MudancaPosteResponse {
     latitudefield: number;
     longitudefield: number;
     observaofield_append: string;
-  };
+  } & CamposRedeGlpi;
 }
 
 export interface CaptureBundle {

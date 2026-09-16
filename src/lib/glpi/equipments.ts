@@ -311,6 +311,11 @@ export interface UpdateFieldsInput {
   endereofield?: string;
   observaofield?: string;
   aterramentofield?: string;
+  /** yesno "1"/"0" — derivados do PostGIS na troca de poste, ver MudarPosteFlow/CamposRedeGlpi. */
+  redeprimriafield?: string;
+  redesecundriafield?: string;
+  transformadorfield?: string;
+  religadorfield?: string;
   motivofield?: string;
   datadavistoriafield?: string;
   dataenvioconcessionriafield?: string;
@@ -336,6 +341,10 @@ const UPDATABLE_COLUMNS = new Set([
   "endereofield",
   "observaofield",
   "aterramentofield",
+  "redeprimriafield",
+  "redesecundriafield",
+  "transformadorfield",
+  "religadorfield",
   "motivofield",
   "datadavistoriafield",
   "dataenvioconcessionriafield",

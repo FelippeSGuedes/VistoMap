@@ -304,6 +304,12 @@ export interface MudancaPostePayload {
   latitude: number;
   longitude: number;
   descricao_glpi: string;
+  redeprimriafield: "1" | "0" | null;
+  redesecundriafield: "1" | "0" | null;
+  transformadorfield: "1" | "0" | null;
+  religadorfield: "1" | "0" | null;
+  alimentacaodoequipamento: "BT" | "MT" | null;
+  instalartpfield: "1" | "0" | null;
 }
 
 export async function corrigirDevolucao(
