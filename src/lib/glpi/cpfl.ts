@@ -409,6 +409,28 @@ export async function fetchPendentesCpflPorMunicipio(): Promise<
 }
 
 /**
+ * Équipamentos aprovados pela concessionária (statusvistoria Aprovado +
+ * Aprovado com Pendências — mesmo critério de etapaDoStatus()), quebrado
+ * por município — mesmo mecanismo/mini-mapa de fetchPendentesCpflPorMunicipio().
+ */
+export async function fetchAprovadosPorMunicipio(): Promise<
+  Array<{ municipio: string; total: number }>
+> {
+  const rows = await query<{ municipio: string; total: number }>(
+    `SELECT TRIM(f.municipiofield) AS municipio, COUNT(*) AS total
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      WHERE ne.is_deleted = 0
+        AND f.plugin_fields_statusvistoriafielddropdowns_id IN (${STATUS_VISTORIA_APROVADO}, ${STATUS_VISTORIA_APROVADO_COM_PENDENCIAS})
+        AND f.municipiofield IS NOT NULL
+        AND TRIM(f.municipiofield) <> ''
+      GROUP BY TRIM(f.municipiofield)
+      ORDER BY total DESC`
+  );
+  return rows.map((r) => ({ municipio: r.municipio, total: Number(r.total) || 0 }));
+}
+
+/**
  * Équipamentos atualmente em "Aprovado com Pendências" (statusvistoria=7) +
  * pendência ainda em Nansen — a MESMA fila que /painel/cpfl mostra
  * (ehPendenciaNansen), mas em consulta enxuta, sem os joins de técnico/

@@ -23,6 +23,7 @@ import {
   RotateCw,
   Search,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   TrendingUp,
   Undo2,
@@ -502,6 +503,7 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
       { key: "pendentes",  label: "Pendentes",   value: s?.pendentes ?? 0,  color: "#F59E0B", icon: ClipboardList, href: "/painel/vistorias" },
       { key: "emVistoria", label: "Em vistoria", value: s?.emVistoria ?? 0,  color: "#3B82F6", icon: Activity,      href: "/painel/andamento" },
       { key: "concluidas", label: "Concluídas",  value: concluidas,          color: "#10B981", icon: CheckCircle2,  href: "/painel/realizadas" },
+      { key: "aprovados",  label: "Aprovados",   value: s?.aprovadas ?? 0,   color: "#22C55E", icon: ShieldCheck,   href: "/painel/realizadas" },
       { key: "revisitas",  label: "Reprovados CPFL", value: revisitas,        color: "#A855F7", icon: RotateCw,      href: "/painel/revisitas" },
       { key: "devolucoes", label: "Devoluções",  value: s?.devolvidas ?? 0,  color: "#DC2626", icon: Undo2,         href: "/painel/devolucoes" },
       { key: "rejeicoes",  label: "Rejeições",   value: s?.rejeitadas ?? 0,  color: "#6B7280", icon: Ban,           href: "/painel/rejeitadas" },
@@ -514,7 +516,7 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
 
   return (
     <Card>
-      <div style={{ height: 3, background: "linear-gradient(90deg,#F59E0B,#3B82F6,#10B981,#A855F7,#DC2626,#6B7280)", flexShrink: 0 }} />
+      <div style={{ height: 3, background: "linear-gradient(90deg,#F59E0B,#3B82F6,#10B981,#22C55E,#A855F7,#DC2626,#6B7280)", flexShrink: 0 }} />
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl" style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.18)" }}>
@@ -552,7 +554,7 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
           </div>
 
           {/* legenda */}
-          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-7">
             {segs.items.map((s) => {
               const Icon = s.icon;
               return (
@@ -1523,6 +1525,240 @@ function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   WIDGET 06b — Aprovados: mesmo mecanismo do Pendentes CPFL, rampa verde
+   (progresso/positivo, mesma de Top Municípios). Ver
+   fetchAprovadosPorMunicipio() (cpfl.ts).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+interface AprovadosMapWidgetProps {
+  itens: Array<{ municipio: string; total: number }>;
+}
+
+function AprovadosMapWidget({ itens }: AprovadosMapWidgetProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const markersRef   = useRef<mapboxgl.Marker[]>([]);
+  const fillExprRef  = useRef<mapboxgl.Expression | null>(null);
+  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
+  const [geoLoaded,  setGeoLoaded] = useState(false);
+  const token        = getMapboxToken();
+
+  const totalGlobal = itens.reduce((s, m) => s + m.total, 0);
+  const top5 = itens.slice(0, 5);
+
+  /* Effect 1 — mapa base + carrega GeoJSON (idêntico ao Pendentes CPFL) */
+  useEffect(() => {
+    if (!containerRef.current || !token) return;
+    let alive = true;
+    injectStyle(
+      "vm-dash-aprov-css",
+      ".vm-dash-aprov .mapboxgl-ctrl-logo,.vm-dash-aprov .mapboxgl-ctrl-attrib{display:none!important}",
+    );
+    injectStyle("vm-noc-css", NOC_CSS);
+    mapboxgl.accessToken = token;
+    const { map } = novoMapa({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/empty-v9",
+      center: [-48.5, -22.0] as [number, number],
+      zoom: 5.6,
+      interactive: false,
+      attributionControl: false,
+    }, "painel/dashboard");
+    if (!map) return;
+    mapRef.current = map;
+
+    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
+    ro.observe(containerRef.current);
+
+    map.on("load", async () => {
+      map.resize();
+      map.addLayer({ id: "vm-aprov-bg", type: "background", paint: { "background-color": dashMapBg() } });
+      try {
+        const res = await fetch(SP_GEOJSON_URL);
+        const geoJSON = await res.json() as {
+          type: string;
+          features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
+        };
+        if (!alive) return;
+
+        geoRef.current = geoJSON;
+
+        map.addSource("vm-aprov-sp", { type: "geojson", data: geoJSON as never });
+        map.addLayer({
+          id: "vm-aprov-fill", type: "fill", source: "vm-aprov-sp",
+          paint: { "fill-color": choroEmpty(), "fill-opacity": 1 },
+        });
+        map.addLayer({
+          id: "vm-aprov-line", type: "line", source: "vm-aprov-sp",
+          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
+        });
+
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const f of geoJSON.features) {
+          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
+          const rings = g.type === "Polygon"
+            ? [g.coordinates[0] as number[][]]
+            : (g.coordinates as number[][][][]).map(p => p[0]);
+          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
+        }
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: 14, animate: false });
+          const z = map.getZoom();
+          map.setMinZoom(z);
+          map.setMaxZoom(z);
+        }
+
+        setGeoLoaded(true);
+      } catch {
+        /* GeoJSON load failure is silent — widget degrades gracefully */
+      }
+    });
+
+    return () => {
+      alive = false;
+      ro.disconnect();
+      markersRef.current.forEach(mk => mk.remove());
+      markersRef.current = [];
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Effect 2 — coloriza fill (verde) + pins com a contagem aprovada */
+  useEffect(() => {
+    const map = mapRef.current;
+    const geo = geoRef.current;
+    if (!map || !map.isStyleLoaded() || !geo || !itens.length) return;
+
+    const lookup = new Map(itens.map(m => [normalizeStr(m.municipio), m.total]));
+    const enriched = {
+      ...geo,
+      features: geo.features.map(f => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
+        },
+      })),
+    };
+
+    (map.getSource("vm-aprov-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
+    const topVal = Math.max(...itens.map(m => m.total), 2);
+    const midVal = Math.max(Math.round(topVal / 2), 1);
+    const [rlo, rmd, rhi] = choroRamp();
+    const fillExpr: mapboxgl.Expression = [
+      "case", [">", ["get", "total"], 0],
+      ["interpolate", ["linear"], ["get", "total"], 1, rlo, midVal, rmd, topVal, rhi],
+      choroEmpty(),
+    ];
+    fillExprRef.current = fillExpr;
+    map.setPaintProperty("vm-aprov-fill", "fill-color", fillExpr);
+
+    markersRef.current.forEach(mk => mk.remove());
+    markersRef.current = [];
+
+    for (const feature of enriched.features) {
+      const total = Number(feature.properties.total ?? 0);
+      if (total === 0) continue;
+
+      const name = String((feature.properties as Record<string, unknown>).name ?? "");
+      const item = itens.find(m => normalizeStr(m.municipio) === normalizeStr(name));
+      if (!item) continue;
+
+      const coords = featureCentroid(feature.geometry);
+      if (!coords) continue;
+
+      const el = document.createElement("div");
+      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#22C55E,#15803D);box-shadow:0 2px 10px rgba(21,128,61,0.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:ui-sans-serif;border:2px solid rgba(255,255,255,0.75);cursor:default";
+      el.textContent = String(item.total);
+
+      const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
+        .setLngLat(coords)
+        .addTo(map);
+      markersRef.current.push(mk);
+    }
+  }, [itens, geoLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Card className="h-full">
+      <div style={{ height: 3, background: "linear-gradient(90deg,#22C55E,#16A34A,#15803D)", flexShrink: 0 }} />
+      <div className="flex items-center justify-between px-5 pt-3.5 pb-2.5">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: "linear-gradient(135deg,rgba(34,197,94,0.15),rgba(21,128,61,0.12))", border: "1px solid rgba(34,197,94,0.20)" }}
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-[#15803D]" strokeWidth={2} />
+          </div>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Aprovados</span>
+            <span className="text-[9.5px] text-[var(--vm-faint)]">aprovado pela concessionária{totalGlobal > 0 ? ` · ${totalGlobal} postes` : ""}</span>
+          </div>
+        </div>
+        <span
+          className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold text-[#15803D]"
+          style={{ background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.18)" }}
+        >
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#22C55E]" />
+          agora
+        </span>
+      </div>
+      <div ref={containerRef} className="vm-dash-aprov h-[200px] w-full shrink-0" />
+      <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
+        {top5.length === 0 && (
+          <li className="px-2 py-6 text-center text-[11px] font-medium text-[var(--vm-faint)]">
+            Nenhum projeto aprovado ainda.
+          </li>
+        )}
+        {top5.map((m, i) => {
+          const maxTotal = top5[0]?.total ?? 1;
+          const pct = maxTotal > 0 ? (m.total / maxTotal) * 100 : 0;
+          return (
+            <motion.li
+              key={m.municipio}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.06 * i, duration: 0.35 }}
+              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile)]"
+              style={{ borderLeft: "2px solid transparent" }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.borderLeftColor = "#22C55E";
+                const mp = mapRef.current;
+                if (mp?.isStyleLoaded() && fillExprRef.current) {
+                  mp.setPaintProperty("vm-aprov-fill", "fill-color", fillExprRef.current);
+                }
+              }}
+            >
+              <span
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
+                style={{ background: "rgba(34,197,94,0.16)", color: "#15803D" }}
+              >
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between gap-1">
+                  <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
+                  <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.total}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: i === 0 ? "linear-gradient(90deg,#22C55E,#15803D)" : "linear-gradient(90deg,#86EFAC,#22C55E)" }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
+                  />
+                </div>
+              </div>
+            </motion.li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    WIDGET 07 — Revisitas: SP map background + highlight problem areas
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -1825,6 +2061,7 @@ export default function PainelOverviewPage() {
   const topMunis     = (historico?.topMunicipios ?? []).filter((m) => m.concluidas >= 1).slice(0, 8);
   const topTecs      = (topTecsDash?.tecnicos ?? []).slice(0, 6);
   const pendentesCpfl = topTecsDash?.pendentesCpflPorMunicipio ?? [];
+  const aprovadosPorMunicipio = topTecsDash?.aprovadosPorMunicipio ?? [];
   const mapaTeam     = mapaRealtime?.tecnicos ?? [];
 
   // Rótulo legível do período pros títulos dos widgets — "Hoje" fica feio
@@ -1874,6 +2111,7 @@ export default function PainelOverviewPage() {
     { label: "Em vistoria", raw: stats ? stats.emVistoria : undefined, value: stats ? fmtNum(stats.emVistoria) : "—",  sub: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, color: "#3B82F6", icon: Activity,    href: "/painel/mapa" },
     { label: "Concluídas",  raw: stats ? stats.vistoriadas : undefined, value: stats ? fmtNum(stats.vistoriadas): "—",  sub: "aguardando aprovação",   color: "#10B981", icon: CheckCircle2, href: "/painel/historico" },
     { label: "Reprovados CPFL", raw: stats ? (stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0) : undefined, value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
+    { label: "Projetos Aprovados", raw: stats ? (stats.aprovadas ?? 0) : undefined, value: stats ? fmtNum(stats.aprovadas ?? 0) : "—", sub: "aprovado pela concessionária", color: "#22C55E", icon: ShieldCheck, href: undefined as string | undefined },
     { label: "Municípios",  raw: stats ? stats.municipiosAtivos : undefined, value: stats ? fmtNum(stats.municipiosAtivos)   : "—", sub: "com equipamentos ativos", color: "#8B5CF6", icon: Building2, href: undefined as string | undefined },
     { label: "Equipe",      raw: stats ? stats.tecnicosAtivos : undefined, value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
   ];
@@ -1986,7 +2224,7 @@ export default function PainelOverviewPage() {
               <div style={{ position: "absolute", inset: "0 0 0 0", height: 80, background: "linear-gradient(180deg,transparent,rgba(0,255,136,0.05),transparent)", animation: "vmScan 7s linear infinite", pointerEvents: "none" }} />
             </div>
 
-            {/* RIGHT — 4 KPI cards 2×2 */}
+            {/* RIGHT — 5 KPI cards (2×2 + 1 larga) */}
             <div style={{ width: 460, padding: 16, display: "flex", alignItems: "center", position: "relative", zIndex: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
                 {([
@@ -1994,7 +2232,8 @@ export default function PainelOverviewPage() {
                   { k: kpis[1], color: "#4A9EFF" },
                   { k: kpis[2], color: "#00ff88" },
                   { k: kpis[3], color: "#f59e0b" },
-                ]).map(({ k, color }, i) => {
+                  { k: kpis[4], color: "#22c55e", span: true },
+                ]).map(({ k, color, span }, i) => {
                   const Icon = k.icon;
                   // Chip de contexto por card — dado real (audit 24h / campo).
                   // active = colorido; senão fica neutro (sem inventar tendência).
@@ -2012,8 +2251,10 @@ export default function PainelOverviewPage() {
                     chip = fin24 > 0
                       ? { icon: <ArrowUp style={{ width: 11, height: 11 }} strokeWidth={2.6} />, text: `${fin24} finalizada${fin24 !== 1 ? "s" : ""} · 24h`, active: true }
                       : { icon: <CheckCircle2 style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "aguardando aprovação", active: false };
-                  } else {
+                  } else if (i === 3) {
                     chip = { icon: <Clock style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: `${semTec} sem técnico`, active: semTec > 0 };
+                  } else {
+                    chip = { icon: <ShieldCheck style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "aprovado pela concessionária", active: (stats?.aprovadas ?? 0) > 0 };
                   }
                   return (
                     <motion.div
@@ -2026,6 +2267,7 @@ export default function PainelOverviewPage() {
                       onMouseLeave={(e) => { const t = e.currentTarget as HTMLElement; t.style.borderColor = "rgba(255,255,255,0.08)"; t.style.background = "rgba(255,255,255,0.04)"; }}
                       style={{
                         position: "relative",
+                        gridColumn: span ? "1 / -1" : undefined,
                         background: "rgba(255,255,255,0.04)",
                         border: "1px solid rgba(255,255,255,0.08)",
                         borderRadius: 14,
@@ -2033,19 +2275,20 @@ export default function PainelOverviewPage() {
                         backdropFilter: "blur(8px)",
                         cursor: k.href ? "pointer" : "default",
                         overflow: "hidden",
+                        ...(span ? { display: "flex", alignItems: "center", gap: 20 } : {}),
                       }}
                     >
                       {/* faixa de cor lateral sutil */}
                       <div style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: 999, background: color, opacity: 0.9 }} />
                       {/* header: ícone tint + label */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: span ? 0 : 14, flexShrink: 0 }}>
                         <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 8, background: `${color}22`, border: `1px solid ${color}33` }}>
                           <Icon style={{ width: 13, height: 13, color }} strokeWidth={2} />
                         </span>
-                        <span style={{ fontSize: "0.66rem", fontWeight: 700, letterSpacing: "0.14em", color: "rgba(255,255,255,0.55)" }}>{k.label.toUpperCase()}</span>
+                        <span style={{ fontSize: "0.66rem", fontWeight: 700, letterSpacing: "0.14em", color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }}>{k.label.toUpperCase()}</span>
                       </div>
                       {/* número */}
-                      <div style={{ fontSize: "2.9rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: 12, letterSpacing: "-0.02em" }}>
+                      <div style={{ fontSize: "2.9rem", fontWeight: 800, color: "#fff", lineHeight: 1, marginBottom: span ? 0 : 12, letterSpacing: "-0.02em" }}>
                         {k.raw != null ? <CountUp value={k.raw} /> : "—"}
                       </div>
                       {/* chip de contexto */}
@@ -2053,6 +2296,7 @@ export default function PainelOverviewPage() {
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
+                          marginLeft: span ? "auto" : undefined,
                           gap: 5,
                           padding: "3px 9px",
                           borderRadius: 999,
@@ -2261,14 +2505,17 @@ export default function PainelOverviewPage() {
         />
       </div>
 
-      {/* ════════════ LINHA 2: Municípios | Pendentes CPFL | Técnicos | Atividade | Revisitas ════════════ */}
-      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5" style={{ animationDelay: "0.16s" }}>
+      {/* ════════════ LINHA 2: Municípios | Pendentes CPFL | Aprovados | Técnicos | Atividade | Revisitas ════════════ */}
+      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6" style={{ animationDelay: "0.16s" }}>
 
         {/* Widget 03 — Top Municípios: map IS the chart */}
         <MunicipiosMapWidget topMunicipios={topMunis} tecnicos={tecnicos} />
 
         {/* Widget 04 — Pendentes CPFL: mesma malha, rampa âmbar */}
         <PendentesCpflMapWidget itens={pendentesCpfl} />
+
+        {/* Widget 04b — Aprovados: mesma malha, rampa verde */}
+        <AprovadosMapWidget itens={aprovadosPorMunicipio} />
 
         {/* Widget 05 — Top Técnicos: performance cockpit */}
         <Card>

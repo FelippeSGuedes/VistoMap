@@ -35,6 +35,7 @@ export const MOCK_PAINEL_STATS: PainelStats = {
   municipiosAtivos: 4,
   tecnicosAtivos: 7,
   pdfsGerados: 144,
+  aprovadas: 96,
   ultimaSincronizacao: new Date().toISOString(),
   trend14d: {
     pendentes: [38, 41, 39, 44, 47, 45, 42, 40, 43, 46, 44, 42, 41, 42],

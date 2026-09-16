@@ -20,6 +20,7 @@ import {
   STATE_AGUARDANDO_VISTORIA,
   STATUS_VISTORIA_PENDENTE,
   STATUS_VISTORIA_APROVADO,
+  STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
@@ -219,6 +220,21 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     /* tabela de recusas pode não existir em dev — mantém 0 */
   }
 
+  // Aprovadas pela concessionária (Aprovado + Aprovado com Pendências —
+  // mesmo critério de etapaDoStatus() em cpfl.ts) — não cai no GROUP BY de
+  // status acima (resolveAdminStatus não tem um estado "APROVADO"), por
+  // isso é contado à parte, mesmo padrão de devolvidas/rejeitadas.
+  const [aprovadasRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(*) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE f.plugin_fields_statusvistoriafielddropdowns_id IN (?, ?)
+    `,
+    [STATUS_VISTORIA_APROVADO, STATUS_VISTORIA_APROVADO_COM_PENDENCIAS]
+  );
+  const aprovadas = aprovadasRow?.total ?? 0;
+
   // Atividade das últimas 24h a partir do audit log (dado real, com ts).
   // atribuidas24h = quantas SAÍRAM do backlog; finalizadas24h = throughput.
   let atribuidas24h = 0;
@@ -286,6 +302,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     pdfsGerados,
     devolvidas,
     rejeitadas,
+    aprovadas,
     atribuidas24h,
     finalizadas24h,
     atribuidasHoje,

@@ -358,6 +358,7 @@ export interface TopTecnicosDashboard {
   periodo: { inicio: string; fim: string };
   tecnicos: RankingTecnicoItem[];
   pendentesCpflPorMunicipio: Array<{ municipio: string; total: number }>;
+  aprovadosPorMunicipio: Array<{ municipio: string; total: number }>;
 }
 
 /**
@@ -374,6 +375,7 @@ export async function fetchTopTecnicosDashboard(
     periodo: { inicio: "", fim: "" },
     tecnicos: [],
     pendentesCpflPorMunicipio: [],
+    aprovadosPorMunicipio: [],
   };
   const params = new URLSearchParams({ periodo });
   if (periodo === "personalizado" && inicio && fim) {

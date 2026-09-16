@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { fetchRankingTecnicosPeriodo } from "@/lib/glpi/topTecnicosDashboard";
-import { fetchPendentesCpflPorMunicipio } from "@/lib/glpi/cpfl";
+import { fetchAprovadosPorMunicipio, fetchPendentesCpflPorMunicipio } from "@/lib/glpi/cpfl";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -59,12 +59,13 @@ export async function GET(req: Request) {
       searchParams.get("fim")
     );
 
-    const [tecnicos, pendentesCpflPorMunicipio] = await Promise.all([
+    const [tecnicos, pendentesCpflPorMunicipio, aprovadosPorMunicipio] = await Promise.all([
       fetchRankingTecnicosPeriodo(inicio, fim, 8),
       fetchPendentesCpflPorMunicipio(),
+      fetchAprovadosPorMunicipio(),
     ]);
 
-    return NextResponse.json({ periodo: { inicio, fim }, tecnicos, pendentesCpflPorMunicipio });
+    return NextResponse.json({ periodo: { inicio, fim }, tecnicos, pendentesCpflPorMunicipio, aprovadosPorMunicipio });
   } catch (err) {
     console.error("[api/painel/dashboard/top-tecnicos] error", err);
     return NextResponse.json(
