@@ -100,7 +100,15 @@ export default function NotificacoesConfigPage() {
                   const meta = CATEGORIA_META[categoria];
                   const Icon = meta.icon;
                   return (
-                    <th key={categoria} className="w-[92px] px-2 py-3 text-center">
+                    <th
+                      key={categoria}
+                      className="w-[92px] px-2 py-3 text-center"
+                      title={
+                        categoria === "excecao-solicitada"
+                          ? "Também cobre Nova Pendência (CPFL aprovou com pendência em /painel/cpfl)."
+                          : undefined
+                      }
+                    >
                       <div className="flex flex-col items-center gap-1">
                         <Icon className="h-3.5 w-3.5" style={{ color: meta.fg }} />
                         <span className="text-[9.5px] font-bold uppercase leading-tight tracking-wide text-gray-500">

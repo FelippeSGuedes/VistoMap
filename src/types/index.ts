@@ -439,6 +439,7 @@ export interface AuditEntry {
     | "revisita-finalizada"
     | "vistoria-aprovada"
     | "vistoria-reprovada"
+    | "pendencia-nansen-detectada"
     | "pendencia-nansen-resolvida"
     | "pdf-regenerado"
     | "motivo-alterado"

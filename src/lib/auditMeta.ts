@@ -36,6 +36,7 @@ export const ACAO_META: Record<
   "revisita-finalizada": { label: "Revisita concluída",   icon: ClipboardCheck,fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
   "vistoria-aprovada":   { label: "Aprovada",             icon: ShieldCheck,  fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "vistoria-reprovada":  { label: "Reprovada",            icon: XCircle,      fg: "#B91C1C", bg: "var(--vm-red-tint)", dot: "#EF4444" },
+  "pendencia-nansen-detectada": { label: "Nova pendência", icon: ShieldAlert, fg: "#C2410C", bg: "var(--vm-orange-tint)", dot: "#F97316" },
   "pendencia-nansen-resolvida": { label: "Pendência resolvida", icon: ShieldCheck, fg: "#0F766E", bg: "var(--vm-teal-tint)", dot: "#14B8A6" },
   "pdf-regenerado":      { label: "PDF regenerado",       icon: FileText,     fg: "#4338CA", bg: "var(--vm-indigo-tint)", dot: "#6366F1" },
   "motivo-alterado":     { label: "Motivo alterado",      icon: Edit3,        fg: "#854D0E", bg: "#FEFCE8", dot: "#CA8A04" },

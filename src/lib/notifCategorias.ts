@@ -53,6 +53,12 @@ export const ACAO_CATEGORIA: Partial<Record<AuditEntry["acao"], NotifCategoria>>
   "recusa-reprovada":    "reprovacao",
   "override-reprovado":  "reprovacao",
   "tecnico-parado":      "tecnico-parado",
+  // Reaproveita o grupo de "Exceção solicitada" de propósito (pedido do
+  // usuário, 2026-09-16): criar uma categoria própria deixaria a
+  // notificação sem ninguém inscrito até algum admin ir em Configurações
+  // habilitá-la à mão. Quem já recebe alerta de exceção também é quem age
+  // em /painel/cpfl, então o grupo certo já existe.
+  "pendencia-nansen-detectada": "excecao-solicitada",
 };
 
 /** Título curto do push/toast por ação — texto de EVENTO, não de categoria. */
@@ -65,6 +71,7 @@ export const ACAO_TITULO: Partial<Record<AuditEntry["acao"], string>> = {
   "recusa-reprovada":    "Recusa reprovada",
   "override-reprovado":  "Exceção reprovada",
   "tecnico-parado":      "Técnico parado",
+  "pendencia-nansen-detectada": "Nova Pendência",
 };
 
 /** URL de destino ao clicar no push/toast, por ação. */
@@ -77,6 +84,7 @@ export const ACAO_HREF: Partial<Record<AuditEntry["acao"], string>> = {
   "recusa-reprovada":    "/painel/notificacoes",
   "override-reprovado":  "/painel/notificacoes",
   "tecnico-parado":      "/painel/mapa",
+  "pendencia-nansen-detectada": "/painel/cpfl",
 };
 
 export function categoriaDeAcao(acao: string): NotifCategoria | null {

@@ -32,6 +32,7 @@ import {
   AVALIADOR_CPFL_USER_COLUMN,
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
+  PENDENCIA_NANSEN,
   STATUS_VISTORIA_APROVADO,
   STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
   STATUS_VISTORIA_EM_ANALISE,
@@ -405,4 +406,32 @@ export async function fetchPendentesCpflPorMunicipio(): Promise<
       ORDER BY total DESC`
   );
   return rows.map((r) => ({ municipio: r.municipio, total: Number(r.total) || 0 }));
+}
+
+/**
+ * Équipamentos atualmente em "Aprovado com Pendências" (statusvistoria=7) +
+ * pendência ainda em Nansen — a MESMA fila que /painel/cpfl mostra
+ * (ehPendenciaNansen), mas em consulta enxuta, sem os joins de técnico/
+ * validador CPFL que a tela usa. Alimenta o cron de notificação (ver
+ * api/painel/cron/pendencia-nansen): esse status é gravado direto pela
+ * concessionária no GLPI, sem passar por nenhuma rota nossa, então não tem
+ * evento pra disparar push — o cron poll é o único jeito de perceber a
+ * chegada de uma pendência nova.
+ */
+export async function fetchPendenciasNansenAtivas(): Promise<
+  Array<{ id: number; equipamento: string; municipio: string }>
+> {
+  const rows = await query<{ id: number; name: string; municipio: string | null }>(
+    `SELECT ne.id, ne.name, f.municipiofield AS municipio
+       FROM \`${TABLE_NE}\` ne
+       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      WHERE ne.is_deleted = 0
+        AND f.plugin_fields_statusvistoriafielddropdowns_id = ${STATUS_VISTORIA_APROVADO_COM_PENDENCIAS}
+        AND f.plugin_fields_pendnciafielddropdowns_id = ${PENDENCIA_NANSEN}`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    equipamento: r.name,
+    municipio: limpa(r.municipio) ?? "—",
+  }));
 }
