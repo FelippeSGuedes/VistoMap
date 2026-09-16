@@ -5,6 +5,7 @@ import {
   DROPDOWN_COLUMNS,
   DROPDOWN_TABLES,
   ITEMTYPE_NE,
+  isRevisitaAtual,
   PENDENCIA_CPFL,
   PENDENCIA_NANSEN,
   PENDENCIA_SEM,
@@ -1142,14 +1143,28 @@ export async function atribuirVistoria(
   tecnicoId: number,
   marcarProjetoPendente: boolean
 ): Promise<{ affected: number; situacao: number }> {
-  // Detecta se é revisita pra decidir situação.
-  const [auxRow] = await query<{ is_repeat: number }>(
-    `SELECT COALESCE(is_repeat,0) AS is_repeat
-       FROM \`${TABLE_AUX}\`
-      WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}' LIMIT 1`,
+  // Detecta se é revisita pra decidir situação. Não usa só aux.is_repeat —
+  // ver isRevisitaAtual() em constants.ts (statusvistoria=Reprovado pode vir
+  // direto da concessionária, sem nunca marcar is_repeat=1).
+  const [estadoAtual] = await query<{
+    situacao_id: number | null;
+    status_id: number | null;
+    is_repeat: number | null;
+  }>(
+    `SELECT f.\`${SITUACAO_COLUMN}\` AS situacao_id,
+            f.plugin_fields_statusvistoriafielddropdowns_id AS status_id,
+            COALESCE(aux.is_repeat,0) AS is_repeat
+       FROM \`${TABLE_FIELDS}\` f
+       LEFT JOIN \`${TABLE_AUX}\` aux
+              ON aux.items_id = f.items_id AND aux.itemtype = '${ITEMTYPE_NE}'
+      WHERE f.items_id = ? LIMIT 1`,
     [vistoriaId]
   );
-  const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
+  const eraRevisita = isRevisitaAtual({
+    situacaoId: estadoAtual?.situacao_id,
+    statusVistoriaId: estadoAtual?.status_id,
+    isRepeat: estadoAtual?.is_repeat,
+  });
   // Atribuir só designa o técnico — situação fica "aguardando ele iniciar"
   // (deriva pra "Atribuído" em resolveSituacaoOperacional). Antes pulava
   // direto pra Em Vistoria (2), o que fazia o card aparecer como "Em
@@ -1159,6 +1174,10 @@ export async function atribuirVistoria(
   // (situação 5 só é setada aqui hoje; mudar isso é escopo maior, fora do
   // que foi reportado).
   const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_A_VISTORIAR;
+  // Resincroniza aux.is_repeat quando a revisita só foi detectada pelo
+  // statusvistoria/situação (concessionária) — sem isso, finalizar() e o
+  // app do técnico (isRepeat vem daqui) voltariam a ler is_repeat=0.
+  const precisaResincronizarIsRepeat = eraRevisita && Number(estadoAtual?.is_repeat ?? 0) !== 1;
 
   // statusvistoria (nativo) também precisa voltar pro início — achado
   // 2026-09-15: atribuir um técnico pra um equipamento que estava
@@ -1176,12 +1195,16 @@ export async function atribuirVistoria(
       WHERE items_id = ?`,
     [tecnicoId, situacao, STATUS_VISTORIA_PENDENTE, vistoriaId]
   );
-  if (marcarProjetoPendente) {
+  if (marcarProjetoPendente || precisaResincronizarIsRepeat) {
+    const auxSets: string[] = [];
+    const auxParams: unknown[] = [];
+    if (marcarProjetoPendente) auxSets.push("project_status = 'PENDENTE'");
+    if (precisaResincronizarIsRepeat) auxSets.push("is_repeat = 1");
     await execute(
       `UPDATE \`${TABLE_AUX}\`
-          SET project_status = 'PENDENTE'
+          SET ${auxSets.join(", ")}
         WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
-      [vistoriaId]
+      [...auxParams, vistoriaId]
     );
   }
   return { affected: r.affectedRows, situacao };
@@ -2133,8 +2156,9 @@ export async function devolverVistoria(
 }
 
 /**
- * Reatribui a vistoria a outro técnico — volta pra situação "A Vistoriar"
- * e reseta statusvistoria pra "Pendente" (inicial).
+ * Reatribui a vistoria a outro técnico — volta pra "A Vistoriar" (ou "Em
+ * Revisita" se já era revisita — mesma detecção robusta de atribuirVistoria,
+ * ver isRevisitaAtual()) e reseta statusvistoria pra "Pendente" (inicial).
  *
  * O reset do statusvistoria foi adicionado em 2026-09-15: essa função é
  * usada tanto pelo mapa/Central de Vistorias quanto por
@@ -2143,19 +2167,55 @@ export async function devolverVistoria(
  * análise" (statusvistoria 3/4/5) ficava com técnico e situação corretos,
  * mas sumia da fila do próprio técnico mesmo assim: listVistorias (em
  * equipments.ts) exclui explicitamente esses 3 valores de statusvistoria.
+ *
+ * Antes desta correção (2026-09-16) esta função sempre forçava "A
+ * Vistoriar", mesmo reatribuindo uma revisita em andamento — se justo
+ * nesse caso aux.is_repeat estivesse fora de sincronia (ver
+ * isRevisitaAtual()), a situação virava a única pista e essa função a
+ * apagava, reproduzindo o mesmo bug do caso VIN-G-A-009.
  */
 export async function reatribuirVistoria(
   vistoriaId: number,
   novoTecnicoId: number
 ): Promise<void> {
+  const [estadoAtual] = await query<{
+    situacao_id: number | null;
+    status_id: number | null;
+    is_repeat: number | null;
+  }>(
+    `SELECT f.\`${SITUACAO_COLUMN}\` AS situacao_id,
+            f.plugin_fields_statusvistoriafielddropdowns_id AS status_id,
+            COALESCE(aux.is_repeat,0) AS is_repeat
+       FROM \`${TABLE_FIELDS}\` f
+       LEFT JOIN \`${TABLE_AUX}\` aux
+              ON aux.items_id = f.items_id AND aux.itemtype = '${ITEMTYPE_NE}'
+      WHERE f.items_id = ? LIMIT 1`,
+    [vistoriaId]
+  );
+  const eraRevisita = isRevisitaAtual({
+    situacaoId: estadoAtual?.situacao_id,
+    statusVistoriaId: estadoAtual?.status_id,
+    isRepeat: estadoAtual?.is_repeat,
+  });
+  const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_A_VISTORIAR;
+  const precisaResincronizarIsRepeat = eraRevisita && Number(estadoAtual?.is_repeat ?? 0) !== 1;
+
   await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET users_id_vistoriadorafield = ?,
             \`${SITUACAO_COLUMN}\`    = ?,
             plugin_fields_statusvistoriafielddropdowns_id = ?
       WHERE items_id = ?`,
-    [novoTecnicoId, SITUACAO_A_VISTORIAR, STATUS_VISTORIA_PENDENTE, vistoriaId]
+    [novoTecnicoId, situacao, STATUS_VISTORIA_PENDENTE, vistoriaId]
   );
+  if (precisaResincronizarIsRepeat) {
+    await execute(
+      `UPDATE \`${TABLE_AUX}\`
+          SET is_repeat = 1
+        WHERE items_id = ? AND itemtype = '${ITEMTYPE_NE}'`,
+      [vistoriaId]
+    );
+  }
 }
 
 /**

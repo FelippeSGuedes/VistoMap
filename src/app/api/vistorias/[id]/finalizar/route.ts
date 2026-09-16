@@ -15,7 +15,6 @@ import {
   STATUS_VISTORIA_EM_ANALISE,
   type DropdownKey,
 } from "@/lib/glpi/constants";
-import { query } from "@/lib/db";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
@@ -186,15 +185,10 @@ export async function POST(
 
     const datavistoria = nowBrasiliaSql(payload.finalizadaEm);
 
-    // Detecta se já era revisita (is_repeat=1 na aux) p/ decidir situação.
-    const [auxRow] = await query<{ is_repeat: number }>(
-      `SELECT COALESCE(is_repeat,0) AS is_repeat
-         FROM glpi_plugin_vistomap_projects
-        WHERE items_id = ? AND itemtype = 'NetworkEquipment'
-        LIMIT 1`,
-      [id]
-    );
-    const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
+    // Detecta se já era revisita p/ decidir situação — vistoria.isRepeat já
+    // usa a detecção robusta (isRevisitaAtual em constants.ts: situação OU
+    // statusvistoria=Reprovado OU aux.is_repeat, não só o último sozinho).
+    const eraRevisita = vistoria.isRepeat;
     // Técnico terminou: Revisitado (6) se era revisita, Vistoriado (3) caso contrário.
     const situacaoFinal = eraRevisita ? SITUACAO_REVISITADO : SITUACAO_VISTORIADO;
 

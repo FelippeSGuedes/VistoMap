@@ -101,6 +101,31 @@ export const SITUACAO_DEVOLVIDA = 8;
 export const SITUACAO_COLUMN =
   "plugin_fields_situaodavistoriafielddropdowns_id";
 
+/**
+ * Detecta se uma vistoria "é revisita" olhando os 3 sinais que podem indicar
+ * isso — não dá pra confiar só em `aux.is_repeat`: statusvistoria=Reprovado(4)
+ * pode vir de uma decisão da CONCESSIONÁRIA gravada direto no GLPI, sem nunca
+ * passar por reprovarVistoria() (único lugar que marca is_repeat=1). Caso
+ * real (VIN-G-A-009, 2026-09-16): concessionária reprovou, a fila
+ * Central de Reprovações mostrou certo (já usa essa mesma lógica composta),
+ * mas atribuir/finalizar olhavam só is_repeat=0 e tratavam como vistoria
+ * normal — técnico não via "Revisita" no app e o envio fechava como
+ * Vistoriado em vez de Revisitado.
+ */
+export function isRevisitaAtual(sinais: {
+  situacaoId?: number | string | null;
+  statusVistoriaId?: number | string | null;
+  isRepeat?: number | string | boolean | null;
+}): boolean {
+  if (Number(sinais.isRepeat) === 1 || sinais.isRepeat === true) return true;
+  const situacaoId = sinais.situacaoId != null ? Number(sinais.situacaoId) : null;
+  if (situacaoId === SITUACAO_AGUARDANDO_REVISITA || situacaoId === SITUACAO_EM_REVISITA) {
+    return true;
+  }
+  if (Number(sinais.statusVistoriaId) === STATUS_VISTORIA_REPROVADO) return true;
+  return false;
+}
+
 /** Status válidos da aux table (`project_status` ENUM do plugin). */
 export const AUX_STATUS_PENDENTE = "PENDENTE";
 export const AUX_STATUS_GERANDO = "GERANDO";

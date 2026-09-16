@@ -4,6 +4,7 @@ import {
   DROPDOWN_COLUMNS,
   DROPDOWN_TABLES,
   ITEMTYPE_NE,
+  isRevisitaAtual,
   SITUACAO_DEVOLVIDA,
   STATE_NAME_TO_STATUS,
   STATE_VISTORIADO,
@@ -125,7 +126,13 @@ function resolveStatusComSituacao(
 }
 
 function mapRow(r: RawRow) {
-  const isRepeat = Number(r.is_repeat ?? 0) === 1;
+  // Não usa só is_repeat — ver isRevisitaAtual() em constants.ts (statusvistoria
+  // Reprovado pode vir direto da concessionária, sem nunca marcar is_repeat=1).
+  const isRepeat = isRevisitaAtual({
+    situacaoId: r.situacao_id,
+    statusVistoriaId: r.status_vistoria_id,
+    isRepeat: r.is_repeat,
+  });
   return {
     id: String(r.id),
     glpiId: `NE-${r.id}`,

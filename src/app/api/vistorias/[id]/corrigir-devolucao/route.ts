@@ -11,7 +11,7 @@ import {
   STATUS_VISTORIA_EM_ANALISE,
   type DropdownKey,
 } from "@/lib/glpi/constants";
-import { query, execute } from "@/lib/db";
+import { execute } from "@/lib/db";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
@@ -180,15 +180,9 @@ export async function POST(
     }
 
     // Detecta se era revisita (pra voltar pro estado certo) e limpa a
-    // situação de devolução → Vistoriado/Revisitado.
-    const [auxRow] = await query<{ is_repeat: number }>(
-      `SELECT COALESCE(is_repeat,0) AS is_repeat
-         FROM glpi_plugin_vistomap_projects
-        WHERE items_id = ? AND itemtype = 'NetworkEquipment'
-        LIMIT 1`,
-      [id]
-    );
-    const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
+    // situação de devolução → Vistoriado/Revisitado. vistoria.isRepeat já usa
+    // a detecção robusta (isRevisitaAtual em constants.ts).
+    const eraRevisita = vistoria.isRepeat;
     const situacaoFinal = eraRevisita ? SITUACAO_REVISITADO : SITUACAO_VISTORIADO;
     const agora = nowBrasiliaSql();
 
