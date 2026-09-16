@@ -566,6 +566,8 @@ export interface VistoriaCPFL {
   validacaoCpfl: string | null;
   validadorCpfl: string | null;
   avaliadorInterno: string | null;
+  /** Texto livre da concessionária (campo "Observações CPFL") — o apontamento em si por trás de "Aprovado com Pendências". */
+  observacoesCpfl: string | null;
 }
 
 export interface CPFLStats {

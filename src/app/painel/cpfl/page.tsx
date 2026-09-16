@@ -590,6 +590,23 @@ function TratativaDrawer({
                       pendência e regerar o projeto.
                     </p>
 
+                    {item?.observacoesCpfl && (
+                      <div
+                        className="rounded-xl px-3 py-2.5"
+                        style={{ background: "var(--vm-orange-tint)", border: "1px solid rgba(194,65,12,0.2)" }}
+                      >
+                        <p
+                          className="mb-1 text-[9.5px] font-bold uppercase tracking-[0.14em]"
+                          style={{ color: "#C2410C" }}
+                        >
+                          Observações CPFL
+                        </p>
+                        <p className="text-[12px] leading-relaxed" style={{ color: "var(--vm-text)" }}>
+                          {item.observacoesCpfl}
+                        </p>
+                      </div>
+                    )}
+
                     {salvoAgora && (
                       <div
                         className="rounded-xl px-3 py-2.5 text-[11.5px] font-medium"

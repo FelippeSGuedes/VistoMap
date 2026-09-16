@@ -91,6 +91,8 @@ export interface VistoriaCPFL {
   validadorCpfl: string | null;
   /** Analista do VistoMap que aprovou/reprovou em /painel/revisitas — ver cabeçalho. */
   avaliadorInterno: string | null;
+  /** Texto livre da concessionária (campo "Observações CPFL") — o apontamento em si por trás de "Aprovado com Pendências". */
+  observacoesCpfl: string | null;
 }
 
 export interface CPFLStats {
@@ -125,6 +127,7 @@ interface CPFLRow {
   pdf_path: string | null;
   validacao_cpfl: string | null;
   validador_cpfl: string | null;
+  observacoes_cpfl: string | null;
   avaliador_interno: string | null;
   avaliador_interno_firstname: string | null;
   avaliador_interno_realname: string | null;
@@ -221,6 +224,7 @@ export async function fetchVistoriasCPFL(
         aux.pdf_path,
         valcpfl.name      AS validacao_cpfl,
         valu.name         AS validador_cpfl,
+        f.observaescpflfield AS observacoes_cpfl,
         av.name           AS avaliador_interno,
         av.firstname      AS avaliador_interno_firstname,
         av.realname       AS avaliador_interno_realname,
@@ -298,6 +302,7 @@ export async function fetchVistoriasCPFL(
       pdfPath: r.pdf_path ?? null,
       validacaoCpfl: limpa(r.validacao_cpfl),
       validadorCpfl: limpa(r.validador_cpfl),
+      observacoesCpfl: limpa(r.observacoes_cpfl),
       avaliadorInterno: limpa(nomeAvaliador),
     };
   });
