@@ -33,6 +33,7 @@ import {
   ITEMTYPE_NE,
   PENDENCIA_CPFL,
   STATUS_VISTORIA_APROVADO,
+  STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
@@ -49,15 +50,21 @@ import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 /** Etapa da vistoria no ciclo da concessionária. */
 export type EtapaCPFL = "AGUARDANDO" | "APROVADA" | "REPROVADA";
 
-const STATUS_POR_ETAPA: Record<EtapaCPFL, number> = {
-  AGUARDANDO: STATUS_VISTORIA_EM_ANALISE,
-  APROVADA: STATUS_VISTORIA_APROVADO,
-  REPROVADA: STATUS_VISTORIA_REPROVADO,
+const STATUS_POR_ETAPA: Record<EtapaCPFL, number[]> = {
+  AGUARDANDO: [STATUS_VISTORIA_EM_ANALISE],
+  APROVADA: [STATUS_VISTORIA_APROVADO, STATUS_VISTORIA_APROVADO_COM_PENDENCIAS],
+  REPROVADA: [STATUS_VISTORIA_REPROVADO],
 };
 
 function etapaDoStatus(statusId: number | null): EtapaCPFL {
-  if (Number(statusId) === STATUS_VISTORIA_APROVADO) return "APROVADA";
-  if (Number(statusId) === STATUS_VISTORIA_REPROVADO) return "REPROVADA";
+  const s = Number(statusId);
+  // "Aprovado com Pendências" ainda é uma aprovação da concessionária — a
+  // ressalva pendente é rastreada à parte pelo campo `pendencia` (ver
+  // ehPendenciaNansen() em /painel/cpfl), não por uma etapa própria aqui.
+  if (s === STATUS_VISTORIA_APROVADO || s === STATUS_VISTORIA_APROVADO_COM_PENDENCIAS) {
+    return "APROVADA";
+  }
+  if (s === STATUS_VISTORIA_REPROVADO) return "REPROVADA";
   return "AGUARDANDO";
 }
 
@@ -150,13 +157,14 @@ function limpa(v: string | null): string | null {
 function montarWhere(filtros: CPFLFilters): { where: string[]; params: unknown[] } {
   const where = [
     "ne.is_deleted = 0",
-    `f.plugin_fields_statusvistoriafielddropdowns_id IN (${STATUS_VISTORIA_EM_ANALISE}, ${STATUS_VISTORIA_APROVADO}, ${STATUS_VISTORIA_REPROVADO})`,
+    `f.plugin_fields_statusvistoriafielddropdowns_id IN (${STATUS_VISTORIA_EM_ANALISE}, ${STATUS_VISTORIA_APROVADO}, ${STATUS_VISTORIA_APROVADO_COM_PENDENCIAS}, ${STATUS_VISTORIA_REPROVADO})`,
   ];
   const params: unknown[] = [];
 
   if (filtros.etapa) {
-    where.push("f.plugin_fields_statusvistoriafielddropdowns_id = ?");
-    params.push(STATUS_POR_ETAPA[filtros.etapa]);
+    const statusDaEtapa = STATUS_POR_ETAPA[filtros.etapa];
+    where.push(`f.plugin_fields_statusvistoriafielddropdowns_id IN (${statusDaEtapa.map(() => "?").join(",")})`);
+    params.push(...statusDaEtapa);
   }
   if (filtros.municipio) {
     where.push("TRIM(f.municipiofield) = ?");
@@ -339,8 +347,10 @@ export async function fetchCPFLStats(
     const total = Number(r.total) || 0;
     stats.total += total;
     stats.aguardandoMais30d += Number(r.mais30) || 0;
-    if (Number(r.status_id) === STATUS_VISTORIA_APROVADO) stats.aprovadas += total;
-    else if (Number(r.status_id) === STATUS_VISTORIA_REPROVADO) stats.reprovadas += total;
+    const statusId = Number(r.status_id);
+    if (statusId === STATUS_VISTORIA_APROVADO || statusId === STATUS_VISTORIA_APROVADO_COM_PENDENCIAS) {
+      stats.aprovadas += total;
+    } else if (statusId === STATUS_VISTORIA_REPROVADO) stats.reprovadas += total;
     else stats.aguardando += total;
   }
 

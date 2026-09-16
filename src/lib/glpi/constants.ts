@@ -71,6 +71,8 @@ export const STATUS_VISTORIA_APROVADO = 3;
 export const STATUS_VISTORIA_REPROVADO = 4;
 export const STATUS_VISTORIA_EM_ANALISE = 5;
 export const STATUS_VISTORIA_AGUARDANDO_VISTORIA = 6;
+/** Aprovação da concessionária com ressalva — projeto segue aprovado, mas fica de pé um apontamento pra Nansen resolver (ver /painel/cpfl). */
+export const STATUS_VISTORIA_APROVADO_COM_PENDENCIAS = 7;
 
 /** Pendência: 1 = "Pendência CPFL", 2 = "Pendência Nansen", 3 = "Sem Pendências". */
 export const PENDENCIA_CPFL = 1;
