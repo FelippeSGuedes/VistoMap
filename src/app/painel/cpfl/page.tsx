@@ -92,6 +92,28 @@ function ehPendenciaNansen(v: VistoriaCPFL): boolean {
   return v.etapa === "APROVADA" && v.pendencia === "Pendência Nansen";
 }
 
+/**
+ * Valores atuais pro modal "Corrigir dados" — detalhe.fields cobre a maioria,
+ * mas latitude/longitude/município vêm de campos de nível superior (não
+ * espelhados em .fields por getVistoria()/mapRow) e o material chega sob
+ * outra chave (tipodematerial, não materialfield). Sem isso o formulário
+ * abria em branco justamente nos campos que a CPFL mais pede pra corrigir.
+ */
+function montarInitialEdicao(detalhe: {
+  fields?: Record<string, string>;
+  latitude?: number | null;
+  longitude?: number | null;
+  cidade?: string;
+} | null): Record<string, string> {
+  const fields = detalhe?.fields ?? {};
+  const initial: Record<string, string> = { ...fields };
+  if (fields.tipodematerial) initial.materialfield = fields.tipodematerial;
+  if (detalhe?.latitude != null) initial.latitudefield = String(detalhe.latitude);
+  if (detalhe?.longitude != null) initial.longitudefield = String(detalhe.longitude);
+  if (detalhe?.cidade) initial.municipiofield = detalhe.cidade;
+  return initial;
+}
+
 export default function ValidacaoCPFLPage() {
   const { session } = useAuthStore();
   const podeAgir = session?.role !== "leitura";
@@ -453,7 +475,12 @@ function TratativaDrawer({
   onClose: () => void;
   onResolved: (mensagem: string) => void;
 }) {
-  const [detalhe, setDetalhe] = useState<{ fields?: Record<string, string> } | null>(null);
+  const [detalhe, setDetalhe] = useState<{
+    fields?: Record<string, string>;
+    latitude?: number | null;
+    longitude?: number | null;
+    cidade?: string;
+  } | null>(null);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
   const [editarOpen, setEditarOpen] = useState(false);
   const [salvoAgora, setSalvoAgora] = useState<string | null>(null);
@@ -479,7 +506,14 @@ function TratativaDrawer({
     setSalvoAgora(null);
     setCarregandoDetalhe(true);
     api
-      .get<{ vistoria: { fields?: Record<string, string> } }>(`/painel/vistoria/${item.id}`)
+      .get<{
+        vistoria: {
+          fields?: Record<string, string>;
+          latitude?: number | null;
+          longitude?: number | null;
+          cidade?: string;
+        };
+      }>(`/painel/vistoria/${item.id}`)
       .then((r) => setDetalhe(r.data.vistoria))
       .catch(() => setDetalhe(null))
       .finally(() => setCarregandoDetalhe(false));
@@ -787,7 +821,7 @@ function TratativaDrawer({
         vistoriaId={item?.id ?? null}
         equipamento={item?.equipamento}
         municipio={item?.municipio}
-        initial={detalhe?.fields ?? {}}
+        initial={montarInitialEdicao(detalhe)}
         onClose={() => setEditarOpen(false)}
         onSaved={(r) => {
           setEditarOpen(false);
@@ -800,7 +834,14 @@ function TratativaDrawer({
           );
           if (item) {
             api
-              .get<{ vistoria: { fields?: Record<string, string> } }>(`/painel/vistoria/${item.id}`)
+              .get<{
+                vistoria: {
+                  fields?: Record<string, string>;
+                  latitude?: number | null;
+                  longitude?: number | null;
+                  cidade?: string;
+                };
+              }>(`/painel/vistoria/${item.id}`)
               .then((res) => setDetalhe(res.data.vistoria))
               .catch(() => {});
           }
