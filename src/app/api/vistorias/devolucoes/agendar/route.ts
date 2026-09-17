@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { fetchDevolucoes } from "@/lib/glpi/devolucoes";
+import { getVistoria, listVistorias } from "@/lib/glpi/equipments";
 import { fetchAgendamentoAtivo, agendarDevolucoesTecnico } from "@/lib/glpi/agendamentosTecnico";
 import { getExpedienteConfig } from "@/lib/expediente";
 import { proximosDiasUteis } from "@/utils/diasUteis";
@@ -17,10 +18,10 @@ interface AgendarBody {
 /**
  * POST /api/vistorias/devolucoes/agendar  (técnico)
  *
- * Agenda TODAS as devoluções PENDENTE do técnico que ainda não têm
- * agendamento válido pro mesmo dia escolhido — nunca confia em ids
- * vindos do cliente, recalcula tudo no servidor (mesmo espírito do
- * bloqueio de `iniciar`, ver fetchAgendamentoAtivo).
+ * Agenda TODAS as pendências do técnico sem agendamento válido pro mesmo
+ * dia escolhido — devoluções E revisitas juntas (ver resumo/route.ts).
+ * Nunca confia em ids vindos do cliente, recalcula tudo no servidor
+ * (mesmo espírito do bloqueio de `iniciar`, ver fetchAgendamentoAtivo).
  */
 export async function POST(request: Request) {
   const actor = await getActorFromRequest(request);
@@ -46,22 +47,29 @@ export async function POST(request: Request) {
     );
   }
 
-  const pendentes = await fetchDevolucoes({ tecnicoId: actor.id, status: "PENDENTE" });
-  const semAgenda = [];
-  for (const d of pendentes) {
+  const itensParaAgendar: Array<{ itemsId: number; equipamento: string }> = [];
+
+  const devolucoesPendentes = await fetchDevolucoes({ tecnicoId: actor.id, status: "PENDENTE" });
+  for (const d of devolucoesPendentes) {
     const agendamento = await fetchAgendamentoAtivo(d.vistoriaId, actor.id);
-    if (!agendamento) semAgenda.push(d);
+    if (agendamento) continue;
+    const vistoria = await getVistoria(d.vistoriaId);
+    itensParaAgendar.push({ itemsId: d.vistoriaId, equipamento: vistoria?.equipamento ?? d.equipamento });
   }
 
-  if (semAgenda.length === 0) {
+  const vistoriasTecnico = await listVistorias({ tecnicoId: Number(actor.id), ignorarAgendamento: true });
+  const revisitasAtivas = vistoriasTecnico.filter((v) => v.status === "REPROVADA");
+  for (const v of revisitasAtivas) {
+    const agendamento = await fetchAgendamentoAtivo(Number(v.id), actor.id);
+    if (agendamento) continue;
+    itensParaAgendar.push({ itemsId: Number(v.id), equipamento: v.equipamento });
+  }
+
+  if (itensParaAgendar.length === 0) {
     return NextResponse.json({ ok: true, agendados: 0 });
   }
 
-  await agendarDevolucoesTecnico(
-    actor.id,
-    semAgenda.map((d) => ({ itemsId: d.vistoriaId, equipamento: d.equipamento })),
-    body.dia
-  );
+  await agendarDevolucoesTecnico(actor.id, itensParaAgendar, body.dia);
 
-  return NextResponse.json({ ok: true, agendados: semAgenda.length });
+  return NextResponse.json({ ok: true, agendados: itensParaAgendar.length });
 }

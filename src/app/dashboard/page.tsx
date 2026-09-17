@@ -38,8 +38,9 @@ import type { DashboardStats, SyncSnapshot } from "@/types";
 
 interface DevolucaoResumoResponse {
   totalPendentes: number;
+  totalRevisitasPendentes: number;
   pendentesSemAgenda: DevolucaoResumoItem[];
-  hojeAgendadas: Array<{ devolucaoId: number; vistoriaId: number; equipamento: string; cidade: string }>;
+  hojeAgendadas: Array<{ tipo: "devolucao" | "revisita"; chaveId: number; vistoriaId: number; equipamento: string; cidade: string }>;
   diasDisponiveis: string[];
 }
 
@@ -286,9 +287,14 @@ export default function DashboardPage() {
         const concluidas = vistorias.filter(
           (v) => v.status === "FINALIZADA" || v.status === "APROVADA"
         ).length;
-        const reprovadas = vistorias.filter(
-          (v) => v.status === "REPROVADA" || v.isRepeat
-        ).length;
+        // Mesmo raciocínio de `devolucoes` abaixo: prefere o total do
+        // endpoint de resumo (conta revisitas pendentes ignorando
+        // agendamento) — `vistorias` já esconde da fila as que o técnico
+        // marcou pra um dia futuro, então filtrar por status aqui faria o
+        // KPI cair escondendo que ainda tem revisita pendente (só agendada).
+        const reprovadas =
+          resumo?.totalRevisitasPendentes ??
+          vistorias.filter((v) => v.status === "REPROVADA" || v.isRepeat).length;
         // Prefere o total do endpoint de resumo: ele conta TODAS as
         // devoluções PENDENTE, agendadas ou não — a lista de vistorias já
         // esconde da fila as que o técnico marcou pra um dia futuro, então

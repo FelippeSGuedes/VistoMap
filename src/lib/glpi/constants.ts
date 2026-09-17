@@ -119,8 +119,17 @@ export function isRevisitaAtual(sinais: {
   statusVistoriaId?: number | string | null;
   isRepeat?: number | string | boolean | null;
 }): boolean {
-  if (Number(sinais.isRepeat) === 1 || sinais.isRepeat === true) return true;
   const situacaoId = sinais.situacaoId != null ? Number(sinais.situacaoId) : null;
+  // Situação já avançou pra um estado resolvido (Vistoriado/Revisitado)
+  // manda, mesmo com is_repeat ainda em 1 — esse campo só é zerado quando
+  // o ANALISTA aprova (aprovarVistoria), nunca quando o técnico reenvia a
+  // revisita (finalizar/route.ts muda a situação, não mexe em is_repeat).
+  // Sem este corte, uma vistoria já Revisitada e aguardando aprovação
+  // continuava contando como revisita ATIVA só por causa do sinal velho.
+  if (situacaoId === SITUACAO_VISTORIADO || situacaoId === SITUACAO_REVISITADO) {
+    return false;
+  }
+  if (Number(sinais.isRepeat) === 1 || sinais.isRepeat === true) return true;
   if (situacaoId === SITUACAO_AGUARDANDO_REVISITA || situacaoId === SITUACAO_EM_REVISITA) {
     return true;
   }

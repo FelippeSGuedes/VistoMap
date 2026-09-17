@@ -3,21 +3,28 @@
 /**
  * DevolucaoOnboardingFlow — substitui o balão persistente "Vistoria
  * devolvida" (DevolucaoBanner, aposentado). Aparece só na tela inicial,
- * uma vez por lote de devoluções ainda sem dia marcado: primeiro um
+ * uma vez por lote de pendências ainda sem dia marcado: primeiro um
  * resumo ("Estou ciente!"), depois a escolha do dia (próximos 7 dias
  * úteis). Depois de agendado, fica em silêncio até o dia escolhido — ver
  * DevolucaoRotaPrompt.
+ *
+ * Unifica 2 mecanismos diferentes de "isso voltou pro técnico": Devolução
+ * (analista aponta itens específicos) e Revisita (CPFL reprovou a
+ * vistoria inteira) — ver resumo/route.ts. Cada card mostra uma etiqueta
+ * indicando qual é qual, já que o tipo de trabalho é diferente (corrigir
+ * um item vs refazer a vistoria completa).
  */
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, Calendar, Camera, ClipboardEdit, Loader2 } from "lucide-react";
+import { AlertTriangle, Calendar, Camera, ClipboardEdit, Loader2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/services/api";
 import { DEVOLUCAO_ITENS } from "@/lib/glpi/devolucaoItens";
 
 export interface DevolucaoResumoItem {
-  devolucaoId: number;
+  tipo: "devolucao" | "revisita";
+  chaveId: number;
   vistoriaId: number;
   equipamento: string;
   cidade: string;
@@ -52,32 +59,49 @@ function labelDoDia(iso: string): { titulo: string; sub: string } {
   return { titulo: semana.charAt(0).toUpperCase() + semana.slice(1), sub: dataFmt };
 }
 
+const TAG_POR_TIPO = {
+  devolucao: { label: "Devolução", className: "bg-red-100 text-red-700" },
+  revisita: { label: "Revisita", className: "bg-amber-100 text-amber-800" },
+} as const;
+
 function ItemResumoCard({ item }: { item: DevolucaoResumoItem }) {
   const fotos = item.itens.filter((k) => tipoDoItem(k) === "foto").length;
   const campos = item.itens.filter((k) => tipoDoItem(k) === "campo").length;
   const motivosTexto = item.motivos
     .map((m) => (m === "Outro" ? item.motivoOutro || "Outro" : m))
     .join(" · ");
+  const tag = TAG_POR_TIPO[item.tipo];
   return (
     <li className="rounded-2xl border border-brand-steel/60 bg-brand-ice/60 px-3.5 py-3">
-      <p className="truncate text-[13.5px] font-semibold text-ink">
-        {item.equipamento}
-        {item.cidade ? <span className="font-normal text-ink-muted"> · {item.cidade}</span> : null}
-      </p>
-      {motivosTexto && <p className="mt-1 text-[12px] text-red-700">{motivosTexto}</p>}
-      {(fotos > 0 || campos > 0) && (
-        <div className="mt-1.5 flex items-center gap-3 text-[11px] text-ink-muted">
-          {fotos > 0 && (
-            <span className="inline-flex items-center gap-1">
-              <Camera className="h-3 w-3" /> {fotos} foto{fotos > 1 ? "s" : ""}
-            </span>
-          )}
-          {campos > 0 && (
-            <span className="inline-flex items-center gap-1">
-              <ClipboardEdit className="h-3 w-3" /> {campos} campo{campos > 1 ? "s" : ""}
-            </span>
-          )}
+      <div className="flex items-center gap-2">
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tag.className}`}>
+          {tag.label}
+        </span>
+        <p className="truncate text-[13.5px] font-semibold text-ink">
+          {item.equipamento}
+          {item.cidade ? <span className="font-normal text-ink-muted"> · {item.cidade}</span> : null}
+        </p>
+      </div>
+      {motivosTexto && <p className="mt-1.5 text-[12px] text-red-700">{motivosTexto}</p>}
+      {item.tipo === "revisita" ? (
+        <div className="mt-1.5 flex items-center gap-1 text-[11px] text-ink-muted">
+          <RotateCw className="h-3 w-3" /> Vistoria completa a refazer
         </div>
+      ) : (
+        (fotos > 0 || campos > 0) && (
+          <div className="mt-1.5 flex items-center gap-3 text-[11px] text-ink-muted">
+            {fotos > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Camera className="h-3 w-3" /> {fotos} foto{fotos > 1 ? "s" : ""}
+              </span>
+            )}
+            {campos > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <ClipboardEdit className="h-3 w-3" /> {campos} campo{campos > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )
       )}
     </li>
   );
@@ -150,8 +174,8 @@ export function DevolucaoOnboardingFlow({
                       <div className="min-w-0 flex-1">
                         <h2 className="text-[16px] font-bold text-ink">
                           {itens.length === 1
-                            ? "Foi devolvida 1 vistoria para você"
-                            : `Foram devolvidas ${itens.length} vistorias para você`}
+                            ? "1 vistoria voltou para você"
+                            : `${itens.length} vistorias voltaram para você`}
                         </h2>
                         <p className="text-[13px] text-ink-muted">
                           Dá uma olhada rápida — depois você escolhe quando resolver.
@@ -161,7 +185,7 @@ export function DevolucaoOnboardingFlow({
 
                     <ul className="max-h-[42dvh] space-y-2 overflow-y-auto">
                       {itens.map((item) => (
-                        <ItemResumoCard key={item.devolucaoId} item={item} />
+                        <ItemResumoCard key={`${item.tipo}-${item.chaveId}`} item={item} />
                       ))}
                     </ul>
 

@@ -204,6 +204,13 @@ export interface ListVistoriasFilters {
    * fila pendente, sem esse limite.
    */
   concluidas?: boolean;
+  /**
+   * Quando true, pula o NOT EXISTS de agendamento (item 3 abaixo) —
+   * usado pelo resumo de devoluções/revisitas (/api/vistorias/devolucoes/
+   * resumo) pra contar revisitas pendentes mesmo as que o próprio técnico
+   * já agendou pra um dia futuro (que a fila normal esconde de propósito).
+   */
+  ignorarAgendamento?: boolean;
 }
 
 export async function listVistorias(filters: ListVistoriasFilters = {}) {
@@ -245,12 +252,14 @@ export async function listVistorias(filters: ListVistoriasFilters = {}) {
       // vistoria com data futura marcada fica invisível na fila até o dia
       // chegar — não enche a tela do técnico com o que ainda não é pra
       // fazer. Sem agendamento nenhum, comportamento 100% igual a antes.
-      where.push(`NOT EXISTS (
-        SELECT 1 FROM glpi_plugin_vistomap_agendamentos ag
-         WHERE ag.items_id = f.items_id
-           AND ag.status = 'AGENDADA'
-           AND ag.data_agendada > CURDATE()
-      )`);
+      if (!filters.ignorarAgendamento) {
+        where.push(`NOT EXISTS (
+          SELECT 1 FROM glpi_plugin_vistomap_agendamentos ag
+           WHERE ag.items_id = f.items_id
+             AND ag.status = 'AGENDADA'
+             AND ag.data_agendada > CURDATE()
+        )`);
+      }
     }
   }
   const extraWhere = where.length ? `AND ${where.join(" AND ")}` : "";

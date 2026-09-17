@@ -2,10 +2,10 @@
 
 /**
  * DevolucaoRotaPrompt — cartão leve (não bloqueia) que aparece no
- * dashboard no dia que o técnico marcou pra resolver devoluções (ver
- * DevolucaoOnboardingFlow). Sugere ordenar a fila por proximidade
- * ("automático") ou deixar como está ("manual"); "Vou fazer mais tarde"
- * só esconde o cartão nesta sessão.
+ * dashboard no dia que o técnico marcou pra resolver devoluções e/ou
+ * revisitas (ver DevolucaoOnboardingFlow). Sugere ordenar a fila por
+ * proximidade ("automático") ou deixar como está ("manual");
+ * "Vou fazer mais tarde" só esconde o cartão nesta sessão.
  */
 
 import { motion } from "framer-motion";
@@ -55,7 +55,7 @@ export function DevolucaoRotaPrompt({ quantidade, onDismiss }: DevolucaoRotaProm
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[14.5px] font-bold tracking-[-0.1px]" style={{ color: "#063B3B" }}>
-            Bom dia! Sua rota de hoje inclui devolu{quantidade === 1 ? "ção" : "ções"}.
+            Bom dia! Sua rota de hoje inclui pendência{quantidade === 1 ? "" : "s"} de retorno.
           </p>
           <p className="mt-0.5 text-[12.5px]" style={{ color: "#A0ACBA" }}>
             {quantidade === 1

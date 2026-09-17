@@ -1,13 +1,27 @@
 import { NextResponse } from "next/server";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { fetchDevolucoes } from "@/lib/glpi/devolucoes";
-import { getVistoria } from "@/lib/glpi/equipments";
+import { getVistoria, listVistorias } from "@/lib/glpi/equipments";
 import { fetchAgendamentoAtivo } from "@/lib/glpi/agendamentosTecnico";
 import { getExpedienteConfig } from "@/lib/expediente";
 import { proximosDiasUteis } from "@/utils/diasUteis";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+export interface PendenciaResumoItem {
+  tipo: "devolucao" | "revisita";
+  /** id da devolução (tipo="devolucao") ou da própria vistoria (tipo="revisita") — chave única pra UI. */
+  chaveId: number;
+  vistoriaId: number;
+  equipamento: string;
+  cidade: string;
+  /** Só devolução — itens específicos apontados pelo analista (fotos/campos). Revisita não tem essa granularidade. */
+  itens: string[];
+  motivos: string[];
+  motivoOutro: string | null;
+  precisaDeslocamento: boolean;
+}
 
 function hojeISO(): string {
   const d = new Date();
@@ -19,37 +33,36 @@ function hojeISO(): string {
  *
  * Consultado no dashboard pra decidir qual dos 2 cartões mostrar:
  * `pendentesSemAgenda` (nunca agendada, ou o dia escolhido já passou sem
- * resolver) dispara o onboarding "Foram devolvidas X vistorias" +
+ * resolver) dispara o onboarding "X vistorias voltaram para você" +
  * escolha de dia; `hojeAgendadas` dispara o prompt "Bom dia, sua rota
- * inclui devoluções" no dia marcado. Os 2 grupos nunca se sobrepõem —
- * uma devolução agendada pro futuro (nem hoje, nem sem agenda) fica
- * quieta, sem aparecer em nenhum dos dois.
+ * inclui pendências" no dia marcado. Os 2 grupos nunca se sobrepõem.
+ *
+ * Unifica 2 mecanismos diferentes de "isso voltou pro técnico":
+ *  - Devolução: analista aponta itens específicos (glpi_plugin_vistomap_devolucoes).
+ *  - Revisita: CPFL reprova a vistoria inteira (situação da vistoria =
+ *    Aguardando/Em Revisita) — sem granularidade de itens, só o
+ *    motivofield (texto livre) como motivo.
+ * São mutuamente exclusivos por construção (situação só pode ser uma
+ * coisa por vez: Devolvida OU Aguardando/Em Revisita, nunca as duas).
  */
 export async function GET(request: Request) {
   const actor = await getActorFromRequest(request);
   if (!actor) return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
 
-  const pendentes = await fetchDevolucoes({ tecnicoId: actor.id, status: "PENDENTE" });
   const hoje = hojeISO();
 
-  const pendentesSemAgenda: Array<{
-    devolucaoId: number;
-    vistoriaId: number;
-    equipamento: string;
-    cidade: string;
-    itens: string[];
-    motivos: string[];
-    motivoOutro: string | null;
-    precisaDeslocamento: boolean;
-  }> = [];
+  const pendentesSemAgenda: PendenciaResumoItem[] = [];
   const hojeAgendadas: Array<{
-    devolucaoId: number;
+    tipo: "devolucao" | "revisita";
+    chaveId: number;
     vistoriaId: number;
     equipamento: string;
     cidade: string;
   }> = [];
 
-  for (const d of pendentes) {
+  // ── Devoluções ────────────────────────────────────────────────────
+  const devolucoesPendentes = await fetchDevolucoes({ tecnicoId: actor.id, status: "PENDENTE" });
+  for (const d of devolucoesPendentes) {
     const [agendamento, vistoria] = await Promise.all([
       fetchAgendamentoAtivo(d.vistoriaId, actor.id),
       getVistoria(d.vistoriaId),
@@ -59,7 +72,8 @@ export async function GET(request: Request) {
 
     if (!agendamento) {
       pendentesSemAgenda.push({
-        devolucaoId: d.id,
+        tipo: "devolucao",
+        chaveId: d.id,
         vistoriaId: d.vistoriaId,
         equipamento,
         cidade,
@@ -69,14 +83,53 @@ export async function GET(request: Request) {
         precisaDeslocamento: d.precisaDeslocamento,
       });
     } else if (agendamento.dataAgendada === hoje) {
-      hojeAgendadas.push({ devolucaoId: d.id, vistoriaId: d.vistoriaId, equipamento, cidade });
+      hojeAgendadas.push({ tipo: "devolucao", chaveId: d.id, vistoriaId: d.vistoriaId, equipamento, cidade });
+    }
+  }
+
+  // ── Revisitas (CPFL reprovou a vistoria inteira) ─────────────────
+  // ignorarAgendamento: precisa enxergar mesmo as que o técnico já
+  // agendou pro futuro (a fila normal esconde de propósito) pra não
+  // contar `totalRevisitasPendentes` errado.
+  const vistoriasTecnico = await listVistorias({ tecnicoId: Number(actor.id), ignorarAgendamento: true });
+  const revisitasAtivas = vistoriasTecnico.filter((v) => v.status === "REPROVADA");
+
+  let totalRevisitasPendentes = 0;
+  for (const v of revisitasAtivas) {
+    totalRevisitasPendentes++;
+    const agendamento = await fetchAgendamentoAtivo(Number(v.id), actor.id);
+    const motivo = v.fields?.motivofield?.trim();
+
+    if (!agendamento) {
+      pendentesSemAgenda.push({
+        tipo: "revisita",
+        chaveId: Number(v.id),
+        vistoriaId: Number(v.id),
+        equipamento: v.equipamento,
+        cidade: v.cidade,
+        itens: [],
+        motivos: motivo ? [motivo] : [],
+        motivoOutro: null,
+        precisaDeslocamento: true,
+      });
+    } else if (agendamento.dataAgendada === hoje) {
+      hojeAgendadas.push({
+        tipo: "revisita",
+        chaveId: Number(v.id),
+        vistoriaId: Number(v.id),
+        equipamento: v.equipamento,
+        cidade: v.cidade,
+      });
     }
   }
 
   const config = await getExpedienteConfig();
 
   return NextResponse.json({
-    totalPendentes: pendentes.length,
+    // Só devolução — alimenta o KPI "Devoluções" do dashboard, que ficaria
+    // com número errado se virasse soma das duas coisas.
+    totalPendentes: devolucoesPendentes.length,
+    totalRevisitasPendentes,
     pendentesSemAgenda,
     hojeAgendadas,
     diasDisponiveis: proximosDiasUteis(7, config.fimDeSemana),
