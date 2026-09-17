@@ -1,5 +1,5 @@
 import "server-only";
-import { execute } from "./db";
+import { execute, query } from "./db";
 
 let ensured = false;
 
@@ -37,5 +37,22 @@ export async function ensureAgendamentosTable(): Promise<void> {
       KEY \`idx_items_status\` (\`items_id\`, \`status\`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  // Migração defensiva: distingue agendamento criado pelo analista (painel,
+  // com ordem/horário do roteirizador) do autoagendamento do técnico
+  // (devoluções — ver agendamentosTecnico.ts). Sem isso, uma linha do
+  // técnico (ordem_visita=0, sem horário) aparecia misturada na tela
+  // /painel/agendamentos como se fosse a primeira parada de uma rota real.
+  const cols = await query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM information_schema.columns
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'glpi_plugin_vistomap_agendamentos'`
+  );
+  if (!cols.some((c) => c.COLUMN_NAME === "origem")) {
+    await execute(
+      `ALTER TABLE \`glpi_plugin_vistomap_agendamentos\`
+         ADD COLUMN \`origem\` ENUM('PAINEL','TECNICO') NOT NULL DEFAULT 'PAINEL' AFTER \`criado_por\``
+    );
+  }
+
   ensured = true;
 }

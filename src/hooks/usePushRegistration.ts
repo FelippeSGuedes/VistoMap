@@ -18,6 +18,7 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useVistoriasStore } from "@/store/vistorias";
+import { useLembreteToastStore } from "@/store/lembreteToast";
 import { API_BASE } from "@/services/api";
 
 interface PushPlugin {
@@ -116,6 +117,15 @@ export function usePushRegistration() {
             void useVistoriasStore.getState().fetchAll();
           } catch (err) {
             console.warn("[usePushRegistration] fetchAll falhou:", err);
+          }
+          // App já aberto em primeiro plano — a notificação do sistema não
+          // aparece sozinha nesse caso, então mostra um toast rápido pros
+          // lembretes (ver lembrete-devolucao cron), sem bloquear nada.
+          const payload = (
+            data as { notification?: { title?: string; body?: string; data?: { type?: string } } }
+          ).notification;
+          if (payload?.data?.type === "lembrete-devolucao" && payload.body) {
+            useLembreteToastStore.getState().mostrar(payload.body);
           }
         });
         removers.push(r3.remove);

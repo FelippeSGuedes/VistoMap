@@ -9,6 +9,7 @@ import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 import { logError } from "@/lib/observability";
 import { fetchDevolucaoPendente, devolucaoEhDeOutroDia } from "@/lib/glpi/devolucoes";
+import { fetchAgendamentoAtivo } from "@/lib/glpi/agendamentosTecnico";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -125,14 +126,21 @@ export async function POST(
         const devolucaoPendente = await fetchDevolucaoPendente(userId);
         if (devolucaoPendente && devolucaoEhDeOutroDia(devolucaoPendente.criadoEm)) {
           await ensureOverrideTable();
-          const [adiamentoAprovado] = await query<{ id: number }>(
-            `SELECT id FROM \`glpi_plugin_vistomap_override_requests\`
-              WHERE vistoria_id = ? AND exception_label = 'DEVOLUCAO_NAO_POSSO_DESLOCAR'
-                AND status = 'APROVADO' AND created_at >= ?
-              ORDER BY created_at DESC LIMIT 1`,
-            [devolucaoPendente.vistoriaId, devolucaoPendente.criadoEm]
-          );
-          if (!adiamentoAprovado) {
+          const [adiamentoAprovado, agendamentoAtivo] = await Promise.all([
+            query<{ id: number }>(
+              `SELECT id FROM \`glpi_plugin_vistomap_override_requests\`
+                WHERE vistoria_id = ? AND exception_label = 'DEVOLUCAO_NAO_POSSO_DESLOCAR'
+                  AND status = 'APROVADO' AND created_at >= ?
+                ORDER BY created_at DESC LIMIT 1`,
+              [devolucaoPendente.vistoriaId, devolucaoPendente.criadoEm]
+            ).then((rows) => rows[0]),
+            // Técnico já escolheu um dia (hoje ou futuro) pra resolver essa
+            // devolução — ver agendamentosTecnico.ts. Sem isso, agendar pra
+            // daqui a alguns dias travaria ele de fazer QUALQUER outra
+            // vistoria até lá, o que anula o propósito do agendamento.
+            fetchAgendamentoAtivo(devolucaoPendente.vistoriaId, userId),
+          ]);
+          if (!adiamentoAprovado && !agendamentoAtivo) {
             return NextResponse.json(
               {
                 message: "Você tem uma vistoria devolvida pra correção — resolva antes de iniciar outra.",

@@ -220,6 +220,18 @@ export async function resolverDevolucao(id: number): Promise<void> {
     `UPDATE \`${TABLE}\` SET status = 'RESOLVIDA', resolvido_em = NOW() WHERE id = ?`,
     [id]
   );
+  // Cancela o autoagendamento do técnico ligado a essa devolução (se
+  // houver) — sem isso a linha ficava "AGENDADA" pra sempre em
+  // glpi_plugin_vistomap_agendamentos (a tela /painel/agendamentos não
+  // filtra por data, só por status). Ver agendamentosTecnico.ts.
+  await execute(
+    `UPDATE glpi_plugin_vistomap_agendamentos ag
+     INNER JOIN \`${TABLE}\` d
+       ON d.vistoria_id = ag.items_id AND d.tecnico_id = ag.tecnico_id
+        SET ag.status = 'CANCELADA'
+      WHERE d.id = ? AND ag.status = 'AGENDADA' AND ag.origem = 'TECNICO'`,
+    [id]
+  );
 }
 
 /** Anula manualmente uma devolução PENDENTE (indevida, duplicada etc). */

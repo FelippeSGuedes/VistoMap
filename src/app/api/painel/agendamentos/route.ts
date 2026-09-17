@@ -196,7 +196,10 @@ export async function GET(req: Request) {
     const de = url.searchParams.get("de");
     const ate = url.searchParams.get("ate");
 
-    const where: string[] = ["ag.status = 'AGENDADA'"];
+    // origem='PAINEL': autoagendamento do técnico (devoluções, ver
+    // agendamentosTecnico.ts) não tem ordem/horário do roteirizador — não
+    // deve se misturar nesta tela de gestão de rotas do analista.
+    const where: string[] = ["ag.status = 'AGENDADA'", "ag.origem = 'PAINEL'"];
     const params: unknown[] = [];
     if (tecnicoId) {
       where.push("ag.tecnico_id = ?");

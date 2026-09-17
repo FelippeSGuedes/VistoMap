@@ -24,11 +24,24 @@ import { SyncFilterPill } from "@/components/dashboard/SyncFilterPill";
 import { SyncFilterSheet } from "@/components/dashboard/SyncFilterSheet";
 import { NotificationPermissionCard } from "@/components/feedback/NotificationPermissionCard";
 import { ExpedienteCard } from "@/components/expediente/ExpedienteCard";
+import {
+  DevolucaoOnboardingFlow,
+  type DevolucaoResumoItem,
+} from "@/components/dashboard/DevolucaoOnboardingFlow";
+import { DevolucaoRotaPrompt } from "@/components/dashboard/DevolucaoRotaPrompt";
 import { useVistoriasAccessGuard } from "@/hooks/useVistoriasAccessGuard";
 import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
+import { api } from "@/services/api";
 import { MOCK_SYNC_SNAPSHOTS } from "@/utils/mock";
 import type { DashboardStats, SyncSnapshot } from "@/types";
+
+interface DevolucaoResumoResponse {
+  totalPendentes: number;
+  pendentesSemAgenda: DevolucaoResumoItem[];
+  hojeAgendadas: Array<{ devolucaoId: number; vistoriaId: number; equipamento: string; cidade: string }>;
+  diasDisponiveis: string[];
+}
 
 function greeting() {
   const h = new Date().getHours();
@@ -193,6 +206,8 @@ export default function DashboardPage() {
   const { hydrated, session, logout } = useAuthStore();
   const [stats, setStats]     = useState<DashboardStats | null>(null);
   const [online, setOnline]   = useState(true);
+  const [devolucaoResumo, setDevolucaoResumo] = useState<DevolucaoResumoResponse | null>(null);
+  const [rotaPromptDismissed, setRotaPromptDismissed] = useState(false);
   // Calculado só no client: no export estático, new Date().getHours() no
   // corpo do render baka a hora do BUILD no HTML, que quase nunca bate com a
   // hora real do celular no primeiro paint — isso disparava erro de
@@ -244,8 +259,17 @@ export default function DashboardPage() {
       Promise.all([
         vistoriasService.fetchDashboardStats(),
         vistoriasService.fetchVistorias(),
-      ]).then(([s, vistorias]) => {
+        // Resumo de devoluções é informação complementar (onboarding +
+        // prompt de rota) — se falhar, não deve derrubar o dashboard
+        // inteiro pro estado de "tentando de novo" (por isso o catch aqui,
+        // fora do Promise.all principal).
+        api
+          .get<DevolucaoResumoResponse>("/vistorias/devolucoes/resumo")
+          .then((r) => r.data)
+          .catch(() => null),
+      ]).then(([s, vistorias, resumo]) => {
         if (!alive) return;
+        if (resumo) setDevolucaoResumo(resumo);
         // SELECT DISTINCT cidade + COUNT(*) FROM vistorias do técnico
         const counts = new Map<string, number>();
         for (const v of vistorias) {
@@ -265,7 +289,13 @@ export default function DashboardPage() {
         const reprovadas = vistorias.filter(
           (v) => v.status === "REPROVADA" || v.isRepeat
         ).length;
-        const devolucoes = vistorias.filter((v) => v.status === "DEVOLVIDA").length;
+        // Prefere o total do endpoint de resumo: ele conta TODAS as
+        // devoluções PENDENTE, agendadas ou não — a lista de vistorias já
+        // esconde da fila as que o técnico marcou pra um dia futuro, então
+        // filtrar por status aqui faria o KPI cair pra 0 escondendo que
+        // ainda tem algo pendente (só que agendado).
+        const devolucoes =
+          resumo?.totalPendentes ?? vistorias.filter((v) => v.status === "DEVOLVIDA").length;
 
         setStats({
           ...s,
@@ -297,6 +327,15 @@ export default function DashboardPage() {
       alive = false;
     };
   }, []);
+
+  // Chamado pelo DevolucaoOnboardingFlow depois de agendar — atualiza o
+  // resumo (some da lista "sem agenda") sem precisar recarregar tudo.
+  const refetchDevolucaoResumo = () => {
+    api
+      .get<DevolucaoResumoResponse>("/vistorias/devolucoes/resumo")
+      .then((r) => setDevolucaoResumo(r.data))
+      .catch(() => {});
+  };
 
   // ── Filtro de sincronização ─────────────────────────────────────
   // Default: snapshot mais recente (id "sync-now"). Quando o stats real
@@ -333,6 +372,15 @@ export default function DashboardPage() {
 
   return (
     <div className="relative flex min-h-[100dvh] flex-col" style={{ background: "#F7F9FB" }}>
+
+      {/* Onboarding de devoluções — "Foram devolvidas X vistorias" + escolher
+          o dia. Substitui o balão persistente antigo (ver DevolucaoBanner,
+          aposentado). */}
+      <DevolucaoOnboardingFlow
+        itens={devolucaoResumo?.pendentesSemAgenda ?? []}
+        diasDisponiveis={devolucaoResumo?.diasDisponiveis ?? []}
+        onAgendado={refetchDevolucaoResumo}
+      />
 
       {/* HEADER */}
       <motion.header
@@ -397,6 +445,14 @@ export default function DashboardPage() {
         className="mx-auto flex w-full max-w-[600px] flex-1 flex-col gap-5 overflow-y-auto px-4 pb-32 pt-5"
         style={{ scrollbarWidth: "none" }}
       >
+
+        {/* Devoluções agendadas pra hoje — some sozinho quando não há mais nenhuma */}
+        {!rotaPromptDismissed && (devolucaoResumo?.hojeAgendadas.length ?? 0) > 0 && (
+          <DevolucaoRotaPrompt
+            quantidade={devolucaoResumo?.hojeAgendadas.length ?? 0}
+            onDismiss={() => setRotaPromptDismissed(true)}
+          />
+        )}
 
         {/* Banner permissão de notificações — some quando concedida/negada */}
         <NotificationPermissionCard />

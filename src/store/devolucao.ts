@@ -24,19 +24,13 @@ export interface DevolucaoVistoria {
 interface DevolucaoState {
   devolucao: DevolucaoPendente | null;
   vistoria: DevolucaoVistoria | null;
-  modalAberto: boolean;
   setDevolucao: (d: DevolucaoPendente | null, v: DevolucaoVistoria | null) => void;
-  abrirModal: () => void;
-  fecharModal: () => void;
 }
 
 export const useDevolucaoStore = create<DevolucaoState>((set) => ({
   devolucao: null,
   vistoria: null,
-  modalAberto: false,
   setDevolucao: (devolucao, vistoria) => set({ devolucao, vistoria }),
-  abrirModal: () => set({ modalAberto: true }),
-  fecharModal: () => set({ modalAberto: false }),
 }));
 
 /** true se a devolução foi criada num dia de calendário ANTERIOR a hoje (bloqueio). */

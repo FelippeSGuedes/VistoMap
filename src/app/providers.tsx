@@ -17,8 +17,7 @@ import { OfflineIndicator } from "@/components/feedback/OfflineIndicator";
 import { OtaUpdateOverlay } from "@/components/feedback/OtaUpdateOverlay";
 import { LockScreenOverlay } from "@/components/feedback/LockScreenOverlay";
 import { LocationPrimingOverlay } from "@/components/feedback/LocationPrimingOverlay";
-import { DevolucaoModal } from "@/components/vistorias/DevolucaoModal";
-import { DevolucaoBanner } from "@/components/vistorias/DevolucaoBanner";
+import { LembreteToast } from "@/components/feedback/LembreteToast";
 
 // BUG HISTÓRICO (2026-07-08): useOtaUpdate existia e estava correto, mas
 // nunca era montado em lugar nenhum — o app JAMAIS checava OTA, daí "OTA não
@@ -80,20 +79,29 @@ function OfflineSyncMount() {
   return null;
 }
 
-/** Ativo só pro técnico (fora do /painel) — mesma regra do TecnicoNotificationsMount. */
+/**
+ * Ativo só pro técnico (fora do /painel) — mesma regra do
+ * TecnicoNotificationsMount. Não renderiza mais UI própria (balão/modal
+ * aposentados — ver DevolucaoOnboardingFlow/DevolucaoRotaPrompt no
+ * dashboard); só mantém o store sincronizado, que /vistoria-corrigir
+ * ainda usa como cache antes do próprio fetch.
+ */
 function DevolucaoMount() {
   const session = useAuthStore((s) => s.session);
   const pathname = usePathname();
   const isPainel = pathname?.startsWith("/painel") ?? false;
   const enabled = !!session && session.role === "tecnico" && !isPainel;
   useDevolucaoWatcher(enabled);
-  if (!enabled) return null;
-  return (
-    <>
-      <DevolucaoBanner />
-      <DevolucaoModal />
-    </>
-  );
+  return null;
+}
+
+/** Mesma regra de exclusão de /painel — toast é só do app do técnico. */
+function LembreteToastMount() {
+  const session = useAuthStore((s) => s.session);
+  const pathname = usePathname();
+  const isPainel = pathname?.startsWith("/painel") ?? false;
+  if (!session || session.role !== "tecnico" || isPainel) return null;
+  return <LembreteToast />;
 }
 
 /**
@@ -166,6 +174,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <TecnicoNotificationsMount />
       <OfflineSyncMount />
       <DevolucaoMount />
+      <LembreteToastMount />
       <LockScreenMount />
       <OfflineIndicator />
       <OtaUpdateOverlay />
