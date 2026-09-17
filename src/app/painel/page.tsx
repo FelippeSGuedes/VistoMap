@@ -1692,7 +1692,7 @@ function AprovadosMapWidget({ itens }: AprovadosMapWidgetProps) {
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Aprovados</span>
-            <span className="text-[9.5px] text-[var(--vm-faint)]">aprovado pela concessionária{totalGlobal > 0 ? ` · ${totalGlobal} postes` : ""}</span>
+            <span className="text-[9.5px] text-[var(--vm-faint)]">validação concluída{totalGlobal > 0 ? ` · ${totalGlobal} postes` : ""}</span>
           </div>
         </div>
         <span
@@ -2111,7 +2111,7 @@ export default function PainelOverviewPage() {
     { label: "Em vistoria", raw: stats ? stats.emVistoria : undefined, value: stats ? fmtNum(stats.emVistoria) : "—",  sub: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, color: "#3B82F6", icon: Activity,    href: "/painel/mapa" },
     { label: "Concluídas",  raw: stats ? stats.vistoriadas : undefined, value: stats ? fmtNum(stats.vistoriadas): "—",  sub: "aguardando aprovação",   color: "#10B981", icon: CheckCircle2, href: "/painel/historico" },
     { label: "Reprovados CPFL", raw: stats ? (stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0) : undefined, value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
-    { label: "Projetos Aprovados", raw: stats ? (stats.aprovadas ?? 0) : undefined, value: stats ? fmtNum(stats.aprovadas ?? 0) : "—", sub: "aprovado pela concessionária", color: "#22C55E", icon: ShieldCheck, href: undefined as string | undefined },
+    { label: "Projetos Aprovados", raw: stats ? (stats.aprovadas ?? 0) : undefined, value: stats ? fmtNum(stats.aprovadas ?? 0) : "—", sub: "validação concluída", color: "#22C55E", icon: ShieldCheck, href: undefined as string | undefined },
     { label: "Municípios",  raw: stats ? stats.municipiosAtivos : undefined, value: stats ? fmtNum(stats.municipiosAtivos)   : "—", sub: "com equipamentos ativos", color: "#8B5CF6", icon: Building2, href: undefined as string | undefined },
     { label: "Equipe",      raw: stats ? stats.tecnicosAtivos : undefined, value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
   ];
@@ -2254,7 +2254,7 @@ export default function PainelOverviewPage() {
                   } else if (i === 3) {
                     chip = { icon: <Clock style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: `${semTec} sem técnico`, active: semTec > 0 };
                   } else {
-                    chip = { icon: <ShieldCheck style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "aprovado pela concessionária", active: (stats?.aprovadas ?? 0) > 0 };
+                    chip = { icon: <ShieldCheck style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "validação concluída", active: (stats?.aprovadas ?? 0) > 0 };
                   }
                   return (
                     <motion.div
