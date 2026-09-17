@@ -449,7 +449,9 @@ function BotaoResposta({
 }) {
   const estilos: Record<string, string> = {
     neutro: "border-brand-steel/70 bg-white text-ink hover:border-brand-emerald/50",
-    impedimento: "border-amber-300 bg-amber-50 text-amber-800",
+    // Mais saturado + sombra "elevada": precisa parecer clicável de cara,
+    // sem depender de quem usa já reconhecer o padrão visual do app.
+    impedimento: "border-amber-500 bg-amber-200 text-amber-900 shadow-[0_4px_14px_-2px_rgba(217,119,6,0.45)]",
     recusa: "border-red-200 bg-red-50 text-red-700",
     sucesso: "border-emerald-200 bg-emerald-50 text-emerald-700",
   };
@@ -457,7 +459,7 @@ function BotaoResposta({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center justify-between gap-2 rounded-2xl border px-4 py-3 text-left text-[13.5px] font-semibold transition active:scale-[0.98] ${estilos[variant]}`}
+      className={`flex w-full items-center justify-between gap-2 rounded-2xl border px-4 py-3 text-left text-[13.5px] font-semibold transition active:scale-[0.98] active:shadow-none ${estilos[variant]}`}
     >
       <span className="flex items-center gap-2">{children}</span>
       <ChevronRight className="h-4 w-4 shrink-0 opacity-50" />
@@ -720,8 +722,8 @@ function EtapaControles(p: EtapaControlesProps) {
             type="button"
             disabled={!p.foto || !p.descricao.trim()}
             onClick={() => p.registrar("AREA_DIFICIL_ACESSO", { dificuldade: p.dificuldade, descricao: p.descricao })}
-            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[13.5px] font-bold text-amber-800 disabled:opacity-40"
-            style={{ background: "#FEF3C7", border: "1px solid #FDE68A" }}
+            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[13.5px] font-bold text-amber-900 shadow-[0_4px_14px_-2px_rgba(217,119,6,0.45)] transition active:scale-[0.98] active:shadow-none disabled:opacity-40 disabled:shadow-none"
+            style={{ background: "#FDE68A", border: "1px solid #F59E0B" }}
           >
             <Ban className="h-4 w-4" /> Registrar impedimento
           </button>
@@ -769,8 +771,8 @@ function EtapaControles(p: EtapaControlesProps) {
           <button
             type="button"
             onClick={() => p.registrar("OUTRO_PROBLEMA_IMPEDE", { descricao: p.descricao })}
-            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[13.5px] font-bold text-amber-800"
-            style={{ background: "#FEF3C7", border: "1px solid #FDE68A" }}
+            className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[13.5px] font-bold text-amber-900 shadow-[0_4px_14px_-2px_rgba(217,119,6,0.45)] transition active:scale-[0.98] active:shadow-none"
+            style={{ background: "#FDE68A", border: "1px solid #F59E0B" }}
           >
             <Ban className="h-4 w-4" /> Confirmar impedimento
           </button>
