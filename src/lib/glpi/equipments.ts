@@ -29,6 +29,7 @@ const SELECT_BASE = `
     f.endereofield AS endereco,
     f.observaofield AS observacao,
     f.aterramentofield AS aterramento,
+    f.motivofield AS motivo,
     f.plugin_fields_statusvistoriafielddropdowns_id AS status_vistoria_id,
     sv.name AS status_vistoria_name,
     f.plugin_fields_situaodavistoriafielddropdowns_id AS situacao_id,
@@ -84,6 +85,7 @@ interface RawRow {
   endereco: string | null;
   observacao: string | null;
   aterramento: string | null;
+  motivo: string | null;
   status_vistoria_id: number | null;
   status_vistoria_name: string | null;
   situacao_id: number | null;
@@ -119,9 +121,18 @@ function resolveStatus(name: string | null): VistoriaStatus {
  */
 function resolveStatusComSituacao(
   statusName: string | null,
-  situacaoId: number | null
+  situacaoId: number | null,
+  statusVistoriaId: number | null,
+  isRepeatRaw: number | string | null
 ): VistoriaStatus {
   if (situacaoId === SITUACAO_DEVOLVIDA) return "DEVOLVIDA";
+  // Revisita (situacao 4/5, is_repeat=1 ou status="Reprovado" direto da
+  // concessionária) — mesmo sinal robusto usado pra `isRepeat` abaixo, só
+  // que antes NUNCA alimentava o `status` em si, então caía sempre no
+  // fallback "Pendente" (ver isRevisitaAtual em constants.ts).
+  if (isRevisitaAtual({ situacaoId, statusVistoriaId, isRepeat: isRepeatRaw })) {
+    return "REPROVADA";
+  }
   return resolveStatus(statusName);
 }
 
@@ -144,7 +155,12 @@ function mapRow(r: RawRow) {
     endereco: r.endereco ?? null,
     latitude: r.latitude == null ? null : Number(r.latitude),
     longitude: r.longitude == null ? null : Number(r.longitude),
-    status: resolveStatusComSituacao(r.status_vistoria_name, r.situacao_id),
+    status: resolveStatusComSituacao(
+      r.status_vistoria_name,
+      r.situacao_id,
+      r.status_vistoria_id,
+      r.is_repeat
+    ),
     isRepeat,
     prioridade: "MEDIA" as const,
     // Antes vinha hardcoded "0" — nunca dava pra checar dono do registro.
@@ -155,6 +171,7 @@ function mapRow(r: RawRow) {
       endereofield: r.endereco ?? "",
       observaofield: r.observacao ?? "",
       aterramentofield: r.aterramento ?? "",
+      motivofield: r.motivo ?? "",
       instalartpfield: r.instalartpfield != null ? String(r.instalartpfield) : "",
       danfield: r.danfield ?? "",
       rsrpifield: r.rsrpifield ?? "",

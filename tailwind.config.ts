@@ -61,6 +61,12 @@ const config: Config = {
         "2xl": "18px",
         "3xl": "24px",
       },
+      // pt-safe-t / pb-safe-b — evita reinventar `max(env(safe-area-inset-*),Npx)`
+      // à mão em cada rodapé/header fixo novo.
+      spacing: {
+        "safe-t": "max(env(safe-area-inset-top), 12px)",
+        "safe-b": "max(env(safe-area-inset-bottom), 16px)",
+      },
       keyframes: {
         shimmer: {
           "0%": { backgroundPosition: "-400px 0" },

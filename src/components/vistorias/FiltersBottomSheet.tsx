@@ -22,6 +22,7 @@ const STATUSES: VistoriaStatus[] = [
   "FINALIZADA",
   "REPROVADA",
   "APROVADA",
+  "DEVOLVIDA",
 ];
 const PRIORITIES: VistoriaPriority[] = ["BAIXA", "MEDIA", "ALTA", "CRITICA"];
 const ORDERS = [

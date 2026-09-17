@@ -5,10 +5,8 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Compass, Inbox, Search } from "lucide-react";
-import { Pill } from "@/components/ui/Pill";
 import { SearchHeader } from "@/components/vistorias/SearchHeader";
 import { FiltersBottomSheet } from "@/components/vistorias/FiltersBottomSheet";
-import { MapListToggle } from "@/components/vistorias/MapListToggle";
 import { VistoriaCard } from "@/components/vistorias/VistoriaCard";
 import { VistoriaListSkeleton } from "@/components/vistorias/VistoriaListSkeleton";
 import { MobileMapShell } from "@/components/vistorias/MobileMapShell";
@@ -27,16 +25,12 @@ import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { usePostesProximos } from "@/hooks/usePostesProximos";
 import { useFilteredVistorias } from "@/hooks/useFilteredVistorias";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { STATUS_LABEL } from "@/utils/format";
-import type { VistoriaStatus } from "@/types";
 import { getVistoriasAccessBlockReason } from "@/hooks/useVistoriasAccessGuard";
 
 const MapView = dynamic(
   () => import("@/components/vistorias/MapView").then((m) => m.MapView),
   { ssr: false }
 );
-
-const QUICK_STATUSES: VistoriaStatus[] = ["PENDENTE", "FINALIZADA", "REPROVADA"];
 
 function VistoriasPageInner() {
   const router = useRouter();
@@ -49,7 +43,6 @@ function VistoriasPageInner() {
   const { items, loading, fetchAll, filters, setFilters, resetFilters, selectedId, setSelected } =
     useVistoriasStore();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const [view, setView] = useState<"map" | "list">("map");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [permissionDismissed, setPermissionDismissed] = useState(false);
@@ -255,47 +248,6 @@ function VistoriasPageInner() {
     />
   );
 
-  const pills = (
-    <>
-      <Pill
-        active={filters.status.length === 0}
-        onClick={() => setFilters({ status: [] })}
-      >
-        Todas
-      </Pill>
-      {QUICK_STATUSES.map((s) => (
-        <Pill
-          key={s}
-          active={filters.status.includes(s)}
-          onClick={() =>
-            setFilters({
-              status: filters.status.includes(s)
-                ? filters.status.filter((x) => x !== s)
-                : [...filters.status, s],
-            })
-          }
-        >
-          {STATUS_LABEL[s]}
-        </Pill>
-      ))}
-      {categorias.slice(0, 6).map((c) => (
-        <Pill
-          key={c}
-          active={filters.categorias.includes(c)}
-          onClick={() =>
-            setFilters({
-              categorias: filters.categorias.includes(c)
-                ? filters.categorias.filter((x) => x !== c)
-                : [...filters.categorias, c],
-            })
-          }
-        >
-          {c}
-        </Pill>
-      ))}
-    </>
-  );
-
   return (
     <div className="relative flex min-h-[100dvh] flex-col bg-brand-ice">
       <SearchHeader
@@ -303,7 +255,7 @@ function VistoriasPageInner() {
         onQuery={(query) => setFilters({ query })}
         onOpenFilters={() => setFiltersOpen(true)}
         filterCount={filterCount}
-        pills={pills}
+        minimal
       />
 
       {isDesktop ? (
@@ -315,17 +267,12 @@ function VistoriasPageInner() {
         </main>
       ) : (
         <div className="flex-1">
-          {view === "map" ? (
-            <MobileMapShell map={map} list={list} />
-          ) : (
-            <main className="px-4 pb-32 pt-3">{list}</main>
-          )}
-          <MapListToggle view={view} onChange={setView} />
+          <MobileMapShell map={map} list={list} />
         </div>
       )}
 
-      {/* FAB "Postes próximos" — abaixo do filtro principal, acima do toggle */}
-      <div className="pointer-events-none fixed inset-x-0 top-[124px] z-30 flex justify-center px-4">
+      {/* FAB "Postes próximos" — logo abaixo do botão de filtro flutuante */}
+      <div className="pointer-events-none fixed inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+56px)] z-30 flex justify-center px-4">
         <PostesProximosFAB
           active={postesActive}
           loading={postesProximos.loading}

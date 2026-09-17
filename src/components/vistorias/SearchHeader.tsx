@@ -11,6 +11,12 @@ interface SearchHeaderProps {
   filterCount?: number;
   pills?: ReactNode;
   backHref?: string;
+  /**
+   * Modo compacto: mostra só o botão de filtro, flutuando no canto superior
+   * direito (sem barra, sem busca, sem voltar). Usado no mapa — a barra
+   * cheia sobrepunha o FAB "Postes próximos" em telas com notch maior.
+   */
+  minimal?: boolean;
 }
 
 export function SearchHeader({
@@ -20,7 +26,28 @@ export function SearchHeader({
   filterCount = 0,
   pills,
   backHref = "/dashboard",
+  minimal = false,
 }: SearchHeaderProps) {
+  if (minimal) {
+    return (
+      <div className="fixed inset-x-0 top-0 z-40 flex justify-end px-4 pt-safe-t">
+        <button
+          type="button"
+          onClick={onOpenFilters}
+          className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-deep text-white shadow-soft"
+          aria-label="Filtros"
+        >
+          <SlidersHorizontal className="h-5 w-5" />
+          {filterCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-amber px-1 text-[11px] font-bold text-brand-deep">
+              {filterCount}
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="sticky top-0 z-40 border-b border-brand-steel/60 bg-white/80 backdrop-blur-xl pt-[max(env(safe-area-inset-top),12px)]">
       <div className="flex items-center gap-2 px-4 py-2.5">

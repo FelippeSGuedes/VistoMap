@@ -159,11 +159,12 @@ export function GuidedArrival({
   }, [vistoria]);
 
   // Vistoria já finalizada → não mostra fluxo de iniciar, só estado "concluída".
+  // NÃO inclui REPROVADA: nesta app "Reprovada" sempre significa revisita
+  // pendente (ver STATUS_LABEL), nunca terminada — tratar como concluída
+  // travaria o técnico numa revisita ativa sem poder reexecutar.
   const concluida = useMemo(
     () =>
-      vistoria
-        ? ["FINALIZADA", "APROVADA", "REPROVADA"].includes(vistoria.status)
-        : false,
+      vistoria ? ["FINALIZADA", "APROVADA"].includes(vistoria.status) : false,
     [vistoria]
   );
 

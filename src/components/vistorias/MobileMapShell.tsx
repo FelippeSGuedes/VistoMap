@@ -3,7 +3,6 @@
 import {
   motion,
   useMotionValue,
-  useTransform,
   type PanInfo,
 } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -43,12 +42,6 @@ export function MobileMapShell({ map, list, initial = "split" }: MobileMapShellP
     sheetY.set(SNAPS[snap] * height);
   }, [snap, height, sheetY]);
 
-  const opacity = useTransform(sheetY, (y) => {
-    if (!height) return 1;
-    const r = 1 - y / height;
-    return Math.max(0.4, Math.min(1, r + 0.2));
-  });
-
   const handleDragEnd = (_: unknown, info: PanInfo) => {
     setDragging(false);
     const y = sheetY.get();
@@ -68,12 +61,7 @@ export function MobileMapShell({ map, list, initial = "split" }: MobileMapShellP
       ref={wrapperRef}
       className="relative h-[calc(100dvh-0px)] overflow-hidden bg-brand-ice"
     >
-      <motion.div
-        className="absolute inset-0"
-        style={{ opacity }}
-      >
-        {map}
-      </motion.div>
+      <div className="absolute inset-0">{map}</div>
 
       <motion.div
         drag="y"

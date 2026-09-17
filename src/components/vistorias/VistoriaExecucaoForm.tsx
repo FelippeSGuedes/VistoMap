@@ -450,7 +450,7 @@ export function VistoriaExecucaoForm({
 
   const canSubmit = captureCount >= totalEvidencias && !submitting;
   const bottomBarClass = embedded
-    ? "sticky bottom-0 z-20 border-t border-brand-steel/60 bg-white/90 px-4 pb-4 pt-3 backdrop-blur-xl"
+    ? "sticky bottom-0 z-20 border-t border-brand-steel/60 bg-white/90 px-4 pb-safe-b pt-3 backdrop-blur-xl"
     : "fixed inset-x-0 bottom-0 z-30 border-t border-brand-steel/60 bg-white/85 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur-xl";
 
   return (
