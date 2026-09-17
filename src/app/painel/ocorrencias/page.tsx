@@ -37,11 +37,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Ban, Camera, CheckCircle2, ChevronRight, ExternalLink,
-  History, MapPin, RefreshCw, Search, ShieldAlert, X,
+  History, MapPin, Pencil, RefreshCw, Search, ShieldAlert, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
 import { VistoriaDetalheModal } from "@/components/painel/VistoriaDetalheModal";
+import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 import type {
   Ocorrencia,
   OcorrenciaPrioridade,
@@ -71,6 +72,27 @@ const TIPO_DESCRICAO: Record<OcorrenciaTipo, string> = {
 function tint(hex: string, alpha: number) {
   const n = parseInt(hex.replace("#", ""), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/**
+ * Valores atuais pro modal "Corrigir dados" — mesmo ajuste de /painel/cpfl
+ * e /painel/rejeitadas (montarInitialEdicao): latitude/longitude/município
+ * vêm de campos de nível superior (não espelhados em .fields por
+ * getVistoria()) e o material chega sob outra chave (tipodematerial).
+ */
+function montarInitialEdicao(detalhe: {
+  fields?: Record<string, string>;
+  latitude?: number | null;
+  longitude?: number | null;
+  cidade?: string;
+} | null): Record<string, string> {
+  const fields = detalhe?.fields ?? {};
+  const initial: Record<string, string> = { ...fields };
+  if (fields.tipodematerial) initial.materialfield = fields.tipodematerial;
+  if (detalhe?.latitude != null) initial.latitudefield = String(detalhe.latitude);
+  if (detalhe?.longitude != null) initial.longitudefield = String(detalhe.longitude);
+  if (detalhe?.cidade) initial.municipiofield = detalhe.cidade;
+  return initial;
 }
 
 function dataHora(iso: string | null): string {
@@ -474,6 +496,34 @@ function Detalhe({
   const [reatribuindo, setReatribuindo] = useState(false);
   const [erroReatrib, setErroReatrib] = useState<string | null>(null);
 
+  // Corrigir dados — traz PSPOSTE, lat/long, TP, material etc. da vistoria
+  // pro engenheiro ajustar antes de reatribuir (não só coordenada). Mesmo
+  // padrão de /painel/cpfl e /painel/rejeitadas (EditarVistoriaModal).
+  const [detalhe, setDetalhe] = useState<{
+    fields?: Record<string, string>;
+    latitude?: number | null;
+    longitude?: number | null;
+    cidade?: string;
+  } | null>(null);
+  const [editarOpen, setEditarOpen] = useState(false);
+  const podeReatribuir = podeAgir && o.status === "APROVADO" && o.origem === "recusa";
+
+  useEffect(() => {
+    if (!podeReatribuir || !token) { setDetalhe(null); return; }
+    api
+      .get<{
+        vistoria: {
+          fields?: Record<string, string>;
+          latitude?: number | null;
+          longitude?: number | null;
+          cidade?: string;
+        };
+      }>(`/painel/vistoria/${o.vistoriaId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => setDetalhe(r.data.vistoria))
+      .catch(() => setDetalhe(null));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [podeReatribuir, o.vistoriaId, token]);
+
   async function reatribuirEReabrir() {
     if (!token || !novoTecnico || !motivoReatrib.trim()) return;
     setReatribuindo(true);
@@ -761,14 +811,36 @@ function Detalhe({
           {/* reatribuir — já foi classificada (impedimento/recusa), o que
               falta é mandar alguém de novo (ou deixar sem técnico de vez,
               fora daqui: basta não fazer nada e ela permanece na fila). */}
-          {podeAgir && o.status === "APROVADO" && o.origem === "recusa" && (
+          {podeReatribuir && (
             <div className="rounded-xl p-3" style={{ border: "1px solid var(--vm-border)", background: "var(--vm-tile)" }}>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--vm-faint)" }}>
                 Reatribuir e reabrir
               </p>
               <p className="mb-2.5 rounded-lg px-2.5 py-2 text-[11.5px] leading-relaxed" style={{ background: "rgba(59,130,246,0.1)", color: "var(--vm-text-soft)" }}>
-                Volta pra fila ("A Vistoriar") com o técnico escolhido e ele recebe uma notificação avisando.
+                Volta pra fila ("A Vistoriar") com o técnico escolhido e ele recebe uma notificação avisando. Se o motivo foi dado errado (PSPOSTE, coordenada, TP etc.), corrija abaixo antes de reabrir.
               </p>
+
+              <button
+                type="button"
+                onClick={() => setEditarOpen(true)}
+                className="mb-2.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:brightness-95"
+                style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
+              >
+                <span
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+                  style={{ background: tint("#3B82F6", 0.15), color: "#3B82F6" }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </span>
+                <span>
+                  <span className="block text-[12px] font-bold" style={{ color: "var(--vm-text)" }}>
+                    Corrigir dados
+                  </span>
+                  <span className="block text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
+                    PSPOSTE, latitude/longitude, TP e outros campos da vistoria.
+                  </span>
+                </span>
+              </button>
 
               <label className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Técnico</label>
               <select
@@ -808,6 +880,31 @@ function Detalhe({
           )}
         </div>
       </aside>
+
+      <EditarVistoriaModal
+        open={editarOpen}
+        vistoriaId={o.vistoriaId}
+        equipamento={o.equipamento}
+        municipio={detalhe?.cidade ?? o.municipio ?? undefined}
+        initial={montarInitialEdicao(detalhe)}
+        onClose={() => setEditarOpen(false)}
+        onSaved={() => {
+          setEditarOpen(false);
+          if (token) {
+            api
+              .get<{
+                vistoria: {
+                  fields?: Record<string, string>;
+                  latitude?: number | null;
+                  longitude?: number | null;
+                  cidade?: string;
+                };
+              }>(`/painel/vistoria/${o.vistoriaId}`, { headers: { Authorization: `Bearer ${token}` } })
+              .then((r) => setDetalhe(r.data.vistoria))
+              .catch(() => {});
+          }
+        }}
+      />
     </div>
   );
 }
