@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Ban, CheckCircle2, ChevronDown, RefreshCw, Search, UserCheck, X,
+  Ban, CheckCircle2, ChevronDown, Pencil, RefreshCw, Search, UserCheck, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/services/api";
 import { RECUSA_MOTIVO_LABEL, type RecusaMotivo } from "@/lib/glpi/recusaMotivos";
+import { EditarVistoriaModal } from "@/components/painel/EditarVistoriaModal";
 
 interface Recusa {
   id: number;
@@ -44,6 +45,27 @@ function fmtDate(iso: string | null): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+/**
+ * Valores atuais pro modal "Corrigir dados" — mesmo ajuste de
+ * /painel/cpfl (montarInitialEdicao): latitude/longitude/município vêm de
+ * campos de nível superior (não espelhados em .fields por getVistoria()) e
+ * o material chega sob outra chave (tipodematerial, não materialfield).
+ */
+function montarInitialEdicao(detalhe: {
+  fields?: Record<string, string>;
+  latitude?: number | null;
+  longitude?: number | null;
+  cidade?: string;
+} | null): Record<string, string> {
+  const fields = detalhe?.fields ?? {};
+  const initial: Record<string, string> = { ...fields };
+  if (fields.tipodematerial) initial.materialfield = fields.tipodematerial;
+  if (detalhe?.latitude != null) initial.latitudefield = String(detalhe.latitude);
+  if (detalhe?.longitude != null) initial.longitudefield = String(detalhe.longitude);
+  if (detalhe?.cidade) initial.municipiofield = detalhe.cidade;
+  return initial;
+}
+
 const ACCENT = "#6B7280";
 const fieldStyle = { background: "var(--vm-tile)", borderColor: "var(--vm-border)", color: "var(--vm-text)" } as const;
 
@@ -60,11 +82,36 @@ export default function RejeitadasPage() {
   const [reatrib, setReatrib] = useState<Recusa | null>(null);
   const [novoTecnico, setNovoTecnico] = useState<number | "">("");
   const [motivoReatrib, setMotivoReatrib] = useState("");
-  const [novaLat, setNovaLat] = useState("");
-  const [novaLng, setNovaLng] = useState("");
   const [reatribLoading, setReatribLoading] = useState(false);
 
+  // Corrigir dados — traz todos os campos da vistoria (PSPOSTE, lat/long,
+  // TP, material etc.), não só coordenada, pro engenheiro ajustar antes de
+  // reatribuir. Ver EditarVistoriaModal (mesmo padrão de /painel/cpfl).
+  const [detalhe, setDetalhe] = useState<{
+    fields?: Record<string, string>;
+    latitude?: number | null;
+    longitude?: number | null;
+    cidade?: string;
+  } | null>(null);
+  const [editarOpen, setEditarOpen] = useState(false);
+
   const headers = { Authorization: `Bearer ${session?.token}` };
+
+  useEffect(() => {
+    if (!reatrib || !session?.token) { setDetalhe(null); return; }
+    api
+      .get<{
+        vistoria: {
+          fields?: Record<string, string>;
+          latitude?: number | null;
+          longitude?: number | null;
+          cidade?: string;
+        };
+      }>(`/painel/vistoria/${reatrib.vistoriaId}`, { headers })
+      .then((r) => setDetalhe(r.data.vistoria))
+      .catch(() => setDetalhe(null));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reatrib, session?.token]);
 
   const fetchData = useCallback(async () => {
     if (!session?.token) return;
@@ -97,28 +144,14 @@ export default function RejeitadasPage() {
     if (!reatrib || !novoTecnico || !motivoReatrib.trim()) return;
     setReatribLoading(true);
     try {
-      const body: { tecnicoId: number; motivo: string; latitude?: number; longitude?: number } = {
-        tecnicoId: novoTecnico,
-        motivo: motivoReatrib.trim(),
-      };
-      // Só manda coordenada se o engenheiro realmente mexeu em alguma das
-      // duas — mas manda o par completo (o backend grava as duas juntas
-      // numa UPDATE só; mandar só metade deixaria a outra sem sentido).
-      const latNum = novaLat.trim() ? Number(novaLat) : null;
-      const lngNum = novaLng.trim() ? Number(novaLng) : null;
-      const coordMudou =
-        (latNum != null && Number.isFinite(latNum) && latNum !== reatrib.latitude) ||
-        (lngNum != null && Number.isFinite(lngNum) && lngNum !== reatrib.longitude);
-      if (coordMudou && latNum != null && Number.isFinite(latNum) && lngNum != null && Number.isFinite(lngNum)) {
-        body.latitude = latNum;
-        body.longitude = lngNum;
-      }
+      // Coordenada e os demais campos (PSPOSTE, TP, material etc.) já foram
+      // gravados direto via "Corrigir dados" (EditarVistoriaModal) antes de
+      // chegar aqui — esse endpoint só cuida de técnico/motivo/reabertura.
+      const body = { tecnicoId: novoTecnico, motivo: motivoReatrib.trim() };
       await api.post(`/painel/rejeitadas/${reatrib.id}/reabrir`, body, { headers });
       setReatrib(null);
       setNovoTecnico("");
       setMotivoReatrib("");
-      setNovaLat("");
-      setNovaLng("");
       await fetchData();
     } catch { /* TODO: toast */ }
     finally { setReatribLoading(false); }
@@ -251,8 +284,6 @@ export default function RejeitadasPage() {
                             setReatrib(r);
                             setNovoTecnico("");
                             setMotivoReatrib("");
-                            setNovaLat(r.latitude != null ? String(r.latitude) : "");
-                            setNovaLng(r.longitude != null ? String(r.longitude) : "");
                           }}
                           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-semibold transition hover:brightness-95"
                           style={{ border: `1px solid ${tint("#3B82F6", 0.35)}`, background: tint("#3B82F6", 0.12), color: "#3B82F6" }}
@@ -293,7 +324,7 @@ export default function RejeitadasPage() {
             </div>
 
             <p className="mb-3 rounded-xl px-3 py-2 text-[12px]" style={{ background: tint(ACCENT, 0.12), color: "var(--vm-text-soft)" }}>
-              Volta pra fila (situação "A Vistoriar") com o técnico escolhido e ele recebe uma notificação avisando. Se a rejeição foi por coordenada errada, corrija abaixo antes de reabrir.
+              Volta pra fila (situação "A Vistoriar") com o técnico escolhido e ele recebe uma notificação avisando. Se a rejeição foi por dado errado (coordenada, PSPOSTE, TP etc.), corrija abaixo antes de reabrir.
             </p>
 
             <label className="mb-1 block text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Novo técnico</label>
@@ -314,27 +345,28 @@ export default function RejeitadasPage() {
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: "var(--vm-faint)" }} />
             </div>
 
-            <label className="mb-1 block text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Corrigir coordenadas (opcional)</label>
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="any"
-                value={novaLat}
-                onChange={(e) => setNovaLat(e.target.value)}
-                placeholder="Latitude"
-                className="w-full rounded-xl px-3 py-2 text-[13px] outline-none focus:border-blue-400"
-                style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
-              />
-              <input
-                type="number"
-                step="any"
-                value={novaLng}
-                onChange={(e) => setNovaLng(e.target.value)}
-                placeholder="Longitude"
-                className="w-full rounded-xl px-3 py-2 text-[13px] outline-none focus:border-blue-400"
-                style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
-              />
-            </div>
+            <label className="mb-1 block text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Dados da vistoria</label>
+            <button
+              type="button"
+              onClick={() => setEditarOpen(true)}
+              className="mb-3 flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left transition hover:brightness-95"
+              style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
+            >
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                style={{ background: tint("#3B82F6", 0.15), color: "#3B82F6" }}
+              >
+                <Pencil className="h-4 w-4" />
+              </span>
+              <span>
+                <span className="block text-[13px] font-bold" style={{ color: "var(--vm-text)" }}>
+                  Corrigir dados
+                </span>
+                <span className="block text-[11px]" style={{ color: "var(--vm-muted)" }}>
+                  PSPOSTE, latitude/longitude, TP e outros campos da vistoria.
+                </span>
+              </span>
+            </button>
 
             <label className="mb-1 block text-[12px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>Motivo da reabertura *</label>
             <textarea
@@ -368,6 +400,31 @@ export default function RejeitadasPage() {
           </div>
         </div>
       )}
+
+      <EditarVistoriaModal
+        open={editarOpen}
+        vistoriaId={reatrib?.vistoriaId ?? null}
+        equipamento={reatrib?.equipamento}
+        municipio={detalhe?.cidade}
+        initial={montarInitialEdicao(detalhe)}
+        onClose={() => setEditarOpen(false)}
+        onSaved={() => {
+          setEditarOpen(false);
+          if (reatrib) {
+            api
+              .get<{
+                vistoria: {
+                  fields?: Record<string, string>;
+                  latitude?: number | null;
+                  longitude?: number | null;
+                  cidade?: string;
+                };
+              }>(`/painel/vistoria/${reatrib.vistoriaId}`, { headers })
+              .then((r) => setDetalhe(r.data.vistoria))
+              .catch(() => {});
+          }
+        }}
+      />
     </div>
   );
 }

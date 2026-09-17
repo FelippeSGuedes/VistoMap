@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query } from "@/lib/db";
 import { fetchRecusaPorId, reabrirRecusa } from "@/lib/glpi/recusas";
-import { reatribuirVistoria, atualizarCamposVistoria } from "@/lib/glpi/painel";
+import { reatribuirVistoria } from "@/lib/glpi/painel";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPushTo } from "@/lib/push";
 
@@ -12,8 +12,6 @@ export const runtime = "nodejs";
 interface ReabrirBody {
   tecnicoId?: number;
   motivo?: string;
-  latitude?: number;
-  longitude?: number;
 }
 
 /**
@@ -21,12 +19,17 @@ interface ReabrirBody {
  *
  * "Reatribuir e reabrir" de Vistorias Rejeitadas — [id] é o id da RECUSA,
  * não da vistoria. Endpoint próprio (não reaproveita
- * /api/painel/central-vistorias/[id]/reatribuir): além de reatribuir o
- * técnico, opcionalmente corrige lat/long (motivo comum de rejeição — o
- * engenheiro não precisava mais ir no GLPI pra isso), marca a recusa como
- * REABERTA (sem isso a vistoria continuava contando como "rejeitada" nas
- * estatísticas/mapa mesmo depois de voltar pra fila) e avisa o técnico por
- * push — nada disso existia antes, a vistoria só "reaparecia" sem contexto.
+ * /api/painel/central-vistorias/[id]/reatribuir): reatribui o técnico,
+ * marca a recusa como REABERTA (sem isso a vistoria continuava contando
+ * como "rejeitada" nas estatísticas/mapa mesmo depois de voltar pra fila)
+ * e avisa o técnico por push — nada disso existia antes, a vistoria só
+ * "reaparecia" sem contexto.
+ *
+ * Corrigir PSPOSTE/coordenada/TP/material etc. (o motivo mais comum de
+ * rejeição) não é mais feito aqui — o painel de /painel/rejeitadas abre o
+ * "Corrigir dados" (EditarVistoriaModal, PATCH /api/painel/vistoria/[id])
+ * antes de reabrir, com diff próprio no audit. Escrever aqui de novo
+ * duplicaria esse caminho.
  */
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const auth = await requirePainelRole(request, "moderador");
@@ -70,21 +73,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
       body.tecnicoId,
     ]);
 
-    let coordsAtualizadas = false;
-    if (
-      typeof body.latitude === "number" &&
-      Number.isFinite(body.latitude) &&
-      typeof body.longitude === "number" &&
-      Number.isFinite(body.longitude)
-    ) {
-      await atualizarCamposVistoria(
-        recusa.vistoriaId,
-        { latitudefield: body.latitude.toFixed(6), longitudefield: body.longitude.toFixed(6) },
-        false
-      );
-      coordsAtualizadas = true;
-    }
-
     await reatribuirVistoria(recusa.vistoriaId, body.tecnicoId);
     await reabrirRecusa(recusaId);
 
@@ -99,9 +87,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       ator: { id: analistaId, nome: analistaNome, role: auth.claims.role ?? "admin" },
       acao: "vistoria-reaberta",
       alvo: { tipo: "vistoria", id: String(recusa.vistoriaId), label: ne.name },
-      descricao: `Reaberta e atribuída para ${tec?.name ?? body.tecnicoId}${
-        coordsAtualizadas ? " (coordenadas corrigidas)" : ""
-      }. Motivo: ${body.motivo.trim()}`,
+      descricao: `Reaberta e atribuída para ${tec?.name ?? body.tecnicoId}. Motivo: ${body.motivo.trim()}`,
     });
 
     return NextResponse.json({ ok: true });
