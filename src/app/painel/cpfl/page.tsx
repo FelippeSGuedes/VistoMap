@@ -30,6 +30,7 @@ import {
   Calendar,
   CheckCircle2,
   FileText,
+  Image as ImageIcon,
   Loader2,
   MapPin,
   Pencil,
@@ -48,6 +49,12 @@ import { DEVOLUCAO_ITENS, DEVOLUCAO_MOTIVOS } from "@/lib/glpi/devolucaoItens";
 import type { VistoriaCPFL } from "@/services/painel";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
+
+interface FileItem {
+  name: string;
+  url: string;
+  kind: "image" | "video" | "pdf" | "other";
+}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -481,6 +488,7 @@ function TratativaDrawer({
     longitude?: number | null;
     cidade?: string;
   } | null>(null);
+  const [fotos, setFotos] = useState<FileItem[]>([]);
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
   const [editarOpen, setEditarOpen] = useState(false);
   const [salvoAgora, setSalvoAgora] = useState<string | null>(null);
@@ -505,16 +513,24 @@ function TratativaDrawer({
     setFinalizarErro(null);
     setSalvoAgora(null);
     setCarregandoDetalhe(true);
-    api
-      .get<{
+    setFotos([]);
+    Promise.all([
+      api.get<{
         vistoria: {
           fields?: Record<string, string>;
           latitude?: number | null;
           longitude?: number | null;
           cidade?: string;
         };
-      }>(`/painel/vistoria/${item.id}`)
-      .then((r) => setDetalhe(r.data.vistoria))
+      }>(`/painel/vistoria/${item.id}`),
+      api
+        .get<{ items: FileItem[] }>(`/painel/vistoria/${item.id}/files`)
+        .catch(() => ({ data: { items: [] as FileItem[] } })),
+    ])
+      .then(([v, f]) => {
+        setDetalhe(v.data.vistoria);
+        setFotos((f.data.items ?? []).filter((it) => it.kind === "image"));
+      })
       .catch(() => setDetalhe(null))
       .finally(() => setCarregandoDetalhe(false));
   }, [item]);
@@ -640,6 +656,35 @@ function TratativaDrawer({
                         </p>
                       </div>
                     )}
+
+                    <div>
+                      <div className="mb-1.5 flex items-center gap-1.5">
+                        <ImageIcon className="h-3.5 w-3.5" style={{ color: "var(--vm-muted)" }} />
+                        <p className="text-[11.5px] font-semibold" style={{ color: "var(--vm-text-soft)" }}>
+                          Fotos {fotos.length > 0 ? `(${fotos.length})` : ""}
+                        </p>
+                      </div>
+                      {fotos.length === 0 ? (
+                        <p className="py-2 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>
+                          Nenhuma foto encontrada.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          {fotos.map((f) => (
+                            <a
+                              key={f.name}
+                              href={f.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block overflow-hidden rounded-lg"
+                              style={{ border: "1px solid var(--vm-border)" }}
+                            >
+                              <img src={f.url} alt={f.name} className="h-20 w-full object-cover" loading="lazy" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
                     {salvoAgora && (
                       <div
