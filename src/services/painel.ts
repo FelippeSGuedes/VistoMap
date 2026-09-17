@@ -2,6 +2,7 @@ import { api } from "./api";
 import type {
   AdminStatus,
   AuditEntry,
+  DropdownKey,
   PainelStats,
   RevisitaPendente,
   TecnicoAtivo,
@@ -245,7 +246,13 @@ export interface EditarVistoriaInput {
     instalartpfield?: string;
     rsrpifield?: string;
     rsrpllfield?: string;
+    redeprimriafield?: string;
+    redesecundriafield?: string;
+    transformadorfield?: string;
+    religadorfield?: string;
   };
+  /** Ex.: { alimentacaodoequipamento: "BT" } — dropdown, não coluna de texto. */
+  dropdowns?: Partial<Record<DropdownKey, string>>;
   regenerar_pdf?: boolean;
 }
 
@@ -257,6 +264,7 @@ export async function editarVistoria(input: EditarVistoriaInput) {
     diff: Array<{ campo: string; antes?: string; depois?: string }>;
   }>(`/painel/vistoria/${id}`, {
     campos: input.campos,
+    dropdowns: input.dropdowns,
     regenerar_pdf: input.regenerar_pdf,
   });
   return data;

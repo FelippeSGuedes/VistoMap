@@ -4,6 +4,7 @@ import { env } from "../config.js";
 import {
   buscarBboxGeoJSON,
   buscarPorId,
+  buscarPorPsposte,
   buscarProximos,
   distanciaGeografica,
   registrarMudanca,
@@ -24,6 +25,11 @@ const ProximosQuery = z.object({
   lng: Lng,
   raio: z.coerce.number().int().positive().max(50_000).default(500), // 50km max
   limit: z.coerce.number().int().positive().max(200).default(30),
+  municipio: z.string().trim().max(120).optional(),
+});
+
+const BuscarPspostequery = z.object({
+  psposte: z.string().trim().min(1).max(64),
   municipio: z.string().trim().max(120).optional(),
 });
 
@@ -193,6 +199,43 @@ const postesRoutes: FastifyPluginAsync = async (fastify) => {
           tem_rede_primaria: p.tem_rede_primaria,
           tem_transformador: p.tem_transformador,
           tem_religador: p.tem_religador,
+        })),
+      });
+    }
+  );
+
+  /*
+   * GET /postes/buscar-psposte
+   *   ?psposte=3299556&municipio=Campinas
+   *
+   * Busca exata por PSPOSTE, pra validar/preencher automaticamente ao
+   * corrigir dados de vistoria (ver EditarVistoriaModal no Next) — evita
+   * gravar um PSPOSTE que não existe no cadastro-mestre. `municipio`
+   * (opcional) só prioriza o match daquela cidade, não filtra as outras —
+   * às vezes é justo o município cadastrado que está errado.
+   */
+  fastify.get(
+    "/buscar-psposte",
+    {
+      preHandler: [fastify.authenticate],
+      schema: { querystring: { type: "object", required: ["psposte"] } },
+    },
+    async (req, reply) => {
+      const parsed = BuscarPspostequery.safeParse(req.query);
+      if (!parsed.success) return reply.code(400).send(parsed.error.format());
+
+      const postes = await buscarPorPsposte(parsed.data.psposte, parsed.data.municipio);
+      return reply.send({
+        total: postes.length,
+        items: postes.map((p) => ({
+          id: p.id,
+          pspostefield: p.pspostefield,
+          materialfield: p.materialfield,
+          alturadopostemfield: p.alturadaantenafield,
+          municipiofield: p.municipiofield,
+          latitudefield: p.latitudefield,
+          longitudefield: p.longitudefield,
+          ...derivarCamposRedeGlpi(p),
         })),
       });
     }

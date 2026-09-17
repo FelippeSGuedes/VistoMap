@@ -10,8 +10,9 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { Pencil, RefreshCcw, Save, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Pencil, RefreshCcw, Save, Search, X } from "lucide-react";
 import { painelService } from "@/services/painel";
+import { buscarPostePorPsposte } from "@/services/postes";
 
 export interface EditarVistoriaModalProps {
   open: boolean;
@@ -36,18 +37,29 @@ export interface EditarVistoriaModalProps {
     instalartpfield?: string;
     rsrpifield?: string;
     rsrpllfield?: string;
+    // Rede/Alimentação derivados do PostGIS na troca de poste (ver
+    // derivarCamposRedeGlpi) — expostos aqui pra também poder ajustar na mão,
+    // ou serem preenchidos automaticamente pela busca de PSPOSTE abaixo.
+    redeprimriafield?: string;
+    redesecundriafield?: string;
+    transformadorfield?: string;
+    religadorfield?: string;
+    alimentacaodoequipamento?: string;
   };
   onClose: () => void;
   onSaved?: (result: { affected: number; regeneradoPdf: boolean }) => void;
 }
 
+type CamposState = NonNullable<EditarVistoriaModalProps["initial"]>;
+
 const FIELDS: Array<{
-  key: keyof NonNullable<EditarVistoriaModalProps["initial"]>;
+  key: keyof CamposState;
   label: string;
   multiline?: boolean;
   placeholder?: string;
+  options?: string[];
 }> = [
-  { key: "pspostefield", label: "PS do poste", placeholder: "PS-000000" },
+  // pspostefield tem UI própria (busca no PostGIS), fora deste array.
   { key: "municipiofield", label: "Município", placeholder: "Cidade" },
   { key: "endereofield", label: "Endereço", placeholder: "Rua, número, bairro…" },
   { key: "latitudefield", label: "Latitude", placeholder: "-23.5505" },
@@ -60,9 +72,15 @@ const FIELDS: Array<{
   { key: "instalartpfield", label: "Instalação de TP", placeholder: "1 (Sim) / 0 (Não)" },
   { key: "rsrpifield", label: "RSRP Claro", placeholder: "-95" },
   { key: "rsrpllfield", label: "RSRP Vivo", placeholder: "-95" },
+  { key: "redeprimriafield", label: "Rede Primária", placeholder: "1 (Sim) / 0 (Não)" },
+  { key: "redesecundriafield", label: "Rede Secundária", placeholder: "1 (Sim) / 0 (Não)" },
+  { key: "transformadorfield", label: "Transformador", placeholder: "1 (Sim) / 0 (Não)" },
+  { key: "religadorfield", label: "Religador", placeholder: "1 (Sim) / 0 (Não)" },
+  { key: "alimentacaodoequipamento", label: "Alimentação do Equipamento", options: ["BT", "MT"] },
   { key: "motivofield", label: "Motivo", placeholder: "Motivo operacional…" },
   { key: "observaofield", label: "Observações", placeholder: "Notas adicionais…", multiline: true },
 ];
+
 
 export function EditarVistoriaModal({
   open,
@@ -73,18 +91,69 @@ export function EditarVistoriaModal({
   onClose,
   onSaved,
 }: EditarVistoriaModalProps) {
-  const [campos, setCampos] = useState<NonNullable<EditarVistoriaModalProps["initial"]>>(initial ?? {});
+  const [campos, setCampos] = useState<CamposState>(initial ?? {});
   const [regenerarPdf, setRegenerarPdf] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Busca de PSPOSTE no PostGIS (cadastro-mestre de postes) — confirma que o
+  // PS existe e já preenche município/lat/long/material/altura/rede/
+  // alimentação do poste real, pra não gravar um PS que não existe nem
+  // deixar campos de postes diferentes misturados entre si.
+  const [pspostefield, setPspostefield] = useState(initial?.pspostefield ?? "");
+  const [buscando, setBuscando] = useState(false);
+  const [buscaResultado, setBuscaResultado] = useState<{ ok: boolean; texto: string } | null>(null);
+
   useEffect(() => {
     if (open) {
       setCampos(initial ?? {});
+      setPspostefield(initial?.pspostefield ?? "");
       setRegenerarPdf(false);
       setError(null);
+      setBuscaResultado(null);
     }
   }, [open, initial]);
+
+  async function buscarPoste() {
+    const ps = pspostefield.trim();
+    if (!ps) return;
+    setBuscando(true);
+    setBuscaResultado(null);
+    try {
+      const encontrados = await buscarPostePorPsposte(ps, campos.municipiofield || municipio);
+      if (encontrados.length === 0) {
+        setBuscaResultado({ ok: false, texto: "PS não encontrado no cadastro de postes." });
+        return;
+      }
+      const poste = encontrados[0];
+      setCampos((c) => ({
+        ...c,
+        pspostefield: poste.pspostefield,
+        municipiofield: poste.municipiofield,
+        latitudefield: String(poste.latitudefield),
+        longitudefield: String(poste.longitudefield),
+        materialfield: poste.materialfield ?? c.materialfield,
+        alturadopostemfield: poste.alturadopostemfield ?? c.alturadopostemfield,
+        redeprimriafield: poste.redeprimriafield ?? c.redeprimriafield,
+        redesecundriafield: poste.redesecundriafield ?? c.redesecundriafield,
+        transformadorfield: poste.transformadorfield ?? c.transformadorfield,
+        religadorfield: poste.religadorfield ?? c.religadorfield,
+        alimentacaodoequipamento: poste.alimentacaodoequipamento ?? c.alimentacaodoequipamento,
+      }));
+      setPspostefield(poste.pspostefield);
+      setBuscaResultado({
+        ok: true,
+        texto:
+          encontrados.length > 1
+            ? `Encontrado em ${poste.municipiofield} (mais ${encontrados.length - 1} cidade${encontrados.length > 2 ? "s" : ""} com esse PS — confira o município).`
+            : `Encontrado em ${poste.municipiofield} — dados preenchidos automaticamente.`,
+      });
+    } catch {
+      setBuscaResultado({ ok: false, texto: "Falha ao buscar o poste. Tente de novo." });
+    } finally {
+      setBuscando(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -100,9 +169,11 @@ export function EditarVistoriaModal({
     setSaving(true);
     setError(null);
     try {
+      const { alimentacaodoequipamento, ...camposTexto } = campos;
       const r = await painelService.editarVistoria({
         vistoria_id: vistoriaId,
-        campos,
+        campos: { ...camposTexto, pspostefield: pspostefield.trim() || undefined },
+        dropdowns: alimentacaodoequipamento ? { alimentacaodoequipamento } : undefined,
         regenerar_pdf: regenerarPdf,
       });
       onSaved?.({ affected: r.affected, regeneradoPdf: regenerarPdf });
@@ -189,6 +260,42 @@ export function EditarVistoriaModal({
             </header>
 
             <div className="max-h-[60dvh] overflow-y-auto px-5 py-4">
+              <label className="mb-3 flex flex-col gap-1">
+                <span className="text-[9.5px] font-bold uppercase tracking-[0.16em]" style={{ color: "#7A8896" }}>
+                  PS do poste
+                </span>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={pspostefield}
+                    onChange={(e) => { setPspostefield(e.target.value); setBuscaResultado(null); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void buscarPoste(); } }}
+                    placeholder="PS-000000"
+                    className="flex-1 rounded-xl px-3 py-2 text-[13px] font-medium outline-none"
+                    style={{ background: "#F7F9FB", border: "1px solid rgba(6,59,59,0.08)", color: "#063B3B" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void buscarPoste()}
+                    disabled={!pspostefield.trim() || buscando}
+                    className="flex items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold text-white transition disabled:opacity-50"
+                    style={{ background: "#00875F" }}
+                  >
+                    {buscando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                    Buscar
+                  </button>
+                </div>
+                {buscaResultado && (
+                  <p
+                    className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium"
+                    style={{ color: buscaResultado.ok ? "#00875F" : "#B91C1C" }}
+                  >
+                    {buscaResultado.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertTriangle className="h-3 w-3 shrink-0" />}
+                    {buscaResultado.texto}
+                  </p>
+                )}
+              </label>
+
               <div className="grid grid-cols-2 gap-3">
                 {FIELDS.map((f) => (
                   <label
@@ -216,6 +323,24 @@ export function EditarVistoriaModal({
                           color: "#063B3B",
                         }}
                       />
+                    ) : f.options ? (
+                      <select
+                        value={campos[f.key] ?? ""}
+                        onChange={(e) =>
+                          setCampos((c) => ({ ...c, [f.key]: e.target.value }))
+                        }
+                        className="rounded-xl px-3 py-2 text-[13px] font-medium outline-none"
+                        style={{
+                          background: "#F7F9FB",
+                          border: "1px solid rgba(6,59,59,0.08)",
+                          color: "#063B3B",
+                        }}
+                      >
+                        <option value="">—</option>
+                        {f.options.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         type="text"

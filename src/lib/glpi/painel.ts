@@ -1,8 +1,10 @@
 import "server-only";
 import { execute, query } from "@/lib/db";
+import { resolveDropdowns } from "./dropdowns";
 import {
   AVALIADOR_CPFL_USER_COLUMN,
   DROPDOWN_COLUMNS,
+  type DropdownKey,
   DROPDOWN_TABLES,
   ITEMTYPE_NE,
   isRevisitaAtual,
@@ -765,6 +767,13 @@ export interface AtualizarCamposInput {
   instalartpfield?: string;
   rsrpifield?: string;
   rsrpllfield?: string;
+  // Rede/TP derivados do PostGIS na troca de poste (ver isRevisitaAtual/
+  // derivarCamposRedeGlpi) — expostos aqui pra "Corrigir dados" (CPFL/
+  // Ocorrências/Rejeitadas) também poder ajustar na mão quando necessário.
+  redeprimriafield?: string;
+  redesecundriafield?: string;
+  transformadorfield?: string;
+  religadorfield?: string;
 }
 
 const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
@@ -783,12 +792,17 @@ const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "instalartpfield",
   "rsrpifield",
   "rsrpllfield",
+  "redeprimriafield",
+  "redesecundriafield",
+  "transformadorfield",
+  "religadorfield",
 ]);
 
 export async function atualizarCamposVistoria(
   vistoriaId: number,
   input: AtualizarCamposInput,
-  marcarProjetoPendente = false
+  marcarProjetoPendente = false,
+  dropdowns?: Partial<Record<DropdownKey, string>>
 ): Promise<{ affected: number; before: AtualizarCamposInput }> {
   // Snapshot ANTES (pra diff de auditoria).
   const beforeRows = await query<AtualizarCamposInput>(
@@ -807,6 +821,18 @@ export async function atualizarCamposVistoria(
     sets.push(`\`${k}\` = ?`);
     params.push(v);
   }
+
+  if (dropdowns && Object.keys(dropdowns).length > 0) {
+    const resolved = await resolveDropdowns(dropdowns);
+    for (const [dkey, dvalue] of Object.entries(resolved)) {
+      if (dvalue == null) continue;
+      const column = DROPDOWN_COLUMNS[dkey as DropdownKey];
+      if (!column) continue;
+      sets.push(`\`${column}\` = ?`);
+      params.push(dvalue);
+    }
+  }
+
   if (sets.length === 0) return { affected: 0, before };
 
   params.push(vistoriaId);

@@ -5,12 +5,15 @@ import { getActorFromRequest } from "@/lib/auth-request";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { getVistoria } from "@/lib/glpi/equipments";
 import { query } from "@/lib/db";
+import type { DropdownKey } from "@/lib/glpi/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 interface EditPayload {
   campos: AtualizarCamposInput;
+  /** Ex.: { alimentacaodoequipamento: "BT" } — resolvido via resolveDropdowns antes de gravar. */
+  dropdowns?: Partial<Record<DropdownKey, string>>;
   /** Marca project_status='PENDENTE' (worker regera PDF). */
   regenerar_pdf?: boolean;
 }
@@ -64,7 +67,8 @@ export async function PATCH(
     const { affected, before } = await atualizarCamposVistoria(
       id,
       body.campos ?? {},
-      !!body.regenerar_pdf
+      !!body.regenerar_pdf,
+      body.dropdowns
     );
 
     // Build diff só com campos que mudaram.
@@ -75,6 +79,13 @@ export async function PATCH(
       if ((antes ?? "") !== String(depois)) {
         diff.push({ campo: k, antes: antes ?? undefined, depois: String(depois) });
       }
+    }
+    // Dropdowns (ex.: Alimentação do Equipamento) não têm "antes" fácil de
+    // buscar aqui (precisaria join com a tabela do dropdown) — registra só
+    // o valor novo, ainda dá pra saber que mudou e pra quê.
+    for (const [k, depois] of Object.entries(body.dropdowns ?? {})) {
+      if (depois == null) continue;
+      diff.push({ campo: k, depois: String(depois) });
     }
 
     if (diff.length > 0) {

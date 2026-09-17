@@ -61,6 +61,23 @@ export async function fetchPostesProximos(params: {
 }
 
 /**
+ * GET /postes/buscar-psposte — validação/autopreenchimento ao corrigir
+ * dados de vistoria (EditarVistoriaModal): confirma que o PSPOSTE digitado
+ * existe no cadastro-mestre e já devolve os campos GLPI-prontos (rede,
+ * alimentação, TP) do poste real, junto com material/altura/lat/long.
+ */
+export async function buscarPostePorPsposte(
+  psposte: string,
+  municipio?: string
+): Promise<Array<Poste & CamposRedeGlpi>> {
+  const { data } = await postesApi.get<{ total: number; items: Array<Poste & CamposRedeGlpi> }>(
+    "/postes/buscar-psposte",
+    { params: { psposte, municipio } }
+  );
+  return data.items;
+}
+
+/**
  * GET /postes/bbox → GeoJSON FeatureCollection (Mapbox-ready).
  */
 export interface PostesBboxGeoJSON {

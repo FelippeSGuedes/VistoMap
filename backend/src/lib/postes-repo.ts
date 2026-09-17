@@ -176,6 +176,40 @@ export async function buscarPorId(id: number): Promise<PosteRow | null> {
   return rows[0] ? castRow(rows[0]) : null;
 }
 
+/**
+ * Busca por PSPOSTE exato — usado pra validar/preencher automaticamente ao
+ * corrigir dados de uma vistoria (ver EditarVistoriaModal), pra não deixar
+ * gravar um PSPOSTE que não existe. `pspostefield` sozinho NÃO é único (a
+ * chave real é município + PSPOSTE — o mesmo número pode existir em cidades
+ * diferentes), por isso pode retornar mais de um resultado; quando
+ * `municipio` é passado, só usa pra ORDENAR o match daquela cidade primeiro
+ * — não filtra as outras, porque às vezes o município cadastrado na
+ * vistoria É o dado errado que motivou a correção.
+ */
+export async function buscarPorPsposte(
+  psposte: string,
+  municipio?: string
+): Promise<PosteRow[]> {
+  const { rows } = await db.raw<{
+    rows: Array<Record<string, unknown>>;
+  }>(
+    `
+      SELECT
+        id, pspostefield, materialfield, alturadaantenafield,
+        municipiofield, municipiofield_norm,
+        latitudefield, longitudefield, raw,
+        tem_rede_secundaria, tem_rede_primaria, tem_transformador, tem_religador,
+        created_at, updated_at
+      FROM postes
+      WHERE pspostefield = ?
+      ORDER BY (municipiofield_norm = upper(public.f_unaccent_immutable(?))) DESC
+      LIMIT 10
+    `,
+    [psposte, municipio ?? ""]
+  );
+  return rows.map(castRow);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Mudancas                                                                   */
 /* ─────────────────────────────────────────────────────────────────────────── */
