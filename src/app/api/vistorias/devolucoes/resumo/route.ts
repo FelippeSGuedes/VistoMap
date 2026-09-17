@@ -5,6 +5,7 @@ import { getVistoria, listVistorias } from "@/lib/glpi/equipments";
 import { fetchAgendamentoAtivo } from "@/lib/glpi/agendamentosTecnico";
 import { getExpedienteConfig } from "@/lib/expediente";
 import { proximosDiasUteis } from "@/utils/diasUteis";
+import { SITUACAO_EM_VISTORIA, SITUACAO_EM_DESLOCAMENTO } from "@/lib/glpi/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -92,7 +93,19 @@ export async function GET(request: Request) {
   // agendou pro futuro (a fila normal esconde de propósito) pra não
   // contar `totalRevisitasPendentes` errado.
   const vistoriasTecnico = await listVistorias({ tecnicoId: Number(actor.id), ignorarAgendamento: true });
-  const revisitasAtivas = vistoriasTecnico.filter((v) => v.status === "REPROVADA");
+  // status==="REPROVADA" sozinho não basta: pode vir de is_repeat grudado
+  // de um ciclo anterior (ver fix em isRevisitaAtual) numa vistoria que o
+  // técnico JÁ ESTÁ fazendo agora (situação Em Vistoria/Em Deslocamento —
+  // ele iniciou, mas ainda não terminou de reenviar). Achado real em
+  // produção 2026-09-17: agendar uma dessas fazia a vistoria sumir da fila
+  // no meio do atendimento, não só "amanhã". Só entra no agendamento quem
+  // está de fato parado esperando alguém pegar (Aguardando/Em Revisita).
+  const revisitasAtivas = vistoriasTecnico.filter(
+    (v) =>
+      v.status === "REPROVADA" &&
+      v.situacaoId !== SITUACAO_EM_VISTORIA &&
+      v.situacaoId !== SITUACAO_EM_DESLOCAMENTO
+  );
 
   let totalRevisitasPendentes = 0;
   for (const v of revisitasAtivas) {

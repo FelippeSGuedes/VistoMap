@@ -162,6 +162,7 @@ function mapRow(r: RawRow) {
       r.is_repeat
     ),
     isRepeat,
+    situacaoId: r.situacao_id,
     prioridade: "MEDIA" as const,
     // Antes vinha hardcoded "0" — nunca dava pra checar dono do registro.
     tecnico: { id: r.tecnico_id != null ? String(r.tecnico_id) : "0", nome: "—", email: "" },

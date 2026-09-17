@@ -167,6 +167,15 @@ export interface Vistoria {
   /** Vem de `glpi_plugin_vistomap_projects.is_repeat`. Quando true, esta NE
    *  é uma revisita (vistoria anterior reprovada). */
   isRepeat?: boolean;
+  /**
+   * `plugin_fields_situaodavistoriafielddropdowns_id` bruto (1-8, ver
+   * SITUACAO_* em lib/glpi/constants.ts) — status.status="REPROVADA" sozinho
+   * não distingue "aguardando alguém pegar" (situação 4) de "técnico já
+   * iniciou e está no local agora" (situação 2/5/7, com is_repeat só
+   * grudado de um ciclo anterior). Quem precisa dessa distinção fina (ex.:
+   * agendamento de revisita) usa este campo em vez de `status`.
+   */
+  situacaoId?: number | null;
   /** `project_status` da aux table (PENDENTE/GERANDO/GERADO/ERRO). */
   auxProjectStatus?: string | null;
 }

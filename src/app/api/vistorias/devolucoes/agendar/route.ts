@@ -5,6 +5,7 @@ import { getVistoria, listVistorias } from "@/lib/glpi/equipments";
 import { fetchAgendamentoAtivo, agendarDevolucoesTecnico } from "@/lib/glpi/agendamentosTecnico";
 import { getExpedienteConfig } from "@/lib/expediente";
 import { proximosDiasUteis } from "@/utils/diasUteis";
+import { SITUACAO_EM_VISTORIA, SITUACAO_EM_DESLOCAMENTO } from "@/lib/glpi/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -58,7 +59,14 @@ export async function POST(request: Request) {
   }
 
   const vistoriasTecnico = await listVistorias({ tecnicoId: Number(actor.id), ignorarAgendamento: true });
-  const revisitasAtivas = vistoriasTecnico.filter((v) => v.status === "REPROVADA");
+  // Mesmo corte de resumo/route.ts: nunca agenda (e portanto nunca esconde
+  // da fila) uma vistoria que o técnico já está fazendo agora.
+  const revisitasAtivas = vistoriasTecnico.filter(
+    (v) =>
+      v.status === "REPROVADA" &&
+      v.situacaoId !== SITUACAO_EM_VISTORIA &&
+      v.situacaoId !== SITUACAO_EM_DESLOCAMENTO
+  );
   for (const v of revisitasAtivas) {
     const agendamento = await fetchAgendamentoAtivo(Number(v.id), actor.id);
     if (agendamento) continue;
