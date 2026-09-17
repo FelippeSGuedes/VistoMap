@@ -72,7 +72,7 @@ export async function fetchRankingTecnicosPeriodo(
       SELECT f.users_id_vistoriadorafield AS tecnico_id,
              u.id, u.name, u.firstname, u.realname,
              COUNT(*) AS total,
-             SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
+             SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado','Aprovado com Pendências') THEN 1 ELSE 0 END) AS aprovadas,
              SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas,
              COUNT(DISTINCT TRIM(f.municipiofield)) AS cidades
         FROM \`${TABLE_FIELDS}\` f

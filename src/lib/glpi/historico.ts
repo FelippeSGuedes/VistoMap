@@ -176,7 +176,7 @@ export async function fetchHistoricoAnalytics(
     ) {
       ref.finalizadas += Number(r.total) || 0;
     }
-    if (s === "aprovada" || s === "aprovado") ref.aprovadas += Number(r.total) || 0;
+    if (s === "aprovada" || s === "aprovado" || s === "aprovado com pendências") ref.aprovadas += Number(r.total) || 0;
     if (s === "reprovada" || s === "reprovado") ref.reprovadas += Number(r.total) || 0;
   }
   const serieDiaria = Array.from(diasMap.entries()).map(([dia, v]) => ({
@@ -197,7 +197,7 @@ export async function fetchHistoricoAnalytics(
     `
       SELECT
         SUM(CASE WHEN ${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado') THEN 1 ELSE 0 END) AS finalizadas,
-        SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
+        SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado','Aprovado com Pendências') THEN 1 ELSE 0 END) AS aprovadas,
         SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovadas,
         SUM(CASE WHEN (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
                   AND COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas_finalizadas,
@@ -266,7 +266,7 @@ export async function fetchHistoricoAnalytics(
       SELECT f.users_id_vistoriadorafield AS tecnico_id,
              u.id, u.name, u.firstname, u.realname,
              COUNT(*) AS total,
-             SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
+             SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado','Aprovado com Pendências') THEN 1 ELSE 0 END) AS aprovadas,
              SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas,
              COUNT(DISTINCT TRIM(f.municipiofield)) AS cidades
         FROM \`${TABLE_FIELDS}\` f

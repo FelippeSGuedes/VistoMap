@@ -347,7 +347,7 @@ export async function fetchTecnicos(): Promise<TecnicoAtivo[]> {
             LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                    ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
            WHERE f.users_id_vistoriadorafield = u.id
-             AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Em análise','Em analise','Finalizada','Finalizado'))
+             AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Aprovado com Pendências','Em análise','Em analise','Finalizada','Finalizado'))
         ) AS atribuidas,
         (
           SELECT COUNT(*) FROM \`${TABLE_FIELDS}\` f2
@@ -355,7 +355,7 @@ export async function fetchTecnicos(): Promise<TecnicoAtivo[]> {
             LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv2
                    ON sv2.id = f2.plugin_fields_statusvistoriafielddropdowns_id
            WHERE f2.users_id_vistoriadorafield = u.id
-             AND sv2.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado')
+             AND sv2.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado','Aprovado com Pendências')
              AND DATE(f2.datadavistoriafield) = CURDATE()
         ) AS concluidasHoje,
         (
@@ -506,11 +506,11 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
               -- OU flag is_repeat=1 sem status final
            OR (
                 COALESCE(aux.is_repeat, 0) = 1
-            AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Em análise','Em analise','Finalizada','Finalizado'))
+            AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Aprovado com Pendências','Em análise','Em analise','Finalizada','Finalizado'))
               )
         )
         -- Sempre exclui aprovados (qualquer caminho)
-        AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado'))
+        AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Aprovado com Pendências'))
         AND COALESCE(aux.approval_status, '') <> 'APROVADO'
       ORDER BY f.datadavistoriafield DESC
       LIMIT 100

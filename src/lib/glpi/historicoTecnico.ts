@@ -77,7 +77,7 @@ export async function fetchHistoricoTecnico(
     `
       SELECT
         SUM(CASE WHEN ${SITUACAO_CONCLUIDA_SQL} OR ${STATUS_CONCLUIDO_SQL} THEN 1 ELSE 0 END) AS finalizadas,
-        SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovadas,
+        SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado','Aprovado com Pendências') THEN 1 ELSE 0 END) AS aprovadas,
         SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovadas,
         SUM(CASE WHEN (${SITUACAO_CONCLUIDA_SQL} OR ${STATUS_CONCLUIDO_SQL})
                   AND COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas,
