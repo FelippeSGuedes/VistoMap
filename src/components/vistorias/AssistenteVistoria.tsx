@@ -277,7 +277,7 @@ export const AssistenteVistoria = forwardRef<AssistenteVistoriaHandle, Assistent
               {/* histórico + fala atual — fundo com textura sutil, como o papel de parede de um chat */}
               <div
                 ref={scrollRef}
-                className="flex-1 overflow-y-auto px-4 py-4"
+                className="flex-1 overflow-y-auto px-4 pt-4 pb-[max(env(safe-area-inset-bottom),20px)]"
                 style={{
                   backgroundColor: "#F3F8F6",
                   backgroundImage: "radial-gradient(circle, rgba(0,135,95,0.08) 1px, transparent 1px)",
