@@ -4,6 +4,7 @@ import type {
   AuditEntry,
   DropdownKey,
   PainelStats,
+  RecusasStats,
   RevisitaPendente,
   TecnicoAtivo,
 } from "@/types";
@@ -60,6 +61,21 @@ export async function fetchRevisitas(): Promise<RevisitaPendente[]> {
   return tryReal(
     api.get<RevisitaPendente[]>("/painel/revisitas").then((r) => r.data),
     MOCK_REVISITAS_PENDENTES
+  );
+}
+
+const RECUSAS_STATS_VAZIO: RecusasStats = {
+  total: 0,
+  porCategoria: {
+    impedimento: { total: 0, porMotivo: [] },
+    recusa: { total: 0, porMotivo: [] },
+  },
+};
+
+export async function fetchRecusasStats(): Promise<RecusasStats> {
+  return tryReal(
+    api.get<RecusasStats>("/painel/recusas/stats").then((r) => r.data),
+    RECUSAS_STATS_VAZIO
   );
 }
 
@@ -656,6 +672,7 @@ export const painelService = {
   fetchStats,
   fetchTecnicos,
   fetchRevisitas,
+  fetchRecusasStats,
   fetchAudit,
   fetchFila,
   fetchHistorico,

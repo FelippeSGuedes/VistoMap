@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { CountUp } from "@/components/ui/CountUp";
-import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
+import type { AuditEntry, PainelStats, RecusasStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type {
   HistoricoAnalytics,
   TopTecnicosDashboard,
@@ -98,14 +98,18 @@ const ACCENT = "#00D084";
  * vivo, Reprovados CPFL, Pendentes CPFL, distribuição do pipeline, KPIs do
  * topo) ficam de fora de propósito: mostram o agora, não um período.
  */
-type PeriodoModo = "hoje" | "7dias" | "30dias" | "personalizado";
+type PeriodoModo = "hoje" | "7dias" | "30dias" | "todoperiodo" | "personalizado";
 
 const PERIODO_MODOS: Array<{ id: PeriodoModo; label: string }> = [
   { id: "hoje", label: "Hoje" },
   { id: "7dias", label: "7 dias" },
   { id: "30dias", label: "30 dias" },
+  { id: "todoperiodo", label: "Todo Período" },
   { id: "personalizado", label: "Personalizado" },
 ];
+
+/** Data bem anterior a qualquer vistoria real — "todo período" na prática. */
+const INICIO_DOS_TEMPOS = "2020-01-01";
 
 function isoHoje(): string {
   return new Date().toISOString().slice(0, 10);
@@ -486,6 +490,76 @@ function MiniDonut({
         </div>
       </div>
       <p className="mt-1.5 text-center text-[10px] text-[var(--vm-faint)]">{caption}</p>
+    </div>
+  );
+}
+
+/* ── ImpedimentosRecusasWidget (self-contained) ─────────────────────────────
+   Impedimentos (ambiente impediu — sem postes, condomínio fechado, etc.) e
+   Recusas (decisão de fato — sinal ruim, morador recusou, risco, etc.)
+   ranqueados por motivo. Dado vem de fetchRecusasStats() — só conta
+   Pendente+Aprovado (Reprovado volta pro técnico, não é uma ocorrência real
+   pra fins de estatística). */
+function ImpedimentosRecusasWidget({ stats }: { stats: RecusasStats | null }) {
+  const grupos = [
+    { key: "impedimento" as const, label: "Impedimentos", color: "#F59E0B" },
+    { key: "recusa" as const, label: "Recusas", color: "#EF4444" },
+  ];
+  return (
+    <div className="rounded-[20px] p-5" style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.18em]" style={{ color: "#F59E0B" }}>
+            Ocorrências de campo
+          </p>
+          <h3 className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]" style={{ color: "var(--vm-text)" }}>
+            Impedimentos &amp; Recusas por motivo
+          </h3>
+        </div>
+        {stats && (
+          <span className="text-[11px] font-semibold tabular-nums" style={{ color: "var(--vm-muted)" }}>
+            {stats.total} no total
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        {grupos.map((g) => {
+          const dados = stats?.porCategoria[g.key];
+          return (
+            <div key={g.key}>
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full" style={{ background: g.color }} />
+                <span className="text-[12.5px] font-semibold" style={{ color: "var(--vm-text)" }}>{g.label}</span>
+                <span className="text-[11px] tabular-nums" style={{ color: "var(--vm-muted)" }}>
+                  {dados ? `(${dados.total})` : ""}
+                </span>
+              </div>
+              {!dados || dados.porMotivo.length === 0 ? (
+                <p className="text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
+                  {stats ? "Nenhum registro no período" : "Carregando…"}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {dados.porMotivo.slice(0, 5).map((m) => {
+                    const pct = dados.total > 0 ? (m.total / dados.total) * 100 : 0;
+                    return (
+                      <div key={m.motivo}>
+                        <div className="flex items-center justify-between gap-2 text-[11px]" style={{ color: "var(--vm-muted)" }}>
+                          <span className="truncate">{m.label}</span>
+                          <span className="shrink-0 font-semibold tabular-nums" style={{ color: "var(--vm-text)" }}>{m.total}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: g.color }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1965,6 +2039,13 @@ export default function PainelOverviewPage() {
     const hoje = isoHoje();
     if (periodoModo === "hoje") return { inicio: hoje, fim: hoje, dias: 1 };
     if (periodoModo === "7dias") return { inicio: isoDiasAtras(6), fim: hoje, dias: 7 };
+    if (periodoModo === "todoperiodo") {
+      return {
+        inicio: INICIO_DOS_TEMPOS,
+        fim: hoje,
+        dias: diasEntreInclusive(INICIO_DOS_TEMPOS, hoje),
+      };
+    }
     if (periodoModo === "personalizado" && periodoCustomInicio && periodoCustomFim) {
       return {
         inicio: periodoCustomInicio,
@@ -1981,6 +2062,7 @@ export default function PainelOverviewPage() {
   const [audit,        setAudit]        = useState<AuditEntry[]>([]);
   const [historico,    setHistorico]    = useState<HistoricoAnalytics | null>(null);
   const [mapaRealtime, setMapaRealtime] = useState<PainelMapaResponse | null>(null);
+  const [recusasStats, setRecusasStats] = useState<RecusasStats | null>(null);
   const [now,          setNow]          = useState(() => new Date());
 
   useEffect(() => {
@@ -1994,17 +2076,19 @@ export default function PainelOverviewPage() {
     d.setDate(d.getDate() - (periodoRange.dias * 2 - 1));
     const inicioSerie = d.toISOString().slice(0, 10);
     const load = async () => {
-      const [s, t, r, a, h, mp] = await Promise.all([
+      const [s, t, r, a, h, mp, rc] = await Promise.all([
         painelService.fetchStats(),
         painelService.fetchTecnicos(),
         painelService.fetchRevisitas(),
         painelService.fetchAudit({ limit: 8 }),
         painelService.fetchHistorico(periodoRange.inicio, periodoRange.fim, inicioSerie),
         api.get<PainelMapaResponse>("/painel/mapa").then(res => res.data).catch(() => null),
+        painelService.fetchRecusasStats(),
       ]);
       if (!alive) return;
       setStats(s); setTecnicos(t); setRevisitas(r); setAudit(a); setHistorico(h);
       if (mp) setMapaRealtime(mp);
+      setRecusasStats(rc);
       setNow(new Date());
     };
     load();
@@ -2717,6 +2801,11 @@ export default function PainelOverviewPage() {
         <RevisitasMapWidget revisitas={revisitas} />
       </div>
 
+      {/* ════════════ Impedimentos & Recusas por motivo ════════════ */}
+      <div className="vm-rise" style={{ animationDelay: "0.2s" }}>
+        <ImpedimentosRecusasWidget stats={recusasStats} />
+      </div>
+
       {/* ════════════ LINHA 3: Distribuição do pipeline ════════════ */}
       <div className="vm-rise" style={{ animationDelay: "0.22s" }}>
         <PipelineWidget stats={stats} />
@@ -2734,21 +2823,35 @@ export default function PainelOverviewPage() {
           <UserPlus className="h-4 w-4 text-[#8B5CF6]" strokeWidth={2} />
           <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias Atribuídas</span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           {(
             [
-              { label: "Hoje", value: stats?.atribuidasHoje ?? null, sub: "desde 00:00", color: "#8B5CF6" },
-              { label: "Este mês", value: stats?.atribuidasMes ?? null, sub: "mês corrente", color: "#8B5CF6" },
+              { label: "Hoje", value: stats?.atribuidasHoje ?? null, sub: "desde 00:00", color: "#8B5CF6", href: undefined as string | undefined },
+              { label: "Este mês", value: stats?.atribuidasMes ?? null, sub: "mês corrente", color: "#8B5CF6", href: undefined as string | undefined },
+              {
+                label: "Pendentes",
+                value: stats?.pendentesDasAtribuidas ?? null,
+                sub: "das já atribuídas",
+                color: "#F59E0B",
+                href: "/painel/central-vistorias?status=PENDENTE",
+              },
             ] as const
-          ).map((k) => (
-            <Card key={k.label} className="p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
-              <div className="mt-0.5 text-[26px] font-bold tabular-nums" style={{ color: k.color }}>
-                {k.value != null ? <CountUp value={k.value} /> : "—"}
-              </div>
-              <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
-            </Card>
-          ))}
+          ).map((k) => {
+            const card = (
+              <Card className="p-4" style={{ cursor: k.href ? "pointer" : undefined }}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
+                <div className="mt-0.5 text-[26px] font-bold tabular-nums" style={{ color: k.color }}>
+                  {k.value != null ? <CountUp value={k.value} /> : "—"}
+                </div>
+                <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
+              </Card>
+            );
+            return k.href ? (
+              <Link key={k.label} href={k.href} style={{ textDecoration: "none" }}>{card}</Link>
+            ) : (
+              <div key={k.label}>{card}</div>
+            );
+          })}
         </div>
       </div>
 

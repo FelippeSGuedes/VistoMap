@@ -122,6 +122,7 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     muniRow,
     pdfRow,
     devolRow,
+    pendentesAtribuidasRow,
     rejeitadas,
     { atribuidas24h, finalizadas24h },
     { atribuidasHoje, atribuidasMes },
@@ -181,6 +182,23 @@ export async function fetchPainelStats(): Promise<PainelStats> {
          WHERE f.\`${SITUACAO_COLUMN}\` = ?
       `,
       [SITUACAO_DEVOLVIDA]
+    ).then((r) => r[0]),
+    // "Vistorias pendentes das atribuídas": das que JÁ têm técnico, quantas
+    // ainda não foram concluídas/aprovadas — o workload agregado de toda a
+    // equipe. Diferente de `pendentes` (KPI "Backlog"), que é
+    // especificamente "aguardando atribuição" (sem técnico ainda). Mesmo
+    // critério de exclusão de status já usado em fetchTecnicos() pra
+    // "atribuidas" por técnico, só que somado pra todos.
+    query<{ total: number }>(
+      `
+        SELECT COUNT(*) AS total
+          FROM \`${TABLE_FIELDS}\` f
+          INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+          LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+         WHERE f.users_id_vistoriadorafield > 0
+           AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Aprovado com Pendências','Em análise','Em analise','Finalizada','Finalizado'))
+      `
     ).then((r) => r[0]),
     (async () => {
       try {
@@ -324,9 +342,11 @@ export async function fetchPainelStats(): Promise<PainelStats> {
   const municipiosAtivos = muniRow?.total ?? 0;
   const pdfsGerados = pdfRow?.total ?? 0;
   const devolvidas = devolRow?.total ?? 0;
+  const pendentesDasAtribuidas = pendentesAtribuidasRow?.total ?? 0;
 
   return {
     pendentes,
+    pendentesDasAtribuidas,
     emVistoria,
     vistoriadas,
     aguardandoRevisita,

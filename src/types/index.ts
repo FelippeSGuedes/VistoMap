@@ -541,6 +541,8 @@ export interface RevisitaPendente {
 /** KPIs agregados do painel admin (overview). */
 export interface PainelStats {
   pendentes: number;
+  /** Das que JÁ têm técnico atribuído, quantas ainda não foram concluídas/aprovadas — workload da equipe. */
+  pendentesDasAtribuidas?: number;
   emVistoria: number;
   vistoriadas: number;
   aguardandoRevisita: number;
@@ -575,6 +577,18 @@ export interface PainelStats {
     vistoriadas: number[];
     revisitas: number[];
   };
+}
+
+/** Impedimento/recusa por motivo — ver fetchRecusasStats() (lib/glpi/recusas.ts). */
+export interface RecusaMotivoAgregado {
+  motivo: string;
+  label: string;
+  total: number;
+}
+
+export interface RecusasStats {
+  total: number;
+  porCategoria: Record<"impedimento" | "recusa", { total: number; porMotivo: RecusaMotivoAgregado[] }>;
 }
 
 /* ─── histórico (mantido) ─────────────────────────────────────────── */

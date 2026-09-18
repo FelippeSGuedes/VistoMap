@@ -6,6 +6,10 @@ import {
   type RecusaCategoria,
   type RecusaMotivo,
 } from "./recusaMotivos";
+// RecusasStats/RecusaMotivoAgregado vêm de @/types (não deste arquivo,
+// que é server-only) pra poder ser importado no service do cliente
+// (src/services/painel.ts) sem puxar nada de servidor pro bundle.
+import type { RecusasStats, RecusaMotivoAgregado } from "@/types";
 
 /**
  * Recusas — técnico declara que uma vistoria é impossível de fazer
@@ -258,17 +262,6 @@ export async function listRecusas(filters: FetchRecusasFilters = {}): Promise<Re
     params
   );
   return rows.map(mapRow);
-}
-
-export interface RecusaMotivoAgregado {
-  motivo: string;
-  label: string;
-  total: number;
-}
-
-export interface RecusasStats {
-  total: number;
-  porCategoria: Record<RecusaCategoria, { total: number; porMotivo: RecusaMotivoAgregado[] }>;
 }
 
 /**
