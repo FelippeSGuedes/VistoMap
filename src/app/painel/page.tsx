@@ -44,6 +44,7 @@ import { getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import type { PainelMapaResponse, PainelMapaTecnico } from "@/types/painel-mapa";
 import { asset } from "@/utils/asset";
+import { classificarMotivoClient } from "@/utils/motivos-client";
 // Instalação — service/tipos isolados (src/lib/glpi/painel-instalacoes.ts),
 // nunca a Vistoria importando dados dela: só consome o próprio endpoint
 // novo. Poll independente (ver useEffect próprio abaixo), não entra no
@@ -1848,6 +1849,20 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   const token        = getMapboxToken();
   const hasRevisitas = revisitas.length > 0;
 
+  // Motivo mais rico: classificação client-side (mesma usada em
+  // /painel/revisitas) agrupada — antes esse widget só mostrava
+  // equipamento/cidade, sem indicar POR QUE reprova mais.
+  const motivosTop = useMemo(() => {
+    const acc = new Map<string, { label: string; color: string; total: number }>();
+    for (const r of revisitas) {
+      const cat = classificarMotivoClient(r.motivoReprovacao);
+      const cur = acc.get(cat.id) ?? { label: cat.short, color: cat.color, total: 0 };
+      cur.total++;
+      acc.set(cat.id, cur);
+    }
+    return [...acc.values()].sort((a, b) => b.total - a.total).slice(0, 4);
+  }, [revisitas]);
+
   useEffect(() => {
     if (!containerRef.current || !token) return;
     injectStyle(
@@ -1940,6 +1955,20 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
           </div>
         )}
       </div>
+
+      {hasRevisitas && motivosTop.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-orange-50 px-4 py-2.5">
+          {motivosTop.map((m) => (
+            <span
+              key={m.label}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-semibold"
+              style={{ background: `${m.color}1A`, color: m.color }}
+            >
+              {m.label} · {m.total}
+            </span>
+          ))}
+        </div>
+      )}
 
       {hasRevisitas && (
         <ul className="divide-y divide-orange-50">
@@ -2663,14 +2692,21 @@ export default function PainelOverviewPage() {
                           <span className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{t.nome.split(" ")[0]}</span>
                           <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[var(--vm-text)]">{t.total}</span>
                         </div>
+                        {/* Barra dupla: comprimento total = volume vs o técnico
+                            líder (como antes); a cor por dentro agora mostra
+                            aprovados (verde) x vistoriados ainda sem aprovação
+                            (âmbar) — "aproveitamento aprovados x vistoriados"
+                            visualizado direto na barra principal. */}
                         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                           <motion.div
-                            className="h-full rounded-full"
-                            style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
+                            className="flex h-full overflow-hidden rounded-full"
                             initial={{ width: 0 }}
                             animate={{ width: `${pct}%` }}
                             transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                          />
+                          >
+                            <div className="h-full" style={{ width: `${aprovPct}%`, background: "#059669" }} />
+                            <div className="h-full" style={{ width: `${100 - aprovPct}%`, background: "#F59E0B" }} />
+                          </motion.div>
                         </div>
                       </div>
                     </div>
