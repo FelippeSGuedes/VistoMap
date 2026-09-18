@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MapPinOff } from "lucide-react";
-import type { PanoramaMunicipioRestante } from "@/types";
+import type { PanoramaOperacao } from "@/types";
 
 /**
  * O que FALTA, por município — o inverso do que os mapas de "Top Municípios"
@@ -16,19 +16,32 @@ import type { PanoramaMunicipioRestante } from "@/types";
  * rótulo direto responde mais rápido que um choropleth (que já está sendo
  * usado, do lado, pro trabalho feito) — dois mapas coloridos lado a lado
  * competiriam por atenção sem ganho real de leitura.
+ *
+ * A tira de idade no topo é o "por quê" antes do "onde": o mesmo total de
+ * restantes pode ser saudável (tudo recente) ou um risco real (grande parte
+ * há 90+ dias) — números iguais, urgência bem diferente. Cor é status
+ * reservado (recente→crítico), não categórica: cada faixa é um degrau de
+ * risco, não uma identidade solta.
  */
+
+const FAIXA_COR: Record<string, string> = {
+  "0-30": "#94A3B8",
+  "31-60": "#FBBF24",
+  "61-90": "#F97316",
+  "90+": "#DC2626",
+};
 
 function fmtNum(n: number): string {
   return n.toLocaleString("pt-BR");
 }
 
-export function MunicipiosRestantesWidget({
-  municipios,
-}: {
-  municipios: PanoramaMunicipioRestante[];
-}) {
+export function MunicipiosRestantesWidget({ panorama }: { panorama: PanoramaOperacao | null }) {
   const router = useRouter();
   const [expandido, setExpandido] = useState(false);
+
+  const municipios = panorama?.municipiosRestantes ?? [];
+  const faixas = panorama?.backlog.faixas ?? [];
+  const totalFaixas = faixas.reduce((s, f) => s + f.total, 0);
 
   const { itens, max, restanteFora } = useMemo(() => {
     const ordenado = [...municipios].sort((a, b) => b.restantes - a.restantes);
@@ -36,7 +49,10 @@ export function MunicipiosRestantesWidget({
     const max = ordenado.length > 0 ? ordenado[0].restantes : 0;
     const foraDaLista = ordenado.slice(visiveis.length).reduce((s, m) => s + m.restantes, 0);
     return { itens: visiveis, max, restanteFora: foraDaLista };
-  }, [municipios, expandido]);
+    // `municipios` é derivado de panorama a cada render — a dependência
+    // real e estável é o próprio panorama, não o array recriado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panorama, expandido]);
 
   const loading = municipios.length === 0;
 
@@ -66,6 +82,49 @@ export function MunicipiosRestantesWidget({
         </div>
       ) : (
         <div className="px-5 pb-4">
+          {/* ── Há quanto tempo espera — o "por quê" antes do "onde" ── */}
+          {totalFaixas > 0 && (
+            <div className="mb-4">
+              <div className="mb-1.5 flex h-3.5 w-full gap-[2px] overflow-hidden rounded-sm">
+                {faixas.map((f) => {
+                  const pct = (f.total / totalFaixas) * 100;
+                  if (pct <= 0) return null;
+                  return (
+                    <div
+                      key={f.id}
+                      title={`${f.label}: ${fmtNum(f.total)} equipamentos`}
+                      style={{ width: `${pct}%`, background: FAIXA_COR[f.id] ?? "#94A3B8" }}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {faixas.map((f) => (
+                  <div key={f.id} className="flex items-center gap-1.5">
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: FAIXA_COR[f.id] ?? "#94A3B8" }}
+                    />
+                    <span className="text-[9.5px]" style={{ color: "var(--vm-faint)" }}>
+                      {f.label}
+                    </span>
+                    <span
+                      className="text-[10px] font-bold tabular-nums"
+                      style={{ color: "var(--vm-text)" }}
+                    >
+                      {fmtNum(f.total)}
+                    </span>
+                  </div>
+                ))}
+                {panorama?.backlog.idadeMediaDias != null && (
+                  <span className="ml-auto text-[9.5px] tabular-nums" style={{ color: "var(--vm-faint)" }}>
+                    média {panorama.backlog.idadeMediaDias}d na fila
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5">
             {itens.map((m) => {
               const pct = max > 0 ? (m.restantes / max) * 100 : 0;

@@ -2818,7 +2818,7 @@ export default function PainelOverviewPage() {
 
       {/* ════════════ O que falta, por cidade — o inverso dos mapas de concluído acima ════════════ */}
       <div className="vm-rise" style={{ animationDelay: "0.19s" }}>
-        <MunicipiosRestantesWidget municipios={panorama?.municipiosRestantes ?? []} />
+        <MunicipiosRestantesWidget panorama={panorama} />
       </div>
 
       {/* ════════════ Impedimentos & Recusas por motivo ════════════ */}
