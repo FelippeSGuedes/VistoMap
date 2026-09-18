@@ -714,13 +714,30 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
 
 interface HeatmapMapWidgetProps {
   topMunicipios: Array<{ municipio: string; total: number }>;
-  totais: { vistoriasFinalizadas: number; pdfsGerados: number };
+  totais: { vistoriasFinalizadas: number; pdfsGerados: number; reprovadas: number };
   mediaSemanal: number;
   /** Período ativo no filtro global do dashboard — só pro rótulo do título. */
   periodoLabel: string;
+  /** Mesmo recorte de período de `totais` — reaproveita o que o widget
+   *  Aprovações já calcula (aprovacoesVelocity), sem query nova. */
+  aprovadasSemPendencia: number;
+  aprovadasComPendencia: number;
+  /** Série diária de finalizadas do período — mesma que alimenta o widget
+   *  Vistorias Finalizadas (velocity), reaproveitada pra mini-evolução. */
+  evolucaoLabels: string[];
+  evolucaoValues: number[];
 }
 
-function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, periodoLabel }: HeatmapMapWidgetProps) {
+function HeatmapMapWidget({
+  topMunicipios,
+  totais,
+  mediaSemanal,
+  periodoLabel,
+  aprovadasSemPendencia,
+  aprovadasComPendencia,
+  evolucaoLabels,
+  evolucaoValues,
+}: HeatmapMapWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const popupRef     = useRef<mapboxgl.Popup | null>(null);
@@ -729,6 +746,11 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, periodoLabel }:
   munisRef.current   = topMunicipios;
   const token        = getMapboxToken();
   const [geoLoaded,  setGeoLoaded] = useState(false);
+  // Sincronia lista↔mapa: hover numa linha do ranking de municípios acende a
+  // mesma região no mapa (e vice-versa, via mousemove nativo). Fica num ref
+  // — é estado imperativo do Mapbox, não precisa (nem deve) re-renderizar o
+  // React a cada hover.
+  const hoverApiRef  = useRef<{ setHoverName: (name: string | null) => void }>({ setHoverName: () => {} });
 
   const enrich = (munis: Array<{ municipio: string; total: number }>) => {
     const geo = geoRef.current;
@@ -867,20 +889,37 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, periodoLabel }:
           map.setMaxZoom(z);
         }
 
+        // nome normalizado → id da feature (mesmo campo que promoteId lê,
+        // properties.id) — permite acender uma região a partir de FORA do
+        // mapa (hover numa linha do ranking ao lado), não só do mousemove.
+        const nameToId = new Map<string, string | number>();
+        for (const f of geoJSON.features as Array<{ properties: Record<string, unknown> }>) {
+          const nome = normalizeStr(String(f.properties?.name ?? ""));
+          const id = f.properties?.id;
+          if (nome && (typeof id === "string" || typeof id === "number")) nameToId.set(nome, id);
+        }
+
         let hoveredId: string | number | null = null;
+        const setHover = (id: string | number | null) => {
+          if (hoveredId !== null && hoveredId !== id) {
+            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: false });
+          }
+          hoveredId = id;
+          if (hoveredId !== null) {
+            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: true });
+          }
+        };
+        // Hover disparado pela lista ao lado — mesma função, sem popup (a
+        // linha já mostra nome/contagem/%, um popup ali seria redundante).
+        hoverApiRef.current.setHoverName = (name) => {
+          setHover(name ? nameToId.get(normalizeStr(name)) ?? null : null);
+        };
 
         map.on("mousemove", "vm-sp-fill", (e) => {
           if (!e.features?.length) return;
           const f  = e.features[0];
-          const id = f.id;
           map.getCanvas().style.cursor = "crosshair";
-          if (hoveredId !== null && hoveredId !== id) {
-            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: false });
-          }
-          hoveredId = id ?? null;
-          if (hoveredId !== null) {
-            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: true });
-          }
+          setHover(f.id ?? null);
           const name  = String(f.properties?.name ?? "");
           const total = Number(f.properties?.total ?? 0);
           const sum   = munisRef.current.reduce((s, m) => s + m.total, 0);
@@ -888,9 +927,12 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, periodoLabel }:
           popup
             .setLngLat(e.lngLat)
             .setHTML(
-              `<div style="font-family:ui-sans-serif;padding:8px 12px;min-width:130px">
-                <div style="font-size:12px;font-weight:700;color:var(--vm-text);margin-bottom:3px">${name || "—"}</div>
-                <div style="font-size:11px;color:var(--vm-text-soft)">${total > 0 ? `${total} concluídas · ${pctStr}%` : "Sem vistorias concluídas"}</div>
+              `<div style="font-family:ui-sans-serif,system-ui;padding:10px 14px;min-width:150px">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <span style="display:inline-block;width:7px;height:7px;border-radius:999px;background:#1a6b3c;flex-shrink:0"></span>
+                  <span style="font-size:12.5px;font-weight:700;color:var(--vm-text)">${name || "—"}</span>
+                </div>
+                <div style="font-size:11px;color:var(--vm-text-soft);padding-left:13px">${total > 0 ? `<strong style="color:var(--vm-text);font-variant-numeric:tabular-nums">${total}</strong> concluídas · ${pctStr}% do total` : "Sem vistorias concluídas"}</div>
               </div>`,
             )
             .addTo(map);
@@ -898,10 +940,7 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, periodoLabel }:
 
         map.on("mouseleave", "vm-sp-fill", () => {
           map.getCanvas().style.cursor = "";
-          if (hoveredId !== null) {
-            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: false });
-            hoveredId = null;
-          }
+          setHover(null);
           popup.remove();
         });
 
@@ -930,8 +969,45 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, periodoLabel }:
     map.setPaintProperty("vm-sp-fill", "fill-color", fillExpr(topMunicipios));
   }, [topMunicipios]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Indicadores com % — mesmo denominador (finalizadas do período) pra
+     todos, calculado a cada render a partir do que os props já trazem.
+     Cor institucional (verde) pra aprovadas; âmbar/vermelho SÓ nos outros
+     dois porque ali a cor de status carrega informação real (ressalva /
+     reprovação), não decoração. ── */
+  const totalFinalizadas = totais.vistoriasFinalizadas || 0;
+  const pctOf = (n: number) => (totalFinalizadas > 0 ? (n / totalFinalizadas) * 100 : 0);
+  const indicadores = [
+    { key: "aprovadas",  label: "Aprovadas",      value: aprovadasSemPendencia,  pct: pctOf(aprovadasSemPendencia),  color: "#059669", icon: ShieldCheck },
+    { key: "pendencia",  label: "Com pendência",  value: aprovadasComPendencia,  pct: pctOf(aprovadasComPendencia),  color: "#D97706", icon: ShieldAlert },
+    { key: "reprovadas", label: "Reprovadas",     value: totais.reprovadas,      pct: pctOf(totais.reprovadas),      color: "#DC2626", icon: Ban },
+  ];
+
+  /* ── Ranking de municípios — mesmo dado do mapa, ordenado; sincroniza com
+     o mapa via hoverApiRef (ver useEffect acima). ── */
+  const ranking = [...topMunicipios].sort((a, b) => b.total - a.total).slice(0, 6);
+  const rankingMax = Math.max(...ranking.map((m) => m.total), 1);
+  const somaTotal = topMunicipios.reduce((s, m) => s + m.total, 0);
+
+  /* ── Mini-evolução — mesma série diária de Vistorias Finalizadas
+     (evolucaoValues/Labels), num traço compacto sem decoração de média/pico
+     (não cabem numa faixa de 56px sem virar poluição). ── */
+  const EVO_VB_W = 300, EVO_H = 56, EVO_PAD = 4;
+  const evoMax = Math.max(...evolucaoValues, 1);
+  const evoPts = evolucaoValues.map((v, i) => {
+    const x = evolucaoValues.length > 1
+      ? EVO_PAD + (i / (evolucaoValues.length - 1)) * (EVO_VB_W - EVO_PAD * 2)
+      : EVO_VB_W / 2;
+    const y = EVO_PAD + (1 - v / evoMax) * (EVO_H - EVO_PAD * 2);
+    return [x, y] as const;
+  });
+  const evoLine = evoPts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const evoFill = evoPts.length
+    ? `${evoLine} L${evoPts[evoPts.length - 1][0].toFixed(1)},${EVO_H - EVO_PAD} L${evoPts[0][0].toFixed(1)},${EVO_H - EVO_PAD} Z`
+    : "";
+  const evoTotal = evolucaoValues.reduce((a, b) => a + b, 0);
+
   return (
-    <Card className="relative h-full">
+    <Card className="relative">
       {/* fundo — cmpwhite.png (claro) / cmpblack.png (escuro), textura leve */}
       <div
         className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat dark:hidden"
@@ -943,47 +1019,151 @@ function HeatmapMapWidget({ topMunicipios, totais, mediaSemanal, periodoLabel }:
       />
       <div className="pointer-events-none absolute inset-0 bg-white/55 dark:bg-black/55" />
 
-      <div className="relative z-10 flex h-full flex-col">
+      <div className="relative z-10 flex flex-col">
+        {/* ── Cabeçalho — visão geral ── */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#059669]" strokeWidth={2} />
+            <MapIcon className="h-4 w-4 text-[#059669]" strokeWidth={2} />
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Padrão Diário · {periodoLabel}</span>
           </div>
-          <div className="flex items-center gap-1 text-[9.5px] text-[var(--vm-faint)]">
-            {(dashDark()
-              ? [choroEmpty(), ...choroRamp()]
-              : ["#e8f5ee", "#a8d5b5", "#5a9e74", "#1a6b3c"]
-            ).map(c => (
-              <span key={c} className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c }} />
-            ))}
-            <span className="ml-0.5">+ ativo</span>
-          </div>
+          <span className="text-[10.5px] tabular-nums text-[var(--vm-faint)]">
+            {fmtNum(totalFinalizadas)} concluídas no período
+          </span>
         </div>
-        {/* flex-1 (com piso de 190px) — antes era altura fixa e sobrava uma
-            margem grande embaixo quando o card ficava mais alto que o
-            conteúdo; agora o mapa cresce pra preencher o espaço disponível
-            sem mudar o tamanho do card em si. */}
-        <div className="relative min-h-[190px] w-full flex-1">
-          <div ref={containerRef} className="vm-dash-heat h-full w-full" />
-          {/* Legenda de cores vertical (48px) */}
-          <div
-            className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 flex-col items-center justify-center gap-1"
-            style={{ width: 48 }}
-          >
-            <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Mais<br />vistorias</span>
+
+        {/* ── Indicadores — quantidade + % do total, com barra ── */}
+        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] sm:grid-cols-3">
+          {indicadores.map((ind) => {
+            const Icon = ind.icon;
+            return (
+              <div key={ind.key} className="flex flex-col gap-2 bg-[var(--vm-card)] px-5 py-3.5">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+                    style={{ background: `${ind.color}16`, color: ind.color }}
+                  >
+                    <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                  </span>
+                  <span className="text-[11px] font-medium text-[var(--vm-muted)]">{ind.label}</span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[22px] font-bold leading-none tabular-nums text-[var(--vm-text)]">
+                    {fmtNum(ind.value)}
+                  </span>
+                  <span className="text-[12px] font-semibold tabular-nums" style={{ color: ind.color }}>
+                    {ind.pct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="h-1 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
+                  <motion.div
+                    className="h-full rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(ind.pct, 100)}%` }}
+                    transition={{ duration: 0.8, ease: [0.22, 0.7, 0.2, 1] }}
+                    style={{ background: ind.color }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Distribuição geográfica — mapa + ranking sincronizados ── */}
+        <div className="flex flex-col border-t border-[var(--vm-tile-2)] lg:flex-row">
+          <div className="relative min-h-[320px] w-full flex-1">
+            <div ref={containerRef} className="vm-dash-heat h-full w-full" />
+            {/* Legenda de cores vertical — única, sem repetir os quadradinhos do cabeçalho antigo */}
             <div
-              className="w-2.5 rounded-full"
-              style={{ height: 80, background: dashDark() ? "linear-gradient(to bottom,#22E0A6,#1E2733)" : "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
-            />
-            <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Menos<br />vistorias</span>
-          </div>
-          {!geoLoaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[var(--vm-tile)]">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--vm-border)] border-t-[#059669]" />
+              className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 flex-col items-center justify-center gap-1"
+              style={{ width: 48 }}
+            >
+              <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Mais<br />vistorias</span>
+              <div
+                className="w-2.5 rounded-full"
+                style={{ height: 90, background: dashDark() ? "linear-gradient(to bottom,#22E0A6,#1E2733)" : "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
+              />
+              <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Menos<br />vistorias</span>
             </div>
-          )}
+            {!geoLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[var(--vm-tile)]">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--vm-border)] border-t-[#059669]" />
+              </div>
+            )}
+          </div>
+
+          {/* Ranking — mesmo dado do fill do mapa; hover acende a região */}
+          <div
+            className="w-full shrink-0 border-t border-[var(--vm-tile-2)] px-4 py-3.5 lg:w-[220px] lg:border-l lg:border-t-0"
+          >
+            <p className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--vm-faint)]">
+              Top municípios
+            </p>
+            {ranking.length === 0 ? (
+              <p className="text-[11.5px] text-[var(--vm-faint)]">Sem dados no período.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {ranking.map((m) => {
+                  const pct = somaTotal > 0 ? (m.total / somaTotal) * 100 : 0;
+                  return (
+                    <div
+                      key={m.municipio}
+                      className="group cursor-default"
+                      onMouseEnter={() => hoverApiRef.current.setHoverName(m.municipio)}
+                      onMouseLeave={() => hoverApiRef.current.setHoverName(null)}
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="truncate text-[11.5px] font-medium text-[var(--vm-text)] transition group-hover:text-[#059669]">
+                          {m.municipio}
+                        </span>
+                        <span className="shrink-0 text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
+                          {m.total}
+                        </span>
+                      </div>
+                      <div className="h-1 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
+                        <div
+                          className="h-full rounded-full transition-all group-hover:brightness-110"
+                          style={{ width: `${Math.max((m.total / rankingMax) * 100, 4)}%`, background: "#1a6b3c" }}
+                          title={`${pct.toFixed(1)}% do total concluído`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="mt-auto grid grid-cols-3 border-t border-[var(--vm-tile-2)]">
+
+        {/* ── Evolução — mesma série diária de Vistorias Finalizadas ── */}
+        {evolucaoValues.length > 0 && (
+          <div className="border-t border-[var(--vm-tile-2)] px-5 py-3.5">
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--vm-faint)]">
+                Evolução no período
+              </p>
+              <span className="text-[10.5px] tabular-nums text-[var(--vm-faint)]">
+                {fmtNum(evoTotal)} concluídas
+              </span>
+            </div>
+            <svg viewBox={`0 0 ${EVO_VB_W} ${EVO_H}`} preserveAspectRatio="none" className="h-[44px] w-full">
+              <defs>
+                <linearGradient id="vm-heat-evo-grad" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#059669" stopOpacity="0.18" />
+                  <stop offset="100%" stopColor="#059669" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path d={evoFill} fill="url(#vm-heat-evo-grad)" />
+              <path d={evoLine} fill="none" stroke="#059669" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            </svg>
+            <div className="mt-0.5 flex items-center justify-between text-[9.5px] text-[var(--vm-faint)]">
+              <span>{evolucaoLabels[0] ?? ""}</span>
+              <span>{evolucaoLabels[evolucaoLabels.length - 1] ?? ""}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Detalhes — inalterado ── */}
+        <div className="grid grid-cols-3 border-t border-[var(--vm-tile-2)]">
           {[
             { icon: Activity, label: "Total no período", value: String(totais.vistoriasFinalizadas), color: "#059669" },
             { icon: Clock,    label: "Média semanal",    value: mediaSemanal.toFixed(1).replace(".", ","), color: "#0EA5E9" },
@@ -2756,9 +2936,12 @@ export default function PainelOverviewPage() {
         </Card>
       </div>
 
-      {/* ════════════ LINHA 1b: Padrão Diário | Equipe ao Vivo ════════════ */}
-      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2" style={{ animationDelay: "0.1s" }}>
-
+      {/* ════════════ Padrão Diário — elemento central, largura cheia ════════════
+          Ganhou espaço próprio (antes dividia linha com Equipe ao Vivo):
+          mapa + lista sincronizada + indicadores com % + evolução precisam de
+          mais que meia largura pra respirar como pedido ("mapa como elemento
+          central... evolução visual muito maior"). */}
+      <div className="vm-rise" style={{ animationDelay: "0.1s" }}>
         {/* Widget 02 — Padrão Diário: SP fill heatmap */}
         {historico ? (
           <HeatmapMapWidget
@@ -2769,11 +2952,21 @@ export default function PainelOverviewPage() {
             totais={historico.totais}
             mediaSemanal={historico.medias.semanalVistorias}
             periodoLabel={periodoLabel}
+            // Reaproveita o que a página já calcula pros widgets vizinhos —
+            // zero query nova. aprovadas/reprovadas do próprio período
+            // selecionado (mesmo recorte inicio..fim de historico.totais).
+            aprovadasSemPendencia={aprovacoesVelocity.totalSemPendencia}
+            aprovadasComPendencia={aprovacoesVelocity.totalComPendencia}
+            evolucaoLabels={velocity.labels}
+            evolucaoValues={velocity.values}
           />
         ) : (
           <Card><div className="flex-1 p-5"><Skeleton h={280} /></div></Card>
         )}
+      </div>
 
+      {/* ════════════ Equipe ao Vivo ════════════ */}
+      <div className="vm-rise" style={{ animationDelay: "0.12s" }}>
         {/* Widget 04 — Equipe ao Vivo */}
         <TeamMapWidget
           mapaTeam={mapaTeam}
