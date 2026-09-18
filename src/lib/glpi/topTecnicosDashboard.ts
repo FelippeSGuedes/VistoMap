@@ -28,8 +28,6 @@ export interface RankingTecnicoItem {
   aprovadas: number;
   revisitas: number;
   cidades: number;
-  /** Nomes dos municípios atendidos no período (ordem alfabética) — pro Top Técnicos expansível. */
-  cidadesList: string[];
   kmPercorrido?: number;
   tempoDeslocamentoMedioMin?: number | null;
   slaExecucaoMedioMin?: number | null;
@@ -69,7 +67,6 @@ export async function fetchRankingTecnicosPeriodo(
     aprovadas: number;
     revisitas: number;
     cidades: number;
-    cidades_lista: string | null;
   }>(
     `
       SELECT f.users_id_vistoriadorafield AS tecnico_id,
@@ -77,8 +74,7 @@ export async function fetchRankingTecnicosPeriodo(
              COUNT(*) AS total,
              SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado','Aprovado com Pendências') THEN 1 ELSE 0 END) AS aprovadas,
              SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas,
-             COUNT(DISTINCT TRIM(f.municipiofield)) AS cidades,
-             GROUP_CONCAT(DISTINCT TRIM(f.municipiofield) ORDER BY TRIM(f.municipiofield) SEPARATOR '|') AS cidades_lista
+             COUNT(DISTINCT TRIM(f.municipiofield)) AS cidades
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN glpi_users u ON u.id = f.users_id_vistoriadorafield
@@ -189,7 +185,6 @@ export async function fetchRankingTecnicosPeriodo(
     aprovadas: Number(r.aprovadas) || 0,
     revisitas: Number(r.revisitas) || 0,
     cidades: Number(r.cidades) || 0,
-    cidadesList: r.cidades_lista ? r.cidades_lista.split("|").filter(Boolean) : [],
     kmPercorrido:
       kmPorTecnico.get(r.tecnico_id) != null
         ? Math.round((kmPorTecnico.get(r.tecnico_id) ?? 0) * 10) / 10

@@ -4,8 +4,6 @@ import type {
   AuditEntry,
   DropdownKey,
   PainelStats,
-  PanoramaOperacao,
-  RecusasStats,
   RevisitaPendente,
   TecnicoAtivo,
 } from "@/types";
@@ -63,36 +61,6 @@ export async function fetchRevisitas(): Promise<RevisitaPendente[]> {
     api.get<RevisitaPendente[]>("/painel/revisitas").then((r) => r.data),
     MOCK_REVISITAS_PENDENTES
   );
-}
-
-const RECUSAS_STATS_VAZIO: RecusasStats = {
-  total: 0,
-  porCategoria: {
-    impedimento: { total: 0, porMotivo: [] },
-    recusa: { total: 0, porMotivo: [] },
-  },
-};
-
-export async function fetchRecusasStats(): Promise<RecusasStats> {
-  return tryReal(
-    api.get<RecusasStats>("/painel/recusas/stats").then((r) => r.data),
-    RECUSAS_STATS_VAZIO
-  );
-}
-
-/**
- * Panorama da operação (progresso do universo, ritmo, projeção, funil).
- * Sem mock: é a leitura principal do topo do dashboard, e um número
- * inventado aqui seria pior que um estado de carregamento.
- */
-export async function fetchPanorama(): Promise<PanoramaOperacao | null> {
-  try {
-    const r = await api.get<PanoramaOperacao>("/painel/panorama");
-    return r.data;
-  } catch (err) {
-    console.warn("[painelService] panorama indisponivel:", err);
-    return null;
-  }
 }
 
 export interface AtribuirInput {
@@ -389,7 +357,6 @@ export interface RankingTecnicoItem {
   aprovadas: number;
   revisitas: number;
   cidades: number;
-  cidadesList: string[];
   kmPercorrido?: number;
   tempoDeslocamentoMedioMin?: number | null;
   slaExecucaoMedioMin?: number | null;
@@ -689,8 +656,6 @@ export const painelService = {
   fetchStats,
   fetchTecnicos,
   fetchRevisitas,
-  fetchRecusasStats,
-  fetchPanorama,
   fetchAudit,
   fetchFila,
   fetchHistorico,

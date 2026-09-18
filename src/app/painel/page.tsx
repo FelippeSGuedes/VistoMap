@@ -2,7 +2,6 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import mapboxgl from "mapbox-gl";
 import { novoMapa } from "@/lib/mapaSeguro";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -35,17 +34,7 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { CountUp } from "@/components/ui/CountUp";
-import { RotaConclusao } from "@/components/painel/RotaConclusao";
-import { FunilOperacional } from "@/components/painel/FunilOperacional";
-import { MunicipiosRestantesWidget } from "@/components/painel/MunicipiosRestantesWidget";
-import type {
-  AuditEntry,
-  PainelStats,
-  PanoramaOperacao,
-  RecusasStats,
-  RevisitaPendente,
-  TecnicoAtivo,
-} from "@/types";
+import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type {
   HistoricoAnalytics,
   TopTecnicosDashboard,
@@ -54,7 +43,6 @@ import { getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
 import type { PainelMapaResponse, PainelMapaTecnico } from "@/types/painel-mapa";
 import { asset } from "@/utils/asset";
-import { classificarMotivoClient } from "@/utils/motivos-client";
 // Instalação — service/tipos isolados (src/lib/glpi/painel-instalacoes.ts),
 // nunca a Vistoria importando dados dela: só consome o próprio endpoint
 // novo. Poll independente (ver useEffect próprio abaixo), não entra no
@@ -502,76 +490,6 @@ function MiniDonut({
         </div>
       </div>
       <p className="mt-1.5 text-center text-[10px] text-[var(--vm-faint)]">{caption}</p>
-    </div>
-  );
-}
-
-/* ── ImpedimentosRecusasWidget (self-contained) ─────────────────────────────
-   Impedimentos (ambiente impediu — sem postes, condomínio fechado, etc.) e
-   Recusas (decisão de fato — sinal ruim, morador recusou, risco, etc.)
-   ranqueados por motivo. Dado vem de fetchRecusasStats() — só conta
-   Pendente+Aprovado (Reprovado volta pro técnico, não é uma ocorrência real
-   pra fins de estatística). */
-function ImpedimentosRecusasWidget({ stats }: { stats: RecusasStats | null }) {
-  const grupos = [
-    { key: "impedimento" as const, label: "Impedimentos", color: "#F59E0B" },
-    { key: "recusa" as const, label: "Recusas", color: "#EF4444" },
-  ];
-  return (
-    <div className="rounded-[20px] p-5" style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-[9.5px] font-bold uppercase tracking-[0.18em]" style={{ color: "#F59E0B" }}>
-            Ocorrências de campo
-          </p>
-          <h3 className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]" style={{ color: "var(--vm-text)" }}>
-            Impedimentos &amp; Recusas por motivo
-          </h3>
-        </div>
-        {stats && (
-          <span className="text-[11px] font-semibold tabular-nums" style={{ color: "var(--vm-muted)" }}>
-            {stats.total} no total
-          </span>
-        )}
-      </div>
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        {grupos.map((g) => {
-          const dados = stats?.porCategoria[g.key];
-          return (
-            <div key={g.key}>
-              <div className="mb-2.5 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full" style={{ background: g.color }} />
-                <span className="text-[12.5px] font-semibold" style={{ color: "var(--vm-text)" }}>{g.label}</span>
-                <span className="text-[11px] tabular-nums" style={{ color: "var(--vm-muted)" }}>
-                  {dados ? `(${dados.total})` : ""}
-                </span>
-              </div>
-              {!dados || dados.porMotivo.length === 0 ? (
-                <p className="text-[11.5px]" style={{ color: "var(--vm-faint)" }}>
-                  {stats ? "Nenhum registro no período" : "Carregando…"}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {dados.porMotivo.slice(0, 5).map((m) => {
-                    const pct = dados.total > 0 ? (m.total / dados.total) * 100 : 0;
-                    return (
-                      <div key={m.motivo}>
-                        <div className="flex items-center justify-between gap-2 text-[11px]" style={{ color: "var(--vm-muted)" }}>
-                          <span className="truncate">{m.label}</span>
-                          <span className="shrink-0 font-semibold tabular-nums" style={{ color: "var(--vm-text)" }}>{m.total}</span>
-                        </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
-                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: g.color }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -1385,7 +1303,6 @@ interface PendentesCpflMapWidgetProps {
 }
 
 function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
@@ -1572,9 +1489,8 @@ function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-amber-100)]"
+              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-amber-100)]"
               style={{ borderLeft: "2px solid transparent" }}
-              onClick={() => router.push(`/painel/central-vistorias?busca=${encodeURIComponent(m.municipio)}`)}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.borderLeftColor = "#F59E0B";
                 const mp = mapRef.current;
@@ -1623,7 +1539,6 @@ interface AprovadosMapWidgetProps {
 }
 
 function AprovadosMapWidget({ itens }: AprovadosMapWidgetProps) {
-  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
@@ -1808,9 +1723,8 @@ function AprovadosMapWidget({ itens }: AprovadosMapWidgetProps) {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile)]"
+              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile)]"
               style={{ borderLeft: "2px solid transparent" }}
-              onClick={() => router.push(`/painel/central-vistorias?busca=${encodeURIComponent(m.municipio)}&status=APROVADO`)}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.borderLeftColor = "#22C55E";
                 const mp = mapRef.current;
@@ -1858,20 +1772,6 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
   const token        = getMapboxToken();
   const hasRevisitas = revisitas.length > 0;
-
-  // Motivo mais rico: classificação client-side (mesma usada em
-  // /painel/revisitas) agrupada — antes esse widget só mostrava
-  // equipamento/cidade, sem indicar POR QUE reprova mais.
-  const motivosTop = useMemo(() => {
-    const acc = new Map<string, { label: string; color: string; total: number }>();
-    for (const r of revisitas) {
-      const cat = classificarMotivoClient(r.motivoReprovacao);
-      const cur = acc.get(cat.id) ?? { label: cat.short, color: cat.color, total: 0 };
-      cur.total++;
-      acc.set(cat.id, cur);
-    }
-    return [...acc.values()].sort((a, b) => b.total - a.total).slice(0, 4);
-  }, [revisitas]);
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
@@ -1966,20 +1866,6 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
         )}
       </div>
 
-      {hasRevisitas && motivosTop.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-orange-50 px-4 py-2.5">
-          {motivosTop.map((m) => (
-            <span
-              key={m.label}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-semibold"
-              style={{ background: `${m.color}1A`, color: m.color }}
-            >
-              {m.label} · {m.total}
-            </span>
-          ))}
-        </div>
-      )}
-
       {hasRevisitas && (
         <ul className="divide-y divide-orange-50">
           {revisitas.slice(0, 3).map(r => (
@@ -1999,6 +1885,71 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
   );
 }
 
+
+/* ─── ParticlesCanvas ───────────────────────────────────────────────────── */
+
+function ParticlesCanvas() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    let raf = 0;
+    const resize = () => { cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(cv);
+    const N = 26;
+    const pts = Array.from({ length: N }, () => ({
+      x: Math.random(), y: Math.random(),
+      vx: (Math.random() - 0.5) * 0.00014,
+      vy: (Math.random() - 0.5) * 0.00014,
+    }));
+    const draw = () => {
+      const { width: w, height: h } = cv;
+      ctx.clearRect(0, 0, w, h);
+      pts.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > 1) p.vx *= -1;
+        if (p.y < 0 || p.y > 1) p.vy *= -1;
+      });
+      for (let i = 0; i < N; i++) {
+        for (let j = i + 1; j < N; j++) {
+          const dx = (pts[i].x - pts[j].x) * w;
+          const dy = (pts[i].y - pts[j].y) * h;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < 115) {
+            ctx.globalAlpha = (1 - d / 115) * 0.28;
+            ctx.strokeStyle = "#00ff88";
+            ctx.lineWidth = 0.6;
+            ctx.beginPath();
+            ctx.moveTo(pts[i].x * w, pts[i].y * h);
+            ctx.lineTo(pts[j].x * w, pts[j].y * h);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = "#00ff88";
+      pts.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x * w, p.y * h, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, []);
+  return (
+    <canvas
+      ref={ref}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+    />
+  );
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    PAGE
@@ -2041,8 +1992,6 @@ export default function PainelOverviewPage() {
   const [audit,        setAudit]        = useState<AuditEntry[]>([]);
   const [historico,    setHistorico]    = useState<HistoricoAnalytics | null>(null);
   const [mapaRealtime, setMapaRealtime] = useState<PainelMapaResponse | null>(null);
-  const [recusasStats, setRecusasStats] = useState<RecusasStats | null>(null);
-  const [panorama,     setPanorama]     = useState<PanoramaOperacao | null>(null);
   const [now,          setNow]          = useState(() => new Date());
 
   useEffect(() => {
@@ -2056,19 +2005,17 @@ export default function PainelOverviewPage() {
     d.setDate(d.getDate() - (periodoRange.dias * 2 - 1));
     const inicioSerie = d.toISOString().slice(0, 10);
     const load = async () => {
-      const [s, t, r, a, h, mp, rc] = await Promise.all([
+      const [s, t, r, a, h, mp] = await Promise.all([
         painelService.fetchStats(),
         painelService.fetchTecnicos(),
         painelService.fetchRevisitas(),
         painelService.fetchAudit({ limit: 8 }),
         painelService.fetchHistorico(periodoRange.inicio, periodoRange.fim, inicioSerie),
         api.get<PainelMapaResponse>("/painel/mapa").then(res => res.data).catch(() => null),
-        painelService.fetchRecusasStats(),
       ]);
       if (!alive) return;
       setStats(s); setTecnicos(t); setRevisitas(r); setAudit(a); setHistorico(h);
       if (mp) setMapaRealtime(mp);
-      setRecusasStats(rc);
       setNow(new Date());
     };
     load();
@@ -2093,29 +2040,12 @@ export default function PainelOverviewPage() {
     return () => { alive = false; clearInterval(poll); };
   }, []);
 
-  // Panorama da operação — poll próprio e mais lento (60s) de propósito: é a
-  // query mais pesada da página (varre o parque inteiro + o audit log) e o que
-  // ela mede quase não muda em 20s — progresso de parque e projeção de término
-  // se movem em dias, não em segundos. Entrar no Promise.all de 20s custaria
-  // caro e não mostraria nada de novo.
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
-      painelService.fetchPanorama().then((p) => { if (alive) setPanorama(p); });
-    load();
-    const poll = window.setInterval(load, 60_000);
-    return () => { alive = false; clearInterval(poll); };
-  }, []);
-
   // Top Técnicos — antes tinha um seletor de período PRÓPRIO (Hoje/Semana/
   // 30d/Personalizado); agora segue o filtro global igual todo o resto,
   // com o MESMO inicio/fim do historico acima. Poll continua isolado do
   // bloco principal (zero interferência se atrasar).
   const [topTecsDash, setTopTecsDash] = useState<TopTecnicosDashboard | null>(null);
   const [topTecsLoading, setTopTecsLoading] = useState(true);
-  // Expande 1 técnico por vez — mostra a lista de cidades atendidas no
-  // período (antes só dava pra ver a CONTAGEM, não quais eram).
-  const [tecExpandido, setTecExpandido] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     setTopTecsLoading(true);
@@ -2192,7 +2122,7 @@ export default function PainelOverviewPage() {
     { label: "Em vistoria", raw: stats ? stats.emVistoria : undefined, value: stats ? fmtNum(stats.emVistoria) : "—",  sub: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, color: "#3B82F6", icon: Activity,    href: "/painel/mapa" },
     { label: "Concluídas",  raw: stats ? stats.vistoriadas + stats.revisitadas : undefined, value: stats ? fmtNum(stats.vistoriadas + stats.revisitadas): "—",  sub: "aguardando aprovação",   color: "#10B981", icon: CheckCircle2, href: "/painel/historico" },
     { label: "Reprovados CPFL", raw: stats ? (stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0) : undefined, value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
-    { label: "Aprovações", raw: stats ? (stats.aprovadasSemPendencia ?? 0) : undefined, value: stats ? fmtNum(stats.aprovadasSemPendencia ?? 0) : "—", sub: "validação concluída", color: "#22C55E", icon: ShieldCheck, href: "/painel/central-vistorias?status=APROVADO" },
+    { label: "Projetos Aprovados", raw: stats ? (stats.aprovadas ?? 0) : undefined, value: stats ? fmtNum(stats.aprovadas ?? 0) : "—", sub: "validação concluída", color: "#22C55E", icon: ShieldCheck, href: undefined as string | undefined },
     { label: "Municípios",  raw: stats ? stats.municipiosAtivos : undefined, value: stats ? fmtNum(stats.municipiosAtivos)   : "—", sub: "com equipamentos ativos", color: "#8B5CF6", icon: Building2, href: undefined as string | undefined },
     { label: "Equipe",      raw: stats ? stats.tecnicosAtivos : undefined, value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
   ];
@@ -2284,13 +2214,27 @@ export default function PainelOverviewPage() {
               </div>
             </div>
 
-            {/* CENTER — Rota até a conclusão.
-                Aqui era uma imagem de fundo com partículas, ícones flutuantes e
-                linha de varredura: ~600px do ponto mais nobre da tela gastos em
-                decoração. Virou o gráfico que responde a pergunta que o
-                dashboard inteiro não respondia — quanto falta e quando acaba.
-                Ver src/components/painel/RotaConclusao.tsx. */}
-            <RotaConclusao panorama={panorama} />
+            {/* CENTER — vis.png + efeitos de camada */}
+            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: `url('${asset("/vis.png")}')`, backgroundSize: "cover", backgroundPosition: "center" }}>
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 35%, transparent 65%, #0d1117 100%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 60%, #0d1117 100%)", pointerEvents: "none" }} />
+              <ParticlesCanvas />
+              <div style={{ position: "absolute", left: "18%", top: "20%", width: 42, height: 42, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.55)", background: "rgba(0,255,136,0.07)", display: "flex", alignItems: "center", justifyContent: "center", animation: "vmFloat 3s ease-in-out infinite", pointerEvents: "none" }}>
+                <Activity style={{ width: 18, height: 18, color: "rgba(0,255,136,0.75)" }} />
+              </div>
+              <div style={{ position: "absolute", right: "16%", top: "22%", width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.5)", background: "rgba(0,255,136,0.06)", display: "flex", alignItems: "center", justifyContent: "center", animation: "vmFloat 3s ease-in-out 1.5s infinite", pointerEvents: "none" }}>
+                <Zap style={{ width: 16, height: 16, color: "rgba(0,255,136,0.7)" }} />
+              </div>
+              <div style={{ position: "absolute", left: "50%", top: "44%", transform: "translate(-50%,-50%)", pointerEvents: "none" }}>
+                <div style={{ position: "relative", width: 14, height: 14 }}>
+                  <span style={{ position: "absolute", inset: -14, borderRadius: "50%", border: "1.5px solid rgba(0,255,136,0.5)", animation: "vmRing 2.2s ease-out infinite", display: "block" }} />
+                  <span style={{ position: "absolute", inset: -8, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.3)", animation: "vmRing 2.2s ease-out 0.7s infinite", display: "block" }} />
+                  <span style={{ display: "block", width: "100%", height: "100%", borderRadius: "50%", background: "#00ff88", boxShadow: "0 0 14px #00ff88" }} />
+                </div>
+              </div>
+              <div style={{ position: "absolute", inset: "0 0 0 0", height: 80, background: "linear-gradient(180deg,transparent,rgba(0,255,136,0.05),transparent)", animation: "vmScan 7s linear infinite", pointerEvents: "none" }} />
+            </div>
+
             {/* RIGHT — 5 KPI cards (2×2 + 1 larga) */}
             <div style={{ width: 460, padding: 16, display: "flex", alignItems: "center", position: "relative", zIndex: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
@@ -2321,15 +2265,11 @@ export default function PainelOverviewPage() {
                   } else if (i === 3) {
                     chip = { icon: <Clock style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: `${semTec} sem técnico`, active: semTec > 0 };
                   } else {
-                    const comPendencia = stats?.aprovadasComPendencia ?? 0;
-                    chip = {
-                      icon: <ShieldCheck style={{ width: 11, height: 11 }} strokeWidth={2.2} />,
-                      text: comPendencia > 0 ? `${comPendencia} com pendência` : "sem pendências",
-                      active: comPendencia > 0,
-                    };
+                    chip = { icon: <ShieldCheck style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "validação concluída", active: (stats?.aprovadas ?? 0) > 0 };
                   }
-                  const card = (
+                  return (
                     <motion.div
+                      key={k.label}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.12 + i * 0.07, duration: 0.35 }}
@@ -2382,17 +2322,6 @@ export default function PainelOverviewPage() {
                         {chip.text}
                       </div>
                     </motion.div>
-                  );
-                  // Bug real corrigido aqui: os 5 cards já tinham cursor:pointer
-                  // quando k.href existia, mas nada de fato navegava — faltava
-                  // o Link em volta (mesmo padrão já usado mais abaixo nesta
-                  // página pros cards de Vistorias Atribuídas/Instalação).
-                  return k.href ? (
-                    <Link key={k.label} href={k.href} style={{ textDecoration: "none" }}>
-                      {card}
-                    </Link>
-                  ) : (
-                    <div key={k.label}>{card}</div>
                   );
                 })}
               </div>
@@ -2638,21 +2567,14 @@ export default function PainelOverviewPage() {
                           <span className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{t.nome.split(" ")[0]}</span>
                           <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[var(--vm-text)]">{t.total}</span>
                         </div>
-                        {/* Barra dupla: comprimento total = volume vs o técnico
-                            líder (como antes); a cor por dentro agora mostra
-                            aprovados (verde) x vistoriados ainda sem aprovação
-                            (âmbar) — "aproveitamento aprovados x vistoriados"
-                            visualizado direto na barra principal. */}
                         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                           <motion.div
-                            className="flex h-full overflow-hidden rounded-full"
+                            className="h-full rounded-full"
+                            style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
                             initial={{ width: 0 }}
                             animate={{ width: `${pct}%` }}
                             transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                          >
-                            <div className="h-full" style={{ width: `${aprovPct}%`, background: "#059669" }} />
-                            <div className="h-full" style={{ width: `${100 - aprovPct}%`, background: "#F59E0B" }} />
-                          </motion.div>
+                          />
                         </div>
                       </div>
                     </div>
@@ -2674,16 +2596,9 @@ export default function PainelOverviewPage() {
                         </span>
                       )}
                       {t.cidades > 0 && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setTecExpandido((cur) => (cur === t.id ? null : t.id));
-                          }}
-                          className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED] transition hover:brightness-95"
-                        >
-                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""} {tecExpandido === t.id ? "▲" : "▼"}
-                        </button>
+                        <span className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
+                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
+                        </span>
                       )}
                       {t.revisitas > 0 && (
                         <span className="rounded-full bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold text-amber-700">
@@ -2718,24 +2633,6 @@ export default function PainelOverviewPage() {
                         </span>
                       )}
                     </div>
-                    {tecExpandido === t.id && t.cidadesList.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        className="ml-[34px] mt-1.5 flex flex-wrap gap-1"
-                      >
-                        {t.cidadesList.map((cidade) => (
-                          <Link
-                            key={cidade}
-                            href={`/painel/central-vistorias?busca=${encodeURIComponent(cidade)}`}
-                            className="rounded-full px-1.5 py-[2px] text-[9px] font-medium transition hover:brightness-95"
-                            style={{ background: "var(--vm-tile-2)", color: "var(--vm-text-soft)" }}
-                          >
-                            {cidade}
-                          </Link>
-                        ))}
-                      </motion.div>
-                    )}
                   </motion.div>
                 );
               })
@@ -2816,24 +2713,9 @@ export default function PainelOverviewPage() {
         <RevisitasMapWidget revisitas={revisitas} />
       </div>
 
-      {/* ════════════ O que falta, por cidade — o inverso dos mapas de concluído acima ════════════ */}
-      <div className="vm-rise" style={{ animationDelay: "0.19s" }}>
-        <MunicipiosRestantesWidget panorama={panorama} />
-      </div>
-
-      {/* ════════════ Impedimentos & Recusas por motivo ════════════ */}
-      <div className="vm-rise" style={{ animationDelay: "0.2s" }}>
-        <ImpedimentosRecusasWidget stats={recusasStats} />
-      </div>
-
-      {/* ════════════ LINHA 3: Pipeline (estado atual) | Funil (transição) ════════════
-          Os dois respondem perguntas diferentes: Pipeline é uma FOTO ("quanto
-          tem em cada estado agora"); Funil é o FILME ("quantos avançaram de
-          uma etapa pra outra e quanto tempo isso levou"). Lado a lado porque
-          são o par estado/fluxo que a Fase de observabilidade pedia. */}
-      <div className="vm-rise grid grid-cols-1 gap-4 xl:grid-cols-2" style={{ animationDelay: "0.22s" }}>
+      {/* ════════════ LINHA 3: Distribuição do pipeline ════════════ */}
+      <div className="vm-rise" style={{ animationDelay: "0.22s" }}>
         <PipelineWidget stats={stats} />
-        <FunilOperacional panorama={panorama} />
       </div>
 
       {/* ════════════ VISTORIAS ATRIBUÍDAS — hoje / mês corrente ════════════
@@ -2848,35 +2730,21 @@ export default function PainelOverviewPage() {
           <UserPlus className="h-4 w-4 text-[#8B5CF6]" strokeWidth={2} />
           <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias Atribuídas</span>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {(
             [
-              { label: "Hoje", value: stats?.atribuidasHoje ?? null, sub: "desde 00:00", color: "#8B5CF6", href: undefined as string | undefined },
-              { label: "Este mês", value: stats?.atribuidasMes ?? null, sub: "mês corrente", color: "#8B5CF6", href: undefined as string | undefined },
-              {
-                label: "Pendentes",
-                value: stats?.pendentesDasAtribuidas ?? null,
-                sub: "das já atribuídas",
-                color: "#F59E0B",
-                href: "/painel/central-vistorias?status=PENDENTE",
-              },
+              { label: "Hoje", value: stats?.atribuidasHoje ?? null, sub: "desde 00:00", color: "#8B5CF6" },
+              { label: "Este mês", value: stats?.atribuidasMes ?? null, sub: "mês corrente", color: "#8B5CF6" },
             ] as const
-          ).map((k) => {
-            const card = (
-              <Card className="p-4" style={{ cursor: k.href ? "pointer" : undefined }}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
-                <div className="mt-0.5 text-[26px] font-bold tabular-nums" style={{ color: k.color }}>
-                  {k.value != null ? <CountUp value={k.value} /> : "—"}
-                </div>
-                <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
-              </Card>
-            );
-            return k.href ? (
-              <Link key={k.label} href={k.href} style={{ textDecoration: "none" }}>{card}</Link>
-            ) : (
-              <div key={k.label}>{card}</div>
-            );
-          })}
+          ).map((k) => (
+            <Card key={k.label} className="p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--vm-text-muted)]">{k.label}</p>
+              <div className="mt-0.5 text-[26px] font-bold tabular-nums" style={{ color: k.color }}>
+                {k.value != null ? <CountUp value={k.value} /> : "—"}
+              </div>
+              <p className="mt-1 text-[11.5px] text-[var(--vm-text-muted)]">{k.sub}</p>
+            </Card>
+          ))}
         </div>
       </div>
 

@@ -541,8 +541,6 @@ export interface RevisitaPendente {
 /** KPIs agregados do painel admin (overview). */
 export interface PainelStats {
   pendentes: number;
-  /** Das que JÁ têm técnico atribuído, quantas ainda não foram concluídas/aprovadas — workload da equipe. */
-  pendentesDasAtribuidas?: number;
   emVistoria: number;
   vistoriadas: number;
   aguardandoRevisita: number;
@@ -558,10 +556,6 @@ export interface PainelStats {
   rejeitadas?: number;
   /** Aprovadas pela concessionária (statusvistoria Aprovado + Aprovado com Pendências). */
   aprovadas?: number;
-  /** Só "Aprovado" (sem ressalva) — subconjunto de `aprovadas`. */
-  aprovadasSemPendencia?: number;
-  /** Só "Aprovado com Pendências" — subconjunto de `aprovadas`. */
-  aprovadasComPendencia?: number;
   /** Vistorias atribuídas (saíram do backlog) nas últimas 24h — do audit log. */
   atribuidas24h?: number;
   /** Vistorias finalizadas nas últimas 24h — do audit log. */
@@ -577,18 +571,6 @@ export interface PainelStats {
     vistoriadas: number[];
     revisitas: number[];
   };
-}
-
-/** Impedimento/recusa por motivo — ver fetchRecusasStats() (lib/glpi/recusas.ts). */
-export interface RecusaMotivoAgregado {
-  motivo: string;
-  label: string;
-  total: number;
-}
-
-export interface RecusasStats {
-  total: number;
-  porCategoria: Record<"impedimento" | "recusa", { total: number; porMotivo: RecusaMotivoAgregado[] }>;
 }
 
 /* ─── histórico (mantido) ─────────────────────────────────────────── */
@@ -639,90 +621,4 @@ export interface FilterState {
   distanciaMaxKm: number;
   ordenacao: "distancia" | "prioridade" | "data";
   categorias: string[];
-}
-
-/* ══════════════════════ PANORAMA DA OPERAÇÃO ══════════════════════
-   Alimenta o topo do /painel (ver src/lib/glpi/panorama.ts). A operação é
-   um burn-down de um universo finito de equipamentos — estes tipos modelam
-   "quanto já andou, em que ritmo e quando acaba", que é a leitura que o
-   dashboard de contadores por status não conseguia dar.                */
-
-export interface PanoramaFaixaIdade {
-  id: string;
-  label: string;
-  total: number;
-}
-
-export interface PanoramaEtapaFunil {
-  id: string;
-  label: string;
-  /** Quantos equipamentos JÁ passaram por esta etapa (audit log). */
-  total: number;
-  /** Mediana de minutos desde a etapa anterior. null na 1ª etapa ou sem amostra. */
-  medianaMinDesdeAnterior: number | null;
-}
-
-export interface PanoramaMunicipioRestante {
-  municipio: string;
-  restantes: number;
-  idadeMediaDias: number | null;
-}
-
-/** Projeção de término a partir de um ritmo observado. null = ritmo zero. */
-export interface PanoramaProjecaoRitmo {
-  dias: number;
-  /** ISO 'YYYY-MM-DD'. */
-  data: string;
-}
-
-export interface PanoramaOperacao {
-  universo: {
-    total: number;
-    naoIniciadas: number;
-    emAndamento: number;
-    aguardandoAprovacao: number;
-    emAnalise: number;
-    aprovadas: number;
-    aprovadasComPendencia: number;
-    emRevisita: number;
-    devolvidas: number;
-    concluidas: number;
-    progressoPct: number;
-  };
-  backlog: {
-    total: number;
-    faixas: PanoramaFaixaIdade[];
-    idadeMediaDias: number | null;
-    idadeMaxDias: number | null;
-  };
-  velocidade: {
-    /** 90 dias, sem buracos (dias sem vistoria vêm com total 0). */
-    serie: Array<{ dia: string; total: number }>;
-    ritmoDia7: number;
-    ritmoDia30: number;
-    /** Ritmo por dia efetivamente trabalhado nos últimos 30 dias. */
-    ritmoDiaAtivo: number;
-    diasAtivos30: number;
-    total7: number;
-    total30: number;
-    melhorDia: { dia: string; total: number } | null;
-    totalMesAtual: number;
-    totalMesAnterior: number;
-  };
-  projecao: {
-    restantes: number;
-    /** Pelo ritmo dos últimos 7 dias. */
-    otimista: PanoramaProjecaoRitmo | null;
-    /** Pelo ritmo dos últimos 30 dias. */
-    conservadora: PanoramaProjecaoRitmo | null;
-  };
-  funil: PanoramaEtapaFunil[];
-  retrabalho: {
-    equipamentosAtribuidos: number;
-    equipamentosReatribuidos: number;
-    maxAtribuicoes: number;
-    totalAtribuicoes: number;
-  };
-  municipiosRestantes: PanoramaMunicipioRestante[];
-  geradoEm: string;
 }

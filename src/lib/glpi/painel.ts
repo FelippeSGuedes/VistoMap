@@ -109,200 +109,24 @@ interface StatsRow {
  * divergindo de /painel/realizadas, que já cruzava os dois campos).
  */
 export async function fetchPainelStats(): Promise<PainelStats> {
-  // Antes eram 9 queries AWAITADAS EM SÉRIE (uma atrás da outra) — cada
-  // poll de 20s do dashboard somava a LATÊNCIA das 9, não o máximo. São
-  // todas independentes (nenhuma usa o resultado de outra), então rodam
-  // em paralelo — mesmo dado, mesma lógica, só a forma de disparar muda.
-  const tecnicoGroup = process.env.GLPI_VISTOMAP_GROUP ?? "VistoMap-Tecnicos";
-  const tecnicoGroupAlt =
-    tecnicoGroup === "VistoMap-Tecnicos" ? "VistoMap-Técnicos" : "VistoMap-Tecnicos";
-
-  const [
-    rows,
-    tecCountRow,
-    muniRow,
-    pdfRow,
-    devolRow,
-    pendentesAtribuidasRow,
-    rejeitadas,
-    { atribuidas24h, finalizadas24h },
-    { atribuidasHoje, atribuidasMes },
-    { aprovadas, aprovadasSemPendencia, aprovadasComPendencia },
-  ] = await Promise.all([
-    query<StatsRow>(
-      `
-        SELECT
-          sv.name AS status_name,
-          COALESCE(aux.is_repeat, 0) AS is_repeat,
-          f.users_id_vistoriadorafield AS tecnico_id,
-          f.\`${SITUACAO_COLUMN}\` AS situacao_id,
-          COUNT(*) AS total
-        FROM \`${TABLE_NE}\` ne
-        INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
-        LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
-                ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
-        LEFT JOIN \`${TABLE_AUX}\` aux
-                ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
-        WHERE ne.is_deleted = 0
-        GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield, f.\`${SITUACAO_COLUMN}\`
-      `
-    ),
-    // Tecnicos ativos: grupo VistoMap-Tecnicos (count).
-    query<{ total: number }>(
-      `
-        SELECT COUNT(DISTINCT u.id) AS total
-          FROM \`${TABLE_USERS}\` u
-          INNER JOIN glpi_groups_users gu ON gu.users_id = u.id
-          INNER JOIN glpi_groups g ON g.id = gu.groups_id AND g.name IN (?, ?)
-         WHERE u.is_deleted = 0 AND u.is_active = 1
-      `,
-      [tecnicoGroup, tecnicoGroupAlt]
-    ).then((r) => r[0]),
-    query<{ total: number }>(
-      `
-        SELECT COUNT(DISTINCT TRIM(f.municipiofield)) AS total
-          FROM \`${TABLE_FIELDS}\` f
-          INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
-         WHERE f.municipiofield IS NOT NULL AND TRIM(f.municipiofield) <> ''
-      `
-    ).then((r) => r[0]),
-    query<{ total: number }>(
-      `
-        SELECT COUNT(*) AS total
-          FROM \`${TABLE_AUX}\`
-         WHERE project_status = 'GERADO'
-      `
-    ).then((r) => r[0]),
-    // Devolvidas (situação 8) — não cai no GROUP BY de status acima (que
-    // não olha situacao_id), então conta à parte pro gráfico do pipeline.
-    query<{ total: number }>(
-      `
-        SELECT COUNT(*) AS total
-          FROM \`${TABLE_FIELDS}\` f
-          INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
-         WHERE f.\`${SITUACAO_COLUMN}\` = ?
-      `,
-      [SITUACAO_DEVOLVIDA]
-    ).then((r) => r[0]),
-    // "Vistorias pendentes das atribuídas": das que JÁ têm técnico, quantas
-    // ainda não foram concluídas/aprovadas — o workload agregado de toda a
-    // equipe. Diferente de `pendentes` (KPI "Backlog"), que é
-    // especificamente "aguardando atribuição" (sem técnico ainda). Mesmo
-    // critério de exclusão de status já usado em fetchTecnicos() pra
-    // "atribuidas" por técnico, só que somado pra todos.
-    query<{ total: number }>(
-      `
-        SELECT COUNT(*) AS total
-          FROM \`${TABLE_FIELDS}\` f
-          INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
-          LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
-                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
-         WHERE f.users_id_vistoriadorafield > 0
-           AND (sv.name IS NULL OR sv.name NOT IN ('Aprovada','Aprovado','Aprovado com Pendências','Em análise','Em analise','Finalizada','Finalizado'))
-      `
-    ).then((r) => r[0]),
-    (async () => {
-      try {
-        const [rejRow] = await query<{ total: number }>(
-          `SELECT COUNT(*) AS total FROM \`glpi_plugin_vistomap_recusas\` WHERE status = 'APROVADO'`
-        );
-        return rejRow?.total ?? 0;
-      } catch {
-        /* tabela de recusas pode não existir em dev — mantém 0 */
-        return 0;
-      }
-    })(),
-    // Atividade das últimas 24h a partir do audit log (dado real, com ts).
-    // atribuidas24h = quantas SAÍRAM do backlog; finalizadas24h = throughput.
-    (async () => {
-      try {
-        const rows24h = await query<{ acao: string; total: number }>(
-          `
-            SELECT acao, COUNT(DISTINCT alvo_id) AS total
-              FROM \`glpi_plugin_vistomap_audit\`
-             WHERE acao IN ('vistoria-atribuida', 'vistoria-finalizada')
-               AND alvo_tipo = 'vistoria'
-               AND ts >= NOW() - INTERVAL 24 HOUR
-             GROUP BY acao
-          `
-        );
-        let a24 = 0;
-        let f24 = 0;
-        for (const r of rows24h) {
-          if (r.acao === "vistoria-atribuida") a24 = Number(r.total) || 0;
-          if (r.acao === "vistoria-finalizada") f24 = Number(r.total) || 0;
-        }
-        return { atribuidas24h: a24, finalizadas24h: f24 };
-      } catch {
-        /* tabela de audit pode não existir em dev — mantém 0 */
-        return { atribuidas24h: 0, finalizadas24h: 0 };
-      }
-    })(),
-    // "Vistorias Atribuídas" (card do dashboard) — hoje e mês corrente.
-    // Mesmo COUNT(DISTINCT alvo_id) do bloco de 24h: uma vistoria
-    // reatribuída conta 1, não 1 por reatribuição.
-    (async () => {
-      try {
-        const [rowHoje, rowMes] = await Promise.all([
-          query<{ total: number }>(
-            `
-              SELECT COUNT(DISTINCT alvo_id) AS total
-                FROM \`glpi_plugin_vistomap_audit\`
-               WHERE acao = 'vistoria-atribuida'
-                 AND alvo_tipo = 'vistoria'
-                 AND ts >= CURDATE()
-            `
-          ).then((r) => r[0]),
-          query<{ total: number }>(
-            `
-              SELECT COUNT(DISTINCT alvo_id) AS total
-                FROM \`glpi_plugin_vistomap_audit\`
-               WHERE acao = 'vistoria-atribuida'
-                 AND alvo_tipo = 'vistoria'
-                 AND ts >= DATE_FORMAT(NOW(), '%Y-%m-01')
-            `
-          ).then((r) => r[0]),
-        ]);
-        return {
-          atribuidasHoje: Number(rowHoje?.total) || 0,
-          atribuidasMes: Number(rowMes?.total) || 0,
-        };
-      } catch {
-        /* tabela de audit pode não existir em dev — mantém 0 */
-        return { atribuidasHoje: 0, atribuidasMes: 0 };
-      }
-    })(),
-    // Aprovadas pela concessionária — Aprovado + Aprovado com Pendências
-    // (mesmo critério de etapaDoStatus() em cpfl.ts). Splitado nos 2
-    // valores reais (pedido do usuário 2026-09-17: mostrar os 2 números
-    // separados no dashboard) numa SÓ query via SUM condicional — não é
-    // round-trip extra, é a mesma consulta de antes.
-    (async () => {
-      const [row] = await query<{ semPendencia: number; comPendencia: number }>(
-        `
-          SELECT
-            SUM(CASE WHEN f.plugin_fields_statusvistoriafielddropdowns_id = ? THEN 1 ELSE 0 END) AS semPendencia,
-            SUM(CASE WHEN f.plugin_fields_statusvistoriafielddropdowns_id = ? THEN 1 ELSE 0 END) AS comPendencia
-            FROM \`${TABLE_FIELDS}\` f
-            INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
-           WHERE f.plugin_fields_statusvistoriafielddropdowns_id IN (?, ?)
-        `,
-        [
-          STATUS_VISTORIA_APROVADO,
-          STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
-          STATUS_VISTORIA_APROVADO,
-          STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
-        ]
-      );
-      const semPendencia = Number(row?.semPendencia) || 0;
-      const comPendencia = Number(row?.comPendencia) || 0;
-      return {
-        aprovadas: semPendencia + comPendencia,
-        aprovadasSemPendencia: semPendencia,
-        aprovadasComPendencia: comPendencia,
-      };
-    })(),
-  ]);
+  const rows = await query<StatsRow>(
+    `
+      SELECT
+        sv.name AS status_name,
+        COALESCE(aux.is_repeat, 0) AS is_repeat,
+        f.users_id_vistoriadorafield AS tecnico_id,
+        f.\`${SITUACAO_COLUMN}\` AS situacao_id,
+        COUNT(*) AS total
+      FROM \`${TABLE_NE}\` ne
+      INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+              ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+      LEFT JOIN \`${TABLE_AUX}\` aux
+              ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+      WHERE ne.is_deleted = 0
+      GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield, f.\`${SITUACAO_COLUMN}\`
+    `
+  );
 
   let pendentes = 0;
   let emVistoria = 0;
@@ -339,15 +163,137 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     }
   }
 
+  // Tecnicos ativos: grupo VistoMap-Tecnicos (count) e municipios distinct.
+  const tecnicoGroup =
+    process.env.GLPI_VISTOMAP_GROUP ?? "VistoMap-Tecnicos";
+  const tecnicoGroupAlt =
+    tecnicoGroup === "VistoMap-Tecnicos" ? "VistoMap-Técnicos" : "VistoMap-Tecnicos";
+  const [tecCountRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(DISTINCT u.id) AS total
+        FROM \`${TABLE_USERS}\` u
+        INNER JOIN glpi_groups_users gu ON gu.users_id = u.id
+        INNER JOIN glpi_groups g ON g.id = gu.groups_id AND g.name IN (?, ?)
+       WHERE u.is_deleted = 0 AND u.is_active = 1
+    `,
+    [tecnicoGroup, tecnicoGroupAlt]
+  );
   const tecnicosAtivos = tecCountRow?.total ?? 0;
+
+  const [muniRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(DISTINCT TRIM(f.municipiofield)) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE f.municipiofield IS NOT NULL AND TRIM(f.municipiofield) <> ''
+    `
+  );
   const municipiosAtivos = muniRow?.total ?? 0;
+
+  const [pdfRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(*) AS total
+        FROM \`${TABLE_AUX}\`
+       WHERE project_status = 'GERADO'
+    `
+  );
   const pdfsGerados = pdfRow?.total ?? 0;
+
+  // Devolvidas (situação 8) e rejeitadas (recusa aprovada) — não caem no
+  // GROUP BY de status acima (que não olha situacao_id), então contamos à
+  // parte pra alimentar o gráfico de distribuição do pipeline.
+  const [devolRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(*) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE f.\`${SITUACAO_COLUMN}\` = ?
+    `,
+    [SITUACAO_DEVOLVIDA]
+  );
   const devolvidas = devolRow?.total ?? 0;
-  const pendentesDasAtribuidas = pendentesAtribuidasRow?.total ?? 0;
+
+  let rejeitadas = 0;
+  try {
+    const [rejRow] = await query<{ total: number }>(
+      `SELECT COUNT(*) AS total FROM \`glpi_plugin_vistomap_recusas\` WHERE status = 'APROVADO'`
+    );
+    rejeitadas = rejRow?.total ?? 0;
+  } catch {
+    /* tabela de recusas pode não existir em dev — mantém 0 */
+  }
+
+  // Aprovadas pela concessionária (Aprovado + Aprovado com Pendências —
+  // mesmo critério de etapaDoStatus() em cpfl.ts) — não cai no GROUP BY de
+  // status acima (resolveAdminStatus não tem um estado "APROVADO"), por
+  // isso é contado à parte, mesmo padrão de devolvidas/rejeitadas.
+  const [aprovadasRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(*) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE f.plugin_fields_statusvistoriafielddropdowns_id IN (?, ?)
+    `,
+    [STATUS_VISTORIA_APROVADO, STATUS_VISTORIA_APROVADO_COM_PENDENCIAS]
+  );
+  const aprovadas = aprovadasRow?.total ?? 0;
+
+  // Atividade das últimas 24h a partir do audit log (dado real, com ts).
+  // atribuidas24h = quantas SAÍRAM do backlog; finalizadas24h = throughput.
+  let atribuidas24h = 0;
+  let finalizadas24h = 0;
+  try {
+    const rows24h = await query<{ acao: string; total: number }>(
+      `
+        SELECT acao, COUNT(DISTINCT alvo_id) AS total
+          FROM \`glpi_plugin_vistomap_audit\`
+         WHERE acao IN ('vistoria-atribuida', 'vistoria-finalizada')
+           AND alvo_tipo = 'vistoria'
+           AND ts >= NOW() - INTERVAL 24 HOUR
+         GROUP BY acao
+      `
+    );
+    for (const r of rows24h) {
+      if (r.acao === "vistoria-atribuida") atribuidas24h = Number(r.total) || 0;
+      if (r.acao === "vistoria-finalizada") finalizadas24h = Number(r.total) || 0;
+    }
+  } catch {
+    /* tabela de audit pode não existir em dev — mantém 0 */
+  }
+
+  // "Vistorias Atribuídas" (card do dashboard) — hoje (dia corrente) e mês
+  // corrente. Mesmo COUNT(DISTINCT alvo_id) do bloco de 24h acima: uma
+  // vistoria reatribuída (central-vistorias/[id]/reatribuir usa a MESMA
+  // acao) conta 1, não 1 por reatribuição.
+  let atribuidasHoje = 0;
+  let atribuidasMes = 0;
+  try {
+    const [rowHoje] = await query<{ total: number }>(
+      `
+        SELECT COUNT(DISTINCT alvo_id) AS total
+          FROM \`glpi_plugin_vistomap_audit\`
+         WHERE acao = 'vistoria-atribuida'
+           AND alvo_tipo = 'vistoria'
+           AND ts >= CURDATE()
+      `
+    );
+    atribuidasHoje = Number(rowHoje?.total) || 0;
+    const [rowMes] = await query<{ total: number }>(
+      `
+        SELECT COUNT(DISTINCT alvo_id) AS total
+          FROM \`glpi_plugin_vistomap_audit\`
+         WHERE acao = 'vistoria-atribuida'
+           AND alvo_tipo = 'vistoria'
+           AND ts >= DATE_FORMAT(NOW(), '%Y-%m-01')
+      `
+    );
+    atribuidasMes = Number(rowMes?.total) || 0;
+  } catch {
+    /* tabela de audit pode não existir em dev — mantém 0 */
+  }
 
   return {
     pendentes,
-    pendentesDasAtribuidas,
     emVistoria,
     vistoriadas,
     aguardandoRevisita,
@@ -360,8 +306,6 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     devolvidas,
     rejeitadas,
     aprovadas,
-    aprovadasSemPendencia,
-    aprovadasComPendencia,
     atribuidas24h,
     finalizadas24h,
     atribuidasHoje,
@@ -432,30 +376,35 @@ export async function fetchTecnicos(): Promise<TecnicoAtivo[]> {
     [group, groupAlt]
   );
 
-  // Municipio "atual" e último ping GPS por técnico — 2 queries
-  // independentes entre si (só dependem dos `ids` da query acima), rodam
-  // em paralelo em vez de uma atrás da outra.
+  // Determina municipio "atual" do técnico (primeira vistoria atribuída pendente).
   const ids = rows.map((r) => r.id);
   let municipios = new Map<number, string>();
-  let ultimoPingGps = new Map<number, string>();
   if (ids.length > 0) {
     const placeholders = ids.map(() => "?").join(",");
-    const [muniRows, gpsRows] = await Promise.all([
-      // Determina municipio "atual" do técnico (primeira vistoria atribuída pendente).
-      query<{ tec: number; muni: string }>(
-        `
-          SELECT f.users_id_vistoriadorafield AS tec, TRIM(f.municipiofield) AS muni
-            FROM \`${TABLE_FIELDS}\` f
-           WHERE f.users_id_vistoriadorafield IN (${placeholders})
-             AND f.municipiofield IS NOT NULL
-             AND TRIM(f.municipiofield) <> ''
-           GROUP BY f.users_id_vistoriadorafield, TRIM(f.municipiofield)
-        `,
-        ids
-      ),
-      // Último ping GPS por técnico (se tabela existir) — fallback
-      // silencioso: mantém heurística antiga por atividade de vistoria.
-      query<{ users_id: number; created_at: string }>(
+    const muniRows = await query<{ tec: number; muni: string }>(
+      `
+        SELECT f.users_id_vistoriadorafield AS tec, TRIM(f.municipiofield) AS muni
+          FROM \`${TABLE_FIELDS}\` f
+         WHERE f.users_id_vistoriadorafield IN (${placeholders})
+           AND f.municipiofield IS NOT NULL
+           AND TRIM(f.municipiofield) <> ''
+         GROUP BY f.users_id_vistoriadorafield, TRIM(f.municipiofield)
+      `,
+      ids
+    );
+    // Pega primeiro municipio por técnico (poderia ser mais distinct, mas serve).
+    for (const m of muniRows) {
+      if (!municipios.has(m.tec)) municipios.set(m.tec, m.muni);
+    }
+  }
+
+  // Último ping GPS por técnico (se tabela existir).
+  // Fallback silencioso: mantém heurística antiga por atividade de vistoria.
+  let ultimoPingGps = new Map<number, string>();
+  if (ids.length > 0) {
+    try {
+      const placeholders = ids.map(() => "?").join(",");
+      const gpsRows = await query<{ users_id: number; created_at: string }>(
         `
           SELECT l.users_id, l.created_at
             FROM glpi_plugin_vistomap_locations l
@@ -467,14 +416,12 @@ export async function fetchTecnicos(): Promise<TecnicoAtivo[]> {
             ) lm ON lm.users_id = l.users_id AND lm.max_created = l.created_at
         `,
         ids
-      ).catch(() => []),
-    ]);
-    // Pega primeiro municipio por técnico (poderia ser mais distinct, mas serve).
-    for (const m of muniRows) {
-      if (!municipios.has(m.tec)) municipios.set(m.tec, m.muni);
-    }
-    for (const g of gpsRows) {
-      ultimoPingGps.set(g.users_id, g.created_at);
+      );
+      for (const g of gpsRows) {
+        ultimoPingGps.set(g.users_id, g.created_at);
+      }
+    } catch {
+      // noop
     }
   }
 
