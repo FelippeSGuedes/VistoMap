@@ -100,6 +100,14 @@ export function RotaConclusao({ panorama }: { panorama: PanoramaOperacao | null 
       }
     }
 
+    // Ponto inicial do histórico (90 dias atrás) — vira uma etiqueta numérica
+    // direta, porque a QUEDA real em 90 dias é pequena frente à escala total
+    // (esta operação só andou ~14% até agora), então a linha por si fica
+    // quase reta e a inclinação sozinha não comunica a evolução. Um número
+    // ao lado do outro ("há 90 dias" x "hoje") resolve isso sem mentir sobre
+    // a escala do eixo.
+    const inicioHist = historico[0];
+
     return {
       sx,
       sy,
@@ -109,6 +117,7 @@ export function RotaConclusao({ panorama }: { panorama: PanoramaOperacao | null 
       ticks,
       yMax,
       restantesHoje,
+      inicioHist,
       otim,
       cons,
       universo,
@@ -133,7 +142,7 @@ export function RotaConclusao({ panorama }: { panorama: PanoramaOperacao | null 
     );
   }
 
-  const { sx, sy, linhaHist, areaHist, cone, ticks, yMax, restantesHoje, otim, cons, universo, velocidade } =
+  const { sx, sy, linhaHist, areaHist, cone, ticks, yMax, restantesHoje, inicioHist, otim, cons, universo, velocidade } =
     modelo;
 
   const pct = universo.progressoPct;
@@ -288,6 +297,29 @@ export function RotaConclusao({ panorama }: { panorama: PanoramaOperacao | null 
           stroke="rgba(255,255,255,0.3)"
           strokeWidth="1"
         />
+        {/* Marco "há 90 dias" — número explícito ao lado de "hoje", porque a
+            queda em 90 dias é pequena frente à escala total e a inclinação
+            da linha sozinha não deixa isso óbvio. */}
+        <circle cx={sx(inicioHist.x)} cy={sy(inicioHist.y)} r="3" fill="rgba(255,255,255,0.55)" />
+        <text
+          x={sx(inicioHist.x) + 8}
+          y={sy(inicioHist.y) - 7}
+          fontSize="9.5"
+          fontWeight="700"
+          fill="rgba(255,255,255,0.65)"
+          style={{ fontVariantNumeric: "tabular-nums" }}
+        >
+          {fmtNum(inicioHist.y)}
+        </text>
+        <text
+          x={sx(inicioHist.x) + 8}
+          y={sy(inicioHist.y) + 12}
+          fontSize="8.5"
+          fill="rgba(255,255,255,0.4)"
+        >
+          há 90 dias
+        </text>
+
         <circle cx={sx(0)} cy={sy(restantesHoje)} r="4.5" fill={VERDE} />
         <circle cx={sx(0)} cy={sy(restantesHoje)} r="9" fill={VERDE} opacity="0.18" />
         <text
