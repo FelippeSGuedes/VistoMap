@@ -53,6 +53,10 @@ export interface HistoricoAnalytics {
     dia: string; // YYYY-MM-DD
     finalizadas: number;
     aprovadas: number;
+    /** Subconjunto de `aprovadas` — só "Aprovado" (sem ressalva). */
+    aprovadasSemPendencia: number;
+    /** Subconjunto de `aprovadas` — só "Aprovado com Pendências". */
+    aprovadasComPendencia: number;
     reprovadas: number;
   }>;
   topMunicipios: Array<{
@@ -155,10 +159,22 @@ export async function fetchHistoricoAnalytics(
   // Constrói série dia-a-dia (preenche dias faltantes com 0).
   const diasMap = new Map<
     string,
-    { finalizadas: number; aprovadas: number; reprovadas: number }
+    {
+      finalizadas: number;
+      aprovadas: number;
+      aprovadasSemPendencia: number;
+      aprovadasComPendencia: number;
+      reprovadas: number;
+    }
   >();
   for (const dia of eachDateInclusive(inicioSerie, fim)) {
-    diasMap.set(dia, { finalizadas: 0, aprovadas: 0, reprovadas: 0 });
+    diasMap.set(dia, {
+      finalizadas: 0,
+      aprovadas: 0,
+      aprovadasSemPendencia: 0,
+      aprovadasComPendencia: 0,
+      reprovadas: 0,
+    });
   }
   for (const r of serieRows) {
     const ref = diasMap.get(r.dia);
@@ -177,12 +193,16 @@ export async function fetchHistoricoAnalytics(
       ref.finalizadas += Number(r.total) || 0;
     }
     if (s === "aprovada" || s === "aprovado" || s === "aprovado com pendências") ref.aprovadas += Number(r.total) || 0;
+    if (s === "aprovada" || s === "aprovado") ref.aprovadasSemPendencia += Number(r.total) || 0;
+    if (s === "aprovado com pendências") ref.aprovadasComPendencia += Number(r.total) || 0;
     if (s === "reprovada" || s === "reprovado") ref.reprovadas += Number(r.total) || 0;
   }
   const serieDiaria = Array.from(diasMap.entries()).map(([dia, v]) => ({
     dia,
     finalizadas: v.finalizadas,
     aprovadas: v.aprovadas,
+    aprovadasSemPendencia: v.aprovadasSemPendencia,
+    aprovadasComPendencia: v.aprovadasComPendencia,
     reprovadas: v.reprovadas,
   }));
 

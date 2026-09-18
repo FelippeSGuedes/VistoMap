@@ -321,6 +321,10 @@ export interface HistoricoAnalytics {
     dia: string;
     finalizadas: number;
     aprovadas: number;
+    /** Subconjunto de `aprovadas` — só "Aprovado" (sem ressalva). */
+    aprovadasSemPendencia: number;
+    /** Subconjunto de `aprovadas` — só "Aprovado com Pendências". */
+    aprovadasComPendencia: number;
     reprovadas: number;
   }>;
   topMunicipios: Array<{ municipio: string; total: number; concluidas: number }>;

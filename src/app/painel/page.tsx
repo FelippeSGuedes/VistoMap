@@ -427,6 +427,127 @@ function VelocityChart({
   );
 }
 
+/* ── AprovacoesChart (clone do VelocityChart p/ 2 séries) ───────────────────
+   Mesmo tratamento visual (linha suave, área gradiente, grid, eixo X) do
+   VelocityChart de Vistorias Finalizadas — mas com DUAS séries na MESMA
+   escala (nunca eixo duplo: um gráfico com escalas independentes por série
+   mentiria sobre o tamanho relativo das duas). Sem linha de média/pico (com
+   2 séries isso vira poluição visual); no lugar, rótulo direto no fim de
+   cada linha com o valor do dia mais recente. */
+function AprovacoesChart({
+  labels,
+  serieA,
+  corA,
+  serieB,
+  corB,
+}: {
+  labels: string[];
+  serieA: number[];
+  corA: string;
+  serieB: number[];
+  corB: string;
+}) {
+  if (!labels.length) return null;
+  const VB_W = 1000;
+  const H = 160;
+  const padX = 12;
+  const padTop = 22;
+  const padBottom = 24;
+  const plotH = H - padTop - padBottom;
+  const n = labels.length;
+  const max = Math.max(...serieA, ...serieB, 1);
+
+  const x = (i: number) => padX + (n === 1 ? 0 : (i / (n - 1)) * (VB_W - padX * 2));
+  const y = (v: number) => padTop + (1 - v / max) * plotH;
+
+  const pathFor = (values: number[]) => {
+    const pts = values.map((v, i) => [x(i), y(v)] as const);
+    return pts
+      .map(([px, py], i) => {
+        if (i === 0) return `M${px.toFixed(1)},${py.toFixed(1)}`;
+        const [qx, qy] = pts[i - 1];
+        const mx = (qx + px) / 2;
+        return `Q${qx.toFixed(1)},${qy.toFixed(1)} ${mx.toFixed(1)},${((qy + py) / 2).toFixed(1)} T${px.toFixed(1)},${py.toFixed(1)}`;
+      })
+      .join(" ");
+  };
+  const fillFor = (line: string) => `${line} L${x(n - 1).toFixed(1)},${H - padBottom} L${x(0).toFixed(1)},${H - padBottom} Z`;
+
+  const lineA = pathFor(serieA);
+  const lineB = pathFor(serieB);
+
+  const tickIdx = Array.from({ length: Math.min(5, n) }, (_, k) =>
+    Math.round((k / (Math.min(5, n) - 1 || 1)) * (n - 1))
+  );
+  const pctLeft = (px: number) => `${(px / VB_W) * 100}%`;
+
+  const ultimoA = serieA[n - 1] ?? 0;
+  const ultimoB = serieB[n - 1] ?? 0;
+
+  return (
+    <div className="relative" style={{ height: H }}>
+      <svg viewBox={`0 0 ${VB_W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
+        <defs>
+          <linearGradient id="vm-aprov-grad-a" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={corA} stopOpacity="0.15" />
+            <stop offset="100%" stopColor={corA} stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="vm-aprov-grad-b" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={corB} stopOpacity="0.15" />
+            <stop offset="100%" stopColor={corB} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* grid horizontal */}
+        {[0.25, 0.5, 0.75].map((t) => (
+          <line
+            key={t}
+            x1={padX}
+            x2={VB_W - padX}
+            y1={padTop + plotH * t}
+            y2={padTop + plotH * t}
+            stroke="var(--vm-border-soft)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        <path d={fillFor(lineB)} fill="url(#vm-aprov-grad-b)" />
+        <path d={fillFor(lineA)} fill="url(#vm-aprov-grad-a)" />
+        <path d={lineB} fill="none" stroke={corB} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <path d={lineA} fill="none" stroke={corA} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <circle cx={x(n - 1)} cy={y(ultimoA)} r="3.2" fill={corA} />
+        <circle cx={x(n - 1)} cy={y(ultimoB)} r="3.2" fill={corB} />
+      </svg>
+
+      {/* rótulos diretos no fim de cada linha */}
+      <span
+        className="pointer-events-none absolute translate-x-1 -translate-y-1/2 whitespace-nowrap text-[10px] font-bold"
+        style={{ left: pctLeft(x(n - 1)), top: `${y(ultimoA)}px`, color: corA }}
+      >
+        {ultimoA}
+      </span>
+      <span
+        className="pointer-events-none absolute translate-x-1 -translate-y-1/2 whitespace-nowrap text-[10px] font-bold"
+        style={{ left: pctLeft(x(n - 1)), top: `${y(ultimoB)}px`, color: corB }}
+      >
+        {ultimoB}
+      </span>
+
+      {/* eixo X */}
+      <div className="absolute inset-x-0 bottom-0 h-[16px]">
+        {tickIdx.map((i) => (
+          <span
+            key={i}
+            className="absolute -translate-x-1/2 text-[0.7rem] text-[var(--vm-faint)]"
+            style={{ left: pctLeft(x(i)) }}
+          >
+            {labels[i]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── MiniDonut (self-contained — Widget 03) ────────────────────────────────
    Donut completo com animação de desenho ao entrar na viewport. */
 function MiniDonut({
@@ -2104,6 +2225,36 @@ export default function PainelOverviewPage() {
     return { values, labels, avg, peak, total, totalPrev, delta };
   }, [historico, periodoRange]);
 
+  // Mesmo recorte de velocity acima (metade recente = período, metade
+  // anterior = comparação), só que com as 2 séries de aprovação em vez de
+  // "finalizadas" — alimenta o clone de Vistorias Finalizadas.
+  const aprovacoesVelocity = useMemo(() => {
+    const vazio = {
+      labels: [] as string[],
+      semPendencia: [] as number[],
+      comPendencia: [] as number[],
+      totalSemPendencia: 0,
+      totalComPendencia: 0,
+      total: 0,
+      totalPrev: 0,
+      delta: 0,
+    };
+    if (!historico) return vazio;
+    const dias = periodoRange.dias;
+    const all  = historico.serieDiaria;
+    const last = all.slice(-dias);
+    const prev = all.slice(-dias * 2, -dias);
+    const labels = last.map((d) => diaCurto(d.dia));
+    const semPendencia = last.map((d) => d.aprovadasSemPendencia);
+    const comPendencia = last.map((d) => d.aprovadasComPendencia);
+    const totalSemPendencia = semPendencia.reduce((a, b) => a + b, 0);
+    const totalComPendencia = comPendencia.reduce((a, b) => a + b, 0);
+    const total = totalSemPendencia + totalComPendencia;
+    const totalPrev = prev.reduce((a, d) => a + d.aprovadasSemPendencia + d.aprovadasComPendencia, 0);
+    const delta = totalPrev > 0 ? ((total - totalPrev) / totalPrev) * 100 : 0;
+    return { labels, semPendencia, comPendencia, totalSemPendencia, totalComPendencia, total, totalPrev, delta };
+  }, [historico, periodoRange]);
+
   const alertaRevisitas = revisitas.filter(
     r => r.prioridade === "CRITICA" || r.prioridade === "ALTA",
   );
@@ -2514,6 +2665,126 @@ export default function PainelOverviewPage() {
           taxaRevisita={taxaRevisita}
           periodoLabel={periodoLabel}
         />
+      </div>
+
+      {/* ════════════ Aprovações — clone de Vistorias Finalizadas ════════════
+          Mesmo tratamento visual (fundo, tipografia, delta badge, textura de
+          grid atrás do gráfico) — conteúdo é Aprovações x Aprovações com
+          Pendência em vez de Finalizadas. Linha própria, largura cheia: o
+          gráfico de 2 séries pede mais espaço que 1/3 da grade de cima. */}
+      <div className="vm-rise" style={{ animationDelay: "0.1s" }}>
+        <Card className="relative">
+          {/* fundo — mesmo par claro/escuro do clone original */}
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat dark:hidden"
+            style={{ backgroundImage: `url('${asset("/graphwhite.png")}')` }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat dark:block"
+            style={{ backgroundImage: `url('${asset("/graphblack.png")}')` }}
+          />
+          <div className="pointer-events-none absolute inset-0 bg-white/55 dark:bg-black/55" />
+
+          <div className="relative z-10 flex flex-col">
+          <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-[#16a34a]" strokeWidth={2} />
+                <span className="text-[13px] font-semibold text-[var(--vm-text)]">Aprovações · {periodoLabel}</span>
+              </div>
+              <div className="mt-3 flex items-end gap-3">
+                <span
+                  className="tabular-nums leading-none"
+                  style={{ fontSize: "3.5rem", fontWeight: 800, color: "#16a34a", letterSpacing: "-0.02em" }}
+                >
+                  {aprovacoesVelocity.total > 0 ? <CountUp value={aprovacoesVelocity.total} duration={1200} /> : "—"}
+                </span>
+                {aprovacoesVelocity.total > 0 && (
+                  aprovacoesVelocity.totalPrev === 0 ? (
+                    <span
+                      className="mb-2 inline-flex items-center gap-0.5"
+                      style={{ background: "var(--vm-lime-100)", color: "#16a34a", borderRadius: 999, padding: "2px 10px", fontSize: "0.8rem", fontWeight: 700 }}
+                    >
+                      <ArrowUp className="h-3 w-3" strokeWidth={2.6} />
+                      novo
+                    </span>
+                  ) : (
+                    <span
+                      className="mb-2 inline-flex items-center gap-0.5"
+                      style={{
+                        background: aprovacoesVelocity.delta >= 0 ? "var(--vm-lime-100)" : "var(--vm-red-100)",
+                        color:      aprovacoesVelocity.delta >= 0 ? "#16a34a" : "#DC2626",
+                        borderRadius: 999,
+                        padding: "2px 10px",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <ArrowUp className={`h-3 w-3 ${aprovacoesVelocity.delta >= 0 ? "" : "rotate-180"}`} strokeWidth={2.6} />
+                      {aprovacoesVelocity.delta >= 0 ? "+" : ""}{aprovacoesVelocity.delta.toFixed(0)}%
+                    </span>
+                  )
+                )}
+              </div>
+              <div className="mt-1.5 flex items-center gap-2" style={{ fontSize: "0.8rem", color: "var(--vm-faint)" }}>
+                <span>aprovações da concessionária</span>
+                <span className="text-[#D1D5DB]">·</span>
+                <span>vs. período anterior</span>
+              </div>
+            </div>
+
+            {/* legenda das 2 séries — identidade nunca só por cor */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ background: "#16a34a" }} />
+                <span className="text-[11px]" style={{ color: "var(--vm-muted)" }}>Aprovado</span>
+                <span className="text-[12px] font-bold tabular-nums" style={{ color: "var(--vm-text)" }}>
+                  {aprovacoesVelocity.totalSemPendencia}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ background: "#F59E0B" }} />
+                <span className="text-[11px]" style={{ color: "var(--vm-muted)" }}>Com pendência</span>
+                <span className="text-[12px] font-bold tabular-nums" style={{ color: "var(--vm-text)" }}>
+                  {aprovacoesVelocity.totalComPendencia}
+                </span>
+              </div>
+              <Link href="/painel/realizadas" className="flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline">
+                Ver tudo <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+          <div className="relative mt-4 px-4 pb-4">
+            {/* Subtle geographic grid texture behind chart — mesma textura do clone original */}
+            <div
+              className="pointer-events-none absolute inset-0 rounded-xl"
+              style={{
+                backgroundImage: [
+                  "linear-gradient(rgba(5,150,105,0.04) 1px,transparent 1px)",
+                  "linear-gradient(90deg,rgba(5,150,105,0.04) 1px,transparent 1px)",
+                  "linear-gradient(rgba(5,150,105,0.02) 1px,transparent 1px)",
+                  "linear-gradient(90deg,rgba(5,150,105,0.02) 1px,transparent 1px)",
+                ].join(","),
+                backgroundSize: "40px 40px, 40px 40px, 8px 8px, 8px 8px",
+                opacity: 0.9,
+              }}
+            />
+            <div className="relative">
+              {aprovacoesVelocity.labels.length > 0 ? (
+                <AprovacoesChart
+                  labels={aprovacoesVelocity.labels}
+                  serieA={aprovacoesVelocity.semPendencia}
+                  corA="#16a34a"
+                  serieB={aprovacoesVelocity.comPendencia}
+                  corB="#F59E0B"
+                />
+              ) : (
+                <Skeleton h={160} />
+              )}
+            </div>
+          </div>
+          </div>
+        </Card>
       </div>
 
       {/* ════════════ LINHA 2: Municípios | Pendentes CPFL | Aprovados | Técnicos | Atividade | Revisitas ════════════ */}
