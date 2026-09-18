@@ -35,7 +35,17 @@ import {
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { CountUp } from "@/components/ui/CountUp";
-import type { AuditEntry, PainelStats, RecusasStats, RevisitaPendente, TecnicoAtivo } from "@/types";
+import { RotaConclusao } from "@/components/painel/RotaConclusao";
+import { FunilOperacional } from "@/components/painel/FunilOperacional";
+import { MunicipiosRestantesWidget } from "@/components/painel/MunicipiosRestantesWidget";
+import type {
+  AuditEntry,
+  PainelStats,
+  PanoramaOperacao,
+  RecusasStats,
+  RevisitaPendente,
+  TecnicoAtivo,
+} from "@/types";
 import type {
   HistoricoAnalytics,
   TopTecnicosDashboard,
@@ -1990,71 +2000,6 @@ function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
 }
 
 
-/* ─── ParticlesCanvas ───────────────────────────────────────────────────── */
-
-function ParticlesCanvas() {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
-    let raf = 0;
-    const resize = () => { cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(cv);
-    const N = 26;
-    const pts = Array.from({ length: N }, () => ({
-      x: Math.random(), y: Math.random(),
-      vx: (Math.random() - 0.5) * 0.00014,
-      vy: (Math.random() - 0.5) * 0.00014,
-    }));
-    const draw = () => {
-      const { width: w, height: h } = cv;
-      ctx.clearRect(0, 0, w, h);
-      pts.forEach(p => {
-        p.x += p.vx; p.y += p.vy;
-        if (p.x < 0 || p.x > 1) p.vx *= -1;
-        if (p.y < 0 || p.y > 1) p.vy *= -1;
-      });
-      for (let i = 0; i < N; i++) {
-        for (let j = i + 1; j < N; j++) {
-          const dx = (pts[i].x - pts[j].x) * w;
-          const dy = (pts[i].y - pts[j].y) * h;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < 115) {
-            ctx.globalAlpha = (1 - d / 115) * 0.28;
-            ctx.strokeStyle = "#00ff88";
-            ctx.lineWidth = 0.6;
-            ctx.beginPath();
-            ctx.moveTo(pts[i].x * w, pts[i].y * h);
-            ctx.lineTo(pts[j].x * w, pts[j].y * h);
-            ctx.stroke();
-          }
-        }
-      }
-      ctx.globalAlpha = 0.5;
-      ctx.fillStyle = "#00ff88";
-      pts.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x * w, p.y * h, 1.2, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.globalAlpha = 1;
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, []);
-  return (
-    <canvas
-      ref={ref}
-      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-    />
-  );
-}
-
 /* ══════════════════════════════════════════════════════════════════════════
    PAGE
    ══════════════════════════════════════════════════════════════════════════ */
@@ -2097,6 +2042,7 @@ export default function PainelOverviewPage() {
   const [historico,    setHistorico]    = useState<HistoricoAnalytics | null>(null);
   const [mapaRealtime, setMapaRealtime] = useState<PainelMapaResponse | null>(null);
   const [recusasStats, setRecusasStats] = useState<RecusasStats | null>(null);
+  const [panorama,     setPanorama]     = useState<PanoramaOperacao | null>(null);
   const [now,          setNow]          = useState(() => new Date());
 
   useEffect(() => {
@@ -2144,6 +2090,20 @@ export default function PainelOverviewPage() {
     };
     loadInstalacao();
     const poll = window.setInterval(loadInstalacao, 20_000);
+    return () => { alive = false; clearInterval(poll); };
+  }, []);
+
+  // Panorama da operação — poll próprio e mais lento (60s) de propósito: é a
+  // query mais pesada da página (varre o parque inteiro + o audit log) e o que
+  // ela mede quase não muda em 20s — progresso de parque e projeção de término
+  // se movem em dias, não em segundos. Entrar no Promise.all de 20s custaria
+  // caro e não mostraria nada de novo.
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      painelService.fetchPanorama().then((p) => { if (alive) setPanorama(p); });
+    load();
+    const poll = window.setInterval(load, 60_000);
     return () => { alive = false; clearInterval(poll); };
   }, []);
 
@@ -2324,27 +2284,13 @@ export default function PainelOverviewPage() {
               </div>
             </div>
 
-            {/* CENTER — vis.png + efeitos de camada */}
-            <div style={{ flex: 1, position: "relative", overflow: "hidden", backgroundImage: `url('${asset("/vis.png")}')`, backgroundSize: "cover", backgroundPosition: "center" }}>
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0d1117 0%, transparent 35%, transparent 65%, #0d1117 100%)", pointerEvents: "none" }} />
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 60%, #0d1117 100%)", pointerEvents: "none" }} />
-              <ParticlesCanvas />
-              <div style={{ position: "absolute", left: "18%", top: "20%", width: 42, height: 42, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.55)", background: "rgba(0,255,136,0.07)", display: "flex", alignItems: "center", justifyContent: "center", animation: "vmFloat 3s ease-in-out infinite", pointerEvents: "none" }}>
-                <Activity style={{ width: 18, height: 18, color: "rgba(0,255,136,0.75)" }} />
-              </div>
-              <div style={{ position: "absolute", right: "16%", top: "22%", width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.5)", background: "rgba(0,255,136,0.06)", display: "flex", alignItems: "center", justifyContent: "center", animation: "vmFloat 3s ease-in-out 1.5s infinite", pointerEvents: "none" }}>
-                <Zap style={{ width: 16, height: 16, color: "rgba(0,255,136,0.7)" }} />
-              </div>
-              <div style={{ position: "absolute", left: "50%", top: "44%", transform: "translate(-50%,-50%)", pointerEvents: "none" }}>
-                <div style={{ position: "relative", width: 14, height: 14 }}>
-                  <span style={{ position: "absolute", inset: -14, borderRadius: "50%", border: "1.5px solid rgba(0,255,136,0.5)", animation: "vmRing 2.2s ease-out infinite", display: "block" }} />
-                  <span style={{ position: "absolute", inset: -8, borderRadius: "50%", border: "1px solid rgba(0,255,136,0.3)", animation: "vmRing 2.2s ease-out 0.7s infinite", display: "block" }} />
-                  <span style={{ display: "block", width: "100%", height: "100%", borderRadius: "50%", background: "#00ff88", boxShadow: "0 0 14px #00ff88" }} />
-                </div>
-              </div>
-              <div style={{ position: "absolute", inset: "0 0 0 0", height: 80, background: "linear-gradient(180deg,transparent,rgba(0,255,136,0.05),transparent)", animation: "vmScan 7s linear infinite", pointerEvents: "none" }} />
-            </div>
-
+            {/* CENTER — Rota até a conclusão.
+                Aqui era uma imagem de fundo com partículas, ícones flutuantes e
+                linha de varredura: ~600px do ponto mais nobre da tela gastos em
+                decoração. Virou o gráfico que responde a pergunta que o
+                dashboard inteiro não respondia — quanto falta e quando acaba.
+                Ver src/components/painel/RotaConclusao.tsx. */}
+            <RotaConclusao panorama={panorama} />
             {/* RIGHT — 5 KPI cards (2×2 + 1 larga) */}
             <div style={{ width: 460, padding: 16, display: "flex", alignItems: "center", position: "relative", zIndex: 10 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
@@ -2870,14 +2816,24 @@ export default function PainelOverviewPage() {
         <RevisitasMapWidget revisitas={revisitas} />
       </div>
 
+      {/* ════════════ O que falta, por cidade — o inverso dos mapas de concluído acima ════════════ */}
+      <div className="vm-rise" style={{ animationDelay: "0.19s" }}>
+        <MunicipiosRestantesWidget municipios={panorama?.municipiosRestantes ?? []} />
+      </div>
+
       {/* ════════════ Impedimentos & Recusas por motivo ════════════ */}
       <div className="vm-rise" style={{ animationDelay: "0.2s" }}>
         <ImpedimentosRecusasWidget stats={recusasStats} />
       </div>
 
-      {/* ════════════ LINHA 3: Distribuição do pipeline ════════════ */}
-      <div className="vm-rise" style={{ animationDelay: "0.22s" }}>
+      {/* ════════════ LINHA 3: Pipeline (estado atual) | Funil (transição) ════════════
+          Os dois respondem perguntas diferentes: Pipeline é uma FOTO ("quanto
+          tem em cada estado agora"); Funil é o FILME ("quantos avançaram de
+          uma etapa pra outra e quanto tempo isso levou"). Lado a lado porque
+          são o par estado/fluxo que a Fase de observabilidade pedia. */}
+      <div className="vm-rise grid grid-cols-1 gap-4 xl:grid-cols-2" style={{ animationDelay: "0.22s" }}>
         <PipelineWidget stats={stats} />
+        <FunilOperacional panorama={panorama} />
       </div>
 
       {/* ════════════ VISTORIAS ATRIBUÍDAS — hoje / mês corrente ════════════

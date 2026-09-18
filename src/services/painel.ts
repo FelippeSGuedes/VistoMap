@@ -4,6 +4,7 @@ import type {
   AuditEntry,
   DropdownKey,
   PainelStats,
+  PanoramaOperacao,
   RecusasStats,
   RevisitaPendente,
   TecnicoAtivo,
@@ -77,6 +78,21 @@ export async function fetchRecusasStats(): Promise<RecusasStats> {
     api.get<RecusasStats>("/painel/recusas/stats").then((r) => r.data),
     RECUSAS_STATS_VAZIO
   );
+}
+
+/**
+ * Panorama da operação (progresso do universo, ritmo, projeção, funil).
+ * Sem mock: é a leitura principal do topo do dashboard, e um número
+ * inventado aqui seria pior que um estado de carregamento.
+ */
+export async function fetchPanorama(): Promise<PanoramaOperacao | null> {
+  try {
+    const r = await api.get<PanoramaOperacao>("/painel/panorama");
+    return r.data;
+  } catch (err) {
+    console.warn("[painelService] panorama indisponivel:", err);
+    return null;
+  }
 }
 
 export interface AtribuirInput {
@@ -674,6 +690,7 @@ export const painelService = {
   fetchTecnicos,
   fetchRevisitas,
   fetchRecusasStats,
+  fetchPanorama,
   fetchAudit,
   fetchFila,
   fetchHistorico,
