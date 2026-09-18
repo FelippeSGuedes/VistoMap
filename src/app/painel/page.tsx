@@ -2544,8 +2544,8 @@ export default function PainelOverviewPage() {
         </span>
       </div>
 
-      {/* ════════════ LINHA 1: Velocity | Heatmap SP | Equipe ════════════ */}
-      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" style={{ animationDelay: "0.08s" }}>
+      {/* ════════════ LINHA 1a: Vistorias Finalizadas | Aprovações — lado a lado, mesmo tamanho ════════════ */}
+      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2" style={{ animationDelay: "0.08s" }}>
 
         {/* Widget 01 — Vistorias Finalizadas · 14 dias */}
         <Card className="relative">
@@ -2642,37 +2642,6 @@ export default function PainelOverviewPage() {
           </div>
         </Card>
 
-        {/* Widget 02 — Padrão Diário: SP fill heatmap */}
-        {historico ? (
-          <HeatmapMapWidget
-            // O fill do mapa é "atividade concluída", não "tem algo atribuído
-            // lá" — senão município com só backlog intocado aparecia colorido
-            // como se já tivesse sido vistoriado.
-            topMunicipios={historico.topMunicipios.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
-            totais={historico.totais}
-            mediaSemanal={historico.medias.semanalVistorias}
-            periodoLabel={periodoLabel}
-          />
-        ) : (
-          <Card><div className="flex-1 p-5"><Skeleton h={280} /></div></Card>
-        )}
-
-        {/* Widget 04 — Equipe ao Vivo */}
-        <TeamMapWidget
-          mapaTeam={mapaTeam}
-          tecnicosAtivos={tecnicos.filter(t => t.status === "em-campo" || t.status === "base")}
-          taxaAprov={taxaAprov}
-          taxaRevisita={taxaRevisita}
-          periodoLabel={periodoLabel}
-        />
-      </div>
-
-      {/* ════════════ Aprovações — clone de Vistorias Finalizadas ════════════
-          Mesmo tratamento visual (fundo, tipografia, delta badge, textura de
-          grid atrás do gráfico) — conteúdo é Aprovações x Aprovações com
-          Pendência em vez de Finalizadas. Linha própria, largura cheia: o
-          gráfico de 2 séries pede mais espaço que 1/3 da grade de cima. */}
-      <div className="vm-rise" style={{ animationDelay: "0.1s" }}>
         <Card className="relative">
           {/* fundo — mesmo par claro/escuro do clone original */}
           <div
@@ -2749,7 +2718,7 @@ export default function PainelOverviewPage() {
                   {aprovacoesVelocity.totalComPendencia}
                 </span>
               </div>
-              <Link href="/painel/realizadas" className="flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline">
+              <Link href="/painel/central-vistorias?status=APROVADO,APROVADO_PENDENCIA" className="flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline">
                 Ver tudo <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -2785,6 +2754,34 @@ export default function PainelOverviewPage() {
           </div>
           </div>
         </Card>
+      </div>
+
+      {/* ════════════ LINHA 1b: Padrão Diário | Equipe ao Vivo ════════════ */}
+      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2" style={{ animationDelay: "0.1s" }}>
+
+        {/* Widget 02 — Padrão Diário: SP fill heatmap */}
+        {historico ? (
+          <HeatmapMapWidget
+            // O fill do mapa é "atividade concluída", não "tem algo atribuído
+            // lá" — senão município com só backlog intocado aparecia colorido
+            // como se já tivesse sido vistoriado.
+            topMunicipios={historico.topMunicipios.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
+            totais={historico.totais}
+            mediaSemanal={historico.medias.semanalVistorias}
+            periodoLabel={periodoLabel}
+          />
+        ) : (
+          <Card><div className="flex-1 p-5"><Skeleton h={280} /></div></Card>
+        )}
+
+        {/* Widget 04 — Equipe ao Vivo */}
+        <TeamMapWidget
+          mapaTeam={mapaTeam}
+          tecnicosAtivos={tecnicos.filter(t => t.status === "em-campo" || t.status === "base")}
+          taxaAprov={taxaAprov}
+          taxaRevisita={taxaRevisita}
+          periodoLabel={periodoLabel}
+        />
       </div>
 
       {/* ════════════ LINHA 2: Municípios | Pendentes CPFL | Aprovados | Técnicos | Atividade | Revisitas ════════════ */}

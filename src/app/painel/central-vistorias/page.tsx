@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertCircle, AlertTriangle, ArrowLeft, Box, Calendar, Check, CheckCircle2,
   ClipboardList, FileText, FileWarning, Gauge, HelpCircle, Home, Image as ImageIcon,
@@ -110,6 +111,43 @@ const SITUACOES_CONCLUIDAS = new Set([3, 6]); // Vistoriado, Revisitado
 function ehPendente(situacaoId: number): boolean {
   return !SITUACOES_CONCLUIDAS.has(situacaoId);
 }
+
+/**
+ * Um valor de filtro contra uma vistoria — "PENDENTE"/"ATRIBUIDO"/"1" são
+ * conceitos derivados da SITUAÇÃO (ver estadoDaVistoria/ehPendente);
+ * "APROVADO"/"APROVADO_PENDENCIA" filtram por `status_name` (eixo
+ * DIFERENTE — decisão da concessionária, não a situação operacional); tudo
+ * o mais é situação crua por número. Extraído da antiga cadeia de
+ * if/else pra virar um predicado reutilizável quando o filtro passou a
+ * aceitar MÚLTIPLOS valores ao mesmo tempo (união, não escolha única).
+ */
+function vistoriaMatchesFiltro(v: Vistoria, filtro: string): boolean {
+  if (filtro === "PENDENTE") return ehPendente(v.situacao_id);
+  if (filtro === "ATRIBUIDO") return estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) === "ATRIBUIDO";
+  if (filtro === "1") return estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) === 1;
+  if (filtro === "APROVADO") return v.status_name === "Aprovado" || v.status_name === "Aprovada";
+  if (filtro === "APROVADO_PENDENCIA") return v.status_name === "Aprovado com Pendências";
+  return v.situacao_id === Number(filtro);
+}
+
+/** Opções do filtro de situação (FiltroSituacaoMultiplo) — mesma ordem do
+ *  antigo `<select>`, com Aprovado/Aprovado com Pendência acrescentados
+ *  (eixo status_name, decisão da concessionária — usado pelo "Ver tudo" de
+ *  Aprovações no dashboard). */
+const FILTRO_SITUACAO_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "PENDENTE", label: "Pendentes" },
+  { value: "1", label: "A Vistoriar (sem técnico)" },
+  { value: "ATRIBUIDO", label: ATRIBUIDO_LABEL },
+  { value: "7", label: SITUACAO_LABEL[7] },
+  { value: "2", label: SITUACAO_LABEL[2] },
+  { value: "3", label: SITUACAO_LABEL[3] },
+  { value: "4", label: SITUACAO_LABEL[4] },
+  { value: "5", label: SITUACAO_LABEL[5] },
+  { value: "6", label: SITUACAO_LABEL[6] },
+  { value: "8", label: SITUACAO_LABEL[8] },
+  { value: "APROVADO", label: "Aprovado" },
+  { value: "APROVADO_PENDENCIA", label: "Aprovado com Pendência" },
+];
 
 /**
  * Estados pendentes que não têm identidade visual própria herdam a do
@@ -231,6 +269,102 @@ function CheckboxRow({
   );
 }
 
+/**
+ * Filtro de situação com MÚLTIPLA seleção — antes era um `<select>` de
+ * escolha única. Pedido explícito: o "Ver tudo" de Aprovações no dashboard
+ * precisa ativar Aprovado + Aprovado com Pendência AO MESMO TEMPO (união,
+ * não um OU exclusivo), e isso não cabe num `<select>` nativo. Mesmo visual
+ * de campo dos outros filtros da barra (fieldStyle); painel abre por baixo
+ * com uma linha por opção (checkbox), fecha ao clicar fora.
+ */
+function FiltroSituacaoMultiplo({
+  options,
+  selected,
+  onChange,
+}: {
+  options: Array<{ value: string; label: string }>;
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickFora = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickFora);
+    return () => document.removeEventListener("mousedown", onClickFora);
+  }, [open]);
+
+  const toggle = (value: string) => {
+    onChange(
+      selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]
+    );
+  };
+
+  const resumo =
+    selected.length === 0
+      ? "Todas situações"
+      : selected.length <= 2
+        ? selected.map((v) => options.find((o) => o.value === v)?.label ?? v).join(", ")
+        : `${selected.length} situações`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 rounded-xl py-2 pl-3 pr-2.5 text-[13px] outline-none focus:border-[#00B388]"
+        style={{ ...fieldStyle, border: `1px solid ${selected.length > 0 ? "#00B388" : fieldStyle.borderColor}` }}
+      >
+        <span className="max-w-[220px] truncate" style={{ color: selected.length > 0 ? "#00B388" : fieldStyle.color }}>
+          {resumo}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--vm-faint)" }} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 top-[calc(100%+6px)] z-20 max-h-[320px] w-[240px] overflow-y-auto rounded-xl p-1.5 shadow-lg"
+          style={{ background: "var(--vm-card)", border: "1px solid var(--vm-border)" }}
+        >
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="mb-1 w-full rounded-lg px-2.5 py-1.5 text-left text-[11.5px] font-semibold"
+              style={{ color: "#DC2626" }}
+            >
+              Limpar seleção
+            </button>
+          )}
+          {options.map((o) => {
+            const checked = selected.includes(o.value);
+            return (
+              <label
+                key={o.value}
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] transition hover:bg-[var(--vm-tile)]"
+                style={{ color: checked ? "#00B388" : "var(--vm-text-soft)" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(o.value)}
+                  className="h-3.5 w-3.5 shrink-0 rounded"
+                  style={{ accentColor: "#00B388" }}
+                />
+                {o.label}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Card de item selecionável do modal "Devolver" (design premium dark) ── */
 function DevCheckCard({
   label, checked, onToggle, icon: Icon, accent,
@@ -280,15 +414,36 @@ function DevCard({
   );
 }
 
+/**
+ * Lê `?status=` (lista separada por vírgula) e `?busca=` da URL — usado
+ * pelo "Ver tudo" de Aprovações no dashboard pra chegar aqui já filtrado
+ * com múltiplas situações ativas ao mesmo tempo (ex.:
+ * `?status=APROVADO,APROVADO_PENDENCIA`). Precisa de Suspense por causa do
+ * useSearchParams().
+ */
 export default function CentralVistoriasPage() {
+  return (
+    <Suspense>
+      <CentralVistoriasPageInner />
+    </Suspense>
+  );
+}
+
+function CentralVistoriasPageInner() {
   const { session } = useAuthStore();
+  const searchParams = useSearchParams();
   const [vistorias, setVistorias] = useState<Vistoria[]>([]);
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(() => searchParams.get("busca") ?? "");
   // Valor do filtro: número = situação crua; "ATRIBUIDO" e "PENDENTE" são
-  // conceitos derivados (ver estadoDaVistoria/ehPendente).
-  const [filtroSit, setFiltroSit] = useState<string>("");
+  // conceitos derivados (ver estadoDaVistoria/ehPendente); "APROVADO" e
+  // "APROVADO_PENDENCIA" filtram por status_name. MÚLTIPLA seleção — a
+  // vistoria passa se bater com QUALQUER um dos valores ativos (união).
+  const [filtroSit, setFiltroSit] = useState<string[]>(() => {
+    const raw = searchParams.get("status");
+    return raw ? raw.split(",").filter(Boolean) : [];
+  });
 
   // Cancelar
   const [cancelando, setCancelando] = useState<Vistoria | null>(null);
@@ -358,17 +513,10 @@ export default function CentralVistoriasPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtradas = useMemo(() => vistorias.filter((v) => {
-    if (filtroSit === "PENDENTE") {
-      if (!ehPendente(v.situacao_id)) return false;
-    } else if (filtroSit === "ATRIBUIDO") {
-      if (estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) !== "ATRIBUIDO") return false;
-    } else if (filtroSit === "1") {
-      // "A Vistoriar" agora significa SEM técnico: com técnico, o card é
-      // Atribuído e tem filtro próprio. Sem esta exclusão os dois filtros
-      // devolveriam os mesmos itens e "A Vistoriar" deixaria de responder
-      // "o que ainda não tem dono?", que é justamente pra isso que serve.
-      if (estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) !== 1) return false;
-    } else if (filtroSit !== "" && v.situacao_id !== Number(filtroSit)) {
+    // Vazio = "Todas situações". Com 1+ selecionados, passa quem bater com
+    // QUALQUER um (união) — é assim que "Aprovado + Aprovado com Pendência"
+    // ativos ao mesmo tempo trazem os dois grupos juntos.
+    if (filtroSit.length > 0 && !filtroSit.some((f) => vistoriaMatchesFiltro(v, f))) {
       return false;
     }
     const q = busca.toLowerCase();
@@ -607,32 +755,11 @@ export default function CentralVistoriasPage() {
             style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
           />
         </div>
-        <div className="relative">
-          <select
-            value={filtroSit}
-            onChange={(e) => setFiltroSit(e.target.value)}
-            className="appearance-none rounded-xl py-2 pl-3 pr-8 text-[13px] outline-none focus:border-[#00B388]"
-            style={{ ...fieldStyle, border: `1px solid ${fieldStyle.borderColor}` }}
-          >
-            <option value="">Todas situações</option>
-            {/* Pendente primeiro: é a pergunta mais frequente do analista
-                ("o que falta?") e agrupa tudo que não foi concluído. */}
-            <option value="PENDENTE">Pendentes</option>
-            <option value="1">A Vistoriar (sem técnico)</option>
-            <option value="ATRIBUIDO">{ATRIBUIDO_LABEL}</option>
-            <option value="7">{SITUACAO_LABEL[7]}</option>
-            <option value="2">{SITUACAO_LABEL[2]}</option>
-            <option value="3">{SITUACAO_LABEL[3]}</option>
-            <option value="4">{SITUACAO_LABEL[4]}</option>
-            <option value="5">{SITUACAO_LABEL[5]}</option>
-            <option value="6">{SITUACAO_LABEL[6]}</option>
-            <option value="8">{SITUACAO_LABEL[8]}</option>
-          </select>
-          <ChevronDown
-            className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
-            style={{ color: "var(--vm-faint)" }}
-          />
-        </div>
+        <FiltroSituacaoMultiplo
+          options={FILTRO_SITUACAO_OPTIONS}
+          selected={filtroSit}
+          onChange={setFiltroSit}
+        />
         {elegiveisDesatribuir.length > 0 && (
           <CheckboxRow
             label={`Selecionar ${elegiveisDesatribuir.length} sem trabalho iniciado`}
