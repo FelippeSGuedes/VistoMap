@@ -373,6 +373,7 @@ export interface RankingTecnicoItem {
   aprovadas: number;
   revisitas: number;
   cidades: number;
+  cidadesList: string[];
   kmPercorrido?: number;
   tempoDeslocamentoMedioMin?: number | null;
   slaExecucaoMedioMin?: number | null;

@@ -2,6 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import mapboxgl from "mapbox-gl";
 import { novoMapa } from "@/lib/mapaSeguro";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -1373,6 +1374,7 @@ interface PendentesCpflMapWidgetProps {
 }
 
 function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
+  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
@@ -1559,8 +1561,9 @@ function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-amber-100)]"
+              className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-amber-100)]"
               style={{ borderLeft: "2px solid transparent" }}
+              onClick={() => router.push(`/painel/central-vistorias?busca=${encodeURIComponent(m.municipio)}`)}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.borderLeftColor = "#F59E0B";
                 const mp = mapRef.current;
@@ -1609,6 +1612,7 @@ interface AprovadosMapWidgetProps {
 }
 
 function AprovadosMapWidget({ itens }: AprovadosMapWidgetProps) {
+  const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
@@ -1793,8 +1797,9 @@ function AprovadosMapWidget({ itens }: AprovadosMapWidgetProps) {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile)]"
+              className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile)]"
               style={{ borderLeft: "2px solid transparent" }}
+              onClick={() => router.push(`/painel/central-vistorias?busca=${encodeURIComponent(m.municipio)}&status=APROVADO`)}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.borderLeftColor = "#22C55E";
                 const mp = mapRef.current;
@@ -2119,6 +2124,9 @@ export default function PainelOverviewPage() {
   // bloco principal (zero interferência se atrasar).
   const [topTecsDash, setTopTecsDash] = useState<TopTecnicosDashboard | null>(null);
   const [topTecsLoading, setTopTecsLoading] = useState(true);
+  // Expande 1 técnico por vez — mostra a lista de cidades atendidas no
+  // período (antes só dava pra ver a CONTAGEM, não quais eram).
+  const [tecExpandido, setTecExpandido] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     setTopTecsLoading(true);
@@ -2684,9 +2692,16 @@ export default function PainelOverviewPage() {
                         </span>
                       )}
                       {t.cidades > 0 && (
-                        <span className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
-                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTecExpandido((cur) => (cur === t.id ? null : t.id));
+                          }}
+                          className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED] transition hover:brightness-95"
+                        >
+                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""} {tecExpandido === t.id ? "▲" : "▼"}
+                        </button>
                       )}
                       {t.revisitas > 0 && (
                         <span className="rounded-full bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold text-amber-700">
@@ -2721,6 +2736,24 @@ export default function PainelOverviewPage() {
                         </span>
                       )}
                     </div>
+                    {tecExpandido === t.id && t.cidadesList.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        className="ml-[34px] mt-1.5 flex flex-wrap gap-1"
+                      >
+                        {t.cidadesList.map((cidade) => (
+                          <Link
+                            key={cidade}
+                            href={`/painel/central-vistorias?busca=${encodeURIComponent(cidade)}`}
+                            className="rounded-full px-1.5 py-[2px] text-[9px] font-medium transition hover:brightness-95"
+                            style={{ background: "var(--vm-tile-2)", color: "var(--vm-text-soft)" }}
+                          >
+                            {cidade}
+                          </Link>
+                        ))}
+                      </motion.div>
+                    )}
                   </motion.div>
                 );
               })
