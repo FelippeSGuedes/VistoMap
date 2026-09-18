@@ -713,8 +713,24 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
    ══════════════════════════════════════════════════════════════════════════ */
 
 interface HeatmapMapWidgetProps {
+  /** Simples — só o total (concluídas), pro fill do mapa e as bolhas. */
   topMunicipios: Array<{ municipio: string; total: number }>;
-  totais: { vistoriasFinalizadas: number; pdfsGerados: number; reprovadas: number };
+  /** Mesmo período, com a quebra por status — pro ranking em tabela. */
+  topMunicipiosDetalhe: Array<{
+    municipio: string;
+    concluidas: number;
+    aprovado: number;
+    aprovadoComPendencia: number;
+    pendente: number;
+    reprovado: number;
+  }>;
+  totais: {
+    vistoriasFinalizadas: number;
+    pdfsGerados: number;
+    reprovadas: number;
+    atribuidas: number;
+    atribuidasPeriodoAnterior: number;
+  };
   mediaSemanal: number;
   /** Período ativo no filtro global do dashboard — só pro rótulo do título. */
   periodoLabel: string;
@@ -730,6 +746,7 @@ interface HeatmapMapWidgetProps {
 
 function HeatmapMapWidget({
   topMunicipios,
+  topMunicipiosDetalhe,
   totais,
   mediaSemanal,
   periodoLabel,
@@ -1058,16 +1075,27 @@ function HeatmapMapWidget({
   const totalFinalizadas = totais.vistoriasFinalizadas || 0;
   const pctOf = (n: number) => (totalFinalizadas > 0 ? (n / totalFinalizadas) * 100 : 0);
   const indicadores = [
-    { key: "aprovadas",  label: "Aprovadas",      value: aprovadasSemPendencia,  pct: pctOf(aprovadasSemPendencia),  color: "#059669", icon: ShieldCheck },
-    { key: "pendencia",  label: "Com pendência",  value: aprovadasComPendencia,  pct: pctOf(aprovadasComPendencia),  color: "#D97706", icon: ShieldAlert },
-    { key: "reprovadas", label: "Reprovadas",     value: totais.reprovadas,      pct: pctOf(totais.reprovadas),      color: "#DC2626", icon: Ban },
+    { key: "aprovadas",  label: "Aprovadas",              value: aprovadasSemPendencia,  pct: pctOf(aprovadasSemPendencia),  color: "#059669", icon: ShieldCheck },
+    { key: "pendencia",  label: "Aprovado com Pendência", value: aprovadasComPendencia,  pct: pctOf(aprovadasComPendencia),  color: "#D97706", icon: ShieldAlert },
+    { key: "reprovadas", label: "Reprovadas",             value: totais.reprovadas,      pct: pctOf(totais.reprovadas),      color: "#DC2626", icon: Ban },
   ];
+
+  // Atribuídas — audit log, não estado atual (ver historico.ts). Delta vs.
+  // o período equivalente imediatamente anterior; null = sem período
+  // anterior pra comparar (mostra "novo", mesmo padrão do resto da tela).
+  const atribDelta = totais.atribuidasPeriodoAnterior > 0
+    ? ((totais.atribuidas - totais.atribuidasPeriodoAnterior) / totais.atribuidasPeriodoAnterior) * 100
+    : null;
 
   /* ── Ranking de municípios — mesmo dado do mapa, ordenado; sincroniza com
      o mapa via hoverApiRef (ver useEffect acima). ── */
   const ranking = [...topMunicipios].sort((a, b) => b.total - a.total).slice(0, 6);
   const rankingMax = Math.max(...ranking.map((m) => m.total), 1);
   const somaTotal = topMunicipios.reduce((s, m) => s + m.total, 0);
+
+  // Ranking detalhado (Aprov./Pend./Reprov./%Aprov.) — pedido 2026-09-18,
+  // mesma ordenação por concluídas, mas com a quebra por status.
+  const rankingDetalhe = [...topMunicipiosDetalhe].sort((a, b) => b.concluidas - a.concluidas).slice(0, 6);
 
   /* ── Mini-evolução — mesma série diária de Vistorias Finalizadas
      (evolucaoValues/Labels), num traço compacto sem decoração de média/pico
@@ -1113,7 +1141,7 @@ function HeatmapMapWidget({
         </div>
 
         {/* ── Indicadores — quantidade + % do total, com barra ── */}
-        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] sm:grid-cols-2 lg:grid-cols-4">
           {indicadores.map((ind) => {
             const Icon = ind.icon;
             return (
@@ -1147,6 +1175,38 @@ function HeatmapMapWidget({
               </div>
             );
           })}
+
+          {/* Atribuídas — métrica própria (não é subconjunto de finalizadas,
+              por isso sem % do total: delta vs. período anterior, mesmo
+              padrão do hero de Vistorias Finalizadas/Aprovações). */}
+          <div className="flex flex-col gap-2 bg-[var(--vm-card)] px-5 py-3.5">
+            <div className="flex items-center gap-2">
+              <span
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+                style={{ background: "#0EA5E914", color: "#0EA5E9" }}
+              >
+                <UserPlus className="h-3.5 w-3.5" strokeWidth={2.2} />
+              </span>
+              <span className="text-[11px] font-medium text-[var(--vm-muted)]">Vistorias Atribuídas</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-[22px] font-bold leading-none tabular-nums text-[var(--vm-text)]">
+                {fmtNum(totais.atribuidas)}
+              </span>
+              {atribDelta === null ? (
+                <span className="text-[11px] font-semibold" style={{ color: "var(--vm-faint)" }}>novo</span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-0.5 text-[12px] font-semibold tabular-nums"
+                  style={{ color: atribDelta >= 0 ? "#059669" : "#DC2626" }}
+                >
+                  <ArrowUp className={`h-2.5 w-2.5 ${atribDelta >= 0 ? "" : "rotate-180"}`} strokeWidth={2.8} />
+                  {atribDelta >= 0 ? "+" : ""}{atribDelta.toFixed(1)}%
+                </span>
+              )}
+            </div>
+            <span className="text-[9.5px]" style={{ color: "var(--vm-faint)" }}>vs. período anterior</span>
+          </div>
         </div>
 
         {/* ── Distribuição geográfica — mapa + ranking sincronizados ── */}
@@ -1172,44 +1232,64 @@ function HeatmapMapWidget({
             )}
           </div>
 
-          {/* Ranking — mesmo dado do fill do mapa; hover acende a região */}
+          {/* Ranking — mesmo dado do fill do mapa; hover acende a região.
+              Tabela (não mais só barra) — pedido 2026-09-18: Total, Aprov.
+              (já somado com/sem pendência), Pend. (concluída, sem decisão
+              da concessionária ainda) e Repr., + % de aproveitamento. */}
           <div
-            className="w-full shrink-0 border-t border-[var(--vm-tile-2)] px-4 py-3.5 lg:w-[220px] lg:border-l lg:border-t-0"
+            className="w-full shrink-0 overflow-x-auto border-t border-[var(--vm-tile-2)] px-4 py-3.5 lg:w-[400px] lg:border-l lg:border-t-0"
           >
             <p className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--vm-faint)]">
-              Top municípios
+              Ranking de municípios
             </p>
-            {ranking.length === 0 ? (
+            {rankingDetalhe.length === 0 ? (
               <p className="text-[11.5px] text-[var(--vm-faint)]">Sem dados no período.</p>
             ) : (
-              <div className="flex flex-col gap-2">
-                {ranking.map((m) => {
-                  const pct = somaTotal > 0 ? (m.total / somaTotal) * 100 : 0;
-                  return (
-                    <div
-                      key={m.municipio}
-                      className="group cursor-default"
-                      onMouseEnter={() => hoverApiRef.current.setHoverName(m.municipio)}
-                      onMouseLeave={() => hoverApiRef.current.setHoverName(null)}
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="truncate text-[11.5px] font-medium text-[var(--vm-text)] transition group-hover:text-[#059669]">
+              <div className="min-w-[360px]">
+                <div
+                  className="grid gap-x-1.5 pb-1.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--vm-faint)]"
+                  style={{ gridTemplateColumns: "1fr 36px 36px 36px 36px 42px" }}
+                >
+                  <span>Município</span>
+                  <span className="text-right">Total</span>
+                  <span className="text-right" style={{ color: "#059669" }}>Aprov.</span>
+                  <span className="text-right" style={{ color: "#D97706" }}>Pend.</span>
+                  <span className="text-right" style={{ color: "#DC2626" }}>Repr.</span>
+                  <span className="text-right">% Aprov.</span>
+                </div>
+                <div className="flex flex-col divide-y" style={{ borderColor: "var(--vm-tile-2)" }}>
+                  {rankingDetalhe.map((m) => {
+                    const pctAprov = m.concluidas > 0 ? (m.aprovado / m.concluidas) * 100 : 0;
+                    return (
+                      <div
+                        key={m.municipio}
+                        className="group grid cursor-default items-center gap-x-1.5 py-1.5"
+                        style={{ gridTemplateColumns: "1fr 36px 36px 36px 36px 42px" }}
+                        onMouseEnter={() => hoverApiRef.current.setHoverName(m.municipio)}
+                        onMouseLeave={() => hoverApiRef.current.setHoverName(null)}
+                      >
+                        <span className="truncate text-[11px] font-medium text-[var(--vm-text)] transition group-hover:text-[#059669]">
                           {m.municipio}
                         </span>
-                        <span className="shrink-0 text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
-                          {m.total}
+                        <span className="text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
+                          {fmtNum(m.concluidas)}
+                        </span>
+                        <span className="text-right text-[11px] tabular-nums" style={{ color: "#059669" }}>
+                          {fmtNum(m.aprovado)}
+                        </span>
+                        <span className="text-right text-[11px] tabular-nums" style={{ color: "#D97706" }}>
+                          {fmtNum(m.pendente)}
+                        </span>
+                        <span className="text-right text-[11px] tabular-nums" style={{ color: "#DC2626" }}>
+                          {fmtNum(m.reprovado)}
+                        </span>
+                        <span className="text-right text-[10px] font-semibold tabular-nums" style={{ color: "var(--vm-text)" }}>
+                          {pctAprov.toFixed(0)}%
                         </span>
                       </div>
-                      <div className="h-1 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
-                        <div
-                          className="h-full rounded-full transition-all group-hover:brightness-110"
-                          style={{ width: `${Math.max((m.total / rankingMax) * 100, 4)}%`, background: "#1a6b3c" }}
-                          title={`${pct.toFixed(1)}% do total concluído`}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -3055,6 +3135,7 @@ export default function PainelOverviewPage() {
             // a query irmã, filtrada pelo mesmo inicio..fim de tudo mais
             // nesta tela.
             topMunicipios={historico.topMunicipiosPeriodo.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
+            topMunicipiosDetalhe={historico.topMunicipiosPeriodo}
             totais={historico.totais}
             mediaSemanal={historico.medias.semanalVistorias}
             periodoLabel={periodoLabel}

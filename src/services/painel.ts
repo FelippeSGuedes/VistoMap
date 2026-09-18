@@ -314,6 +314,10 @@ export interface HistoricoAnalytics {
     aprovadas: number;
     reprovadas: number;
     pdfsGerados: number;
+    /** Vistorias ATRIBUÍDAS no período (audit log, não estado atual). */
+    atribuidas: number;
+    /** Mesmo cálculo, no período equivalente imediatamente anterior — pra variação %. */
+    atribuidasPeriodoAnterior: number;
   };
   taxas: { aprovacaoPct: number; revisitaPct: number };
   medias: { diariaVistorias: number; semanalVistorias: number };
@@ -330,8 +334,16 @@ export interface HistoricoAnalytics {
   topMunicipios: Array<{ municipio: string; total: number; concluidas: number }>;
   /** Mesmo ranking, mas concluídas DENTRO do período — usado pelo mapa/
    *  ranking de Padrão Diário no dashboard (topMunicipios acima é sempre
-   *  todo o histórico, serve a tela /painel/historico). */
-  topMunicipiosPeriodo: Array<{ municipio: string; concluidas: number }>;
+   *  todo o histórico, serve a tela /painel/historico). `aprovado` já vem
+   *  somado (Aprovado + Aprovado com Pendências); `pendente` é o resíduo. */
+  topMunicipiosPeriodo: Array<{
+    municipio: string;
+    concluidas: number;
+    aprovado: number;
+    aprovadoComPendencia: number;
+    pendente: number;
+    reprovado: number;
+  }>;
   rankingTecnicos: Array<{
     id: number;
     nome: string;
@@ -419,7 +431,7 @@ export async function fetchHistorico(
 ): Promise<HistoricoAnalytics> {
   const fb: HistoricoAnalytics = {
     periodo: { inicio: inicio ?? "", fim: fim ?? "", dias: 30 },
-    totais: { vistoriasFinalizadas: 0, revisitasFinalizadas: 0, aprovadas: 0, reprovadas: 0, pdfsGerados: 0 },
+    totais: { vistoriasFinalizadas: 0, revisitasFinalizadas: 0, aprovadas: 0, reprovadas: 0, pdfsGerados: 0, atribuidas: 0, atribuidasPeriodoAnterior: 0 },
     taxas: { aprovacaoPct: 0, revisitaPct: 0 },
     medias: { diariaVistorias: 0, semanalVistorias: 0 },
     serieDiaria: [],

@@ -40,6 +40,10 @@ export interface HistoricoAnalytics {
     aprovadas: number;
     reprovadas: number;
     pdfsGerados: number;
+    /** Vistorias ATRIBUÍDAS no período (audit log, não estado atual). */
+    atribuidas: number;
+    /** Mesmo cálculo, no período equivalente imediatamente anterior — pra variação %. */
+    atribuidasPeriodoAnterior: number;
   };
   taxas: {
     aprovacaoPct: number;
@@ -69,8 +73,17 @@ export interface HistoricoAnalytics {
   /** Mesmo ranking, mas concluídas DENTRO do período (inicio..fim) — pro
    *  mapa/ranking de Padrão Diário no dashboard, que precisa refletir o
    *  filtro de período (topMunicipios acima é intencionalmente todo o
-   *  histórico, serve a tela /painel/historico). */
-  topMunicipiosPeriodo: Array<{ municipio: string; concluidas: number }>;
+   *  histórico, serve a tela /painel/historico). `aprovado` já vem somado
+   *  (Aprovado + Aprovado com Pendências). `pendente` é o resíduo —
+   *  concluída pelo técnico, ainda sem decisão da concessionária. */
+  topMunicipiosPeriodo: Array<{
+    municipio: string;
+    concluidas: number;
+    aprovado: number;
+    aprovadoComPendencia: number;
+    pendente: number;
+    reprovado: number;
+  }>;
   rankingTecnicos: Array<{
     id: number;
     nome: string;
@@ -277,13 +290,30 @@ export async function fetchHistoricoAnalytics(
      dias/Todo Período. Query irmã da de cima, com o MESMO filtro de data
      de `agg`/`serieDiaria` (inicio..fim reais). LIMIT mais largo (20, não
      10) — ajuda o mapa a enquadrar o cluster de atuação inteiro, não só o
-     topo. */
-  const muniPeriodoRows = await query<{ municipio: string; concluidas: number }>(
+     topo.
+     Pedido 2026-09-18: ranking com quebra por status, não só o total —
+     `aprovado` já vem SOMADO (Aprovado + Aprovado com Pendências, igual
+     pedido: "total aprovados... mesmo com aprovados e aprovados com
+     pendencia"). `pendente` é o resíduo (concluída pelo técnico, ainda sem
+     decisão da concessionária — nem aprovado nem reprovado; normalmente
+     "Em análise"). */
+  const muniPeriodoRows = await query<{
+    municipio: string;
+    concluidas: number;
+    aprovado: number;
+    aprovadoComPendencia: number;
+    reprovado: number;
+  }>(
     `
       SELECT TRIM(f.municipiofield) AS municipio,
-             COUNT(*) AS concluidas
+             COUNT(*) AS concluidas,
+             SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovado,
+             SUM(CASE WHEN sv.name = 'Aprovado com Pendências' THEN 1 ELSE 0 END) AS aprovadoComPendencia,
+             SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovado
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+                ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
        WHERE f.municipiofield IS NOT NULL
          AND TRIM(f.municipiofield) <> ''
          AND f.datadavistoriafield IS NOT NULL
@@ -295,6 +325,35 @@ export async function fetchHistoricoAnalytics(
     `,
     [inicio, fim]
   );
+
+  /* ── Vistorias ATRIBUÍDAS no período — pedido 2026-09-18, "tem que
+     entrar no filtro também": conta pelo audit log (mesmo padrão de
+     topTecnicosDashboard.ts/painel.ts), não pelo estado atual do
+     equipamento — uma vistoria atribuída e depois reatribuída/concluída
+     dentro do período ainda conta como "atribuída nesse período". Vem
+     acompanhada do total do período EQUIVALENTE anterior (mesmo tamanho
+     de janela, imediatamente antes de `inicio`), pra dar a variação %. */
+  const diasPeriodo = Math.max(1, Math.round((new Date(fim).getTime() - new Date(inicio).getTime()) / 86_400_000) + 1);
+  const inicioAnteriorDate = new Date(inicio);
+  inicioAnteriorDate.setUTCDate(inicioAnteriorDate.getUTCDate() - diasPeriodo);
+  const fimAnteriorDate = new Date(inicio);
+  fimAnteriorDate.setUTCDate(fimAnteriorDate.getUTCDate() - 1);
+  const inicioAnterior = inicioAnteriorDate.toISOString().slice(0, 10);
+  const fimAnterior = fimAnteriorDate.toISOString().slice(0, 10);
+
+  const [atribRow] = await query<{ atual: number; anterior: number }>(
+    `
+      SELECT
+        SUM(CASE WHEN DATE(ts) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS atual,
+        SUM(CASE WHEN DATE(ts) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS anterior
+        FROM glpi_plugin_vistomap_audit
+       WHERE acao = 'vistoria-atribuida'
+         AND DATE(ts) BETWEEN ? AND ?
+    `,
+    [inicio, fim, inicioAnterior, fimAnterior, inicioAnterior, fim]
+  );
+  const atribuidasPeriodo = Number(atribRow?.atual ?? 0);
+  const atribuidasPeriodoAnterior = Number(atribRow?.anterior ?? 0);
 
   /* ── Ranking técnicos ──────────────────────────────────────── */
   // LEFT JOIN de propósito (era INNER): um técnico purgado do GLPI (ver
@@ -502,6 +561,8 @@ export async function fetchHistoricoAnalytics(
       aprovadas,
       reprovadas,
       pdfsGerados,
+      atribuidas: atribuidasPeriodo,
+      atribuidasPeriodoAnterior,
     },
     taxas: { aprovacaoPct, revisitaPct },
     medias: { diariaVistorias, semanalVistorias },
@@ -511,10 +572,20 @@ export async function fetchHistoricoAnalytics(
       total: Number(r.total) || 0,
       concluidas: Number(r.concluidas) || 0,
     })),
-    topMunicipiosPeriodo: muniPeriodoRows.map((r) => ({
-      municipio: r.municipio,
-      concluidas: Number(r.concluidas) || 0,
-    })),
+    topMunicipiosPeriodo: muniPeriodoRows.map((r) => {
+      const aprovado = Number(r.aprovado) || 0;
+      const aprovadoComPendencia = Number(r.aprovadoComPendencia) || 0;
+      const reprovado = Number(r.reprovado) || 0;
+      const concluidas = Number(r.concluidas) || 0;
+      return {
+        municipio: r.municipio,
+        concluidas,
+        aprovado: aprovado + aprovadoComPendencia,
+        aprovadoComPendencia,
+        pendente: Math.max(concluidas - aprovado - aprovadoComPendencia - reprovado, 0),
+        reprovado,
+      };
+    }),
     rankingTecnicos,
     kmOperacional: Math.round(kmTotal * 10) / 10,
     motivosReprovacao,
