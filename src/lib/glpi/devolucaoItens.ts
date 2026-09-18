@@ -18,35 +18,51 @@ export interface DevolucaoItemDef {
   key: string;
   label: string;
   tipo: DevolucaoItemTipo;
+  /**
+   * true quando o item descreve o POSTE FÍSICO em si (foto do poste,
+   * material, altura, aterramento, resistência, sinal medido nele) — não o
+   * equipamento/antena instalado nele nem dados administrativos (endereço,
+   * observação). Usado por /vistoria-corrigir pra decidir quando oferecer
+   * "Trocar de poste": antes só sinal (RSRP) liberava a opção, mas qualquer
+   * um desses motivos pode ser "o poste apontado não é o certo" (achado em
+   * campo 2026-09-18 — devolução por foto/material também merece a opção).
+   */
+  sobrePoste?: boolean;
 }
 
 export const DEVOLUCAO_ITENS: DevolucaoItemDef[] = [
   // Fotos/vídeo — sempre exigem deslocamento até o equipamento.
-  { key: "imagem1", label: "Foto 1 — Poste completo", tipo: "foto" },
-  { key: "imagem2", label: "Foto 2 — Detalhe do topo", tipo: "foto" },
-  { key: "imagem3", label: "Foto 3 — Vista horizontal", tipo: "foto" },
-  { key: "video360", label: "Vídeo 360°", tipo: "foto" },
+  { key: "imagem1", label: "Foto 1 — Poste completo", tipo: "foto", sobrePoste: true },
+  { key: "imagem2", label: "Foto 2 — Detalhe do topo", tipo: "foto", sobrePoste: true },
+  { key: "imagem3", label: "Foto 3 — Vista horizontal", tipo: "foto", sobrePoste: true },
+  { key: "video360", label: "Vídeo 360°", tipo: "foto", sobrePoste: true },
   { key: "imagem4", label: "Print Vivo", tipo: "foto" },
   { key: "imagem5", label: "Print Claro", tipo: "foto" },
   // Campos do formulário — correção de informação, não exige deslocamento.
-  { key: "pspostefield", label: "PS do poste", tipo: "campo" },
+  { key: "pspostefield", label: "PS do poste", tipo: "campo", sobrePoste: true },
   { key: "municipiofield", label: "Município", tipo: "campo" },
   { key: "endereofield", label: "Endereço", tipo: "campo" },
-  { key: "tipodematerial", label: "Material / Tipo da estrutura", tipo: "campo" },
-  { key: "alturadopostemfield", label: "Altura do poste", tipo: "campo" },
-  { key: "aterramentofield", label: "Aterramento", tipo: "campo" },
-  { key: "danfield", label: "Resistência (daN)", tipo: "campo" },
+  { key: "tipodematerial", label: "Material / Tipo da estrutura", tipo: "campo", sobrePoste: true },
+  { key: "alturadopostemfield", label: "Altura do poste", tipo: "campo", sobrePoste: true },
+  { key: "aterramentofield", label: "Aterramento", tipo: "campo", sobrePoste: true },
+  { key: "danfield", label: "Resistência (daN)", tipo: "campo", sobrePoste: true },
   { key: "instalartpfield", label: "Instalação de TP", tipo: "campo" },
   { key: "tensovfield", label: "Tensão", tipo: "campo" },
-  { key: "rsrpifield", label: "RSRP Claro", tipo: "campo" },
+  { key: "rsrpifield", label: "RSRP Claro", tipo: "campo", sobrePoste: true },
   { key: "tipoifield", label: "Tipo de rede Claro", tipo: "campo" },
-  { key: "rsrpllfield", label: "RSRP Vivo", tipo: "campo" },
+  { key: "rsrpllfield", label: "RSRP Vivo", tipo: "campo", sobrePoste: true },
   { key: "tipollfield", label: "Tipo de rede Vivo", tipo: "campo" },
   { key: "tipodeantena", label: "Tipo de antena", tipo: "campo" },
   { key: "ganhodbi", label: "Ganho (dBi)", tipo: "campo" },
   { key: "equipamentofield", label: "Modo de operação (DCU/Repetidor)", tipo: "campo" },
   { key: "observacao", label: "Observação", tipo: "campo" },
 ];
+
+/** true se algum item apontado é sobre o poste físico (ver `sobrePoste`). */
+export function devolucaoSobrePoste(itens: string[]): boolean {
+  const flags = new Map(DEVOLUCAO_ITENS.map((i) => [i.key, !!i.sobrePoste]));
+  return itens.some((key) => flags.get(key));
+}
 
 export const DEVOLUCAO_ITEM_LABEL: Record<string, string> = Object.fromEntries(
   DEVOLUCAO_ITENS.map((i) => [i.key, i.label])

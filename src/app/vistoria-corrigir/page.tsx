@@ -39,7 +39,12 @@ import {
   type DevolucaoPendente,
   type DevolucaoVistoria,
 } from "@/store/devolucao";
-import { DEVOLUCAO_DROPDOWN_FIELD, DEVOLUCAO_ITEM_LABEL, DEVOLUCAO_ITENS } from "@/lib/glpi/devolucaoItens";
+import {
+  DEVOLUCAO_DROPDOWN_FIELD,
+  DEVOLUCAO_ITEM_LABEL,
+  DEVOLUCAO_ITENS,
+  devolucaoSobrePoste,
+} from "@/lib/glpi/devolucaoItens";
 import type { RecusaMotivo } from "@/lib/glpi/recusaMotivos";
 
 const RAIO_M = 100;
@@ -225,11 +230,16 @@ function CorrigirDevolucaoInner() {
     [devolucao]
   );
 
-  // Devolução por sinal fraco — RSRP não se corrige reescrevendo o número,
-  // o técnico precisa medir num poste diferente. Mesmo fluxo de "Mudar
-  // PSPOSTE" do formulário normal (mesmo endpoint /postes/mudancas).
-  const precisaTrocarPoste =
+  // Sinal fraco (RSRP) especificamente — não se corrige reescrevendo o
+  // número, o técnico precisa medir num poste diferente.
+  const precisaCampoRsrp =
     camposApontados.includes("rsrpifield") || camposApontados.includes("rsrpllfield");
+
+  // Qualquer item apontado sobre o POSTE FÍSICO (foto do poste, material,
+  // altura, aterramento, resistência, sinal) — não só sinal. Achado em campo
+  // 2026-09-18: uma devolução por foto/material também pode significar "o
+  // poste apontado não é o certo", e o técnico já está no local mesmo assim.
+  const precisaTrocarPoste = devolucaoSobrePoste(devolucao?.itens ?? []);
 
   const podeEnviar =
     fotosApontadas.every((k) => !!arquivos[k]) &&
@@ -238,8 +248,10 @@ function CorrigirDevolucaoInner() {
   // true quando o técnico já trocou de poste NESSA correção e o RSRP que ele
   // acabou de digitar pro poste novo reprova de novo nas duas operadoras —
   // nesse ponto o app já sabe que "trocar de novo" tende a repetir o loop.
+  // Só faz sentido quando RSRP é de fato um dos itens apontados (senão
+  // `campos.rsrpifield/rsrpllfield` nem existem nessa correção).
   const sinalAindaRuimAposTroca =
-    precisaTrocarPoste &&
+    precisaCampoRsrp &&
     !!posteMudanca &&
     !rsrpParValido(campos.rsrpifield, campos.rsrpllfield);
 
@@ -443,7 +455,8 @@ function CorrigirDevolucaoInner() {
             {precisaTrocarPoste && (
               <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5">
                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                  <Replace className="h-3 w-3" /> Sinal fraco nesse poste?
+                  <Replace className="h-3 w-3" />
+                  {precisaCampoRsrp ? "Sinal fraco nesse poste?" : "Poste errado ou com problema?"}
                 </p>
                 {posteMudanca ? (
                   <div className="mt-1.5 flex items-center justify-between gap-2">
@@ -476,7 +489,9 @@ function CorrigirDevolucaoInner() {
                 {!posteMudanca && (
                   <>
                     <p className="mt-1 text-[12.5px] leading-relaxed text-amber-800">
-                      Se o sinal continuar ruim demais nesse local, escolha outro poste próximo — meça o RSRP no local novo.
+                      {precisaCampoRsrp
+                        ? "Se o sinal continuar ruim demais nesse local, escolha outro poste próximo — meça o RSRP no local novo."
+                        : "Se o poste apontado não for o certo (errado, danificado, sinal ruim etc.), escolha outro poste próximo."}
                     </p>
                     <button
                       type="button"
