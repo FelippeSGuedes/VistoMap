@@ -744,6 +744,11 @@ function HeatmapMapWidget({
   const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: unknown; properties: Record<string, unknown> }> } | null>(null);
   const munisRef     = useRef(topMunicipios);
   munisRef.current   = topMunicipios;
+  // Bolhas numeradas por município ativo (pedido em campo: "algo mais
+  // visual, tipo cluster" — mesmo padrão de mapboxgl.Marker já usado em
+  // MunicipiosMapWidget nesta mesma tela, cor institucional em vez do
+  // azul/roxo de lá, e tamanho proporcional ao volume).
+  const markersRef   = useRef<mapboxgl.Marker[]>([]);
   const token        = getMapboxToken();
   const [geoLoaded,  setGeoLoaded] = useState(false);
   // Sincronia lista↔mapa: hover numa linha do ranking de municípios acende a
@@ -818,6 +823,47 @@ function HeatmapMapWidget({
     const z = map.getZoom();
     map.setMinZoom(z);
     map.setMaxZoom(z);
+  };
+
+  // Bolhas numeradas por município ativo — pedido em campo: "algo mais
+  // visual, tipo cluster" sem trocar o dado (continua município agregado,
+  // não vistoria por vistoria). Tamanho proporcional ao volume (raiz
+  // quadrada — é a área do círculo que precisa ser proporcional ao valor
+  // pra não distorcer a leitura, não o diâmetro). Mesmo padrão de
+  // mapboxgl.Marker já usado em MunicipiosMapWidget nesta tela.
+  const renderMarkers = (munis: Array<{ municipio: string; total: number }>) => {
+    const map = mapRef.current;
+    const geo = geoRef.current;
+    if (!map || !geo) return;
+    markersRef.current.forEach(mk => mk.remove());
+    markersRef.current = [];
+    const ativos = munis.filter(m => m.total > 0);
+    if (ativos.length === 0) return;
+    const topValor = Math.max(...ativos.map(m => m.total));
+    const MIN_PX = 28, MAX_PX = 60;
+    for (const m of ativos) {
+      const feature = (geo.features as Array<{ geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>)
+        .find(f => normalizeStr(String(f.properties?.name ?? "")) === normalizeStr(m.municipio));
+      if (!feature) continue;
+      const coords = featureCentroid(feature.geometry as { type: string; coordinates: unknown });
+      if (!coords) continue;
+      const size = Math.round(MIN_PX + (MAX_PX - MIN_PX) * Math.sqrt(m.total / topValor));
+      const el = document.createElement("div");
+      el.style.cssText = [
+        `width:${size}px`, `height:${size}px`, "border-radius:50%",
+        "background:linear-gradient(135deg,#059669,#1a6b3c)",
+        "box-shadow:0 2px 10px rgba(5,150,105,0.45),0 0 0 3px rgba(255,255,255,0.55)",
+        "display:flex", "align-items:center", "justify-content:center", "color:#fff",
+        "font-family:ui-sans-serif,system-ui", "font-weight:800",
+        `font-size:${size >= 44 ? 13 : size >= 34 ? 11.5 : 10}px`,
+        "cursor:default", "transition:transform .18s ease",
+      ].join(";");
+      el.textContent = fmtNum(m.total);
+      el.onmouseenter = () => { el.style.transform = "scale(1.12)"; hoverApiRef.current.setHoverName(m.municipio); };
+      el.onmouseleave = () => { el.style.transform = "scale(1)"; hoverApiRef.current.setHoverName(null); };
+      const mk = new mapboxgl.Marker({ element: el, anchor: "center" }).setLngLat(coords).addTo(map);
+      markersRef.current.push(mk);
+    }
   };
 
   useEffect(() => {
@@ -911,6 +957,7 @@ function HeatmapMapWidget({
         });
 
         applyBoundsForMunis(munisRef.current);
+        renderMarkers(munisRef.current);
 
         // nome normalizado → id da feature (mesmo campo que promoteId lê,
         // properties.id) — permite acender uma região a partir de FORA do
@@ -994,7 +1041,14 @@ function HeatmapMapWidget({
     (map.getSource("vm-sp-src") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
     map.setPaintProperty("vm-sp-fill", "fill-color", fillExpr(topMunicipios));
     applyBoundsForMunis(topMunicipios);
+    renderMarkers(topMunicipios);
   }, [topMunicipios]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Limpa as bolhas ao desmontar — mesmo cuidado que o cleanup do mapa já
+  // faz pras outras camadas.
+  useEffect(() => {
+    return () => { markersRef.current.forEach(mk => mk.remove()); };
+  }, []);
 
   /* ── Indicadores com % — mesmo denominador (finalizadas do período) pra
      todos, calculado a cada render a partir do que os props já trazem.
