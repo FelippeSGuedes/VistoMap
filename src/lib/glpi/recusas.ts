@@ -1,6 +1,11 @@
 import "server-only";
 import { execute, query } from "@/lib/db";
-import type { RecusaCategoria } from "./recusaMotivos";
+import {
+  RECUSA_MOTIVO_LABEL,
+  RECUSA_MOTIVO_CATEGORIA,
+  type RecusaCategoria,
+  type RecusaMotivo,
+} from "./recusaMotivos";
 
 /**
  * Recusas — técnico declara que uma vistoria é impossível de fazer
@@ -253,4 +258,71 @@ export async function listRecusas(filters: FetchRecusasFilters = {}): Promise<Re
     params
   );
   return rows.map(mapRow);
+}
+
+export interface RecusaMotivoAgregado {
+  motivo: string;
+  label: string;
+  total: number;
+}
+
+export interface RecusasStats {
+  total: number;
+  porCategoria: Record<RecusaCategoria, { total: number; porMotivo: RecusaMotivoAgregado[] }>;
+}
+
+/**
+ * Impedimentos e recusas agrupados por motivo — pro dashboard ("Impedimentos
+ * e motivos, quantidade" / "Recusas e motivo, quantidade"). Mesmo formato de
+ * fetchDevolucoesStats() (devolucoes.ts).
+ *
+ * Só conta PENDENTE + APROVADO — Reprovado significa que o analista NEGOU o
+ * pedido do técnico (a vistoria simplesmente volta pra fila normal), não é
+ * um impedimento/recusa "de verdade" pra fins de estatística (mesma regra
+ * documentada em resolverRecusa() acima).
+ *
+ * `categoria` só existe quando já foi decidida na aprovação — pendentes
+ * (e histórico anterior à mudança de 2026-09-14) caem no palpite automático
+ * de RECUSA_MOTIVO_CATEGORIA, mesma regra de leitura já documentada no topo
+ * deste arquivo.
+ */
+export async function fetchRecusasStats(): Promise<RecusasStats> {
+  await ensureRecusasTable();
+  const [aprovadas, pendentes] = await Promise.all([
+    listRecusas({ status: "APROVADO", limit: 500 }),
+    listRecusas({ status: "PENDENTE", limit: 500 }),
+  ]);
+  const itens = [...aprovadas, ...pendentes];
+
+  const contagem: Record<RecusaCategoria, Map<string, number>> = {
+    impedimento: new Map(),
+    recusa: new Map(),
+  };
+
+  for (const r of itens) {
+    const categoria: RecusaCategoria =
+      r.categoria ?? RECUSA_MOTIVO_CATEGORIA[r.motivo as RecusaMotivo] ?? "recusa";
+    const mapa = contagem[categoria];
+    mapa.set(r.motivo, (mapa.get(r.motivo) ?? 0) + 1);
+  }
+
+  const montarRanking = (mapa: Map<string, number>): RecusaMotivoAgregado[] =>
+    [...mapa.entries()]
+      .map(([motivo, total]) => ({
+        motivo,
+        label: RECUSA_MOTIVO_LABEL[motivo as RecusaMotivo] ?? motivo,
+        total,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+  const impedimento = montarRanking(contagem.impedimento);
+  const recusa = montarRanking(contagem.recusa);
+
+  return {
+    total: itens.length,
+    porCategoria: {
+      impedimento: { total: impedimento.reduce((a, m) => a + m.total, 0), porMotivo: impedimento },
+      recusa: { total: recusa.reduce((a, m) => a + m.total, 0), porMotivo: recusa },
+    },
+  };
 }

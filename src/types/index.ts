@@ -556,6 +556,10 @@ export interface PainelStats {
   rejeitadas?: number;
   /** Aprovadas pela concessionária (statusvistoria Aprovado + Aprovado com Pendências). */
   aprovadas?: number;
+  /** Só "Aprovado" (sem ressalva) — subconjunto de `aprovadas`. */
+  aprovadasSemPendencia?: number;
+  /** Só "Aprovado com Pendências" — subconjunto de `aprovadas`. */
+  aprovadasComPendencia?: number;
   /** Vistorias atribuídas (saíram do backlog) nas últimas 24h — do audit log. */
   atribuidas24h?: number;
   /** Vistorias finalizadas nas últimas 24h — do audit log. */

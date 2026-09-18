@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertCircle, AlertTriangle, ArrowLeft, Box, Calendar, Check, CheckCircle2,
   ClipboardList, FileText, FileWarning, Gauge, HelpCircle, Home, Image as ImageIcon,
@@ -280,15 +281,31 @@ function DevCard({
   );
 }
 
+/**
+ * Lê `?status=` e `?busca=` da URL — usado pelos "Ver tudo" do dashboard
+ * (/painel) pra chegar aqui já filtrado (ex.: `?status=APROVADO`,
+ * `?busca=Campinas`). Precisa de Suspense por causa do useSearchParams().
+ */
 export default function CentralVistoriasPage() {
+  return (
+    <Suspense>
+      <CentralVistoriasPageInner />
+    </Suspense>
+  );
+}
+
+function CentralVistoriasPageInner() {
   const { session } = useAuthStore();
+  const searchParams = useSearchParams();
   const [vistorias, setVistorias] = useState<Vistoria[]>([]);
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(() => searchParams.get("busca") ?? "");
   // Valor do filtro: número = situação crua; "ATRIBUIDO" e "PENDENTE" são
-  // conceitos derivados (ver estadoDaVistoria/ehPendente).
-  const [filtroSit, setFiltroSit] = useState<string>("");
+  // conceitos derivados (ver estadoDaVistoria/ehPendente); "APROVADO" e
+  // "APROVADO_PENDENCIA" filtram por status_name (dropdown separado da
+  // situação) — usado pelo "Ver tudo" de Aprovações do dashboard.
+  const [filtroSit, setFiltroSit] = useState<string>(() => searchParams.get("status") ?? "");
 
   // Cancelar
   const [cancelando, setCancelando] = useState<Vistoria | null>(null);
@@ -368,6 +385,10 @@ export default function CentralVistoriasPage() {
       // devolveriam os mesmos itens e "A Vistoriar" deixaria de responder
       // "o que ainda não tem dono?", que é justamente pra isso que serve.
       if (estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) !== 1) return false;
+    } else if (filtroSit === "APROVADO") {
+      if (v.status_name !== "Aprovado" && v.status_name !== "Aprovada") return false;
+    } else if (filtroSit === "APROVADO_PENDENCIA") {
+      if (v.status_name !== "Aprovado com Pendências") return false;
     } else if (filtroSit !== "" && v.situacao_id !== Number(filtroSit)) {
       return false;
     }
@@ -627,6 +648,8 @@ export default function CentralVistoriasPage() {
             <option value="5">{SITUACAO_LABEL[5]}</option>
             <option value="6">{SITUACAO_LABEL[6]}</option>
             <option value="8">{SITUACAO_LABEL[8]}</option>
+            <option value="APROVADO">Aprovado</option>
+            <option value="APROVADO_PENDENCIA">Aprovado com Pendências</option>
           </select>
           <ChevronDown
             className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2"

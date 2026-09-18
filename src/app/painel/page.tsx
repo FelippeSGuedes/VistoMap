@@ -2111,7 +2111,7 @@ export default function PainelOverviewPage() {
     { label: "Em vistoria", raw: stats ? stats.emVistoria : undefined, value: stats ? fmtNum(stats.emVistoria) : "—",  sub: `${emCampo} técnico${emCampo !== 1 ? "s" : ""} em campo`, color: "#3B82F6", icon: Activity,    href: "/painel/mapa" },
     { label: "Concluídas",  raw: stats ? stats.vistoriadas + stats.revisitadas : undefined, value: stats ? fmtNum(stats.vistoriadas + stats.revisitadas): "—",  sub: "aguardando aprovação",   color: "#10B981", icon: CheckCircle2, href: "/painel/historico" },
     { label: "Reprovados CPFL", raw: stats ? (stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0) : undefined, value: stats ? fmtNum((stats.aguardandoRevisita ?? 0) + (stats.emRevisita ?? 0)) : "—", sub: `${stats?.aguardandoRevisita ?? 0} sem técnico`, color: "#F97316", icon: RotateCw, href: "/painel/revisitas" },
-    { label: "Projetos Aprovados", raw: stats ? (stats.aprovadas ?? 0) : undefined, value: stats ? fmtNum(stats.aprovadas ?? 0) : "—", sub: "validação concluída", color: "#22C55E", icon: ShieldCheck, href: undefined as string | undefined },
+    { label: "Aprovações", raw: stats ? (stats.aprovadasSemPendencia ?? 0) : undefined, value: stats ? fmtNum(stats.aprovadasSemPendencia ?? 0) : "—", sub: "validação concluída", color: "#22C55E", icon: ShieldCheck, href: "/painel/central-vistorias?status=APROVADO" },
     { label: "Municípios",  raw: stats ? stats.municipiosAtivos : undefined, value: stats ? fmtNum(stats.municipiosAtivos)   : "—", sub: "com equipamentos ativos", color: "#8B5CF6", icon: Building2, href: undefined as string | undefined },
     { label: "Equipe",      raw: stats ? stats.tecnicosAtivos : undefined, value: stats ? fmtNum(stats.tecnicosAtivos)     : "—", sub: `${emCampo} em campo agora`, color: ACCENT, icon: Users, href: "/painel/tecnicos" },
   ];
@@ -2254,11 +2254,15 @@ export default function PainelOverviewPage() {
                   } else if (i === 3) {
                     chip = { icon: <Clock style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: `${semTec} sem técnico`, active: semTec > 0 };
                   } else {
-                    chip = { icon: <ShieldCheck style={{ width: 11, height: 11 }} strokeWidth={2.2} />, text: "validação concluída", active: (stats?.aprovadas ?? 0) > 0 };
+                    const comPendencia = stats?.aprovadasComPendencia ?? 0;
+                    chip = {
+                      icon: <ShieldCheck style={{ width: 11, height: 11 }} strokeWidth={2.2} />,
+                      text: comPendencia > 0 ? `${comPendencia} com pendência` : "sem pendências",
+                      active: comPendencia > 0,
+                    };
                   }
-                  return (
+                  const card = (
                     <motion.div
-                      key={k.label}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.12 + i * 0.07, duration: 0.35 }}
@@ -2311,6 +2315,17 @@ export default function PainelOverviewPage() {
                         {chip.text}
                       </div>
                     </motion.div>
+                  );
+                  // Bug real corrigido aqui: os 5 cards já tinham cursor:pointer
+                  // quando k.href existia, mas nada de fato navegava — faltava
+                  // o Link em volta (mesmo padrão já usado mais abaixo nesta
+                  // página pros cards de Vistorias Atribuídas/Instalação).
+                  return k.href ? (
+                    <Link key={k.label} href={k.href} style={{ textDecoration: "none" }}>
+                      {card}
+                    </Link>
+                  ) : (
+                    <div key={k.label}>{card}</div>
                   );
                 })}
               </div>
