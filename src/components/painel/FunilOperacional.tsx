@@ -61,8 +61,12 @@ export function FunilOperacional({ panorama }: { panorama: PanoramaOperacao | nu
 
   return (
     <div
-      className="vm-card flex flex-col overflow-hidden rounded-2xl bg-white"
-      style={{ border: "1px solid var(--vm-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+      className="vm-card flex flex-col overflow-hidden rounded-2xl"
+      style={{
+        background: "var(--vm-card)",
+        border: "1px solid var(--vm-border)",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+      }}
     >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-3">
         <div
