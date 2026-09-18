@@ -118,8 +118,14 @@ function CorrigirDevolucaoInner() {
     }
     (async () => {
       try {
+        // `?vistoriaId=` — sem isso, a API devolvia a devolução PENDENTE mais
+        // RECENTE do técnico, não necessariamente a desta tela. Com 2+
+        // devoluções pendentes ao mesmo tempo, tocar em qualquer uma que não
+        // fosse "a mais recente" caía aqui e comparava contra a errada,
+        // mostrando "Não há devolução pendente" mesmo havendo uma pra este id
+        // (achado em campo 2026-09-18, Marco).
         const { data } = await api.get<{ devolucao: DevolucaoPendente | null; vistoria: DevolucaoVistoria | null }>(
-          "/vistorias/devolucao-pendente"
+          `/vistorias/devolucao-pendente?vistoriaId=${encodeURIComponent(id)}`
         );
         if (!data.devolucao || String(data.devolucao.vistoriaId) !== String(id)) {
           setErroFatal("Não há devolução pendente para essa vistoria.");

@@ -34,6 +34,7 @@ import {
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import { getCoresIdentidade } from "./tecnicoIdentidade";
+import { cancelarDevolucoesPorVistoria } from "./devolucoes";
 import { RECUSA_MOTIVO_CATEGORIA, RECUSA_MOTIVO_LABEL, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
 import { nowBrasiliaSql } from "@/lib/timezone";
 import type {
@@ -1275,6 +1276,17 @@ export async function atribuirVistoria(
   // app do técnico (isRepeat vem daqui) voltariam a ler is_repeat=0.
   const precisaResincronizarIsRepeat = eraRevisita && Number(estadoAtual?.is_repeat ?? 0) !== 1;
 
+  // Achado em campo 2026-09-18 (Marco): atribuir um técnico a um
+  // equipamento que estava DEVOLVIDA (situação 8, aguardando ele corrigir
+  // itens específicos) reescrevia a situação sem cancelar a devolução
+  // PENDENTE correspondente. Essa linha órfã ficava presa pra sempre e,
+  // como fetchDevolucaoPendente() pega a mais RECENTE do técnico, passava
+  // a vencer a consulta por cima de qualquer devolução seguinte de fato
+  // ativa — bloqueando/desviando o técnico em TODAS as outras. cancelar
+  // aqui é sempre seguro (WHERE vistoria_id=? AND status='PENDENTE' — é
+  // no-op se não havia nenhuma).
+  await cancelarDevolucoesPorVistoria(vistoriaId);
+
   // statusvistoria (nativo) também precisa voltar pro início — achado
   // 2026-09-15: atribuir um técnico pra um equipamento que estava
   // "Reprovado"/"Aprovado"/"Em análise" (id 3/4/5) atualizava situação e
@@ -1312,6 +1324,11 @@ export async function atribuirVistoria(
 export async function desvincularVistoria(
   vistoriaId: number
 ): Promise<{ affected: number; situacao: number }> {
+  // Mesmo achado de atribuirVistoria()/reatribuirVistoria() (Marco,
+  // 2026-09-18) — desvincular também apaga um eventual estado DEVOLVIDA
+  // sem cancelar a devolução PENDENTE correspondente. No-op se não havia
+  // nenhuma.
+  await cancelarDevolucoesPorVistoria(vistoriaId);
   const r = await execute(
     `UPDATE \`${TABLE_FIELDS}\`
         SET users_id_vistoriadorafield = 0,
@@ -2295,6 +2312,13 @@ export async function reatribuirVistoria(
   });
   const situacao = eraRevisita ? SITUACAO_EM_REVISITA : SITUACAO_A_VISTORIAR;
   const precisaResincronizarIsRepeat = eraRevisita && Number(estadoAtual?.is_repeat ?? 0) !== 1;
+
+  // Mesmo achado de atribuirVistoria() (Marco, 2026-09-18): reatribuir uma
+  // vistoria DEVOLVIDA sem cancelar a devolução PENDENTE deixa uma linha
+  // órfã que passa a vencer fetchDevolucaoPendente() (pega a mais recente
+  // do técnico) pra sempre, bloqueando/desviando ele em outras devoluções
+  // de fato ativas. No-op se não havia nenhuma pendente.
+  await cancelarDevolucoesPorVistoria(vistoriaId);
 
   await execute(
     `UPDATE \`${TABLE_FIELDS}\`
