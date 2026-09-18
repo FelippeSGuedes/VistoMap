@@ -43,10 +43,18 @@ export async function GET(req: Request) {
       inicioSerieParam && ISO_DATE.test(inicioSerieParam) ? inicioSerieParam : inicio;
 
     // Trava de segurança: nunca deixa um range absurdo (parâmetro errado,
-    // uso indevido da API) varrer a tabela inteira.
-    const MAX_DIAS = 366 * 2;
+    // uso indevido da API) varrer a tabela inteira. 2 anos rejeitava o
+    // próprio "Todo Período" do dashboard (INICIO_DOS_TEMPOS bem no
+    // passado, de propósito, pra cobrir toda a operação) — a requisição
+    // inteira falhava com 400 e, como o loader do dashboard usa
+    // Promise.all sem isolamento por chamada, TODO o /painel congelava nos
+    // últimos números válidos (causa real do "Aprovadas > 100%" visto em
+    // campo 2026-09-18: números de períodos diferentes coexistindo).
+    // 10 anos ainda bloqueia parâmetro absurdo/mal-formado sem brigar com
+    // uso legítimo de "todo o histórico".
+    const MAX_DIAS = 366 * 10;
     if (diasEntre(inicioSerie, fim) > MAX_DIAS || diasEntre(inicio, fim) > MAX_DIAS) {
-      return NextResponse.json({ message: "Período máximo é de 2 anos." }, { status: 400 });
+      return NextResponse.json({ message: "Período máximo é de 10 anos." }, { status: 400 });
     }
 
     const data = await fetchHistoricoAnalytics(inicio, fim, inicioSerie);

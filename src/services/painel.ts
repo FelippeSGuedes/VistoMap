@@ -328,6 +328,10 @@ export interface HistoricoAnalytics {
     reprovadas: number;
   }>;
   topMunicipios: Array<{ municipio: string; total: number; concluidas: number }>;
+  /** Mesmo ranking, mas concluídas DENTRO do período — usado pelo mapa/
+   *  ranking de Padrão Diário no dashboard (topMunicipios acima é sempre
+   *  todo o histórico, serve a tela /painel/historico). */
+  topMunicipiosPeriodo: Array<{ municipio: string; concluidas: number }>;
   rankingTecnicos: Array<{
     id: number;
     nome: string;
@@ -420,6 +424,7 @@ export async function fetchHistorico(
     medias: { diariaVistorias: 0, semanalVistorias: 0 },
     serieDiaria: [],
     topMunicipios: [],
+    topMunicipiosPeriodo: [],
     rankingTecnicos: [],
     kmOperacional: 0,
     motivosReprovacao: [],

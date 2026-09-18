@@ -66,6 +66,11 @@ export interface HistoricoAnalytics {
     /** Quantas dessas já foram finalizadas (datadavistoriafield preenchida). */
     concluidas: number;
   }>;
+  /** Mesmo ranking, mas concluídas DENTRO do período (inicio..fim) — pro
+   *  mapa/ranking de Padrão Diário no dashboard, que precisa refletir o
+   *  filtro de período (topMunicipios acima é intencionalmente todo o
+   *  histórico, serve a tela /painel/historico). */
+  topMunicipiosPeriodo: Array<{ municipio: string; concluidas: number }>;
   rankingTecnicos: Array<{
     id: number;
     nome: string;
@@ -262,6 +267,33 @@ export async function fetchHistoricoAnalytics(
        ORDER BY concluidas DESC
        LIMIT 10
     `
+  );
+
+  /* ── Top municípios DO PERÍODO — achado em campo 2026-09-18: o mapa/
+     ranking do dashboard (Padrão Diário) reaproveitava `topMunicipios`
+     acima, que é TODO O HISTÓRICO por design (serve o progresso "concluído
+     de sempre" da tela /painel/historico) — só que o widget exibe
+     "{periodoLabel}" no título e não mudava um número sequer entre 14
+     dias/Todo Período. Query irmã da de cima, com o MESMO filtro de data
+     de `agg`/`serieDiaria` (inicio..fim reais). LIMIT mais largo (20, não
+     10) — ajuda o mapa a enquadrar o cluster de atuação inteiro, não só o
+     topo. */
+  const muniPeriodoRows = await query<{ municipio: string; concluidas: number }>(
+    `
+      SELECT TRIM(f.municipiofield) AS municipio,
+             COUNT(*) AS concluidas
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE f.municipiofield IS NOT NULL
+         AND TRIM(f.municipiofield) <> ''
+         AND f.datadavistoriafield IS NOT NULL
+         AND DATE(f.datadavistoriafield) >= ?
+         AND DATE(f.datadavistoriafield) <= ?
+       GROUP BY TRIM(f.municipiofield)
+       ORDER BY concluidas DESC
+       LIMIT 20
+    `,
+    [inicio, fim]
   );
 
   /* ── Ranking técnicos ──────────────────────────────────────── */
@@ -477,6 +509,10 @@ export async function fetchHistoricoAnalytics(
     topMunicipios: muniRows.map((r) => ({
       municipio: r.municipio,
       total: Number(r.total) || 0,
+      concluidas: Number(r.concluidas) || 0,
+    })),
+    topMunicipiosPeriodo: muniPeriodoRows.map((r) => ({
+      municipio: r.municipio,
       concluidas: Number(r.concluidas) || 0,
     })),
     rankingTecnicos,

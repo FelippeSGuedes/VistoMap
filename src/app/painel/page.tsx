@@ -784,6 +784,42 @@ function HeatmapMapWidget({
     ] as unknown as mapboxgl.Expression;
   };
 
+  // Enquadra o mapa nos municípios COM DADO no período (não no estado
+  // inteiro) — pedido em campo: com a área de atuação real sendo um
+  // punhado de cidades perto de Campinas/Jundiaí, encaixar o estado de SP
+  // inteiro deixava o mapa parecendo vazio (a região colorida virava um
+  // ponto minúsculo no meio de uma imensidão cinza). Some > 0 municípios
+  // vira o recorte; NENHUM ativo (ex.: "Hoje" sem finalizações ainda) cai
+  // de volta pro estado inteiro, pra nunca zerar o enquadramento.
+  // Reaproveitado tanto na carga inicial quanto a cada troca de período
+  // (o recorte muda de propósito conforme o filtro muda quais cidades tem
+  // dado — não é um zoom travado igual antes).
+  const applyBoundsForMunis = (munis: Array<{ municipio: string; total: number }>) => {
+    const map = mapRef.current;
+    const geo = geoRef.current;
+    if (!map || !geo) return;
+    const ativos = new Set(munis.filter(m => m.total > 0).map(m => normalizeStr(m.municipio)));
+    const bounds = new mapboxgl.LngLatBounds();
+    for (const f of geo.features as Array<{ geometry: { type: string; coordinates: number[][][] | number[][][][] }; properties: Record<string, unknown> }>) {
+      const nome = normalizeStr(String(f.properties?.name ?? ""));
+      if (ativos.size > 0 && !ativos.has(nome)) continue;
+      const g = f.geometry;
+      const rings = g.type === "Polygon"
+        ? [g.coordinates[0] as number[][]]
+        : (g.coordinates as number[][][][]).map(p => p[0]);
+      for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
+    }
+    if (bounds.isEmpty()) return;
+    // destrava antes de reenquadrar — setMinZoom/MaxZoom da chamada
+    // anterior travava o zoom exatamente onde tinha ficado.
+    map.setMinZoom(0);
+    map.setMaxZoom(22);
+    map.fitBounds(bounds, { padding: { top: 40, bottom: 40, left: 40, right: 80 }, animate: false, maxZoom: 11 });
+    const z = map.getZoom();
+    map.setMinZoom(z);
+    map.setMaxZoom(z);
+  };
+
   useEffect(() => {
     if (!containerRef.current || !token) return;
     injectStyle(
@@ -874,20 +910,7 @@ function HeatmapMapWidget({
           },
         });
 
-        const bounds = new mapboxgl.LngLatBounds();
-        for (const f of geoJSON.features as Array<{ geometry: { type: string; coordinates: number[][][] | number[][][][] } }>) {
-          const g = f.geometry;
-          const rings = g.type === "Polygon"
-            ? [g.coordinates[0] as number[][]]
-            : (g.coordinates as number[][][][]).map(p => p[0]);
-          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
-        }
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: { top: 8, bottom: 8, left: 8, right: 40 }, animate: false });
-          const z = map.getZoom();
-          map.setMinZoom(z);
-          map.setMaxZoom(z);
-        }
+        applyBoundsForMunis(munisRef.current);
 
         // nome normalizado → id da feature (mesmo campo que promoteId lê,
         // properties.id) — permite acender uma região a partir de FORA do
@@ -959,7 +982,10 @@ function HeatmapMapWidget({
     };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update data + fill scale on poll refresh without recreating the map
+  // Update data + fill scale + enquadramento on poll refresh / troca de
+  // período, sem recriar o mapa. Reenquadra também (não só recolore) —
+  // o recorte muda de propósito quando o período muda quais cidades tem
+  // dado (ver applyBoundsForMunis).
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded() || !map.getLayer("vm-sp-fill")) return;
@@ -967,6 +993,7 @@ function HeatmapMapWidget({
     if (!enriched) return;
     (map.getSource("vm-sp-src") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
     map.setPaintProperty("vm-sp-fill", "fill-color", fillExpr(topMunicipios));
+    applyBoundsForMunis(topMunicipios);
   }, [topMunicipios]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Indicadores com % — mesmo denominador (finalizadas do período) pra
@@ -2302,11 +2329,29 @@ export default function PainelOverviewPage() {
     // com "o anterior" no Widget de Vistorias Finalizadas) — mas
     // totais/taxas/médias (Padrão Diário, gauges de Equipe ao Vivo) usam
     // inicio/fim reais, refletindo exatamente o período selecionado.
+    //
+    // O "olhar pra trás" é limitado a 366 dias mesmo quando o período
+    // selecionado é enorme (Todo Período, ~anos) — dobrar um período já
+    // gigante pra achar "o anterior" não faz sentido (não existe "período
+    // antes de todo o histórico") e essa comparação nem é usada nesse
+    // modo. Sem o cap, achado em campo 2026-09-18: Todo Período pedia um
+    // inicioSerie tão distante que passava do limite de segurança do
+    // endpoint, a chamada falhava, e por não ter isolamento por request
+    // (ver Promise.allSettled abaixo) o /painel inteiro congelava nos
+    // últimos números válidos — sintoma visível: "Aprovadas 463 · 135%".
+    const lookbackDias = Math.min(periodoRange.dias, 366);
     const d = new Date(periodoRange.fim);
-    d.setDate(d.getDate() - (periodoRange.dias * 2 - 1));
+    d.setDate(d.getDate() - (periodoRange.dias + lookbackDias - 1));
     const inicioSerie = d.toISOString().slice(0, 10);
     const load = async () => {
-      const [s, t, r, a, h, mp] = await Promise.all([
+      // allSettled, não all: um endpoint falhando (rede, timeout, período
+      // fora do alcance do backend) não pode mais travar os OUTROS nem
+      // deixar o dashboard com números de fetches de momentos diferentes
+      // coexistindo na tela — cada um atualiza seu próprio estado só
+      // quando responde com sucesso; senão mantém o último valor bom e
+      // avisa no console (achado em campo 2026-09-18, ver comentário do
+      // MAX_DIAS/lookbackDias acima).
+      const [s, t, r, a, h, mp] = await Promise.allSettled([
         painelService.fetchStats(),
         painelService.fetchTecnicos(),
         painelService.fetchRevisitas(),
@@ -2315,8 +2360,12 @@ export default function PainelOverviewPage() {
         api.get<PainelMapaResponse>("/painel/mapa").then(res => res.data).catch(() => null),
       ]);
       if (!alive) return;
-      setStats(s); setTecnicos(t); setRevisitas(r); setAudit(a); setHistorico(h);
-      if (mp) setMapaRealtime(mp);
+      if (s.status === "fulfilled") setStats(s.value); else console.warn("[painel] fetchStats falhou:", s.reason);
+      if (t.status === "fulfilled") setTecnicos(t.value); else console.warn("[painel] fetchTecnicos falhou:", t.reason);
+      if (r.status === "fulfilled") setRevisitas(r.value); else console.warn("[painel] fetchRevisitas falhou:", r.reason);
+      if (a.status === "fulfilled") setAudit(a.value); else console.warn("[painel] fetchAudit falhou:", a.reason);
+      if (h.status === "fulfilled") setHistorico(h.value); else console.warn("[painel] fetchHistorico falhou:", h.reason);
+      if (mp.status === "fulfilled" && mp.value) setMapaRealtime(mp.value);
       setNow(new Date());
     };
     load();
@@ -2945,10 +2994,13 @@ export default function PainelOverviewPage() {
         {/* Widget 02 — Padrão Diário: SP fill heatmap */}
         {historico ? (
           <HeatmapMapWidget
-            // O fill do mapa é "atividade concluída", não "tem algo atribuído
-            // lá" — senão município com só backlog intocado aparecia colorido
-            // como se já tivesse sido vistoriado.
-            topMunicipios={historico.topMunicipios.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
+            // Achado em campo 2026-09-18: isso usava historico.topMunicipios
+            // (TODO o histórico, por design — serve /painel/historico) e não
+            // mudava um número sequer entre 14 dias/Todo Período, apesar do
+            // título do widget dizer "{periodoLabel}". topMunicipiosPeriodo é
+            // a query irmã, filtrada pelo mesmo inicio..fim de tudo mais
+            // nesta tela.
+            topMunicipios={historico.topMunicipiosPeriodo.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
             totais={historico.totais}
             mediaSemanal={historico.medias.semanalVistorias}
             periodoLabel={periodoLabel}
