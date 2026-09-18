@@ -9,6 +9,7 @@ import {
   TABLE_STATUS_VISTORIA,
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
+import { RECUSA_MOTIVO_CATEGORIA, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
 
 // situaodavistoriafield: 3=Vistoriado, 6=Revisitado — mesma prioridade 1 que
 // resolveAdminStatus() já usa em painel.ts e que fetchVistoriasRealizadas()
@@ -83,6 +84,21 @@ export interface HistoricoAnalytics {
     aprovadoComPendencia: number;
     pendente: number;
     reprovado: number;
+    /** Impedimentos/recusas do período nesse município — fonte diferente
+     *  (glpi_plugin_vistomap_recusas), só PENDENTE+APROVADO. */
+    impedimento: number;
+    recusa: number;
+  }>;
+  /** Feed "em tempo real" — mescla audit log (Vistoriada/Impedida/Recusada,
+   *  horário preciso) com `ne.date_mod` do GLPI (Aprovada/Aprovado com
+   *  Pendência/Reprovada — a concessionária decide direto no GLPI, sem
+   *  passar pelo audit do VistoMap, mas o próprio GLPI grava quando o
+   *  registro foi salvo). Já ordenado por horário, mais recente primeiro. */
+  atividadeRecente: Array<{
+    ts: string;
+    status: "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
+    equipamento: string;
+    municipio: string | null;
   }>;
   rankingTecnicos: Array<{
     id: number;
@@ -355,6 +371,121 @@ export async function fetchHistoricoAnalytics(
   const atribuidasPeriodo = Number(atribRow?.atual ?? 0);
   const atribuidasPeriodoAnterior = Number(atribRow?.anterior ?? 0);
 
+  /* ── Impedidos/Recusadas por município no período — pedido 2026-09-18
+     ("status por município... impedidos, recusadas"). Fonte é OUTRO
+     sistema (glpi_plugin_vistomap_recusas, não o status de vistoria), por
+     isso é uma agregação à parte, não uma coluna a mais na tabela de
+     status. Mesma regra já documentada em recusas.ts: só conta
+     PENDENTE+APROVADO (REPROVADO volta pro técnico, não é um impedimento/
+     recusa "de verdade"). Categoria decidida pelo analista quando existe;
+     cai no palpite automático (RECUSA_MOTIVO_CATEGORIA) enquanto ainda não
+     foi decidida — mesma regra de recusas.ts. */
+  const recusaRows = await query<{
+    municipio: string | null;
+    motivo: string;
+    categoria: RecusaCategoria | null;
+  }>(
+    `
+      SELECT TRIM(f.municipiofield) AS municipio, r.motivo, r.categoria
+        FROM glpi_plugin_vistomap_recusas r
+        INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = r.vistoria_id
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE r.status IN ('PENDENTE', 'APROVADO')
+         AND DATE(r.criado_em) >= ?
+         AND DATE(r.criado_em) <= ?
+    `,
+    [inicio, fim]
+  );
+  const municipiosImpedimentosMap = new Map<string, { impedimento: number; recusa: number }>();
+  for (const r of recusaRows) {
+    const municipio = (r.municipio ?? "").trim();
+    if (!municipio) continue;
+    const categoria: RecusaCategoria =
+      r.categoria ?? RECUSA_MOTIVO_CATEGORIA[r.motivo as RecusaMotivo] ?? "recusa";
+    const ref = municipiosImpedimentosMap.get(municipio) ?? { impedimento: 0, recusa: 0 };
+    ref[categoria]++;
+    municipiosImpedimentosMap.set(municipio, ref);
+  }
+
+  /* ── Últimas vistorias (feed "em tempo real") — pedido 2026-09-18.
+     Combina DUAS fontes de horário real (nenhuma inventada):
+     - audit log (vistoria-finalizada / recusa-aprovada) — timestamp
+       preciso, gravado pelo próprio VistoMap;
+     - `ne.date_mod` (nativo do GLPI, mantido pelo framework a cada save)
+       pras decisões da concessionária (Aprovado/Aprovado com Pendências/
+       Reprovado) — a decisão em si não passa pelo audit log do VistoMap
+       (é a concessionária mexendo direto no GLPI), mas o próprio GLPI já
+       registra QUANDO o registro foi salvo pela última vez. Confirmado em
+       produção: date_mod fica dias/semanas depois da data da vistoria,
+       não colado nela — é a gravação da decisão, não a visita.
+     As duas listas são mescladas e ordenadas por horário só depois de
+     buscadas (não dá pra fazer isso em SQL across 2 fontes tão
+     diferentes sem complicar demais). */
+  const atividadeAuditRows = await query<{
+    ts: string;
+    acao: string;
+    categoria: RecusaCategoria | null;
+    equipamento: string;
+    municipio: string | null;
+  }>(
+    `
+      SELECT a.ts, a.acao, a.categoria, a.alvo_label AS equipamento,
+             TRIM(f.municipiofield) AS municipio
+        FROM glpi_plugin_vistomap_audit a
+        LEFT JOIN \`${TABLE_FIELDS}\` f ON f.items_id = CAST(a.alvo_id AS UNSIGNED)
+       WHERE a.acao IN ('vistoria-finalizada', 'recusa-aprovada')
+         AND DATE(a.ts) >= ?
+         AND DATE(a.ts) <= ?
+       ORDER BY a.ts DESC
+       LIMIT 30
+    `,
+    [inicio, fim]
+  );
+  const atividadeDecisaoRows = await query<{
+    ts: string;
+    status_name: string;
+    equipamento: string;
+    municipio: string | null;
+  }>(
+    `
+      SELECT ne.date_mod AS ts, sv.name AS status_name, ne.name AS equipamento,
+             TRIM(f.municipiofield) AS municipio
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+                ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+       WHERE sv.name IN ('Aprovado', 'Aprovada', 'Aprovado com Pendências', 'Reprovado', 'Reprovada')
+         AND DATE(ne.date_mod) >= ?
+         AND DATE(ne.date_mod) <= ?
+       ORDER BY ne.date_mod DESC
+       LIMIT 30
+    `,
+    [inicio, fim]
+  );
+  type AtividadeStatus = "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
+  const atividadeRecente: Array<{ ts: string; status: AtividadeStatus; equipamento: string; municipio: string | null }> = [];
+  for (const r of atividadeAuditRows) {
+    if (r.acao === "vistoria-finalizada") {
+      atividadeRecente.push({ ts: r.ts, status: "Vistoriada", equipamento: r.equipamento, municipio: r.municipio });
+    } else if (r.acao === "recusa-aprovada") {
+      atividadeRecente.push({
+        ts: r.ts,
+        status: r.categoria === "impedimento" ? "Impedida" : "Recusada",
+        equipamento: r.equipamento,
+        municipio: r.municipio,
+      });
+    }
+  }
+  for (const r of atividadeDecisaoRows) {
+    const status: AtividadeStatus =
+      r.status_name === "Reprovado" || r.status_name === "Reprovada" ? "Reprovada"
+      : r.status_name === "Aprovado com Pendências" ? "Aprovado com Pendência"
+      : "Aprovada";
+    atividadeRecente.push({ ts: r.ts, status, equipamento: r.equipamento, municipio: r.municipio });
+  }
+  atividadeRecente.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  const atividadeRecenteTop = atividadeRecente.slice(0, 10);
+
   /* ── Ranking técnicos ──────────────────────────────────────── */
   // LEFT JOIN de propósito (era INNER): um técnico purgado do GLPI (ver
   // usuariosRemovidos.ts) sumia do ranking por completo, mesmo tendo
@@ -577,6 +708,7 @@ export async function fetchHistoricoAnalytics(
       const aprovadoComPendencia = Number(r.aprovadoComPendencia) || 0;
       const reprovado = Number(r.reprovado) || 0;
       const concluidas = Number(r.concluidas) || 0;
+      const impedRecusa = municipiosImpedimentosMap.get(r.municipio) ?? { impedimento: 0, recusa: 0 };
       return {
         municipio: r.municipio,
         concluidas,
@@ -584,8 +716,11 @@ export async function fetchHistoricoAnalytics(
         aprovadoComPendencia,
         pendente: Math.max(concluidas - aprovado - aprovadoComPendencia - reprovado, 0),
         reprovado,
+        impedimento: impedRecusa.impedimento,
+        recusa: impedRecusa.recusa,
       };
     }),
+    atividadeRecente: atividadeRecenteTop,
     rankingTecnicos,
     kmOperacional: Math.round(kmTotal * 10) / 10,
     motivosReprovacao,

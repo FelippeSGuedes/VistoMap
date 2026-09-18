@@ -343,6 +343,21 @@ export interface HistoricoAnalytics {
     aprovadoComPendencia: number;
     pendente: number;
     reprovado: number;
+    /** Impedimentos/recusas do período nesse município — fonte diferente
+     *  (glpi_plugin_vistomap_recusas), só PENDENTE+APROVADO. */
+    impedimento: number;
+    recusa: number;
+  }>;
+  /** Feed "em tempo real" — mescla audit log (Vistoriada/Impedida/Recusada,
+   *  horário preciso) com `ne.date_mod` do GLPI (Aprovada/Aprovado com
+   *  Pendência/Reprovada — decisão da concessionária direto no GLPI, sem
+   *  audit próprio, mas o GLPI grava quando o registro foi salvo).
+   *  Já ordenado por horário, mais recente primeiro. */
+  atividadeRecente: Array<{
+    ts: string;
+    status: "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
+    equipamento: string;
+    municipio: string | null;
   }>;
   rankingTecnicos: Array<{
     id: number;
@@ -437,6 +452,7 @@ export async function fetchHistorico(
     serieDiaria: [],
     topMunicipios: [],
     topMunicipiosPeriodo: [],
+    atividadeRecente: [],
     rankingTecnicos: [],
     kmOperacional: 0,
     motivosReprovacao: [],

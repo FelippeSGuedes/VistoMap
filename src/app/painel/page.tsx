@@ -715,7 +715,8 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
 interface HeatmapMapWidgetProps {
   /** Simples — só o total (concluídas), pro fill do mapa e as bolhas. */
   topMunicipios: Array<{ municipio: string; total: number }>;
-  /** Mesmo período, com a quebra por status — pro ranking em tabela. */
+  /** Mesmo período, com a quebra por status — pro ranking em tabela +
+   *  barra de status por município. */
   topMunicipiosDetalhe: Array<{
     municipio: string;
     concluidas: number;
@@ -723,6 +724,15 @@ interface HeatmapMapWidgetProps {
     aprovadoComPendencia: number;
     pendente: number;
     reprovado: number;
+    impedimento: number;
+    recusa: number;
+  }>;
+  /** Feed "em tempo real" — já mesclado e ordenado (ver historico.ts). */
+  atividadeRecente: Array<{
+    ts: string;
+    status: "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
+    equipamento: string;
+    municipio: string | null;
   }>;
   totais: {
     vistoriasFinalizadas: number;
@@ -747,6 +757,7 @@ interface HeatmapMapWidgetProps {
 function HeatmapMapWidget({
   topMunicipios,
   topMunicipiosDetalhe,
+  atividadeRecente,
   totais,
   mediaSemanal,
   periodoLabel,
@@ -1097,6 +1108,19 @@ function HeatmapMapWidget({
   // mesma ordenação por concluídas, mas com a quebra por status.
   const rankingDetalhe = [...topMunicipiosDetalhe].sort((a, b) => b.concluidas - a.concluidas).slice(0, 6);
 
+  // Cor por status no feed "Últimas vistorias" — mesma paleta institucional
+  // de tudo mais no widget (verde/âmbar/vermelho pras 3 decisões da
+  // concessionária); Impedida/Recusada reaproveitam o mesmo par já usado
+  // pra essas duas categorias em outros lugares do painel.
+  const ATIVIDADE_COR: Record<string, string> = {
+    Vistoriada: "#3B82F6",
+    Impedida: "#F59E0B",
+    Recusada: "#EF4444",
+    Aprovada: "#059669",
+    "Aprovado com Pendência": "#D97706",
+    Reprovada: "#DC2626",
+  };
+
   /* ── Mini-evolução — mesma série diária de Vistorias Finalizadas
      (evolucaoValues/Labels), num traço compacto sem decoração de média/pico
      (não cabem numa faixa de 56px sem virar poluição). ── */
@@ -1263,29 +1287,72 @@ function HeatmapMapWidget({
                     return (
                       <div
                         key={m.municipio}
-                        className="group grid cursor-default items-center gap-x-1.5 py-1.5"
-                        style={{ gridTemplateColumns: "1fr 36px 36px 36px 36px 42px" }}
+                        className="group cursor-default py-1.5"
                         onMouseEnter={() => hoverApiRef.current.setHoverName(m.municipio)}
                         onMouseLeave={() => hoverApiRef.current.setHoverName(null)}
                       >
-                        <span className="truncate text-[11px] font-medium text-[var(--vm-text)] transition group-hover:text-[#059669]">
-                          {m.municipio}
-                        </span>
-                        <span className="text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
-                          {fmtNum(m.concluidas)}
-                        </span>
-                        <span className="text-right text-[11px] tabular-nums" style={{ color: "#059669" }}>
-                          {fmtNum(m.aprovado)}
-                        </span>
-                        <span className="text-right text-[11px] tabular-nums" style={{ color: "#D97706" }}>
-                          {fmtNum(m.pendente)}
-                        </span>
-                        <span className="text-right text-[11px] tabular-nums" style={{ color: "#DC2626" }}>
-                          {fmtNum(m.reprovado)}
-                        </span>
-                        <span className="text-right text-[10px] font-semibold tabular-nums" style={{ color: "var(--vm-text)" }}>
-                          {pctAprov.toFixed(0)}%
-                        </span>
+                        <div className="grid items-center gap-x-1.5" style={{ gridTemplateColumns: "1fr 36px 36px 36px 36px 42px" }}>
+                          <span className="truncate text-[11px] font-medium text-[var(--vm-text)] transition group-hover:text-[#059669]">
+                            {m.municipio}
+                          </span>
+                          <span className="text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
+                            {fmtNum(m.concluidas)}
+                          </span>
+                          <span className="text-right text-[11px] tabular-nums" style={{ color: "#059669" }}>
+                            {fmtNum(m.aprovado)}
+                          </span>
+                          <span className="text-right text-[11px] tabular-nums" style={{ color: "#D97706" }}>
+                            {fmtNum(m.pendente)}
+                          </span>
+                          <span className="text-right text-[11px] tabular-nums" style={{ color: "#DC2626" }}>
+                            {fmtNum(m.reprovado)}
+                          </span>
+                          <span className="text-right text-[10px] font-semibold tabular-nums" style={{ color: "var(--vm-text)" }}>
+                            {pctAprov.toFixed(0)}%
+                          </span>
+                        </div>
+                        {/* Status por município — barra (Aprov./Pend./Repr., mutuamente
+                            exclusivos) + chip de Impedido/Recusado à parte (eixo
+                            diferente: vem de outro sistema, recusas/impedimentos —
+                            ver historico.ts). */}
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <div className="flex h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
+                            {m.aprovado > 0 && (
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(m.aprovado / m.concluidas) * 100}%` }}
+                                transition={{ duration: 0.6 }}
+                                style={{ background: "#059669", minWidth: 2 }}
+                                title={`${m.aprovado} aprovadas`}
+                              />
+                            )}
+                            {m.pendente > 0 && (
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(m.pendente / m.concluidas) * 100}%` }}
+                                transition={{ duration: 0.6 }}
+                                style={{ background: "#D97706", minWidth: 2 }}
+                                title={`${m.pendente} pendentes`}
+                              />
+                            )}
+                            {m.reprovado > 0 && (
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(m.reprovado / m.concluidas) * 100}%` }}
+                                transition={{ duration: 0.6 }}
+                                style={{ background: "#DC2626", minWidth: 2 }}
+                                title={`${m.reprovado} reprovadas`}
+                              />
+                            )}
+                          </div>
+                          {(m.impedimento > 0 || m.recusa > 0) && (
+                            <span className="shrink-0 text-[9px] font-semibold tabular-nums" style={{ color: "var(--vm-faint)" }}>
+                              {m.impedimento > 0 && `${m.impedimento} imped.`}
+                              {m.impedimento > 0 && m.recusa > 0 && " · "}
+                              {m.recusa > 0 && `${m.recusa} recus.`}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1319,6 +1386,42 @@ function HeatmapMapWidget({
             <div className="mt-0.5 flex items-center justify-between text-[9.5px] text-[var(--vm-faint)]">
               <span>{evolucaoLabels[0] ?? ""}</span>
               <span>{evolucaoLabels[evolucaoLabels.length - 1] ?? ""}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Últimas vistorias — feed em tempo real, pedido 2026-09-18.
+            Horário real: Vistoriada/Impedida/Recusada vêm do audit log
+            (preciso); Aprovada/Aprovado com Pendência/Reprovada vêm de
+            `ne.date_mod` do próprio GLPI (a concessionária decide direto
+            lá — sem isso o sistema não sabe QUANDO, só O QUE decidiram;
+            confirmado em produção que date_mod reflete a gravação da
+            decisão, não a data da vistoria). Mescladas em historico.ts,
+            já ordenadas. ── */}
+        {atividadeRecente.length > 0 && (
+          <div className="border-t border-[var(--vm-tile-2)] px-5 py-3.5">
+            <p className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--vm-faint)]">
+              Últimas vistorias
+            </p>
+            <div className="flex flex-col gap-2">
+              {atividadeRecente.slice(0, 6).map((a, i) => {
+                const cor = ATIVIDADE_COR[a.status] ?? "#6B7280";
+                return (
+                  <div key={`${a.ts}-${i}`} className="flex items-center gap-2.5">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: cor }} />
+                    <span className="shrink-0 text-[11px] font-semibold" style={{ color: cor }}>
+                      {a.status}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: "var(--vm-text)" }}>
+                      {a.equipamento}
+                      {a.municipio && <span style={{ color: "var(--vm-faint)" }}> · {a.municipio}</span>}
+                    </span>
+                    <span className="shrink-0 text-[10px] tabular-nums" style={{ color: "var(--vm-faint)" }}>
+                      {relativo(a.ts)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -3136,6 +3239,7 @@ export default function PainelOverviewPage() {
             // nesta tela.
             topMunicipios={historico.topMunicipiosPeriodo.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
             topMunicipiosDetalhe={historico.topMunicipiosPeriodo}
+            atividadeRecente={historico.atividadeRecente}
             totais={historico.totais}
             mediaSemanal={historico.medias.semanalVistorias}
             periodoLabel={periodoLabel}
