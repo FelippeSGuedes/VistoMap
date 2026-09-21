@@ -120,6 +120,15 @@ export function isRevisitaAtual(sinais: {
   isRepeat?: number | string | boolean | null;
 }): boolean {
   const situacaoId = sinais.situacaoId != null ? Number(sinais.situacaoId) : null;
+  // Reprovado pela concessionária é o sinal mais forte e sempre vence, ANTES
+  // do corte de "situação já resolvida" abaixo — essa reprovação costuma vir
+  // de uma edição direta no GLPI que só mexe no statusvistoria, nunca na
+  // situação, então ela fica "presa" em Vistoriado(3)/Revisitado(6) do ciclo
+  // anterior. Caso real (JUN-G-A-292, 2026-09-21): técnico finalizou
+  // (situação=3), concessionária reprovou direto no GLPI (situação continuou
+  // 3), e atribuir de novo tratava como vistoria comum em vez de revisita
+  // porque o corte abaixo retornava false antes de checar o status.
+  if (Number(sinais.statusVistoriaId) === STATUS_VISTORIA_REPROVADO) return true;
   // Situação já avançou pra um estado resolvido (Vistoriado/Revisitado)
   // manda, mesmo com is_repeat ainda em 1 — esse campo só é zerado quando
   // o ANALISTA aprova (aprovarVistoria), nunca quando o técnico reenvia a
@@ -133,7 +142,6 @@ export function isRevisitaAtual(sinais: {
   if (situacaoId === SITUACAO_AGUARDANDO_REVISITA || situacaoId === SITUACAO_EM_REVISITA) {
     return true;
   }
-  if (Number(sinais.statusVistoriaId) === STATUS_VISTORIA_REPROVADO) return true;
   return false;
 }
 
