@@ -298,32 +298,26 @@ export async function fetchHistoricoAnalytics(
     `
   );
 
-  /* ── Top municípios DO PERÍODO — achado em campo 2026-09-18: o mapa/
-     ranking do dashboard (Padrão Diário) reaproveitava `topMunicipios`
-     acima, que é TODO O HISTÓRICO por design (serve o progresso "concluído
-     de sempre" da tela /painel/historico) — só que o widget exibe
-     "{periodoLabel}" no título e não mudava um número sequer entre 14
-     dias/Todo Período. Query irmã da de cima, com o MESMO filtro de data
-     de `agg`/`serieDiaria` (inicio..fim reais). LIMIT mais largo (20, não
-     10) — ajuda o mapa a enquadrar o cluster de atuação inteiro, não só o
-     topo.
-     Pedido 2026-09-18: ranking com quebra por status, não só o total —
-     `aprovado` já vem SOMADO (Aprovado + Aprovado com Pendências, igual
-     pedido: "total aprovados... mesmo com aprovados e aprovados com
-     pendencia"). `pendente` é o resíduo (concluída pelo técnico, ainda sem
-     decisão da concessionária — nem aprovado nem reprovado; normalmente
-     "Em análise", mas também cobre revisita em andamento).
-
-     2026-09-22: chegou a ter um filtro aqui restringindo `concluidas` a
-     situação Vistoriado/Revisitado OU status resolvido — revertido a
-     pedido do usuário ("total fosse total de tudo mesmo pendente no
-     período, não só atribuída"): Total é TUDO que teve atividade
-     (datadavistoriafield) no período, sem exigir estado concluído —
-     reprovado (atribuído ou não) e em revisita contam normal, caem no
-     resíduo `pendente` quando não batem com aprovado/reprovado. O bug
-     real que motivou a queixa era a situação errada nos 4 registros
-     (JUN-G-A-292 etc.) já corrigida em isRevisitaAtual()/atribuirVistoria,
-     não a definição desta query. */
+  /* ── Top municípios — snapshot geral do inventário (não mais por período)
+     ─────────────────────────────────────────────────────────────────────
+     Histórico da confusão (pra não repetir): esta query já foi "período
+     filtrado por datadavistoriafield" de duas formas diferentes (achado
+     2026-09-18, depois um filtro extra de situação em 2026-09-22) — as
+     duas erradas pro mesmo motivo. Achado 2026-09-22 (Campinas): o
+     município tem 760 equipamentos cadastrados, mas qualquer recorte por
+     data de vistoria mostra só uma fração (36, 322 no all-time, etc.) —
+     porque a maioria ainda não foi vistoriada nenhuma vez (sem
+     datadavistoriafield). "Total" aqui É o tamanho real do inventário do
+     município (igual `muniRows`/`topMunicipios` acima), não uma contagem
+     de atividade num recorte de tempo. `aprovado`/`aprovadoComPendencia`/
+     `reprovado` são o STATUS ATUAL de todo o inventário (não só quem teve
+     atividade recente); `pendente` (calculado no client, residual) cobre
+     tanto quem nunca foi vistoriado quanto quem está em revisita/análise.
+     Por isso não recebe `inicio`/`fim` — o filtro "Todo Período" da tela
+     não afeta mais este ranking/mapa, só os indicadores e a evolução
+     (que continuam por período, ver `agg`/`serieDiaria` acima). LIMIT 20
+     (não 10, como `muniRows`) — ajuda o mapa a enquadrar o cluster de
+     atuação inteiro, não só o topo. */
   const muniPeriodoRows = await query<{
     municipio: string;
     concluidas: number;
@@ -343,14 +337,10 @@ export async function fetchHistoricoAnalytics(
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
        WHERE f.municipiofield IS NOT NULL
          AND TRIM(f.municipiofield) <> ''
-         AND f.datadavistoriafield IS NOT NULL
-         AND DATE(f.datadavistoriafield) >= ?
-         AND DATE(f.datadavistoriafield) <= ?
        GROUP BY TRIM(f.municipiofield)
        ORDER BY concluidas DESC
        LIMIT 20
-    `,
-    [inicio, fim]
+    `
   );
 
   /* ── Vistorias ATRIBUÍDAS no período — pedido 2026-09-18, "tem que
