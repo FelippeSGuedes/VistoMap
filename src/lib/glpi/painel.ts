@@ -1242,13 +1242,30 @@ export async function atribuirVistoria(
   // valores, então a vistoria sumia da lista dele mesmo aparecendo
   // "atribuída" pro analista. Caso real: VIN-G-A-009 atribuído ao Danilo
   // e nunca apareceu porque ficou com status_id=4 (Reprovado).
+  //
+  // Mesmo achado se aplica a "pendencia" — achado 2026-09-22 (JUN-G-A-292):
+  // quando a vistoria já tinha sido aprovada internamente antes (aprovarVistoria
+  // grava pendencia=Pendência CPFL, aguardando a análise deles) e a
+  // concessionária reprova depois, reatribuir pro técnico revisitar deixava
+  // esse campo preso em "Pendência CPFL" — o projeto continuava contando na
+  // fila/lembrete de "Pendentes CPFL" (fetchContagemPendenciaCPFL em cpfl.ts)
+  // mesmo já tendo voltado pro nosso lado pra revisita. Só reseta na
+  // revisita: uma atribuição de vistoria nova (não revisita) não passou por
+  // aprovarVistoria() ainda, então não tem nada preso pra limpar aqui.
+  const sets = [
+    "users_id_vistoriadorafield = ?",
+    `\`${SITUACAO_COLUMN}\` = ?`,
+    "plugin_fields_statusvistoriafielddropdowns_id = ?",
+  ];
+  const updateParams: unknown[] = [tecnicoId, situacao, STATUS_VISTORIA_PENDENTE];
+  if (eraRevisita) {
+    sets.push("plugin_fields_pendnciafielddropdowns_id = ?");
+    updateParams.push(PENDENCIA_NANSEN);
+  }
+  updateParams.push(vistoriaId);
   const r = await execute(
-    `UPDATE \`${TABLE_FIELDS}\`
-        SET users_id_vistoriadorafield = ?,
-            \`${SITUACAO_COLUMN}\` = ?,
-            plugin_fields_statusvistoriafielddropdowns_id = ?
-      WHERE items_id = ?`,
-    [tecnicoId, situacao, STATUS_VISTORIA_PENDENTE, vistoriaId]
+    `UPDATE \`${TABLE_FIELDS}\` SET ${sets.join(", ")} WHERE items_id = ?`,
+    updateParams
   );
   if (marcarProjetoPendente || precisaResincronizarIsRepeat) {
     const auxSets: string[] = [];
@@ -2267,13 +2284,23 @@ export async function reatribuirVistoria(
   // de fato ativas. No-op se não havia nenhuma pendente.
   await cancelarDevolucoesPorVistoria(vistoriaId);
 
+  // pendencia presa em "Pendência CPFL" na revisita — mesmo achado de
+  // atribuirVistoria() (JUN-G-A-292, 2026-09-22): só reseta quando é
+  // revisita de fato, senão não tem nada preso de um ciclo anterior.
+  const sets = [
+    "users_id_vistoriadorafield = ?",
+    `\`${SITUACAO_COLUMN}\` = ?`,
+    "plugin_fields_statusvistoriafielddropdowns_id = ?",
+  ];
+  const updateParams: unknown[] = [novoTecnicoId, situacao, STATUS_VISTORIA_PENDENTE];
+  if (eraRevisita) {
+    sets.push("plugin_fields_pendnciafielddropdowns_id = ?");
+    updateParams.push(PENDENCIA_NANSEN);
+  }
+  updateParams.push(vistoriaId);
   await execute(
-    `UPDATE \`${TABLE_FIELDS}\`
-        SET users_id_vistoriadorafield = ?,
-            \`${SITUACAO_COLUMN}\`    = ?,
-            plugin_fields_statusvistoriafielddropdowns_id = ?
-      WHERE items_id = ?`,
-    [novoTecnicoId, situacao, STATUS_VISTORIA_PENDENTE, vistoriaId]
+    `UPDATE \`${TABLE_FIELDS}\` SET ${sets.join(", ")} WHERE items_id = ?`,
+    updateParams
   );
   if (precisaResincronizarIsRepeat) {
     await execute(

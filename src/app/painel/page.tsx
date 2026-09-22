@@ -3000,14 +3000,8 @@ export default function PainelOverviewPage() {
               className="rounded-lg px-2 py-1 text-[11px] outline-none"
               style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
             />
-            {(!periodoCustomInicio || !periodoCustomFim) && (
-              <span style={{ color: "var(--vm-faint)" }}>escolha início e fim</span>
-            )}
           </div>
         )}
-        <span className="text-[10.5px]" style={{ color: "var(--vm-faint)" }}>
-          Vale pra Vistorias Finalizadas, Padrão Diário e Top Técnicos — indicadores ao vivo continuam mostrando agora.
-        </span>
       </div>
 
       {/* ════════════ LINHA 1a: Vistorias Finalizadas | Aprovações — lado a lado, mesmo tamanho ════════════ */}
