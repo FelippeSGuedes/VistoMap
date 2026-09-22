@@ -1141,17 +1141,6 @@ function HeatmapMapWidget({
 
   return (
     <Card className="relative">
-      {/* fundo — cmpwhite.png (claro) / cmpblack.png (escuro), textura leve */}
-      <div
-        className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat dark:hidden"
-        style={{ backgroundImage: `url('${asset("/cmpwhite.png")}')` }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat dark:block"
-        style={{ backgroundImage: `url('${asset("/cmpblack.png")}')` }}
-      />
-      <div className="pointer-events-none absolute inset-0 bg-white/55 dark:bg-black/55" />
-
       <div className="relative z-10 flex flex-col">
         {/* ── Cabeçalho — visão geral ── */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3">

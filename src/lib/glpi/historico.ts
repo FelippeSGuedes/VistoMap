@@ -335,6 +335,7 @@ export async function fetchHistoricoAnalytics(
          AND f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
          AND DATE(f.datadavistoriafield) <= ?
+         AND (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
        GROUP BY TRIM(f.municipiofield)
        ORDER BY concluidas DESC
        LIMIT 20
