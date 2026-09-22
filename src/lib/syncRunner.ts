@@ -14,7 +14,16 @@ import { drainQueue, type QueuedOperation } from "@/lib/offlineQueue";
 import { loadPhoto, deletePhoto } from "@/lib/photos";
 import { API_BASE } from "@/services/api";
 
-const UPLOAD_TIMEOUT_MS = 45_000;
+// Achado 2026-09-22 (Marco/JUN-G-R-001): poste tipo Repetidor, exatamente o
+// tipo de local que existe por ter sinal ruim na região (ver tipoEquipamento
+// em painel.ts) — 45s não bastava pra concluir o upload do finalizar (fotos
+// + vídeo 360, ~2-6MB) na janela de sinal fraco que o técnico encontrava ao
+// se afastar do local. Resultado: "vistoria-iniciada" chegava (payload
+// pequeno, cabe em qualquer brecha de sinal) mas "vistoria-finalizada" nunca
+// — o técnico via "sincronizando" sem fim até estourar tentativas. 120s dá
+// bem mais margem pra sinal ruim/instável sem trocar o mecanismo em si (o
+// AbortController + retry da fila continuam os mesmos).
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 // Mesma resolucao de base do services/postes.ts — backend Fastify separado
 // (nao e' o /app/api do Next), so' replicada aqui pq o sync roda em
