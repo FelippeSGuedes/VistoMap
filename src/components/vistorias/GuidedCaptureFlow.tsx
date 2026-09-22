@@ -13,7 +13,6 @@ import {
   Video,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { compressImage } from "@/utils/image";
 import { cn } from "@/utils/cn";
 import type { CaptureBundle } from "@/types";
 import { VideoRecorderSheet } from "./VideoRecorderSheet";
@@ -300,56 +299,65 @@ function roundRect(
   ctx.closePath();
 }
 
+const CAPTURE_MAX_SIZE = 1600;
+const CAPTURE_JPEG_QUALITY = 0.9;
+
+// Achado 2026-09-23 (Marco/JUN-G-R-001, mesmo incidente do timeout de sync):
+// a versão anterior chamava compressImage() (JPEG q=0.85) só pra ter algo
+// pra carregar num <img> e redesenhar no canvas do watermark — ou seja,
+// comprimia a foto em JPEG UMA vez, decodificava de volta, carimbava o
+// watermark, e reexportava como PNG. PNG sendo sem perda não somava
+// degradação, mas inflava o arquivo (2-6MB por foto, bem mais que o vídeo
+// 360, que é limitado a ~2-3MB por design) — essa era a maior fatia do
+// payload do finalizar. Um fix ingênuo seria só trocar o reexport final pra
+// JPEG também, mas aí a foto passaria por DUAS compressões com perda em
+// sequência (0.85 seguido de outra) — pior qualidade que antes, mesmo sendo
+// bem menor. Em vez disso, carrega o arquivo ORIGINAL direto (mesma técnica
+// do compressImage.ts, createImageBitmap) e faz o redimensionamento +
+// watermark + compressão numa ÚNICA passada com perda — arquivo pequeno E
+// sem a geração extra de artefato. compressImage() continua existindo pra
+// quem não precisa de watermark (ex.: InstalacaoGuidedCaptureFlow.tsx) — só
+// esse fluxo (que já decodifica pra desenhar em cima) deixou de precisar.
 async function readFileAsImage(
   file: File,
   watermark?: WatermarkInfo
 ): Promise<LoadedImage> {
-  const compressed = await compressImage(file, 1600, 0.85);
-  const img = new Image();
-  img.src = compressed.dataUrl;
-  await img.decode();
-  // Re-export com o watermark carimbado em cima.
+  const bitmap = await createImageBitmap(file).catch(async () => {
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await img.decode();
+    return img as unknown as ImageBitmap;
+  });
+
+  const ratio = Math.min(1, CAPTURE_MAX_SIZE / Math.max(bitmap.width, bitmap.height));
+  const targetW = Math.round(bitmap.width * ratio);
+  const targetH = Math.round(bitmap.height * ratio);
+
   const canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
+  canvas.width = targetW;
+  canvas.height = targetH;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas indisponível");
-  ctx.drawImage(img, 0, 0);
+  ctx.drawImage(bitmap as unknown as CanvasImageSource, 0, 0, targetW, targetH);
 
   // Estampa lat/lng/data/técnico + logo (se watermark fornecido).
   if (watermark) {
     await stampWatermark(canvas, ctx, watermark);
   }
 
-  // Achado 2026-09-23 (Marco/JUN-G-R-001, mesmo incidente do timeout de
-  // sync): esse passo exportava como PNG (sem perda) — o parâmetro de
-  // qualidade não faz nada pra PNG, é sempre lossless. Uma foto já
-  // comprimida em JPEG (compressImage acima, ~150-400KB) saía daqui pesando
-  // 2-6MB depois de decodificada/redesenhada/recarimbada, MUITO maior que o
-  // vídeo 360 (limitado a ~2-3MB por design). Essa era a maior fatia do
-  // payload do finalizar, o que mais castigava sinal fraco em campo.
-  // Troca pra JPEG — mantém o nome "imagemN.png" em todo o resto do sistema
-  // de propósito (rota de finalizar, corrigir-devolução, exibição no painel,
-  // worker de PDF): nenhum desses lugares valida o conteúdo pela extensão —
-  // o worker Python já reconhece o formato real pela assinatura de bytes
-  // (_SIGNATURES em file_manager.py), então funciona sem tocar em mais
-  // nada. Trocar a extensão em cadeia era bem mais arriscado (quebraria a
-  // exibição de fotos de vistorias antigas, já salvas como .png de verdade)
-  // pro mesmo ganho.
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("Falha ao gerar imagem"))),
       "image/jpeg",
-      0.9
+      CAPTURE_JPEG_QUALITY
     )
   );
-  // Regenera dataUrl com watermark aplicado (pra preview refletir o stamp).
-  const stampedDataUrl = watermark ? canvas.toDataURL("image/jpeg", 0.9) : compressed.dataUrl;
+  const stampedDataUrl = canvas.toDataURL("image/jpeg", CAPTURE_JPEG_QUALITY);
   return {
     blob,
     dataUrl: stampedDataUrl,
-    width: img.naturalWidth,
-    height: img.naturalHeight,
+    width: targetW,
+    height: targetH,
     size: blob.size,
   };
 }
@@ -381,7 +389,7 @@ function validateAgainstStep(
     };
   }
 
-  // Imagem minúscula (raríssimo após compressImage) — avisa mas aceita.
+  // Imagem minúscula (raríssimo após o redimensionamento em readFileAsImage) — avisa mas aceita.
   if (image.width < 400 || image.height < 400) {
     return {
       tone: "warn",
