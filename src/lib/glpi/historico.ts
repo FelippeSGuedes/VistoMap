@@ -312,7 +312,18 @@ export async function fetchHistoricoAnalytics(
      pedido: "total aprovados... mesmo com aprovados e aprovados com
      pendencia"). `pendente` é o resíduo (concluída pelo técnico, ainda sem
      decisão da concessionária — nem aprovado nem reprovado; normalmente
-     "Em análise"). */
+     "Em análise", mas também cobre revisita em andamento).
+
+     2026-09-22: chegou a ter um filtro aqui restringindo `concluidas` a
+     situação Vistoriado/Revisitado OU status resolvido — revertido a
+     pedido do usuário ("total fosse total de tudo mesmo pendente no
+     período, não só atribuída"): Total é TUDO que teve atividade
+     (datadavistoriafield) no período, sem exigir estado concluído —
+     reprovado (atribuído ou não) e em revisita contam normal, caem no
+     resíduo `pendente` quando não batem com aprovado/reprovado. O bug
+     real que motivou a queixa era a situação errada nos 4 registros
+     (JUN-G-A-292 etc.) já corrigida em isRevisitaAtual()/atribuirVistoria,
+     não a definição desta query. */
   const muniPeriodoRows = await query<{
     municipio: string;
     concluidas: number;
@@ -335,7 +346,6 @@ export async function fetchHistoricoAnalytics(
          AND f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
          AND DATE(f.datadavistoriafield) <= ?
-         AND (${SITUACAO_CONCLUIDA_SQL} OR sv.name IN ('Em análise','Em analise','Finalizada','Finalizado','Aprovada','Aprovado'))
        GROUP BY TRIM(f.municipiofield)
        ORDER BY concluidas DESC
        LIMIT 20
