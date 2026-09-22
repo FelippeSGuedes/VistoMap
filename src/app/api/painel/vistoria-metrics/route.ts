@@ -57,27 +57,30 @@ export async function GET(req: NextRequest) {
   let pingsCount: number | null = null;
   if (iniciada && finalizada) {
     const tecnicoId = iniciada.ator_id;
+    // Mesmo achado/fix de tecnico-today/route.ts (2026-09-24): self-join com
+    // subquery correlacionada por linha (O(n²)) trocado por LAG() numa única
+    // passada — essa era uma das queries empilhando 5+min cada e derrubando
+    // o MariaDB (8 núcleos a ~750% de uso simultâneo).
     const distRows = await query<{ km: number | string | null; n: number }>(
       `SELECT
          COALESCE(SUM(
            6371 * 2 * ASIN(SQRT(
-             POWER(SIN(RADIANS((l1.latitude - l2.latitude) / 2)), 2) +
-             COS(RADIANS(l2.latitude)) * COS(RADIANS(l1.latitude)) *
-             POWER(SIN(RADIANS((l1.longitude - l2.longitude) / 2)), 2)
+             POWER(SIN(RADIANS((latitude - prev_lat) / 2)), 2) +
+             COS(RADIANS(prev_lat)) * COS(RADIANS(latitude)) *
+             POWER(SIN(RADIANS((longitude - prev_lng) / 2)), 2)
            ))
          ), 0) AS km,
          COUNT(*) AS n
-       FROM glpi_plugin_vistomap_locations l1
-       INNER JOIN glpi_plugin_vistomap_locations l2
-         ON l2.users_id = l1.users_id
-        AND l2.id = (
-          SELECT MAX(l3.id) FROM glpi_plugin_vistomap_locations l3
-           WHERE l3.users_id = l1.users_id AND l3.id < l1.id
-             AND l3.created_at BETWEEN ? AND ?
-        )
-       WHERE l1.users_id = ?
-         AND l1.created_at BETWEEN ? AND ?`,
-      [iniciada.criado_em, finalizada.criado_em, tecnicoId, iniciada.criado_em, finalizada.criado_em]
+       FROM (
+         SELECT latitude, longitude,
+                LAG(latitude)  OVER (ORDER BY id) AS prev_lat,
+                LAG(longitude) OVER (ORDER BY id) AS prev_lng
+           FROM glpi_plugin_vistomap_locations
+          WHERE users_id = ?
+            AND created_at BETWEEN ? AND ?
+       ) t
+       WHERE prev_lat IS NOT NULL`,
+      [tecnicoId, iniciada.criado_em, finalizada.criado_em]
     );
     kmPercorridos = Math.round(Number(distRows[0]?.km ?? 0) * 100) / 100;
     pingsCount = Number(distRows[0]?.n ?? 0);

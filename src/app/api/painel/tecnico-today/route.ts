@@ -75,28 +75,36 @@ export async function GET(req: NextRequest) {
     tempoMedioMin = Math.round(totalMs / pairs.length / 60_000);
   }
 
-  // Distance driven today (sum of consecutive GPS pings)
+  // Distance driven today (sum of consecutive GPS pings) — achado 2026-09-24:
+  // a versão anterior fazia um self-join com subquery CORRELACIONADA (MAX(id)
+  // < id, por linha) pra achar o ping anterior — O(n²) em cima de uma tabela
+  // com ~200k pings, sem índice composto que sustente isso. Com pings
+  // frequentes, várias chamadas concorrentes (hover no /painel/mapa,
+  // /painel/tecnicos/[id]) empilhavam queries de 5+ minutos cada, saturando
+  // os 8 núcleos do MariaDB e deixando o sistema inteiro lento/fora.
+  // LAG() faz a mesma coisa (pega o ping anterior por users_id) numa única
+  // passada ordenada — sem self-join, sem subquery por linha. Também troca
+  // DATE(created_at)=CURDATE() por um intervalo sargable, pra poder usar
+  // índice em created_at em vez de forçar table scan.
   const distRows = await query<LocationRow>(
     `SELECT
        COALESCE(SUM(
          6371 * 2 * ASIN(SQRT(
-           POWER(SIN(RADIANS((l1.latitude - l2.latitude) / 2)), 2) +
-           COS(RADIANS(l2.latitude)) * COS(RADIANS(l1.latitude)) *
-           POWER(SIN(RADIANS((l1.longitude - l2.longitude) / 2)), 2)
+           POWER(SIN(RADIANS((latitude - prev_lat) / 2)), 2) +
+           COS(RADIANS(prev_lat)) * COS(RADIANS(latitude)) *
+           POWER(SIN(RADIANS((longitude - prev_lng) / 2)), 2)
          ))
        ), 0) AS km
-     FROM glpi_plugin_vistomap_locations l1
-     INNER JOIN glpi_plugin_vistomap_locations l2
-       ON l2.users_id = l1.users_id
-      AND l2.id = (
-        SELECT MAX(l3.id)
-          FROM glpi_plugin_vistomap_locations l3
-         WHERE l3.users_id = l1.users_id
-           AND l3.id < l1.id
-           AND DATE(l3.created_at) = CURDATE()
-      )
-     WHERE l1.users_id = ?
-       AND DATE(l1.created_at) = CURDATE()`,
+     FROM (
+       SELECT latitude, longitude,
+              LAG(latitude)  OVER (ORDER BY id) AS prev_lat,
+              LAG(longitude) OVER (ORDER BY id) AS prev_lng
+         FROM glpi_plugin_vistomap_locations
+        WHERE users_id = ?
+          AND created_at >= CURDATE()
+          AND created_at < CURDATE() + INTERVAL 1 DAY
+     ) t
+     WHERE prev_lat IS NOT NULL`,
     [usersId]
   );
 
