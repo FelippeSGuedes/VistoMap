@@ -757,16 +757,34 @@ export function GuidedCaptureFlow({
     setBusy(true);
     try {
       if (step.kind === "video") {
+        // Achado 2026-09-22 (Marco, JUN-G-R-001): sem limite de tamanho
+        // aqui, o fallback "câmera do sistema" (onFallback — sem corte de
+        // duração nem compressão) podia produzir vídeo de 30-40MB+, que
+        // nunca sincroniza em sinal fraco de campo por mais que se aumente
+        // o timeout do finalizar. O gravador embutido (VideoRecorderSheet)
+        // já se autolimita (15s, ~1.2Mbps → ~2-3MB) e nunca bate nesse
+        // teto — só o fallback nativo precisava da trava.
+        const MAX_VIDEO_BYTES = 10 * 1024 * 1024; // 10MB — folga generosa sobre o gravador embutido
         const url = URL.createObjectURL(file);
-        const fb: Feedback =
-          file.size > 0
-            ? { tone: "ok", message: "Vídeo capturado." }
-            : { tone: "error", message: "Vídeo inválido." };
+        let fb: Feedback;
+        if (file.size === 0) {
+          fb = { tone: "error", message: "Vídeo inválido." };
+        } else if (file.size > MAX_VIDEO_BYTES) {
+          fb = {
+            tone: "error",
+            message: `Vídeo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB para enviar em campo). Use o gravador do app (não a câmera do sistema) ou grave por menos tempo.`,
+          };
+        } else {
+          fb = { tone: "ok", message: "Vídeo capturado." };
+        }
         setPreviews((p) => ({ ...p, [step.key]: { url, feedback: fb } }));
-        onChange({ ...bundle, video360: file });
         if (fb.tone === "ok") {
+          onChange({ ...bundle, video360: file });
           chime(700);
           buzz(80);
+        } else {
+          chime(220, 0.18);
+          buzz([60, 80, 60]);
         }
       } else {
         const image = await readFileAsImage(file, watermark);
