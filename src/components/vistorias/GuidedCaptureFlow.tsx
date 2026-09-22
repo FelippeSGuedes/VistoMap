@@ -308,7 +308,7 @@ async function readFileAsImage(
   const img = new Image();
   img.src = compressed.dataUrl;
   await img.decode();
-  // Re-export como PNG e Blob
+  // Re-export com o watermark carimbado em cima.
   const canvas = document.createElement("canvas");
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
@@ -321,15 +321,30 @@ async function readFileAsImage(
     await stampWatermark(canvas, ctx, watermark);
   }
 
+  // Achado 2026-09-23 (Marco/JUN-G-R-001, mesmo incidente do timeout de
+  // sync): esse passo exportava como PNG (sem perda) — o parâmetro de
+  // qualidade não faz nada pra PNG, é sempre lossless. Uma foto já
+  // comprimida em JPEG (compressImage acima, ~150-400KB) saía daqui pesando
+  // 2-6MB depois de decodificada/redesenhada/recarimbada, MUITO maior que o
+  // vídeo 360 (limitado a ~2-3MB por design). Essa era a maior fatia do
+  // payload do finalizar, o que mais castigava sinal fraco em campo.
+  // Troca pra JPEG — mantém o nome "imagemN.png" em todo o resto do sistema
+  // de propósito (rota de finalizar, corrigir-devolução, exibição no painel,
+  // worker de PDF): nenhum desses lugares valida o conteúdo pela extensão —
+  // o worker Python já reconhece o formato real pela assinatura de bytes
+  // (_SIGNATURES em file_manager.py), então funciona sem tocar em mais
+  // nada. Trocar a extensão em cadeia era bem mais arriscado (quebraria a
+  // exibição de fotos de vistorias antigas, já salvas como .png de verdade)
+  // pro mesmo ganho.
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("Falha ao gerar PNG"))),
-      "image/png",
-      0.95
+      (b) => (b ? resolve(b) : reject(new Error("Falha ao gerar imagem"))),
+      "image/jpeg",
+      0.9
     )
   );
   // Regenera dataUrl com watermark aplicado (pra preview refletir o stamp).
-  const stampedDataUrl = watermark ? canvas.toDataURL("image/png", 0.92) : compressed.dataUrl;
+  const stampedDataUrl = watermark ? canvas.toDataURL("image/jpeg", 0.9) : compressed.dataUrl;
   return {
     blob,
     dataUrl: stampedDataUrl,
