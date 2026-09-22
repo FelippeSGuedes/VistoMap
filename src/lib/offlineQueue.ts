@@ -23,7 +23,11 @@ export type OperationType =
   | "finalize-vistoria"
   | "upload-photo"
   | "iniciar-vistoria"
-  | "mudar-poste";
+  | "mudar-poste"
+  // Vídeo dropado do finalizar por timeout/rede fraca (ver executeFinalize
+  // em syncRunner.ts) — reenviado sozinho depois, sem bloquear a vistoria
+  // (que já foi salva sem ele).
+  | "upload-video-followup";
 
 export interface QueuedOperation {
   id: string;

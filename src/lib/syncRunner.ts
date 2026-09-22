@@ -10,9 +10,16 @@
  * aborta e tenta de novo no próximo ciclo, em vez de "enviar por horas".
  */
 
-import { drainQueue, type QueuedOperation } from "@/lib/offlineQueue";
+import { drainQueue, enqueue, type QueuedOperation } from "@/lib/offlineQueue";
 import { loadPhoto, deletePhoto } from "@/lib/photos";
 import { API_BASE } from "@/services/api";
+import { useLembreteToastStore } from "@/store/lembreteToast";
+
+// Mesmo critério de "erro de rede" do drainQueue (offlineQueue.ts) — usado
+// aqui pra decidir se vale tentar o fallback sem vídeo (só faz sentido
+// quando o problema foi a rede/timeout; um erro de validação ou auth vai
+// falhar igual sem o vídeo, então nem tenta).
+const REDE_RX = /network|fetch|offline|timeout|abort|conn/i;
 
 // Achado 2026-09-22 (Marco/JUN-G-R-001): poste tipo Repetidor, exatamente o
 // tipo de local que existe por ter sinal ruim na região (ver tipoEquipamento
@@ -62,8 +69,11 @@ interface FinalizePayloadOp {
   token: string;
 }
 
-async function executeFinalize(op: QueuedOperation): Promise<void> {
-  const p = op.payload as unknown as FinalizePayloadOp;
+async function postFinalize(
+  p: FinalizePayloadOp,
+  timeoutMs: number,
+  incluirVideo: boolean
+): Promise<void> {
   const form = new FormData();
   form.append("payload", p.payloadJson);
 
@@ -76,7 +86,7 @@ async function executeFinalize(op: QueuedOperation): Promise<void> {
     form.append(field, new File([blob], filename, { type: blob.type }));
   }
 
-  if (p.videoPath && p.videoFieldName) {
+  if (incluirVideo && p.videoPath && p.videoFieldName) {
     const blob = await loadPhoto(p.videoPath);
     if (blob) {
       const filename = p.videoPath.split("/").pop() ?? "video.mp4";
@@ -86,6 +96,87 @@ async function executeFinalize(op: QueuedOperation): Promise<void> {
 
   const resp = await fetchWithTimeout(
     `${API_BASE}/vistorias/${p.vistoriaId}/finalizar`,
+    { method: "POST", headers: { Authorization: `Bearer ${p.token}` }, body: form },
+    timeoutMs
+  );
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    if (resp.status === 401 || resp.status === 403) {
+      throw new Error(`auth: ${resp.status} ${txt}`);
+    }
+    throw new Error(`http ${resp.status}: ${txt.slice(0, 120)}`);
+  }
+}
+
+// Achado 2026-09-22 (Marco/JUN-G-R-001): o vídeo é de longe a parte mais
+// pesada do finalizar e a mais sujeita a travar em sinal fraco — mesmo com
+// timeout maior e foto bem mais leve (ver commits do mesmo dia), um vídeo
+// que caiu no fallback "câmera do sistema" (sem corte/compressão) ainda
+// pode estourar. Em vez de deixar a VISTORIA INTEIRA presa esperando só o
+// vídeo, se a tentativa completa falhar por rede/timeout, tenta de novo
+// SEM o vídeo (payload pequeno, deve passar mesmo em sinal ruim) — o
+// formulário e as fotos não podem ficar reféns do vídeo. Vídeo dropado
+// vira uma operação separada de menor prioridade (upload-video-followup),
+// tentada sozinha nos próximos ciclos, sem bloquear mais nada.
+async function executeFinalize(op: QueuedOperation): Promise<void> {
+  const p = op.payload as unknown as FinalizePayloadOp;
+  const temVideo = Boolean(p.videoPath && p.videoFieldName);
+  let videoEnviadoAgora = temVideo;
+
+  try {
+    await postFinalize(p, UPLOAD_TIMEOUT_MS, true);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!temVideo || !REDE_RX.test(msg)) throw err;
+
+    // Payload completo não passou por rede/timeout — tenta só o essencial
+    // (formulário + fotos, sem vídeo). Erro daqui sobe normal: a fila
+    // continua tentando o pacote completo no próximo ciclo.
+    await postFinalize(p, 45_000, false);
+    videoEnviadoAgora = false;
+
+    await enqueue({
+      type: "upload-video-followup",
+      vistoriaId: p.vistoriaId,
+      payload: {
+        vistoriaId: p.vistoriaId,
+        videoPath: p.videoPath,
+        videoFieldName: p.videoFieldName,
+        token: p.token,
+      } as Record<string, unknown>,
+    });
+    useLembreteToastStore
+      .getState()
+      .mostrar("Vistoria enviada sem vídeo — o vídeo será enviado quando o sinal melhorar.");
+  }
+
+  for (const path of p.photoPaths) await deletePhoto(path).catch(() => {});
+  // Vídeo só é apagado localmente quando ele de fato subiu agora — se caiu
+  // no fallback acima, upload-video-followup é quem apaga depois de enviar.
+  if (p.videoPath && videoEnviadoAgora) {
+    await deletePhoto(p.videoPath).catch(() => {});
+  }
+}
+
+interface UploadVideoFollowupPayloadOp {
+  vistoriaId: string | number;
+  videoPath: string;
+  videoFieldName: string;
+  token: string;
+}
+
+async function executeUploadVideoFollowup(op: QueuedOperation): Promise<void> {
+  const p = op.payload as unknown as UploadVideoFollowupPayloadOp;
+  const blob = await loadPhoto(p.videoPath);
+  if (!blob) throw new Error(`Vídeo local ausente: ${p.videoPath}`);
+
+  const form = new FormData();
+  const filename = p.videoPath.split("/").pop() ?? "video.mp4";
+  form.append(p.videoFieldName, new File([blob], filename, { type: blob.type }));
+
+  const resp = await fetchWithTimeout(
+    `${API_BASE}/vistorias/${p.vistoriaId}/video`,
     { method: "POST", headers: { Authorization: `Bearer ${p.token}` }, body: form },
     UPLOAD_TIMEOUT_MS
   );
@@ -98,8 +189,7 @@ async function executeFinalize(op: QueuedOperation): Promise<void> {
     throw new Error(`http ${resp.status}: ${txt.slice(0, 120)}`);
   }
 
-  for (const path of p.photoPaths) await deletePhoto(path).catch(() => {});
-  if (p.videoPath) await deletePhoto(p.videoPath).catch(() => {});
+  await deletePhoto(p.videoPath).catch(() => {});
 }
 
 interface IniciarPayloadOp {
@@ -179,6 +269,8 @@ async function executor(op: QueuedOperation): Promise<void> {
       return executeIniciar(op);
     case "mudar-poste":
       return executeMudarPoste(op);
+    case "upload-video-followup":
+      return executeUploadVideoFollowup(op);
     case "upload-photo":
       throw new Error("upload-photo nao implementado no escopo A");
     default:
