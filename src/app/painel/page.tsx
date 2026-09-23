@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
@@ -21,6 +21,7 @@ import {
   Layers,
   Map as MapIcon,
   RotateCw,
+  Route,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -31,17 +32,19 @@ import {
   Users,
   Wrench,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { CountUp } from "@/components/ui/CountUp";
 import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type {
   HistoricoAnalytics,
+  RankingTecnicoItem,
   TopTecnicosDashboard,
 } from "@/services/painel";
 import { getMapboxToken } from "@/services/maps";
 import { api } from "@/services/api";
-import type { PainelMapaResponse, PainelMapaTecnico } from "@/types/painel-mapa";
+import type { PainelMapaResponse, PainelMapaTecnico, PainelMapaVistoria } from "@/types/painel-mapa";
 import { asset } from "@/utils/asset";
 // Instalação — service/tipos isolados (src/lib/glpi/painel-instalacoes.ts),
 // nunca a Vistoria importando dados dela: só consome o próprio endpoint
@@ -147,14 +150,6 @@ function choroRamp(): [string, string, string] {
     ? ["#2E7D5B", "#00B388", "#22E0A6"] // dark: verdes vivos que destacam no escuro
     : ["#7bc49a", "#3f9468", "#1a6b3c"];
 }
-// Rampa própria do mapa "Pendentes CPFL" — âmbar/vermelho (alerta), de
-// propósito bem distinta do verde de progresso do Top Municípios.
-function choroRampPendencia(): [string, string, string] {
-  return dashDark()
-    ? ["#7A4A0F", "#D97706", "#FBBF24"]
-    : ["#FDE3B0", "#F59E0B", "#B45309"];
-}
-
 const STATUS_DOT: Record<TecnicoAtivo["status"], string> = {
   "em-campo":  "#10B981",
   "base":      "#6366F1",
@@ -185,32 +180,6 @@ function auditIcon(acao: AuditEntry["acao"]) {
   if (acao.includes("reprovada")) return ShieldAlert;
   return Activity;
 }
-
-const CITY_COORDS: Record<string, [number, number]> = {
-  "São Paulo":             [-46.6333, -23.5505],
-  "Campinas":              [-47.0608, -22.9056],
-  "Sorocaba":              [-47.4578, -23.5015],
-  "Santo André":           [-46.5386, -23.6644],
-  "São Bernardo do Campo": [-46.5643, -23.6939],
-  "Guarulhos":             [-46.5333, -23.4628],
-  "Osasco":                [-46.7921, -23.5329],
-  "Ribeirão Preto":        [-47.8119, -21.1775],
-  "São José dos Campos":   [-45.8869, -23.1896],
-  "Santos":                [-46.3333, -23.9618],
-  "Mauá":                  [-46.4664, -23.6678],
-  "Diadema":               [-46.6228, -23.6858],
-  "Jundiaí":               [-46.8850, -23.1858],
-  "Piracicaba":            [-47.6481, -22.7292],
-  "Bauru":                 [-49.0631, -22.3147],
-  "Marília":               [-49.9458, -22.2139],
-  "São José do Rio Preto": [-49.3744, -20.8197],
-  "Araçatuba":             [-50.4322, -21.2089],
-  "Curitiba":              [-49.2731, -25.4297],
-  "Londrina":              [-51.1731, -23.3045],
-  "Maringá":               [-51.9331, -23.4273],
-  "Ponta Grossa":          [-50.1625, -25.0945],
-  "Cascavel":              [-53.4553, -24.9555],
-};
 
 // SP municipalities polygon GeoJSON (tbrugz/geodata-br, property "name" = title-case name)
 const SP_GEOJSON_URL =
@@ -1444,63 +1413,178 @@ function HeatmapMapWidget({
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   WIDGET 04 — Equipe ao Vivo
+   WIDGET — Equipe ao vivo (redesenho 2026-09-23) — substitui o antigo
+   TeamMapWidget + Top Municípios + Pendentes CPFL + Aprovados + Reprovados
+   CPFL + Top Técnicos: consolida tudo num único painel com KPIs reais, mapa
+   real das vistorias do dia, lista da equipe e um grid de análise, em vez de
+   repetir vários mapas coropléticos quase idênticos lado a lado. Mockup
+   validado com o usuário antes de entrar aqui (ver memória do projeto).
    ══════════════════════════════════════════════════════════════════════════ */
 
-interface TeamMapWidgetProps {
-  mapaTeam: PainelMapaTecnico[];
-  tecnicosAtivos: TecnicoAtivo[];
-  taxaAprov: number;
-  taxaRevisita: number;
-  /** Período ativo no filtro global — só pra legenda das duas taxas (o mapa em si é ao vivo). */
-  periodoLabel: string;
+function MiniKpiCard({
+  icon: Icon,
+  label,
+  value,
+  color,
+  bg,
+  caption,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  color: string;
+  bg: string;
+  caption?: string;
+}) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: bg, color }}>
+          <Icon className="h-4 w-4" strokeWidth={2.1} />
+        </span>
+        <span className="text-[11px] font-semibold text-[var(--vm-muted)]">{label}</span>
+      </div>
+      <p className="mt-2 text-[24px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{value}</p>
+      {caption && <p className="mt-1.5 text-[10.5px] text-[var(--vm-faint)]">{caption}</p>}
+    </Card>
+  );
 }
 
-function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita, periodoLabel }: TeamMapWidgetProps) {
+/** Lista ranqueada genérica (barrinha + posição + valor) — mesmo padrão
+ * visual já usado antes nesta tela (Pendentes CPFL, Aprovados, Top
+ * Municípios, Top Técnicos): reaproveitado em vez de inventar um jeito novo
+ * de desenhar "ranking com barra" pra cada painel do grid de análise. */
+function RankedBarList<T>({
+  items,
+  keyFn,
+  labelFn,
+  valueFn,
+  pctFn,
+  colorFn,
+  emptyLabel,
+}: {
+  items: T[];
+  keyFn: (item: T, i: number) => string;
+  labelFn: (item: T) => string;
+  valueFn: (item: T) => string;
+  pctFn: (item: T, i: number) => number;
+  colorFn: (item: T, i: number) => string;
+  emptyLabel: string;
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">{emptyLabel}</p>
+    );
+  }
+  return (
+    <ol className="flex flex-col px-3 pb-3 pt-1" style={{ gap: 2 }}>
+      {items.map((item, i) => {
+        const pct = Math.max(0, Math.min(100, pctFn(item, i)));
+        const color = colorFn(item, i);
+        return (
+          <motion.li
+            key={keyFn(item, i)}
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.05 * i, duration: 0.32 }}
+            className="flex items-center gap-2 rounded-xl px-2 py-2 transition hover:bg-[var(--vm-tile)]"
+          >
+            <span
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
+              style={{ background: `${color}22`, color }}
+            >
+              {i + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex items-center justify-between gap-1">
+                <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{labelFn(item)}</span>
+                <span className="shrink-0 tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{valueFn(item)}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: color }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.7, delay: 0.05 * i + 0.08, ease: [0.22, 0.7, 0.2, 1] }}
+                />
+              </div>
+            </div>
+          </motion.li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Cor do pino no mapa: mesmos 3 estados do mockup aprovado (Realizada /
+ * Pendente / Reprovada), calculados a partir dos campos reais que
+ * /painel/mapa já devolve por vistoria. */
+function corVistoriaMapa(v: PainelMapaVistoria): "real" | "pendente" | "reprovada" {
+  if (v.status_aprovacao === "REPROVADO" || v.situacao === "REJEITADA") return "reprovada";
+  if (v.situacao === "VISTORIADO" || v.situacao === "REVISITADO") return "real";
+  return "pendente";
+}
+
+interface EquipeAoVivoWidgetProps {
+  equipeHoje: TecnicoAtivo[];
+  vistoriasMapa: PainelMapaVistoria[];
+  topMunis: Array<{ municipio: string; total: number; concluidas: number }>;
+  tecnicosPorReprovacao: RankingTecnicoItem[];
+  motivosReprovacao: Array<{ id: string; label: string; color: string; total: number; pct: number; exemplos: string[] }>;
+  atribuidasRealizadas: RankingTecnicoItem[];
+  kpiAtribuidasHoje: number;
+  kpiRealizadasHoje: number;
+  kpiAproveitamentoHoje: number;
+  kpiEmVistoria: number;
+  kpiEmDeslocamento: number;
+  kpiImpedimentos: number;
+  kpiReprovadas: number;
+}
+
+function EquipeAoVivoWidget({
+  equipeHoje,
+  vistoriasMapa,
+  topMunis,
+  tecnicosPorReprovacao,
+  motivosReprovacao,
+  atribuidasRealizadas,
+  kpiAtribuidasHoje,
+  kpiRealizadasHoje,
+  kpiAproveitamentoHoje,
+  kpiEmVistoria,
+  kpiEmDeslocamento,
+  kpiImpedimentos,
+  kpiReprovadas,
+}: EquipeAoVivoWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const popupRef     = useRef<mapboxgl.Popup | null>(null);
   const token        = getMapboxToken();
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
     injectStyle(
-      "vm-dash-team-css",
-      ".vm-dash-team .mapboxgl-ctrl-logo,.vm-dash-team .mapboxgl-ctrl-attrib{display:none!important}" +
-      ".mapboxgl-popup-content{padding:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.12)}",
-    );
-    injectStyle(
-      "vm-pulse-kf",
-      "@keyframes vm-pulse{0%,100%{transform:scale(1);opacity:0.25}50%{transform:scale(1.7);opacity:0.08}}",
-    );
-    injectStyle(
-      "vm-radar-kf",
-      "@keyframes vm-radar{0%{box-shadow:0 0 0 0 rgba(22,163,74,0.4)}70%{box-shadow:0 0 0 12px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}",
+      "vm-dash-equipe-css",
+      ".vm-dash-equipe .mapboxgl-ctrl-logo,.vm-dash-equipe .mapboxgl-ctrl-attrib{display:none!important}" +
+      ".vm-dash-equipe .mapboxgl-ctrl-group{box-shadow:0 1px 4px rgba(0,0,0,0.12)!important}",
     );
     mapboxgl.accessToken = token;
     const { map } = novoMapa({
       container: containerRef.current,
       style: dashMapStyle("mapbox://styles/mapbox/light-v11"),
       center: [-47.0626, -22.9064],
-      zoom: 9,
-      interactive: false,
-      dragPan: false,
-      scrollZoom: false,
-      doubleClickZoom: false,
-      touchZoomRotate: false,
+      zoom: 9.4,
       attributionControl: false,
     }, "painel/dashboard");
     // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
     // pro backend (ver lib/mapaSeguro.ts).
     if (!map) return;
     mapRef.current = map;
-    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
-    popupRef.current = popup;
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
     return () => {
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
-      popup.remove();
       map.remove();
       mapRef.current = null;
     };
@@ -1509,935 +1593,201 @@ function TeamMapWidget({ mapaTeam, tecnicosAtivos, taxaAprov, taxaRevisita, peri
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const CAMPINAS: [number, number] = [-47.0626, -22.9064];
-    const makeDot = () => {
-      const el = document.createElement("div");
-      el.style.cssText =
-        "width:14px;height:14px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 4px rgba(22,163,74,0.3);animation:vm-radar 2s infinite;cursor:default";
-      return el;
-    };
+    const CORES = { real: "#059669", pendente: "#D97706", reprovada: "#DC2626" };
     const place = () => {
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
-      const coords = mapaTeam
-        .filter(t => t.latitude != null && t.longitude != null && t.status_operacional !== "offline")
-        .map(t => [t.longitude!, t.latitude!] as [number, number]);
-      const pts = coords.length ? coords : [CAMPINAS];
-      pts.forEach(c => {
-        const mk = new mapboxgl.Marker({ element: makeDot(), anchor: "center" })
-          .setLngLat(c)
-          .addTo(map);
-        markersRef.current.push(mk);
-      });
+      vistoriasMapa
+        .filter(v => v.latitude != null && v.longitude != null)
+        .forEach(v => {
+          const cor = corVistoriaMapa(v);
+          const el = document.createElement("div");
+          el.style.cssText =
+            `width:14px;height:14px;border-radius:50%;background:${CORES[cor]};border:2px solid #fff;` +
+            "box-shadow:0 1px 3px rgba(16,24,40,0.35);cursor:pointer";
+          el.title = `${v.equipamento} · ${v.municipio ?? "—"}${v.tecnico_nome ? ` · ${v.tecnico_nome}` : ""}`;
+          const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
+            .setLngLat([v.longitude, v.latitude])
+            .addTo(map);
+          markersRef.current.push(mk);
+        });
     };
     if (map.isStyleLoaded()) place(); else map.once("load", place);
-  }, [mapaTeam]);
-
-  const destaque = tecnicosAtivos.find(t => t.status === "em-campo") ?? tecnicosAtivos[0];
-  const emCampoCount = tecnicosAtivos.filter(t => t.status === "em-campo").length;
+  }, [vistoriasMapa]);
 
   return (
-    <Card className="h-full">
-      <div className="flex items-center justify-between px-5 pt-4 pb-3">
-        <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-[#059669]" strokeWidth={2.2} />
-          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Equipe · ao vivo</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {emCampoCount > 0 && (
-            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-[3px] text-[9px] font-bold text-emerald-700">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-              {emCampoCount} em campo
-            </span>
-          )}
-          <Link href="/painel/mapa" className="flex items-center gap-1 text-[11px] font-semibold text-[#059669] hover:underline">
-            Mapa <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
-      </div>
-      <div ref={containerRef} className="vm-dash-team h-[190px] w-full shrink-0" />
-      {destaque && (
-        <div className="flex items-center gap-3 border-t border-[var(--vm-tile-2)] px-4 py-3">
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white"
-            style={{ background: "linear-gradient(135deg,#10B981,#059669)" }}
-          >
-            {initials(destaque.nome)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{destaque.nome.split(" ")[0]}</p>
-            <p className="truncate text-[10px] text-[var(--vm-faint)]">{destaque.municipio ?? "—"} · {destaque.concluidasHoje} hoje</p>
-          </div>
-          <span
-            className="shrink-0 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-wide"
-            style={{ background: `${STATUS_DOT[destaque.status]}18`, color: STATUS_DOT[destaque.status] }}
-          >
-            {STATUS_LABEL[destaque.status]}
-          </span>
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">
-        {[
-          { title: "Aprovação", value: taxaAprov,    color: "#16a34a", caption: `aprovadas em ${periodoLabel}` },
-          { title: "Reprovados CPFL", value: taxaRevisita, color: "#f59e0b", caption: `pendentes (${periodoLabel})` },
-        ].map(g => (
-          <div key={g.title} className="flex flex-col items-center rounded-xl bg-[var(--vm-tile)] p-3">
-            <p className="mb-2 text-[0.7rem] font-bold uppercase tracking-[0.1em] text-[var(--vm-faint)]">{g.title}</p>
-            <MiniDonut value={g.value} color={g.color} caption={g.caption} />
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
+    <div className="flex flex-col gap-4">
 
-/* ══════════════════════════════════════════════════════════════════════════
-   WIDGET 03 — Top Municípios: map IS the chart + hover tooltip
-   ══════════════════════════════════════════════════════════════════════════ */
+      {/* KPIs + Aproveitamento */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
+        <MiniKpiCard icon={ClipboardList} label="Atribuídas hoje" value={fmtNum(kpiAtribuidasHoje)} color="#3B82F6" bg="var(--vm-tile-blue)" caption="soma de toda a equipe" />
+        <MiniKpiCard icon={CheckCircle2} label="Realizadas hoje" value={fmtNum(kpiRealizadasHoje)} color="#059669" bg="var(--vm-accent-tint)" caption={`${kpiAproveitamentoHoje}% de aproveitamento`} />
+        <MiniKpiCard icon={Clock} label="Em Vistoria" value={fmtNum(kpiEmVistoria)} color="#F97316" bg="var(--vm-orange-tint)" caption="agora" />
+        <MiniKpiCard icon={Route} label="Em Deslocamento" value={fmtNum(kpiEmDeslocamento)} color="#0891B2" bg="rgba(14,165,233,0.10)" caption="agora" />
+        <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption="sem infra/acesso" />
+        <MiniKpiCard icon={ShieldAlert} label="Reprovadas" value={fmtNum(kpiReprovadas)} color="#DC2626" bg="var(--vm-red-tint)" caption="CPFL, aguardando revisita" />
 
-interface MunicipiosMapWidgetProps {
-  topMunicipios: Array<{ municipio: string; total: number; concluidas: number }>;
-  tecnicos: TecnicoAtivo[];
-}
-
-function MunicipiosMapWidget({ topMunicipios, tecnicos: _t }: MunicipiosMapWidgetProps) {
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const mapRef        = useRef<mapboxgl.Map | null>(null);
-  const markersRef    = useRef<mapboxgl.Marker[]>([]);
-  const fillExprRef   = useRef<mapboxgl.Expression | null>(null);
-  const geoRef        = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
-  const [geoLoaded,   setGeoLoaded] = useState(false);
-  const token         = getMapboxToken();
-  void _t;
-
-  const totalGlobal = topMunicipios.reduce((s, m) => s + m.total, 0);
-
-  /* Effect 1 — mapa base + carrega GeoJSON */
-  useEffect(() => {
-    if (!containerRef.current || !token) return;
-    let alive = true;
-    injectStyle(
-      "vm-dash-muni-css",
-      ".vm-dash-muni .mapboxgl-ctrl-logo,.vm-dash-muni .mapboxgl-ctrl-attrib{display:none!important}",
-    );
-    injectStyle("vm-noc-css", NOC_CSS);
-    mapboxgl.accessToken = token;
-    const { map } = novoMapa({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/empty-v9",
-      center: [-48.5, -22.0] as [number, number],
-      zoom: 5.6,
-      interactive: false,
-      attributionControl: false,
-    }, "painel/dashboard");
-    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
-    // pro backend (ver lib/mapaSeguro.ts).
-    if (!map) return;
-    mapRef.current = map;
-
-    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
-    ro.observe(containerRef.current);
-
-    map.on("load", async () => {
-      map.resize();
-      map.addLayer({ id: "vm-muni-bg", type: "background", paint: { "background-color": dashMapBg() } });
-      try {
-        const res = await fetch(SP_GEOJSON_URL);
-        const geoJSON = await res.json() as {
-          type: string;
-          features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
-        };
-        if (!alive) return;
-
-        geoRef.current = geoJSON;
-
-        map.addSource("vm-muni-sp", { type: "geojson", data: geoJSON as never });
-        map.addLayer({
-          id: "vm-muni-fill", type: "fill", source: "vm-muni-sp",
-          paint: { "fill-color": choroEmpty(), "fill-opacity": 1 },
-        });
-        map.addLayer({
-          id: "vm-muni-line", type: "line", source: "vm-muni-sp",
-          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
-        });
-
-        const bounds = new mapboxgl.LngLatBounds();
-        for (const f of geoJSON.features) {
-          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
-          const rings = g.type === "Polygon"
-            ? [g.coordinates[0] as number[][]]
-            : (g.coordinates as number[][][][]).map(p => p[0]);
-          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
-        }
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: 14, animate: false });
-          const z = map.getZoom();
-          map.setMinZoom(z);
-          map.setMaxZoom(z);
-        }
-
-        setGeoLoaded(true);
-      } catch {
-        /* GeoJSON load failure is silent — widget degrades gracefully */
-      }
-    });
-
-    return () => {
-      alive = false;
-      ro.disconnect();
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* Effect 2 — coloriza fill + cria pins quando dados chegam */
-  useEffect(() => {
-    const map = mapRef.current;
-    const geo = geoRef.current;
-    if (!map || !map.isStyleLoaded() || !geo || !topMunicipios.length) return;
-
-    const lookup = new Map(topMunicipios.map(m => [normalizeStr(m.municipio), m.total]));
-    const enriched = {
-      ...geo,
-      features: geo.features.map(f => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
-          name_norm: normalizeStr(String(f.properties.name ?? "")),
-        },
-      })),
-    };
-
-    (map.getSource("vm-muni-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
-    const topVal = Math.max(...topMunicipios.map(m => m.total), 2);
-    const midVal = Math.max(Math.round(topVal / 2), 1);
-    const [rlo, rmd, rhi] = choroRamp();
-    const fillExpr: mapboxgl.Expression = [
-      "case", [">", ["get", "total"], 0],
-      ["interpolate", ["linear"], ["get", "total"], 1, rlo, midVal, rmd, topVal, rhi],
-      choroEmpty(),
-    ];
-    fillExprRef.current = fillExpr;
-    map.setPaintProperty("vm-muni-fill", "fill-color", fillExpr);
-
-    markersRef.current.forEach(mk => mk.remove());
-    markersRef.current = [];
-
-    for (const feature of enriched.features) {
-      const total = Number(feature.properties.total ?? 0);
-      if (total === 0) continue;
-
-      const name = String((feature.properties as Record<string, unknown>).name ?? "");
-      const item = topMunicipios.find(m => normalizeStr(m.municipio) === normalizeStr(name));
-      if (!item) continue;
-
-      const coords = featureCentroid(feature.geometry);
-      if (!coords) continue;
-
-      const el = document.createElement("div");
-      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#4A6CF7,#7C3AED);box-shadow:0 2px 10px rgba(74,108,247,0.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:ui-sans-serif;border:2px solid rgba(255,255,255,0.75);cursor:default";
-      el.textContent = String(item.total);
-
-      const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-        .setLngLat(coords)
-        .addTo(map);
-      markersRef.current.push(mk);
-    }
-  }, [topMunicipios, geoLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <Card className="h-full">
-      {/* Accent strip */}
-      <div style={{ height: 3, background: "linear-gradient(90deg,#4A6CF7,#7C3AED,#4A9EFF)", flexShrink: 0 }} />
-      <div className="flex items-center justify-between px-5 pt-3.5 pb-2.5">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "linear-gradient(135deg,rgba(74,108,247,0.15),rgba(124,58,237,0.12))", border: "1px solid rgba(74,108,247,0.18)" }}
-          >
-            <Building2 className="h-3.5 w-3.5 text-[#4A6CF7]" strokeWidth={2} />
-          </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Municípios</span>
-            <span className="text-[9.5px] text-[var(--vm-faint)]">progresso por município{totalGlobal > 0 ? ` · ${totalGlobal} vistorias` : ""}</span>
-          </div>
-        </div>
-        <span
-          className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold text-[#4A6CF7]"
-          style={{ background: "rgba(74,108,247,0.08)", border: "1px solid rgba(74,108,247,0.14)" }}
-        >
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4A6CF7]" />
-          hover
-        </span>
-      </div>
-      <div ref={containerRef} className="vm-dash-muni h-[200px] w-full shrink-0" />
-      <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
-        {topMunicipios.slice(0, 5).map((m, i) => {
-          // % real de progresso do município (concluídas / total do município),
-          // não a fatia dele dentre os top 10 — isso fazia o maior município
-          // sempre bater 100%, mesmo sem estar nem perto de completo.
-          const pct = m.total > 0 ? (m.concluidas / m.total) * 100 : 0;
-          const rankBg =
-            i === 0 ? "linear-gradient(135deg,#F59E0B,#D97706)"
-            : i === 1 ? "linear-gradient(135deg,#94A3B8,#64748B)"
-            : i === 2 ? "linear-gradient(135deg,#CD7F32,#A0522D)"
-            : "rgba(74,108,247,0.10)";
-          const rankColor = i < 3 ? "#fff" : "#4A6CF7";
-          return (
-            <motion.li
-              key={m.municipio}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile-blue)]"
-              style={{ borderLeft: "2px solid transparent" }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.borderLeftColor = "#4A6CF7";
-                const mp = mapRef.current;
-                if (mp?.isStyleLoaded() && fillExprRef.current) {
-                  const orig = fillExprRef.current as unknown[];
-                  mp.setPaintProperty("vm-muni-fill", "fill-color", [
-                    "case", ["==", ["get", "name_norm"], normalizeStr(m.municipio)], "#2563eb",
-                    ...orig.slice(1),
-                  ] as mapboxgl.Expression);
-                }
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.borderLeftColor = "transparent";
-                const mp = mapRef.current;
-                if (mp?.isStyleLoaded() && fillExprRef.current) {
-                  mp.setPaintProperty("vm-muni-fill", "fill-color", fillExprRef.current);
-                }
-              }}
-            >
-              <span
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
-                style={{ background: rankBg, color: rankColor, boxShadow: i < 3 ? "0 2px 6px rgba(0,0,0,0.14)" : "none" }}
-              >
-                {i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center justify-between gap-1">
-                  <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <span className="text-[9.5px] text-[var(--vm-faint)]">{pct.toFixed(0)}%</span>
-                    <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.concluidas}/{m.total}</span>
-                  </div>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: i === 0 ? "linear-gradient(90deg,#4A6CF7,#7C3AED)" : "linear-gradient(90deg,#5E84F7,#93B3FF)" }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                  />
-                </div>
+        <Card className="col-span-2 p-4 md:col-span-3 xl:col-span-1" style={{ background: "var(--vm-accent-tint)", borderColor: "var(--vm-glass-border)" }}>
+          <div className="flex h-full w-full items-center gap-4">
+            <MiniDonut value={kpiAproveitamentoHoje} color="#059669" caption="hoje" />
+            <div className="flex flex-1 flex-col gap-1.5">
+              <span className="text-[11px] font-bold text-[var(--vm-text)]">Aproveitamento</span>
+              <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]">
+                <span>Atribuídas</span><span className="tabular-nums font-bold">{kpiAtribuidasHoje}</span>
               </div>
-            </motion.li>
-          );
-        })}
-      </ol>
-    </Card>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   WIDGET 06 — Pendentes CPFL: mesmo mecanismo do mapa de Top Municípios
-   (mesma fonte GeoJSON, mesma malha), mas com rampa âmbar/vermelho e sem
-   recorte de período — pendência é "ainda aberta agora", não um evento
-   datado. Ver fetchPendentesCpflPorMunicipio() (cpfl.ts).
-   ══════════════════════════════════════════════════════════════════════════ */
-
-interface PendentesCpflMapWidgetProps {
-  itens: Array<{ municipio: string; total: number }>;
-}
-
-function PendentesCpflMapWidget({ itens }: PendentesCpflMapWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const fillExprRef  = useRef<mapboxgl.Expression | null>(null);
-  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
-  const [geoLoaded,  setGeoLoaded] = useState(false);
-  const token        = getMapboxToken();
-
-  const totalGlobal = itens.reduce((s, m) => s + m.total, 0);
-  const top5 = itens.slice(0, 5);
-
-  /* Effect 1 — mapa base + carrega GeoJSON (idêntico ao Top Municípios) */
-  useEffect(() => {
-    if (!containerRef.current || !token) return;
-    let alive = true;
-    injectStyle(
-      "vm-dash-pend-css",
-      ".vm-dash-pend .mapboxgl-ctrl-logo,.vm-dash-pend .mapboxgl-ctrl-attrib{display:none!important}",
-    );
-    injectStyle("vm-noc-css", NOC_CSS);
-    mapboxgl.accessToken = token;
-    const { map } = novoMapa({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/empty-v9",
-      center: [-48.5, -22.0] as [number, number],
-      zoom: 5.6,
-      interactive: false,
-      attributionControl: false,
-    }, "painel/dashboard");
-    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
-    // pro backend (ver lib/mapaSeguro.ts).
-    if (!map) return;
-    mapRef.current = map;
-
-    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
-    ro.observe(containerRef.current);
-
-    map.on("load", async () => {
-      map.resize();
-      map.addLayer({ id: "vm-pend-bg", type: "background", paint: { "background-color": dashMapBg() } });
-      try {
-        const res = await fetch(SP_GEOJSON_URL);
-        const geoJSON = await res.json() as {
-          type: string;
-          features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
-        };
-        if (!alive) return;
-
-        geoRef.current = geoJSON;
-
-        map.addSource("vm-pend-sp", { type: "geojson", data: geoJSON as never });
-        map.addLayer({
-          id: "vm-pend-fill", type: "fill", source: "vm-pend-sp",
-          paint: { "fill-color": choroEmpty(), "fill-opacity": 1 },
-        });
-        map.addLayer({
-          id: "vm-pend-line", type: "line", source: "vm-pend-sp",
-          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
-        });
-
-        const bounds = new mapboxgl.LngLatBounds();
-        for (const f of geoJSON.features) {
-          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
-          const rings = g.type === "Polygon"
-            ? [g.coordinates[0] as number[][]]
-            : (g.coordinates as number[][][][]).map(p => p[0]);
-          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
-        }
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: 14, animate: false });
-          const z = map.getZoom();
-          map.setMinZoom(z);
-          map.setMaxZoom(z);
-        }
-
-        setGeoLoaded(true);
-      } catch {
-        /* GeoJSON load failure is silent — widget degrades gracefully */
-      }
-    });
-
-    return () => {
-      alive = false;
-      ro.disconnect();
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* Effect 2 — coloriza fill (âmbar/vermelho) + pins com a contagem pendente */
-  useEffect(() => {
-    const map = mapRef.current;
-    const geo = geoRef.current;
-    if (!map || !map.isStyleLoaded() || !geo || !itens.length) return;
-
-    const lookup = new Map(itens.map(m => [normalizeStr(m.municipio), m.total]));
-    const enriched = {
-      ...geo,
-      features: geo.features.map(f => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
-        },
-      })),
-    };
-
-    (map.getSource("vm-pend-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
-    const topVal = Math.max(...itens.map(m => m.total), 2);
-    const midVal = Math.max(Math.round(topVal / 2), 1);
-    const [rlo, rmd, rhi] = choroRampPendencia();
-    const fillExpr: mapboxgl.Expression = [
-      "case", [">", ["get", "total"], 0],
-      ["interpolate", ["linear"], ["get", "total"], 1, rlo, midVal, rmd, topVal, rhi],
-      choroEmpty(),
-    ];
-    fillExprRef.current = fillExpr;
-    map.setPaintProperty("vm-pend-fill", "fill-color", fillExpr);
-
-    markersRef.current.forEach(mk => mk.remove());
-    markersRef.current = [];
-
-    for (const feature of enriched.features) {
-      const total = Number(feature.properties.total ?? 0);
-      if (total === 0) continue;
-
-      const name = String((feature.properties as Record<string, unknown>).name ?? "");
-      const item = itens.find(m => normalizeStr(m.municipio) === normalizeStr(name));
-      if (!item) continue;
-
-      const coords = featureCentroid(feature.geometry);
-      if (!coords) continue;
-
-      const el = document.createElement("div");
-      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#F59E0B,#B45309);box-shadow:0 2px 10px rgba(217,119,6,0.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:ui-sans-serif;border:2px solid rgba(255,255,255,0.75);cursor:default";
-      el.textContent = String(item.total);
-
-      const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-        .setLngLat(coords)
-        .addTo(map);
-      markersRef.current.push(mk);
-    }
-  }, [itens, geoLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <Card className="h-full">
-      <div style={{ height: 3, background: "linear-gradient(90deg,#F59E0B,#D97706,#B45309)", flexShrink: 0 }} />
-      <div className="flex items-center justify-between px-5 pt-3.5 pb-2.5">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "linear-gradient(135deg,rgba(245,158,11,0.15),rgba(180,83,9,0.12))", border: "1px solid rgba(245,158,11,0.20)" }}
-          >
-            <ShieldAlert className="h-3.5 w-3.5 text-[#B45309]" strokeWidth={2} />
-          </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Pendentes CPFL</span>
-            <span className="text-[9.5px] text-[var(--vm-faint)]">aguardando validação{totalGlobal > 0 ? ` · ${totalGlobal} postes` : ""}</span>
-          </div>
-        </div>
-        <span
-          className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold text-[#B45309]"
-          style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.18)" }}
-        >
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#F59E0B]" />
-          agora
-        </span>
-      </div>
-      <div ref={containerRef} className="vm-dash-pend h-[200px] w-full shrink-0" />
-      <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
-        {top5.length === 0 && (
-          <li className="px-2 py-6 text-center text-[11px] font-medium text-[var(--vm-faint)]">
-            Nenhuma pendência CPFL em aberto.
-          </li>
-        )}
-        {top5.map((m, i) => {
-          const maxTotal = top5[0]?.total ?? 1;
-          const pct = maxTotal > 0 ? (m.total / maxTotal) * 100 : 0;
-          return (
-            <motion.li
-              key={m.municipio}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-amber-100)]"
-              style={{ borderLeft: "2px solid transparent" }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.borderLeftColor = "#F59E0B";
-                const mp = mapRef.current;
-                if (mp?.isStyleLoaded() && fillExprRef.current) {
-                  mp.setPaintProperty("vm-pend-fill", "fill-color", fillExprRef.current);
-                }
-              }}
-            >
-              <span
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
-                style={{ background: "rgba(245,158,11,0.16)", color: "#B45309" }}
-              >
-                {i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center justify-between gap-1">
-                  <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
-                  <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.total}</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: i === 0 ? "linear-gradient(90deg,#F59E0B,#B45309)" : "linear-gradient(90deg,#FBBF77,#F59E0B)" }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                  />
-                </div>
+              <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]">
+                <span>Realizadas</span><span className="tabular-nums font-bold">{kpiRealizadasHoje}</span>
               </div>
-            </motion.li>
-          );
-        })}
-      </ol>
-    </Card>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   WIDGET 06b — Aprovados: mesmo mecanismo do Pendentes CPFL, rampa verde
-   (progresso/positivo, mesma de Top Municípios). Ver
-   fetchAprovadosPorMunicipio() (cpfl.ts).
-   ══════════════════════════════════════════════════════════════════════════ */
-
-interface AprovadosMapWidgetProps {
-  itens: Array<{ municipio: string; total: number }>;
-}
-
-function AprovadosMapWidget({ itens }: AprovadosMapWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const fillExprRef  = useRef<mapboxgl.Expression | null>(null);
-  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> } | null>(null);
-  const [geoLoaded,  setGeoLoaded] = useState(false);
-  const token        = getMapboxToken();
-
-  const totalGlobal = itens.reduce((s, m) => s + m.total, 0);
-  const top5 = itens.slice(0, 5);
-
-  /* Effect 1 — mapa base + carrega GeoJSON (idêntico ao Pendentes CPFL) */
-  useEffect(() => {
-    if (!containerRef.current || !token) return;
-    let alive = true;
-    injectStyle(
-      "vm-dash-aprov-css",
-      ".vm-dash-aprov .mapboxgl-ctrl-logo,.vm-dash-aprov .mapboxgl-ctrl-attrib{display:none!important}",
-    );
-    injectStyle("vm-noc-css", NOC_CSS);
-    mapboxgl.accessToken = token;
-    const { map } = novoMapa({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/empty-v9",
-      center: [-48.5, -22.0] as [number, number],
-      zoom: 5.6,
-      interactive: false,
-      attributionControl: false,
-    }, "painel/dashboard");
-    if (!map) return;
-    mapRef.current = map;
-
-    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
-    ro.observe(containerRef.current);
-
-    map.on("load", async () => {
-      map.resize();
-      map.addLayer({ id: "vm-aprov-bg", type: "background", paint: { "background-color": dashMapBg() } });
-      try {
-        const res = await fetch(SP_GEOJSON_URL);
-        const geoJSON = await res.json() as {
-          type: string;
-          features: Array<{ type: string; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>;
-        };
-        if (!alive) return;
-
-        geoRef.current = geoJSON;
-
-        map.addSource("vm-aprov-sp", { type: "geojson", data: geoJSON as never });
-        map.addLayer({
-          id: "vm-aprov-fill", type: "fill", source: "vm-aprov-sp",
-          paint: { "fill-color": choroEmpty(), "fill-opacity": 1 },
-        });
-        map.addLayer({
-          id: "vm-aprov-line", type: "line", source: "vm-aprov-sp",
-          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
-        });
-
-        const bounds = new mapboxgl.LngLatBounds();
-        for (const f of geoJSON.features) {
-          const g = f.geometry as { type: string; coordinates: number[][][] | number[][][][] };
-          const rings = g.type === "Polygon"
-            ? [g.coordinates[0] as number[][]]
-            : (g.coordinates as number[][][][]).map(p => p[0]);
-          for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
-        }
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: 14, animate: false });
-          const z = map.getZoom();
-          map.setMinZoom(z);
-          map.setMaxZoom(z);
-        }
-
-        setGeoLoaded(true);
-      } catch {
-        /* GeoJSON load failure is silent — widget degrades gracefully */
-      }
-    });
-
-    return () => {
-      alive = false;
-      ro.disconnect();
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* Effect 2 — coloriza fill (verde) + pins com a contagem aprovada */
-  useEffect(() => {
-    const map = mapRef.current;
-    const geo = geoRef.current;
-    if (!map || !map.isStyleLoaded() || !geo || !itens.length) return;
-
-    const lookup = new Map(itens.map(m => [normalizeStr(m.municipio), m.total]));
-    const enriched = {
-      ...geo,
-      features: geo.features.map(f => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
-        },
-      })),
-    };
-
-    (map.getSource("vm-aprov-sp") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
-    const topVal = Math.max(...itens.map(m => m.total), 2);
-    const midVal = Math.max(Math.round(topVal / 2), 1);
-    const [rlo, rmd, rhi] = choroRamp();
-    const fillExpr: mapboxgl.Expression = [
-      "case", [">", ["get", "total"], 0],
-      ["interpolate", ["linear"], ["get", "total"], 1, rlo, midVal, rmd, topVal, rhi],
-      choroEmpty(),
-    ];
-    fillExprRef.current = fillExpr;
-    map.setPaintProperty("vm-aprov-fill", "fill-color", fillExpr);
-
-    markersRef.current.forEach(mk => mk.remove());
-    markersRef.current = [];
-
-    for (const feature of enriched.features) {
-      const total = Number(feature.properties.total ?? 0);
-      if (total === 0) continue;
-
-      const name = String((feature.properties as Record<string, unknown>).name ?? "");
-      const item = itens.find(m => normalizeStr(m.municipio) === normalizeStr(name));
-      if (!item) continue;
-
-      const coords = featureCentroid(feature.geometry);
-      if (!coords) continue;
-
-      const el = document.createElement("div");
-      el.style.cssText = "width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#22C55E,#15803D);box-shadow:0 2px 10px rgba(21,128,61,0.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;font-family:ui-sans-serif;border:2px solid rgba(255,255,255,0.75);cursor:default";
-      el.textContent = String(item.total);
-
-      const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-        .setLngLat(coords)
-        .addTo(map);
-      markersRef.current.push(mk);
-    }
-  }, [itens, geoLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <Card className="h-full">
-      <div style={{ height: 3, background: "linear-gradient(90deg,#22C55E,#16A34A,#15803D)", flexShrink: 0 }} />
-      <div className="flex items-center justify-between px-5 pt-3.5 pb-2.5">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "linear-gradient(135deg,rgba(34,197,94,0.15),rgba(21,128,61,0.12))", border: "1px solid rgba(34,197,94,0.20)" }}
-          >
-            <ShieldCheck className="h-3.5 w-3.5 text-[#15803D]" strokeWidth={2} />
-          </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Aprovados</span>
-            <span className="text-[9.5px] text-[var(--vm-faint)]">validação concluída{totalGlobal > 0 ? ` · ${totalGlobal} postes` : ""}</span>
-          </div>
-        </div>
-        <span
-          className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold text-[#15803D]"
-          style={{ background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.18)" }}
-        >
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#22C55E]" />
-          agora
-        </span>
-      </div>
-      <div ref={containerRef} className="vm-dash-aprov h-[200px] w-full shrink-0" />
-      <ol className="flex flex-col px-3 pb-3 pt-2" style={{ gap: 2 }}>
-        {top5.length === 0 && (
-          <li className="px-2 py-6 text-center text-[11px] font-medium text-[var(--vm-faint)]">
-            Nenhum projeto aprovado ainda.
-          </li>
-        )}
-        {top5.map((m, i) => {
-          const maxTotal = top5[0]?.total ?? 1;
-          const pct = maxTotal > 0 ? (m.total / maxTotal) * 100 : 0;
-          return (
-            <motion.li
-              key={m.municipio}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.06 * i, duration: 0.35 }}
-              className="flex items-center gap-2 rounded-xl px-2 py-2 transition-all hover:bg-[var(--vm-tile)]"
-              style={{ borderLeft: "2px solid transparent" }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.borderLeftColor = "#22C55E";
-                const mp = mapRef.current;
-                if (mp?.isStyleLoaded() && fillExprRef.current) {
-                  mp.setPaintProperty("vm-aprov-fill", "fill-color", fillExprRef.current);
-                }
-              }}
-            >
-              <span
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-bold"
-                style={{ background: "rgba(34,197,94,0.16)", color: "#15803D" }}
-              >
-                {i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center justify-between gap-1">
-                  <span className="truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
-                  <span className="tabular-nums text-[11px] font-bold text-[var(--vm-text)]">{m.total}</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: i === 0 ? "linear-gradient(90deg,#22C55E,#15803D)" : "linear-gradient(90deg,#86EFAC,#22C55E)" }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                  />
-                </div>
+              <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]">
+                <span>Reprovadas</span><span className="tabular-nums font-bold">{kpiReprovadas}</span>
               </div>
-            </motion.li>
-          );
-        })}
-      </ol>
-    </Card>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   WIDGET 07 — Revisitas: SP map background + highlight problem areas
-   ══════════════════════════════════════════════════════════════════════════ */
-
-function RevisitasMapWidget({ revisitas }: { revisitas: RevisitaPendente[] }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const token        = getMapboxToken();
-  const hasRevisitas = revisitas.length > 0;
-
-  useEffect(() => {
-    if (!containerRef.current || !token) return;
-    injectStyle(
-      "vm-dash-rev-css",
-      ".vm-dash-rev .mapboxgl-ctrl-logo,.vm-dash-rev .mapboxgl-ctrl-attrib{display:none!important}",
-    );
-    mapboxgl.accessToken = token;
-    const { map } = novoMapa({
-      container: containerRef.current,
-      style: dashMapStyle("mapbox://styles/mapbox/light-v11"),
-      center: [-48.5, -22.0] as [number, number],
-      zoom: 5.6,
-      interactive: false,
-      attributionControl: false,
-    }, "painel/dashboard");
-    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
-    // pro backend (ver lib/mapaSeguro.ts).
-    if (!map) return;
-    mapRef.current = map;
-    return () => {
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const place = () => {
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
-      if (revisitas.length === 0) return;
-      const groups = new Map<string, number>();
-      revisitas.forEach(r => groups.set(r.municipio, (groups.get(r.municipio) ?? 0) + 1));
-      groups.forEach((count, muni) => {
-        const coords = CITY_COORDS[muni];
-        if (!coords) return;
-        const el = document.createElement("div");
-        el.style.cssText = "position:relative;width:32px;height:32px";
-        el.innerHTML = `
-          <div style="position:absolute;inset:0;border-radius:50%;background:#F97316;opacity:0.2;animation:vm-pulse 2s ease-in-out infinite"></div>
-          <div style="position:absolute;inset:6px;border-radius:50%;background:#F97316;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff">${count}</div>`;
-        const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-          .setLngLat(coords)
-          .addTo(map);
-        markersRef.current.push(mk);
-      });
-    };
-    if (map.isStyleLoaded()) place(); else map.once("load", place);
-  }, [revisitas]);
-
-  return (
-    <Card style={{ border: hasRevisitas ? "1px solid rgba(249,115,22,0.22)" : "1px solid var(--vm-border)" }}>
-      <div
-        className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: `1px solid ${hasRevisitas ? "#FFEDD5" : "var(--vm-tile-2)"}` }}
-      >
-        <div className="flex items-center gap-2">
-          <RotateCw className="h-3.5 w-3.5 text-orange-500" strokeWidth={2} />
-          <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">
-            Reprovados CPFL
-            {hasRevisitas && (
-              <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-px text-[10px] font-bold text-orange-600">
-                {revisitas.length}
-              </span>
-            )}
-          </span>
-        </div>
-        <Link href="/painel/revisitas" className="flex items-center gap-1 text-[10.5px] font-semibold text-orange-500 hover:underline">
-          Central <ArrowRight className="h-3 w-3" />
-        </Link>
-      </div>
-
-      {/* Map always visible as background */}
-      <div className="relative">
-        <div ref={containerRef} className="vm-dash-rev h-[155px] w-full" />
-        {/* Success overlay when no revisitas */}
-        {!hasRevisitas && (
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2 backdrop-blur-[3px]"
-            style={{ background: "var(--vm-overlay)" }}
-          >
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 shadow-sm">
-              <Sparkles className="h-5 w-5 text-emerald-500" strokeWidth={1.5} />
             </div>
-            <p className="text-[12px] font-semibold text-[var(--vm-text-soft)]">Operação em dia</p>
-            <p className="text-[10.5px] text-[var(--vm-faint)]">Sem reprovados CPFL pendentes.</p>
           </div>
-        )}
+        </Card>
       </div>
 
-      {hasRevisitas && (
-        <ul className="divide-y divide-orange-50">
-          {revisitas.slice(0, 3).map(r => (
-            <li key={r.id} className="flex items-start gap-2.5 px-4 py-2.5">
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-orange-100">
-                <ShieldAlert className="h-3 w-3 text-orange-500" strokeWidth={2.4} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[11.5px] font-semibold text-[var(--vm-text-soft)]">{r.equipamento}</p>
-                <p className="line-clamp-1 text-[10px] text-[var(--vm-faint)]">{r.municipio} · {relativo(r.reprovadoEm)}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
+      {/* Equipe + Mapa */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.42fr_1fr]">
+        <Card className="h-full">
+          <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-[#059669]" strokeWidth={2.2} />
+              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Equipe em campo</span>
+            </div>
+            <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
+          </div>
+          <div className="flex flex-1 flex-col gap-2 px-3 pb-3">
+            {equipeHoje.length === 0 ? (
+              <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">Nenhum técnico ativo agora.</p>
+            ) : (
+              equipeHoje.slice(0, 8).map((t) => {
+                const pct = t.atribuidas > 0 ? Math.round((t.concluidasHoje / t.atribuidas) * 100) : 0;
+                return (
+                  <div key={t.id} className="rounded-xl border border-[var(--vm-border-soft)] bg-[var(--vm-tile)] p-2.5">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white"
+                        style={{ background: STATUS_DOT[t.status] }}
+                      >
+                        {initials(t.nome)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[11.5px] font-bold leading-tight text-[var(--vm-text)]">{t.nome.split(" ")[0]}</p>
+                        <p className="flex items-center gap-1 truncate text-[9px] font-semibold" style={{ color: STATUS_DOT[t.status] }}>
+                          <span className="h-[4.5px] w-[4.5px] shrink-0 rounded-full" style={{ background: STATUS_DOT[t.status] }} />
+                          {STATUS_LABEL[t.status]} · {t.municipio ?? "—"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-3 pl-2 text-center">
+                        <div>
+                          <p className="tabular-nums text-[13px] font-extrabold leading-none text-[var(--vm-text)]">{t.atribuidas}</p>
+                          <p className="text-[6.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]">Atrib.</p>
+                        </div>
+                        <div>
+                          <p className="tabular-nums text-[13px] font-extrabold leading-none text-[#059669]">{t.concluidasHoje}</p>
+                          <p className="text-[6.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]">Real.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#059669" }} />
+                      </div>
+                      <span className="w-7 shrink-0 text-right text-[9.5px] font-bold text-[var(--vm-muted)]">{pct}%</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </Card>
+
+        <Card className="h-full">
+          <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
+            <div>
+              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias no mapa</span>
+              <p className="text-[9.5px] text-[var(--vm-faint)]">Visualização das vistorias do dia</p>
+            </div>
+            <div className="flex items-center gap-2.5 text-[9.5px] font-semibold text-[var(--vm-muted)]">
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Realizada</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#D97706" }} />Pendente</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#DC2626" }} />Reprovada</span>
+            </div>
+          </div>
+          <div ref={containerRef} className="vm-dash-equipe h-[360px] w-full shrink-0" />
+        </Card>
+      </div>
+
+      {/* Grid de análise */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+            <Building2 className="h-4 w-4 text-[#4A6CF7]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias por município</span>
+          </div>
+          <RankedBarList
+            items={topMunis}
+            keyFn={(m) => m.municipio}
+            labelFn={(m) => m.municipio}
+            valueFn={(m) => String(m.total)}
+            pctFn={(m) => (topMunis[0]?.total ? (m.total / topMunis[0].total) * 100 : 0)}
+            colorFn={() => "#4A6CF7"}
+            emptyLabel="Sem vistorias no período."
+          />
+        </Card>
+
+        <Card>
+          <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+            <ShieldAlert className="h-4 w-4 text-[#DC2626]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</span>
+          </div>
+          <RankedBarList
+            items={tecnicosPorReprovacao}
+            keyFn={(t) => String(t.id)}
+            labelFn={(t) => t.nome.split(" ")[0]}
+            valueFn={(t) => String(t.revisitas)}
+            pctFn={(t) => (tecnicosPorReprovacao[0]?.revisitas ? (t.revisitas / tecnicosPorReprovacao[0].revisitas) * 100 : 0)}
+            colorFn={() => "#DC2626"}
+            emptyLabel="Nenhuma reprovação no período."
+          />
+        </Card>
+
+        <Card>
+          <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+            <FileText className="h-4 w-4 text-[#B45309]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Principais motivos</span>
+          </div>
+          <RankedBarList
+            items={motivosReprovacao}
+            keyFn={(m) => m.id}
+            labelFn={(m) => m.label}
+            valueFn={(m) => String(m.total)}
+            pctFn={(m) => (motivosReprovacao[0]?.total ? (m.total / motivosReprovacao[0].total) * 100 : 0)}
+            colorFn={(m) => m.color}
+            emptyLabel="Sem motivos de reprovação no período."
+          />
+        </Card>
+
+        <Card>
+          <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+            <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Atribuídas × Realizadas</span>
+          </div>
+          <RankedBarList
+            items={atribuidasRealizadas}
+            keyFn={(t) => String(t.id)}
+            labelFn={(t) => t.nome.split(" ")[0]}
+            valueFn={(t) => `${t.aprovadas}/${t.total}`}
+            pctFn={(t) => (atribuidasRealizadas[0]?.total ? (t.total / atribuidasRealizadas[0].total) * 100 : 0)}
+            colorFn={() => "#059669"}
+            emptyLabel="Nenhuma vistoria finalizada nesse período."
+          />
+        </Card>
+      </div>
+    </div>
   );
 }
+
 
 
 /* ─── ParticlesCanvas ───────────────────────────────────────────────────── */
@@ -2641,15 +1991,37 @@ export default function PainelOverviewPage() {
     () => tecnicos.filter(t => t.status === "em-campo" || t.status === "base").length,
     [tecnicos],
   );
-  const taxaAprov    = historico?.taxas.aprovacaoPct ?? 0;
-  const taxaRevisita = historico?.taxas.revisitaPct  ?? 0;
   // Só entra no ranking quem já tem pelo menos 1 vistoria concluída —
   // município com puro backlog intocado não é "top" de nada ainda.
   const topMunis     = (historico?.topMunicipios ?? []).filter((m) => m.concluidas >= 1).slice(0, 8);
   const topTecs      = (topTecsDash?.tecnicos ?? []).slice(0, 6);
-  const pendentesCpfl = topTecsDash?.pendentesCpflPorMunicipio ?? [];
-  const aprovadosPorMunicipio = topTecsDash?.aprovadosPorMunicipio ?? [];
-  const mapaTeam     = mapaRealtime?.tecnicos ?? [];
+
+  // ── dados reais do novo "Equipe ao vivo" (EquipeAoVivoWidget) ──────────
+  // Atribuídas/Realizadas do KPI e da lista de equipe usam TecnicoAtivo
+  // (fetchTecnicos, "hoje" por definição — ver comentário do tipo) em vez
+  // de topTecsDash (que segue o filtro de período global): widget AO VIVO,
+  // não pode variar com "Todo Período" como os históricos.
+  const equipeHoje = useMemo(
+    () => [...tecnicos].sort((a, b) => b.atribuidas - a.atribuidas),
+    [tecnicos],
+  );
+  const kpiAtribuidasHoje = tecnicos.reduce((s, t) => s + t.atribuidas, 0);
+  const kpiRealizadasHoje = tecnicos.reduce((s, t) => s + t.concluidasHoje, 0);
+  const kpiAproveitamentoHoje = kpiAtribuidasHoje > 0
+    ? Math.round((kpiRealizadasHoje / kpiAtribuidasHoje) * 100)
+    : 0;
+  // Reprovadas: mesmo cálculo do KPI "Reprovados CPFL" do Hero NOC (linha
+  // acima) — não pode divergir, é o mesmo número em dois lugares da tela.
+  const kpiReprovadas = (stats?.aguardandoRevisita ?? 0) + (stats?.emRevisita ?? 0);
+  const vistoriasMapa = mapaRealtime?.vistorias ?? [];
+  // "Técnicos com mais reprovações": não existe contagem de reprovadas por
+  // técnico ainda — usa revisitas (nº de vistorias que voltaram por reprova)
+  // como proxy, já calculado em fetchRankingTecnicosPeriodo (topTecsDash).
+  const tecnicosPorReprovacao = [...(topTecsDash?.tecnicos ?? [])]
+    .filter((t) => t.revisitas > 0)
+    .sort((a, b) => b.revisitas - a.revisitas)
+    .slice(0, 6);
+  const motivosReprovacao = historico?.motivosReprovacao ?? [];
 
   // Rótulo legível do período pros títulos dos widgets — "Hoje" fica feio
   // como "1 dias", e Personalizado mostra o intervalo de fato escolhido.
@@ -3239,149 +2611,27 @@ export default function PainelOverviewPage() {
         )}
       </div>
 
-      {/* ════════════ Equipe ao Vivo ════════════ */}
+      {/* ════════════ Equipe ao vivo (redesenho 2026-09-23) ════════════ */}
       <div className="vm-rise" style={{ animationDelay: "0.12s" }}>
-        {/* Widget 04 — Equipe ao Vivo */}
-        <TeamMapWidget
-          mapaTeam={mapaTeam}
-          tecnicosAtivos={tecnicos.filter(t => t.status === "em-campo" || t.status === "base")}
-          taxaAprov={taxaAprov}
-          taxaRevisita={taxaRevisita}
-          periodoLabel={periodoLabel}
+        <EquipeAoVivoWidget
+          equipeHoje={equipeHoje}
+          vistoriasMapa={vistoriasMapa}
+          topMunis={topMunis}
+          tecnicosPorReprovacao={tecnicosPorReprovacao}
+          motivosReprovacao={motivosReprovacao}
+          atribuidasRealizadas={topTecs}
+          kpiAtribuidasHoje={kpiAtribuidasHoje}
+          kpiRealizadasHoje={kpiRealizadasHoje}
+          kpiAproveitamentoHoje={kpiAproveitamentoHoje}
+          kpiEmVistoria={stats?.emVistoria ?? 0}
+          kpiEmDeslocamento={stats?.emDeslocamento ?? 0}
+          kpiImpedimentos={stats?.impedimentos ?? 0}
+          kpiReprovadas={kpiReprovadas}
         />
       </div>
 
-      {/* ════════════ LINHA 2: Municípios | Pendentes CPFL | Aprovados | Técnicos | Atividade | Revisitas ════════════ */}
-      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6" style={{ animationDelay: "0.16s" }}>
-
-        {/* Widget 03 — Top Municípios: map IS the chart */}
-        <MunicipiosMapWidget topMunicipios={topMunis} tecnicos={tecnicos} />
-
-        {/* Widget 04 — Pendentes CPFL: mesma malha, rampa âmbar */}
-        <PendentesCpflMapWidget itens={pendentesCpfl} />
-
-        {/* Widget 04b — Aprovados: mesma malha, rampa verde */}
-        <AprovadosMapWidget itens={aprovadosPorMunicipio} />
-
-        {/* Widget 05 — Top Técnicos: performance cockpit */}
-        <Card>
-          <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2.5">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos · {periodoLabel}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
-            </div>
-          </div>
-          <div className="flex flex-col gap-0 px-3 pb-3">
-            {topTecs.length > 0 ? (
-              topTecs.map((t, i) => {
-                const maxTotal = topTecs[0]?.total ?? 1;
-                const pct = (t.total / maxTotal) * 100;
-                const aprovPct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
-                const badgeColors = ["#F59E0B", "var(--vm-faint)", "#B45309", "var(--vm-muted)", "var(--vm-muted)"];
-                const badgeBg    = ["var(--vm-amber-100)", "var(--vm-tile-2)", "var(--vm-amber-100)", "var(--vm-tile)", "var(--vm-tile)"];
-                return (
-                  <motion.div
-                    key={t.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.06 * i, duration: 0.35, ease: "easeOut" }}
-                    className="rounded-xl px-2 py-2.5 transition hover:bg-[var(--vm-tile)]"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums"
-                        style={{ background: badgeBg[i], color: badgeColors[i] }}
-                      >
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <span className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{t.nome.split(" ")[0]}</span>
-                          <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[var(--vm-text)]">{t.total}</span>
-                        </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                          <motion.div
-                            className="h-full rounded-full"
-                            style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[34px]">
-                      {/* Amostra pequena (< 3 vistorias) distorce %: 1/1 mostraria
-                          "100% aprov." lado a lado com técnicos de 40+ vistorias,
-                          como se fossem comparáveis. Mostra a contagem crua. */}
-                      {t.total >= 3 ? (
-                        <span className="rounded-full bg-emerald-50 px-1.5 py-[2px] text-[9px] font-semibold text-emerald-700">
-                          {aprovPct}% aprov.
-                        </span>
-                      ) : (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "var(--vm-tile-2)", color: "var(--vm-faint)" }}
-                          title="Amostra pequena demais pra calcular percentual"
-                        >
-                          {t.aprovadas}/{t.total} aprov.
-                        </span>
-                      )}
-                      {t.cidades > 0 && (
-                        <span className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
-                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {t.revisitas > 0 && (
-                        <span className="rounded-full bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold text-amber-700">
-                          {t.revisitas} rev.
-                        </span>
-                      )}
-                      {t.slaExecucaoMedioMin != null && (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "rgba(59,130,246,0.10)", color: "#2563EB" }}
-                          title="SLA médio de execução (Iniciada → Finalizada)"
-                        >
-                          SLA {fmtMin(t.slaExecucaoMedioMin)}
-                        </span>
-                      )}
-                      {t.tempoDeslocamentoMedioMin != null && (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "rgba(14,165,233,0.10)", color: "#0891B2" }}
-                          title="Tempo médio de deslocamento (Em Deslocamento → Iniciada)"
-                        >
-                          desloc {fmtMin(t.tempoDeslocamentoMedioMin)}
-                        </span>
-                      )}
-                      {t.kmPercorrido != null && t.kmPercorrido > 0 && (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "rgba(100,116,139,0.12)", color: "var(--vm-text-soft)" }}
-                          title="Distância percorrida no período"
-                        >
-                          {t.kmPercorrido.toFixed(1).replace(".", ",")} km
-                        </span>
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })
-            ) : topTecsLoading ? (
-              <Skeleton h={200} />
-            ) : (
-              <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">
-                Nenhuma vistoria finalizada nesse período.
-              </p>
-            )}
-          </div>
-        </Card>
-
-        {/* Widget 06 — Atividade ao Vivo: operational timeline */}
+      {/* ════════════ Atividade ao vivo ════════════ */}
+      <div className="vm-rise" style={{ animationDelay: "0.16s" }}>
         <Card>
           <div className="flex items-center justify-between border-b border-[var(--vm-tile-2)] px-4 py-3">
             <div className="flex items-center gap-2">
@@ -3443,9 +2693,6 @@ export default function PainelOverviewPage() {
             )}
           </div>
         </Card>
-
-        {/* Widget 07 — Revisitas: SP map + problem areas */}
-        <RevisitasMapWidget revisitas={revisitas} />
       </div>
 
       {/* ════════════ LINHA 3: Distribuição do pipeline ════════════ */}

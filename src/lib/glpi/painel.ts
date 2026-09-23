@@ -213,12 +213,34 @@ export async function fetchPainelStats(): Promise<PainelStats> {
   );
   const devolvidas = devolRow?.total ?? 0;
 
+  // Em Deslocamento (situação 7) — mesmo motivo de não caber no GROUP BY de
+  // status acima: resolveAdminStatus funde deslocamento em EM_VISTORIA (não
+  // tem case pra situacao_id=7), então pra ter esse número separado no KPI
+  // do dashboard precisa contar à parte, mesmo padrão de "devolvidas" acima.
+  const [deslocRow] = await query<{ total: number }>(
+    `
+      SELECT COUNT(*) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+       WHERE f.\`${SITUACAO_COLUMN}\` = ?
+    `,
+    [SITUACAO_EM_DESLOCAMENTO]
+  );
+  const emDeslocamento = deslocRow?.total ?? 0;
+
   let rejeitadas = 0;
+  let impedimentos = 0;
   try {
-    const [rejRow] = await query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM \`glpi_plugin_vistomap_recusas\` WHERE status = 'APROVADO'`
+    const recusaRows = await query<{ motivo: string; categoria: RecusaCategoria | null }>(
+      `SELECT motivo, categoria FROM \`glpi_plugin_vistomap_recusas\` WHERE status = 'APROVADO'`
     );
-    rejeitadas = rejRow?.total ?? 0;
+    rejeitadas = recusaRows.length;
+    // Impedimento vs recusa: mesma resolução usada no mapa ao vivo (categoria
+    // decidida pelo analista na aprovação; motivo antigo sem categoria cai no
+    // palpite automático de RECUSA_MOTIVO_CATEGORIA — ver recusaMotivos.ts).
+    impedimentos = recusaRows.filter(
+      (r) => (r.categoria ?? RECUSA_MOTIVO_CATEGORIA[r.motivo as RecusaMotivo] ?? "recusa") === "impedimento"
+    ).length;
   } catch {
     /* tabela de recusas pode não existir em dev — mantém 0 */
   }
@@ -305,6 +327,8 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     pdfsGerados,
     devolvidas,
     rejeitadas,
+    impedimentos,
+    emDeslocamento,
     aprovadas,
     atribuidas24h,
     finalizadas24h,

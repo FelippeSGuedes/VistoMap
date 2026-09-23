@@ -554,6 +554,10 @@ export interface PainelStats {
   devolvidas?: number;
   /** Vistorias com recusa aprovada — fora de circulação. */
   rejeitadas?: number;
+  /** Subconjunto de `rejeitadas` categorizado como impedimento (sem infra/acesso), não recusa de fato. */
+  impedimentos?: number;
+  /** Vistorias em situação "Em Deslocamento" (situação 7) — técnico a caminho, ainda não iniciou. */
+  emDeslocamento?: number;
   /** Aprovadas pela concessionária (statusvistoria Aprovado + Aprovado com Pendências). */
   aprovadas?: number;
   /** Vistorias atribuídas (saíram do backlog) nas últimas 24h — do audit log. */
