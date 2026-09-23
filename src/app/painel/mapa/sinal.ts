@@ -25,7 +25,7 @@ import type { SituacaoOperacional } from "@/types/painel-mapa";
 
 /* ─── famílias de status ──────────────────────────────────────────────────── */
 
-export type FamiliaSinal = "pendente" | "ativo" | "concluido" | "aprovado" | "problema" | "bloqueado" | "fora";
+export type FamiliaSinal = "pendente" | "ativo" | "concluido" | "aprovado" | "reprovado" | "problema" | "bloqueado" | "fora";
 
 export const FAMILIA_COR: Record<FamiliaSinal, string> = {
   pendente: "#F97316",
@@ -36,6 +36,11 @@ export const FAMILIA_COR: Record<FamiliaSinal, string> = {
   // ser confundida com o verde-água de "concluído" (técnico terminou, mas
   // ainda não tem decisão da CPFL).
   aprovado: "#EAB308",
+  // Rosa/magenta — pedido de campo 2026-09-23, "igual aprovação": a
+  // concessionária REPROVOU precisa saltar aos olhos igual o aprovado salta,
+  // sem repetir o vermelho de "problema" (Devolvida) nem o cinza de "fora"
+  // (Recusa) — são as 3 únicas cores que ninguém mais usa nessa paleta.
+  reprovado: "#DB2777",
   problema: "#DC2626",
   // Âmbar queimado: "travado por fora", não "encerrado". Escuro o bastante
   // pra não ser confundido com o laranja de PENDENTE.
@@ -48,25 +53,27 @@ export const FAMILIA_LABEL: Record<FamiliaSinal, string> = {
   ativo: "Ativo",
   concluido: "Concluído",
   aprovado: "Aprovado",
+  reprovado: "Reprovado",
   problema: "Problema",
   bloqueado: "Bloqueado",
   fora: "Fora",
 };
 
-export const FAMILIA_ORDEM: FamiliaSinal[] = ["pendente", "ativo", "concluido", "aprovado", "problema", "bloqueado", "fora"];
+export const FAMILIA_ORDEM: FamiliaSinal[] = ["pendente", "ativo", "concluido", "aprovado", "reprovado", "problema", "bloqueado", "fora"];
 
 /** Descrição curta de cada família — usada na legenda flutuante. */
 export const FAMILIA_DESCRICAO: Record<FamiliaSinal, string> = {
-  pendente: "A vistoriar, atribuído, ag. revisita",
+  pendente: "A vistoriar, atribuído",
   ativo: "Em deslocamento, em vistoria, em revisita",
   concluido: "Vistoriado, revisitado — ainda sem decisão da concessionária",
   aprovado: "Aprovado pela concessionária (com ou sem pendência)",
+  reprovado: "Reprovado pela concessionária — aguardando revisita",
   problema: "Devolvida pro técnico corrigir",
   bloqueado: "Impedimento — classificado, sem técnico, aguarda reatribuição",
   fora: "Recusa — classificada, sem técnico, aguarda reatribuição",
 };
 
-type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra" | "estrela";
+type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra" | "estrela" | "seta_volta";
 
 export const SITUACOES: SituacaoOperacional[] = [
   "A_VISTORIAR",
@@ -113,7 +120,10 @@ export function chaveSinal(
 const SINAL: Record<ChaveSinal, { familia: FamiliaSinal; glifo: Glifo }> = {
   A_VISTORIAR:         { familia: "pendente",  glifo: "vazio" },
   ATRIBUIDO:           { familia: "pendente",  glifo: "atribuido" },
-  AGUARDANDO_REVISITA: { familia: "pendente",  glifo: "vazio" },
+  // Tinha família própria (pendente/vazio) — igual a "A vistoriar" comum.
+  // Reprovado pela concessionária precisa saltar aos olhos igual aprovado
+  // salta (pedido de campo 2026-09-23), não se disfarçar de backlog normal.
+  AGUARDANDO_REVISITA: { familia: "reprovado", glifo: "seta_volta" },
   EM_DESLOCAMENTO:     { familia: "ativo",     glifo: "seta" },
   EM_VISTORIA:         { familia: "ativo",     glifo: "ponto" },
   EM_REVISITA:         { familia: "ativo",     glifo: "ponto" },
@@ -132,7 +142,7 @@ export const SITUACAO_LABEL: Record<ChaveSinal, string> = {
   EM_DESLOCAMENTO:     "Em deslocamento",
   EM_VISTORIA:         "Em vistoria",
   VISTORIADO:          "Vistoriado",
-  AGUARDANDO_REVISITA: "Ag. revisita",
+  AGUARDANDO_REVISITA: "Reprovado",
   EM_REVISITA:         "Em revisita",
   REVISITADO:          "Revisitado",
   APROVADO:            "Aprovado",
@@ -266,6 +276,27 @@ function desenhaGlifo(ctx: CanvasRenderingContext2D, glifo: Glifo, cor: string) 
     }
     ctx.closePath();
     ctx.fill();
+  } else if (glifo === "seta_volta") {
+    // Seta circular ("volta pro início do ciclo, precisa ser refeito") — arco
+    // de ~270° desenhado em sentido horário + chevron aberto na ponta final
+    // (mesmo traço simples do glifo "seta", não um triângulo preenchido).
+    const r = 5;
+    const startAng = (-70 * Math.PI) / 180;
+    const endAng = (200 * Math.PI) / 180;
+    ctx.lineWidth = 2.1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAng, endAng, false);
+    ctx.stroke();
+    const tipX = cx + r * Math.cos(endAng);
+    const tipY = cy + r * Math.sin(endAng);
+    const tangent = endAng + Math.PI / 2; // direção do movimento (sentido horário)
+    const ah = 3;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tipX - ah * Math.cos(tangent - 0.5), tipY - ah * Math.sin(tangent - 0.5));
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(tipX - ah * Math.cos(tangent + 0.5), tipY - ah * Math.sin(tangent + 0.5));
+    ctx.stroke();
   }
 }
 
