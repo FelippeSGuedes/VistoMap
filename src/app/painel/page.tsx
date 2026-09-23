@@ -39,7 +39,6 @@ import { CountUp } from "@/components/ui/CountUp";
 import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type {
   HistoricoAnalytics,
-  RankingTecnicoItem,
   TopTecnicosDashboard,
 } from "@/services/painel";
 import { getMapboxToken } from "@/services/maps";
@@ -1529,10 +1528,6 @@ function corVistoriaMapa(v: PainelMapaVistoria): "real" | "pendente" | "reprovad
 interface EquipeAoVivoWidgetProps {
   equipeHoje: TecnicoAtivo[];
   vistoriasMapa: PainelMapaVistoria[];
-  topMunis: Array<{ municipio: string; total: number; concluidas: number }>;
-  tecnicosPorReprovacao: RankingTecnicoItem[];
-  motivosReprovacao: Array<{ id: string; label: string; color: string; total: number; pct: number; exemplos: string[] }>;
-  atribuidasRealizadas: RankingTecnicoItem[];
   kpiAtribuidasHoje: number;
   kpiRealizadasHoje: number;
   kpiAproveitamentoHoje: number;
@@ -1545,10 +1540,6 @@ interface EquipeAoVivoWidgetProps {
 function EquipeAoVivoWidget({
   equipeHoje,
   vistoriasMapa,
-  topMunis,
-  tecnicosPorReprovacao,
-  motivosReprovacao,
-  atribuidasRealizadas,
   kpiAtribuidasHoje,
   kpiRealizadasHoje,
   kpiAproveitamentoHoje,
@@ -1561,6 +1552,49 @@ function EquipeAoVivoWidget({
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const markersRef   = useRef<mapboxgl.Marker[]>([]);
   const token        = getMapboxToken();
+
+  // Grid de análise 100% derivado do MESMO snapshot do mapa (vistoriasMapa,
+  // já filtrado pra "hoje/em aberto") — achado em campo 2026-09-23: antes
+  // misturava esse recorte "ao vivo" com dados de período (topTecsDash/
+  // historico), e os números não batiam entre os cards desta mesma seção.
+  const porMunicipio = useMemo(() => {
+    const acc = new Map<string, number>();
+    for (const v of vistoriasMapa) {
+      const m = v.municipio?.trim();
+      if (!m) continue;
+      acc.set(m, (acc.get(m) ?? 0) + 1);
+    }
+    return [...acc.entries()]
+      .map(([municipio, total]) => ({ municipio, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
+  }, [vistoriasMapa]);
+
+  const porTecnicoReprovacao = useMemo(() => {
+    const acc = new Map<string, number>();
+    for (const v of vistoriasMapa) {
+      if (corVistoriaMapa(v) !== "reprovada") continue;
+      const nome = v.tecnico_nome?.trim();
+      if (!nome) continue;
+      acc.set(nome, (acc.get(nome) ?? 0) + 1);
+    }
+    return [...acc.entries()]
+      .map(([nome, total]) => ({ nome, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
+  }, [vistoriasMapa]);
+
+  const porMotivo = useMemo(() => {
+    const acc = new Map<string, number>();
+    for (const v of vistoriasMapa) {
+      if (!v.bloqueio || !v.bloqueio_motivo_label) continue;
+      acc.set(v.bloqueio_motivo_label, (acc.get(v.bloqueio_motivo_label) ?? 0) + 1);
+    }
+    return [...acc.entries()]
+      .map(([label, total]) => ({ label, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
+  }, [vistoriasMapa]);
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
@@ -1718,21 +1752,21 @@ function EquipeAoVivoWidget({
         </Card>
       </div>
 
-      {/* Grid de análise */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/* Grid de análise — mesmo recorte do mapa acima (hoje/em aberto) */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <div className="flex items-center gap-2 px-5 pt-4 pb-2">
             <Building2 className="h-4 w-4 text-[#4A6CF7]" strokeWidth={2} />
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias por município</span>
           </div>
           <RankedBarList
-            items={topMunis}
+            items={porMunicipio}
             keyFn={(m) => m.municipio}
             labelFn={(m) => m.municipio}
             valueFn={(m) => String(m.total)}
-            pctFn={(m) => (topMunis[0]?.total ? (m.total / topMunis[0].total) * 100 : 0)}
+            pctFn={(m) => (porMunicipio[0]?.total ? (m.total / porMunicipio[0].total) * 100 : 0)}
             colorFn={() => "#4A6CF7"}
-            emptyLabel="Sem vistorias no período."
+            emptyLabel="Sem vistorias hoje."
           />
         </Card>
 
@@ -1742,13 +1776,13 @@ function EquipeAoVivoWidget({
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</span>
           </div>
           <RankedBarList
-            items={tecnicosPorReprovacao}
-            keyFn={(t) => String(t.id)}
+            items={porTecnicoReprovacao}
+            keyFn={(t) => t.nome}
             labelFn={(t) => t.nome.split(" ")[0]}
-            valueFn={(t) => String(t.revisitas)}
-            pctFn={(t) => (tecnicosPorReprovacao[0]?.revisitas ? (t.revisitas / tecnicosPorReprovacao[0].revisitas) * 100 : 0)}
+            valueFn={(t) => String(t.total)}
+            pctFn={(t) => (porTecnicoReprovacao[0]?.total ? (t.total / porTecnicoReprovacao[0].total) * 100 : 0)}
             colorFn={() => "#DC2626"}
-            emptyLabel="Nenhuma reprovação no período."
+            emptyLabel="Nenhuma reprovação hoje."
           />
         </Card>
 
@@ -1758,29 +1792,13 @@ function EquipeAoVivoWidget({
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Principais motivos</span>
           </div>
           <RankedBarList
-            items={motivosReprovacao}
-            keyFn={(m) => m.id}
+            items={porMotivo}
+            keyFn={(m) => m.label}
             labelFn={(m) => m.label}
             valueFn={(m) => String(m.total)}
-            pctFn={(m) => (motivosReprovacao[0]?.total ? (m.total / motivosReprovacao[0].total) * 100 : 0)}
-            colorFn={(m) => m.color}
-            emptyLabel="Sem motivos de reprovação no período."
-          />
-        </Card>
-
-        <Card>
-          <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-            <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Atribuídas × Realizadas</span>
-          </div>
-          <RankedBarList
-            items={atribuidasRealizadas}
-            keyFn={(t) => String(t.id)}
-            labelFn={(t) => t.nome.split(" ")[0]}
-            valueFn={(t) => `${t.aprovadas}/${t.total}`}
-            pctFn={(t) => (atribuidasRealizadas[0]?.total ? (t.total / atribuidasRealizadas[0].total) * 100 : 0)}
-            colorFn={() => "#059669"}
-            emptyLabel="Nenhuma vistoria finalizada nesse período."
+            pctFn={(m) => (porMotivo[0]?.total ? (m.total / porMotivo[0].total) * 100 : 0)}
+            colorFn={() => "#B45309"}
+            emptyLabel="Sem impedimentos/recusas hoje."
           />
         </Card>
       </div>
@@ -1991,9 +2009,6 @@ export default function PainelOverviewPage() {
     () => tecnicos.filter(t => t.status === "em-campo" || t.status === "base").length,
     [tecnicos],
   );
-  // Só entra no ranking quem já tem pelo menos 1 vistoria concluída —
-  // município com puro backlog intocado não é "top" de nada ainda.
-  const topMunis     = (historico?.topMunicipios ?? []).filter((m) => m.concluidas >= 1).slice(0, 8);
   const topTecs      = (topTecsDash?.tecnicos ?? []).slice(0, 6);
 
   // ── dados reais do novo "Equipe ao vivo" (EquipeAoVivoWidget) ──────────
@@ -2031,14 +2046,6 @@ export default function PainelOverviewPage() {
       return v.data_vistoria != null && v.data_vistoria.slice(0, 10) === hojeISO;
     });
   }, [mapaRealtime]);
-  // "Técnicos com mais reprovações": não existe contagem de reprovadas por
-  // técnico ainda — usa revisitas (nº de vistorias que voltaram por reprova)
-  // como proxy, já calculado em fetchRankingTecnicosPeriodo (topTecsDash).
-  const tecnicosPorReprovacao = [...(topTecsDash?.tecnicos ?? [])]
-    .filter((t) => t.revisitas > 0)
-    .sort((a, b) => b.revisitas - a.revisitas)
-    .slice(0, 6);
-  const motivosReprovacao = historico?.motivosReprovacao ?? [];
 
   // Rótulo legível do período pros títulos dos widgets — "Hoje" fica feio
   // como "1 dias", e Personalizado mostra o intervalo de fato escolhido.
@@ -2633,10 +2640,6 @@ export default function PainelOverviewPage() {
         <EquipeAoVivoWidget
           equipeHoje={equipeHoje}
           vistoriasMapa={vistoriasMapa}
-          topMunis={topMunis}
-          tecnicosPorReprovacao={tecnicosPorReprovacao}
-          motivosReprovacao={motivosReprovacao}
-          atribuidasRealizadas={topTecs}
           kpiAtribuidasHoje={kpiAtribuidasHoje}
           kpiRealizadasHoje={kpiRealizadasHoje}
           kpiAproveitamentoHoje={kpiAproveitamentoHoje}
@@ -2647,8 +2650,127 @@ export default function PainelOverviewPage() {
         />
       </div>
 
-      {/* ════════════ Atividade ao vivo ════════════ */}
-      <div className="vm-rise" style={{ animationDelay: "0.16s" }}>
+      {/* ════════════ Top Técnicos | Atividade ao vivo ════════════ */}
+      <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2" style={{ animationDelay: "0.16s" }}>
+        {/* Widget 05 — Top Técnicos: performance cockpit */}
+        <Card>
+          <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2.5">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
+              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos · {periodoLabel}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
+            </div>
+          </div>
+          <div className="flex flex-col gap-0 px-3 pb-3">
+            {topTecs.length > 0 ? (
+              topTecs.map((t, i) => {
+                const maxTotal = topTecs[0]?.total ?? 1;
+                const pct = (t.total / maxTotal) * 100;
+                const aprovPct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
+                const badgeColors = ["#F59E0B", "var(--vm-faint)", "#B45309", "var(--vm-muted)", "var(--vm-muted)"];
+                const badgeBg    = ["var(--vm-amber-100)", "var(--vm-tile-2)", "var(--vm-amber-100)", "var(--vm-tile)", "var(--vm-tile)"];
+                return (
+                  <motion.div
+                    key={t.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.06 * i, duration: 0.35, ease: "easeOut" }}
+                    className="rounded-xl px-2 py-2.5 transition hover:bg-[var(--vm-tile)]"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums"
+                        style={{ background: badgeBg[i], color: badgeColors[i] }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-1">
+                          <span className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{t.nome.split(" ")[0]}</span>
+                          <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[var(--vm-text)]">{t.total}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[34px]">
+                      {/* Amostra pequena (< 3 vistorias) distorce %: 1/1 mostraria
+                          "100% aprov." lado a lado com técnicos de 40+ vistorias,
+                          como se fossem comparáveis. Mostra a contagem crua. */}
+                      {t.total >= 3 ? (
+                        <span className="rounded-full bg-emerald-50 px-1.5 py-[2px] text-[9px] font-semibold text-emerald-700">
+                          {aprovPct}% aprov.
+                        </span>
+                      ) : (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "var(--vm-tile-2)", color: "var(--vm-faint)" }}
+                          title="Amostra pequena demais pra calcular percentual"
+                        >
+                          {t.aprovadas}/{t.total} aprov.
+                        </span>
+                      )}
+                      {t.cidades > 0 && (
+                        <span className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
+                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {t.revisitas > 0 && (
+                        <span className="rounded-full bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold text-amber-700">
+                          {t.revisitas} rev.
+                        </span>
+                      )}
+                      {t.slaExecucaoMedioMin != null && (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "rgba(59,130,246,0.10)", color: "#2563EB" }}
+                          title="SLA médio de execução (Iniciada → Finalizada)"
+                        >
+                          SLA {fmtMin(t.slaExecucaoMedioMin)}
+                        </span>
+                      )}
+                      {t.tempoDeslocamentoMedioMin != null && (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "rgba(14,165,233,0.10)", color: "#0891B2" }}
+                          title="Tempo médio de deslocamento (Em Deslocamento → Iniciada)"
+                        >
+                          desloc {fmtMin(t.tempoDeslocamentoMedioMin)}
+                        </span>
+                      )}
+                      {t.kmPercorrido != null && t.kmPercorrido > 0 && (
+                        <span
+                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
+                          style={{ background: "rgba(100,116,139,0.12)", color: "var(--vm-text-soft)" }}
+                          title="Distância percorrida no período"
+                        >
+                          {t.kmPercorrido.toFixed(1).replace(".", ",")} km
+                        </span>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })
+            ) : topTecsLoading ? (
+              <Skeleton h={200} />
+            ) : (
+              <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">
+                Nenhuma vistoria finalizada nesse período.
+              </p>
+            )}
+          </div>
+        </Card>
+
+        {/* Widget 06 — Atividade ao Vivo: operational timeline */}
         <Card>
           <div className="flex items-center justify-between border-b border-[var(--vm-tile-2)] px-4 py-3">
             <div className="flex items-center gap-2">
