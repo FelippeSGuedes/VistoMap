@@ -759,12 +759,20 @@ export function GuidedCaptureFlow({
       if (step.kind === "video") {
         // Achado 2026-09-22 (Marco, JUN-G-R-001): sem limite de tamanho
         // aqui, o fallback "câmera do sistema" (onFallback — sem corte de
-        // duração nem compressão) podia produzir vídeo de 30-40MB+, que
-        // nunca sincroniza em sinal fraco de campo por mais que se aumente
-        // o timeout do finalizar. O gravador embutido (VideoRecorderSheet)
-        // já se autolimita (15s, ~1.2Mbps → ~2-3MB) e nunca bate nesse
-        // teto — só o fallback nativo precisava da trava.
-        const MAX_VIDEO_BYTES = 10 * 1024 * 1024; // 10MB — folga generosa sobre o gravador embutido
+        // duração nem compressão) podia produzir vídeo de 30-40MB+.
+        //
+        // Achado 2026-09-23 (mesmo Marco, agora com o gravador embutido
+        // funcionando de verdade): mesmo o gravador embutido, que se
+        // autolimita (15s/bitrate baixo — ver VideoRecorderSheet.tsx), não
+        // é garantia de arquivo pequeno — o encoder de pelo menos um
+        // aparelho real não respeitava o bitrate pedido e saiu ~15MB em vez
+        // de ~2-3MB. Bloquear tudo acima de 10MB deixava esse caso
+        // legítimo travado sem saída. Teto subiu pra 20MB (ainda barra o
+        // fallback pesado de 30-40MB) — o que passar daqui mas mesmo assim
+        // não conseguir subir por sinal fraco cai no fallback "envia sem
+        // vídeo, completa depois" do executeFinalize (syncRunner.ts), não
+        // fica mais preso na tela de captura.
+        const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20MB
         const url = URL.createObjectURL(file);
         let fb: Feedback;
         if (file.size === 0) {
@@ -772,7 +780,7 @@ export function GuidedCaptureFlow({
         } else if (file.size > MAX_VIDEO_BYTES) {
           fb = {
             tone: "error",
-            message: `Vídeo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB para enviar em campo). Use o gravador do app (não a câmera do sistema) ou grave por menos tempo.`,
+            message: `Vídeo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Use o gravador do app (não a câmera do sistema) ou grave por menos tempo.`,
           };
         } else {
           fb = { tone: "ok", message: "Vídeo capturado." };

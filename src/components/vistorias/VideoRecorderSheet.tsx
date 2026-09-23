@@ -16,7 +16,12 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Circle, Square, X, Camera, AlertTriangle, RotateCw } from "lucide-react";
 
 const MAX_SECONDS = 15;
-const VIDEO_BITRATE = 1_200_000; // ~1.2 Mbps
+// Achado 2026-09-23 (Marco): baixado de 1.2Mbps pra 700kbps — o encoder de
+// pelo menos um aparelho real em campo não respeitava o valor pedido
+// (saiu ~15MB em vez dos ~2-3MB esperados). Alvo menor dá mais margem pra
+// esse tipo de aparelho ainda ficar num tamanho razoável mesmo passando
+// do pedido.
+const VIDEO_BITRATE = 700_000; // ~0.7 Mbps
 const AUDIO_BITRATE = 64_000;
 
 /** Detecta orientação do aparelho via matchMedia — sem plugin nativo. */
@@ -103,9 +108,15 @@ export function VideoRecorderSheet({
       return navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 854 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 24 },
+          // Achado 2026-09-23 (Marco): "ideal" sozinho é só sugestão — vídeo
+          // real saiu em ~15MB, bem acima do ~2-3MB esperado (1.2Mbps×15s),
+          // ou porque o encoder do aparelho não respeita videoBitsPerSecond
+          // direito, ou porque a resolução real ficou maior que o "ideal".
+          // "max" é teto de verdade, não sugestão — baixa o teto junto com
+          // o ideal pra reduzir a margem de erro do encoder do aparelho.
+          width: { ideal: 640, max: 854 },
+          height: { ideal: 360, max: 480 },
+          frameRate: { ideal: 20, max: 24 },
         },
         audio: true,
       });
