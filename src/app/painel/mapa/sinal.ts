@@ -25,12 +25,17 @@ import type { SituacaoOperacional } from "@/types/painel-mapa";
 
 /* ─── famílias de status ──────────────────────────────────────────────────── */
 
-export type FamiliaSinal = "pendente" | "ativo" | "concluido" | "problema" | "bloqueado" | "fora";
+export type FamiliaSinal = "pendente" | "ativo" | "concluido" | "aprovado" | "problema" | "bloqueado" | "fora";
 
 export const FAMILIA_COR: Record<FamiliaSinal, string> = {
   pendente: "#F97316",
   ativo: "#3B82F6",
   concluido: "#00B388",
+  // Dourado — a única família que não é "estado do processo", é a LINHA DE
+  // CHEGADA: a concessionária já aprovou. Precisa saltar aos olhos e nunca
+  // ser confundida com o verde-água de "concluído" (técnico terminou, mas
+  // ainda não tem decisão da CPFL).
+  aprovado: "#EAB308",
   problema: "#DC2626",
   // Âmbar queimado: "travado por fora", não "encerrado". Escuro o bastante
   // pra não ser confundido com o laranja de PENDENTE.
@@ -42,24 +47,26 @@ export const FAMILIA_LABEL: Record<FamiliaSinal, string> = {
   pendente: "Pendente",
   ativo: "Ativo",
   concluido: "Concluído",
+  aprovado: "Aprovado",
   problema: "Problema",
   bloqueado: "Bloqueado",
   fora: "Fora",
 };
 
-export const FAMILIA_ORDEM: FamiliaSinal[] = ["pendente", "ativo", "concluido", "problema", "bloqueado", "fora"];
+export const FAMILIA_ORDEM: FamiliaSinal[] = ["pendente", "ativo", "concluido", "aprovado", "problema", "bloqueado", "fora"];
 
 /** Descrição curta de cada família — usada na legenda flutuante. */
 export const FAMILIA_DESCRICAO: Record<FamiliaSinal, string> = {
   pendente: "A vistoriar, atribuído, ag. revisita",
   ativo: "Em deslocamento, em vistoria, em revisita",
-  concluido: "Vistoriado, revisitado",
+  concluido: "Vistoriado, revisitado — ainda sem decisão da concessionária",
+  aprovado: "Aprovado pela concessionária (com ou sem pendência)",
   problema: "Devolvida pro técnico corrigir",
   bloqueado: "Impedimento — classificado, sem técnico, aguarda reatribuição",
   fora: "Recusa — classificada, sem técnico, aguarda reatribuição",
 };
 
-type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra";
+type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra" | "estrela";
 
 export const SITUACOES: SituacaoOperacional[] = [
   "A_VISTORIAR",
@@ -82,10 +89,24 @@ export const SITUACOES: SituacaoOperacional[] = [
  * Por isso existe uma chave sintética só pro desenho; a situação no banco
  * continua sendo uma só, e os filtros continuam com as 10 de sempre.
  */
-export type ChaveSinal = SituacaoOperacional | "REJEITADA_IMP";
+/**
+ * APROVADO é outra chave sintética, do mesmo jeito que REJEITADA_IMP: a
+ * situação sozinha (VISTORIADO/REVISITADO) não diz se a concessionária já
+ * decidiu — isso vem de `status_aprovacao`, campo separado. Pedido de campo
+ * 2026-09-23: "aprovados" não tinha cor própria no mapa, ficava idêntico a
+ * um vistoriado comum ainda em análise.
+ */
+export type ChaveSinal = SituacaoOperacional | "REJEITADA_IMP" | "APROVADO";
 
-export function chaveSinal(situacao: string, bloqueio?: string | null): ChaveSinal {
+export function chaveSinal(
+  situacao: string,
+  bloqueio?: string | null,
+  statusAprovacao?: string | null
+): ChaveSinal {
   if (situacao === "REJEITADA" && bloqueio === "impedimento") return "REJEITADA_IMP";
+  if ((situacao === "VISTORIADO" || situacao === "REVISITADO") && statusAprovacao === "APROVADO") {
+    return "APROVADO";
+  }
   return (SINAL[situacao as ChaveSinal] ? situacao : "A_VISTORIAR") as ChaveSinal;
 }
 
@@ -98,6 +119,7 @@ const SINAL: Record<ChaveSinal, { familia: FamiliaSinal; glifo: Glifo }> = {
   EM_REVISITA:         { familia: "ativo",     glifo: "ponto" },
   VISTORIADO:          { familia: "concluido", glifo: "check" },
   REVISITADO:          { familia: "concluido", glifo: "check" },
+  APROVADO:            { familia: "aprovado",  glifo: "estrela" },
   DEVOLVIDA:           { familia: "problema",  glifo: "alerta" },
   REJEITADA:           { familia: "fora",      glifo: "x" },
   REJEITADA_IMP:       { familia: "bloqueado", glifo: "barra" },
@@ -113,6 +135,7 @@ export const SITUACAO_LABEL: Record<ChaveSinal, string> = {
   AGUARDANDO_REVISITA: "Ag. revisita",
   EM_REVISITA:         "Em revisita",
   REVISITADO:          "Revisitado",
+  APROVADO:            "Aprovado",
   DEVOLVIDA:           "Devolvida",
   REJEITADA:           "Recusa",
 };
@@ -133,19 +156,25 @@ export function corSituacao(s: string): string {
 export function corMarcador(
   situacao: string,
   tecnicoCor: string | null,
-  bloqueio?: string | null
+  bloqueio?: string | null,
+  statusAprovacao?: string | null
 ): string {
   if (situacao === "ATRIBUIDO" && tecnicoCor) return tecnicoCor;
-  return corSituacao(chaveSinal(situacao, bloqueio));
+  return corSituacao(chaveSinal(situacao, bloqueio, statusAprovacao));
 }
 
-export function labelSituacao(situacao: string, bloqueio?: string | null): string {
-  return SITUACAO_LABEL[chaveSinal(situacao, bloqueio)] ?? situacao;
+export function labelSituacao(situacao: string, bloqueio?: string | null, statusAprovacao?: string | null): string {
+  return SITUACAO_LABEL[chaveSinal(situacao, bloqueio, statusAprovacao)] ?? situacao;
 }
 
 /** Nome do sprite de uma vistoria (o `-r` é o selo de revisita). */
-export function iconeDe(situacao: string, revisita: boolean, bloqueio?: string | null): string {
-  return `vm-sig-${chaveSinal(situacao, bloqueio)}${revisita ? "-r" : ""}`;
+export function iconeDe(
+  situacao: string,
+  revisita: boolean,
+  bloqueio?: string | null,
+  statusAprovacao?: string | null
+): string {
+  return `vm-sig-${chaveSinal(situacao, bloqueio, statusAprovacao)}${revisita ? "-r" : ""}`;
 }
 
 /** Cor neutra do anel quando a vistoria ainda não tem técnico. */
@@ -221,6 +250,22 @@ function desenhaGlifo(ctx: CanvasRenderingContext2D, glifo: Glifo, cor: string) 
     ctx.moveTo(16.8, 22);
     ctx.lineTo(27.2, 22);
     ctx.stroke();
+  } else if (glifo === "estrela") {
+    // Estrela cheia — só a família "aprovado" usa esse glifo, então nunca
+    // se confunde com o check simples de "concluído" (ainda em análise).
+    const pontas = 5;
+    const rOut = 4.6;
+    const rIn = 1.9;
+    ctx.beginPath();
+    for (let i = 0; i < pontas * 2; i++) {
+      const r = i % 2 === 0 ? rOut : rIn;
+      const ang = (Math.PI / pontas) * i - Math.PI / 2;
+      const x = cx + r * Math.cos(ang);
+      const y = cy + r * Math.sin(ang);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
@@ -328,8 +373,8 @@ function makeSinalImage(chave: ChaveSinal, revisita: boolean): SpriteMapbox {
   return { width: px, height: px, data: new Uint8Array(img.data.buffer), pixelRatio: RATIO };
 }
 
-/** Todas as chaves desenháveis/filtráveis: as 10 situações + o impedimento. */
-export const CHAVES_SINAL: ChaveSinal[] = [...SITUACOES, "REJEITADA_IMP"];
+/** Todas as chaves desenháveis/filtráveis: as 10 situações + impedimento + aprovado. */
+export const CHAVES_SINAL: ChaveSinal[] = [...SITUACOES, "REJEITADA_IMP", "APROVADO"];
 
 /** Registra as 22 imagens do miolo. Idempotente — roda a cada troca de estilo. */
 export function registrarSpritesSinal(map: MapboxMap): void {

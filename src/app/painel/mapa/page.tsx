@@ -388,10 +388,10 @@ function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
       properties: {
         id: v.id,
         situacao: v.situacao,
-        icone: iconeDe(v.situacao, v.is_revisita, v.bloqueio),
+        icone: iconeDe(v.situacao, v.is_revisita, v.bloqueio, v.status_aprovacao),
         // Cor dominante do marcador (halo de hover, anel de foco, pulso) —
         // em ATRIBUÍDO é a do técnico, no resto é a da família de status.
-        cor_marcador: corMarcador(v.situacao, v.tecnico_cor, v.bloqueio),
+        cor_marcador: corMarcador(v.situacao, v.tecnico_cor, v.bloqueio, v.status_aprovacao),
         // -1 (e não null) pra comparação de expressão funcionar sem coalesce.
         tecnico_id: v.tecnico_id ?? -1,
         tecnico_cor: v.tecnico_cor ?? ANEL_SEM_TECNICO,
@@ -1356,7 +1356,7 @@ export default function PainelMapaPage() {
   // do filtro selecionado, só a lista lateral respeitava.
   const SITUACAO_SORT: Record<string, number> = {
     DEVOLVIDA: -1, A_VISTORIAR: 0, ATRIBUIDO: 1, EM_VISTORIA: 2, VISTORIADO: 3,
-    AGUARDANDO_REVISITA: 4, EM_REVISITA: 5, REVISITADO: 6, REJEITADA_IMP: 7, REJEITADA: 8,
+    AGUARDANDO_REVISITA: 4, EM_REVISITA: 5, REVISITADO: 6, APROVADO: 6.5, REJEITADA_IMP: 7, REJEITADA: 8,
   };
 
   const vistoriasFiltradas = useMemo(() => {
@@ -1364,7 +1364,7 @@ export default function PainelMapaPage() {
     const q = buscaVis.trim().toLowerCase();
     return all
       .filter((v) => {
-        if (filtroSit !== "todas" && chaveSinal(v.situacao, v.bloqueio) !== filtroSit) return false;
+        if (filtroSit !== "todas" && chaveSinal(v.situacao, v.bloqueio, v.status_aprovacao) !== filtroSit) return false;
         if (!q) return true;
         return (
           v.equipamento.toLowerCase().includes(q) ||
@@ -1374,8 +1374,8 @@ export default function PainelMapaPage() {
       })
       .sort(
         (a, b) =>
-          (SITUACAO_SORT[chaveSinal(a.situacao, a.bloqueio)] ?? 9) -
-          (SITUACAO_SORT[chaveSinal(b.situacao, b.bloqueio)] ?? 9)
+          (SITUACAO_SORT[chaveSinal(a.situacao, a.bloqueio, a.status_aprovacao)] ?? 9) -
+          (SITUACAO_SORT[chaveSinal(b.situacao, b.bloqueio, b.status_aprovacao)] ?? 9)
       );
   }, [data, filtroSit, buscaVis]);
 
@@ -1684,7 +1684,7 @@ export default function PainelMapaPage() {
   const contagemSit = useMemo(() => {
     const acc: Record<string, number> = {};
     for (const v of data?.vistorias ?? []) {
-      const k = chaveSinal(v.situacao, v.bloqueio);
+      const k = chaveSinal(v.situacao, v.bloqueio, v.status_aprovacao);
       acc[k] = (acc[k] ?? 0) + 1;
     }
     return acc;
@@ -2019,7 +2019,7 @@ export default function PainelMapaPage() {
               <div className="space-y-1">
                 {vistoriasFiltradas.map((v) => {
                   // Mesma regra do mapa: atribuída aparece na cor do técnico.
-                  const cor = corMarcador(v.situacao, v.tecnico_cor, v.bloqueio);
+                  const cor = corMarcador(v.situacao, v.tecnico_cor, v.bloqueio, v.status_aprovacao);
                   const corTec = v.tecnico_cor ?? ANEL_SEM_TECNICO;
                   const apagada = tecnicoDestacado != null && v.tecnico_id !== tecnicoDestacado;
                   return (
@@ -2055,7 +2055,7 @@ export default function PainelMapaPage() {
                             className="shrink-0 rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase"
                             style={{ background: `${cor}20`, color: cor }}
                           >
-                            {labelSituacao(v.situacao, v.bloqueio)}
+                            {labelSituacao(v.situacao, v.bloqueio, v.status_aprovacao)}
                           </span>
                         </div>
                         <div className="mt-0.5 flex items-center gap-1 text-[9.5px]" style={{ color: "var(--vm-faint)" }}>
@@ -2235,9 +2235,9 @@ export default function PainelMapaPage() {
           <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
             <span
               className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: corMarcador(hoveredVis.situacao, hoveredVis.tecnico_cor, hoveredVis.bloqueio) }}
+              style={{ background: corMarcador(hoveredVis.situacao, hoveredVis.tecnico_cor, hoveredVis.bloqueio, hoveredVis.status_aprovacao) }}
             />
-            <span>{labelSituacao(hoveredVis.situacao, hoveredVis.bloqueio)}</span>
+            <span>{labelSituacao(hoveredVis.situacao, hoveredVis.bloqueio, hoveredVis.status_aprovacao)}</span>
             <span style={{ color: "var(--vm-faint)" }}>·</span>
             <span className="truncate">{hoveredVis.municipio ?? "—"}</span>
           </div>
@@ -2517,11 +2517,11 @@ export default function PainelMapaPage() {
                     <span
                       className="shrink-0 rounded-full px-2 py-[3px] text-[9px] font-bold uppercase tracking-wide"
                       style={{
-                        background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio), 0.16),
-                        color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio),
+                        background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio, selectedVistoria.status_aprovacao), 0.16),
+                        color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio, selectedVistoria.status_aprovacao),
                       }}
                     >
-                      {labelSituacao(selectedVistoria.situacao, selectedVistoria.bloqueio)}
+                      {labelSituacao(selectedVistoria.situacao, selectedVistoria.bloqueio, selectedVistoria.status_aprovacao)}
                     </span>
                   </div>
                 </div>
@@ -2536,10 +2536,10 @@ export default function PainelMapaPage() {
               {selectedVistoria.bloqueio && (
                 <div
                   className="mb-2.5 rounded-xl px-3 py-2.5"
-                  style={{ background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio), 0.10), border: `1px solid ${tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio), 0.28)}` }}
+                  style={{ background: tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio, selectedVistoria.status_aprovacao), 0.10), border: `1px solid ${tint(corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio, selectedVistoria.status_aprovacao), 0.28)}` }}
                 >
                   <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3 w-3 shrink-0" style={{ color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio) }} />
+                    <CheckCircle2 className="h-3 w-3 shrink-0" style={{ color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio, selectedVistoria.status_aprovacao) }} />
                     <p className="text-[11px] font-semibold" style={{ color: PANEL.text }}>
                       {selectedVistoria.bloqueio === "impedimento" ? "Impedimento" : "Recusa"} classificado{selectedVistoria.bloqueio_resolvido_em ? ` em ${fmtResolvidoEm(selectedVistoria.bloqueio_resolvido_em)}` : ""}
                     </p>
@@ -2553,7 +2553,7 @@ export default function PainelMapaPage() {
                   <Link
                     href={`/painel/auditoria?tipo=${selectedVistoria.bloqueio}`}
                     className="mt-1.5 inline-flex items-center gap-1 text-[10.5px] font-semibold hover:underline"
-                    style={{ color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio) }}
+                    style={{ color: corMarcador(selectedVistoria.situacao, selectedVistoria.tecnico_cor, selectedVistoria.bloqueio, selectedVistoria.status_aprovacao) }}
                   >
                     <History className="h-3 w-3" />
                     Ver decisão na auditoria
