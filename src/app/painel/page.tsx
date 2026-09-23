@@ -2013,7 +2013,24 @@ export default function PainelOverviewPage() {
   // Reprovadas: mesmo cálculo do KPI "Reprovados CPFL" do Hero NOC (linha
   // acima) — não pode divergir, é o mesmo número em dois lugares da tela.
   const kpiReprovadas = (stats?.aguardandoRevisita ?? 0) + (stats?.emRevisita ?? 0);
-  const vistoriasMapa = mapaRealtime?.vistorias ?? [];
+  // /painel/mapa devolve TODO equipamento com lat/lng (até 10 mil linhas, sem
+  // recorte nenhum) — serve pro /painel/mapa dedicado, mas aqui o pedido é só
+  // "atribuídas do dia" (achado em campo 2026-09-23: mapa saindo pesado e
+  // mostrando vistoria de anos atrás). Mesmo critério dos KPIs desta seção:
+  // com técnico + (ainda em aberto OU finalizada hoje) — nada de backlog sem
+  // dono nem histórico já encerrado há muito tempo.
+  const vistoriasMapa = useMemo(() => {
+    const todas = mapaRealtime?.vistorias ?? [];
+    const hojeISO = new Date().toISOString().slice(0, 10);
+    const EM_ABERTO = new Set<PainelMapaVistoria["situacao"]>([
+      "ATRIBUIDO", "EM_DESLOCAMENTO", "EM_VISTORIA", "AGUARDANDO_REVISITA", "EM_REVISITA", "DEVOLVIDA", "REJEITADA",
+    ]);
+    return todas.filter((v) => {
+      if (v.tecnico_id == null) return false;
+      if (EM_ABERTO.has(v.situacao)) return true;
+      return v.data_vistoria != null && v.data_vistoria.slice(0, 10) === hojeISO;
+    });
+  }, [mapaRealtime]);
   // "Técnicos com mais reprovações": não existe contagem de reprovadas por
   // técnico ainda — usa revisitas (nº de vistorias que voltaram por reprova)
   // como proxy, já calculado em fetchRankingTecnicosPeriodo (topTecsDash).
