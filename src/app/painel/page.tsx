@@ -694,10 +694,8 @@ function PipelineWidget({ stats }: { stats: PainelStats | null }) {
    ══════════════════════════════════════════════════════════════════════════ */
 
 interface HeatmapMapWidgetProps {
-  /** Simples — só o total (concluídas), pro fill do mapa e as bolhas. */
-  topMunicipios: Array<{ municipio: string; total: number }>;
-  /** Mesmo período, com a quebra por status — pro ranking em tabela +
-   *  barra de status por município. */
+  /** Mesmo período, com a quebra por status — pro ranking em barra
+   *  empilhada por município. */
   topMunicipiosDetalhe: Array<{
     municipio: string;
     concluidas: number;
@@ -736,7 +734,6 @@ interface HeatmapMapWidgetProps {
 }
 
 function HeatmapMapWidget({
-  topMunicipios,
   topMunicipiosDetalhe,
   atividadeRecente,
   totais,
@@ -747,318 +744,6 @@ function HeatmapMapWidget({
   evolucaoLabels,
   evolucaoValues,
 }: HeatmapMapWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const popupRef     = useRef<mapboxgl.Popup | null>(null);
-  const geoRef       = useRef<{ type: string; features: Array<{ type: string; geometry: unknown; properties: Record<string, unknown> }> } | null>(null);
-  const munisRef     = useRef(topMunicipios);
-  munisRef.current   = topMunicipios;
-  // Bolhas numeradas por município ativo (pedido em campo: "algo mais
-  // visual, tipo cluster" — mesmo padrão de mapboxgl.Marker já usado em
-  // MunicipiosMapWidget nesta mesma tela, cor institucional em vez do
-  // azul/roxo de lá, e tamanho proporcional ao volume).
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const token        = getMapboxToken();
-  const [geoLoaded,  setGeoLoaded] = useState(false);
-  // Sincronia lista↔mapa: hover numa linha do ranking de municípios acende a
-  // mesma região no mapa (e vice-versa, via mousemove nativo). Fica num ref
-  // — é estado imperativo do Mapbox, não precisa (nem deve) re-renderizar o
-  // React a cada hover.
-  const hoverApiRef  = useRef<{ setHoverName: (name: string | null) => void }>({ setHoverName: () => {} });
-
-  const enrich = (munis: Array<{ municipio: string; total: number }>) => {
-    const geo = geoRef.current;
-    if (!geo) return null;
-    const lookup = new Map(munis.map(m => [normalizeStr(m.municipio), m.total]));
-    return {
-      ...geo,
-      features: geo.features.map(f => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          total: lookup.get(normalizeStr(String(f.properties.name ?? ""))) ?? 0,
-        },
-      })),
-    };
-  };
-
-  // Escala relativa ao máximo dos dados — garante que o município mais ativo
-  // sempre apareça em verde escuro, mesmo com poucos registros no período.
-  const fillExpr = (munis: Array<{ municipio: string; total: number }>) => {
-    const top = Math.max(...munis.map(m => m.total), 2);
-    const mid = Math.max(Math.round(top / 2), 1);
-    const [lo, md, hi] = choroRamp();
-    return [
-      "case", [">", ["get", "total"], 0],
-      ["interpolate", ["linear"], ["get", "total"],
-        1, lo,
-        mid, md,
-        top, hi],
-      choroEmpty(),
-    ] as unknown as mapboxgl.Expression;
-  };
-
-  // Enquadra o mapa nos municípios COM DADO no período (não no estado
-  // inteiro) — pedido em campo: com a área de atuação real sendo um
-  // punhado de cidades perto de Campinas/Jundiaí, encaixar o estado de SP
-  // inteiro deixava o mapa parecendo vazio (a região colorida virava um
-  // ponto minúsculo no meio de uma imensidão cinza). Some > 0 municípios
-  // vira o recorte; NENHUM ativo (ex.: "Hoje" sem finalizações ainda) cai
-  // de volta pro estado inteiro, pra nunca zerar o enquadramento.
-  // Reaproveitado tanto na carga inicial quanto a cada troca de período
-  // (o recorte muda de propósito conforme o filtro muda quais cidades tem
-  // dado — não é um zoom travado igual antes).
-  const applyBoundsForMunis = (munis: Array<{ municipio: string; total: number }>) => {
-    const map = mapRef.current;
-    const geo = geoRef.current;
-    if (!map || !geo) return;
-    const ativos = new Set(munis.filter(m => m.total > 0).map(m => normalizeStr(m.municipio)));
-    const bounds = new mapboxgl.LngLatBounds();
-    for (const f of geo.features as Array<{ geometry: { type: string; coordinates: number[][][] | number[][][][] }; properties: Record<string, unknown> }>) {
-      const nome = normalizeStr(String(f.properties?.name ?? ""));
-      if (ativos.size > 0 && !ativos.has(nome)) continue;
-      const g = f.geometry;
-      const rings = g.type === "Polygon"
-        ? [g.coordinates[0] as number[][]]
-        : (g.coordinates as number[][][][]).map(p => p[0]);
-      for (const ring of rings) for (const c of ring) bounds.extend([c[0], c[1]]);
-    }
-    if (bounds.isEmpty()) return;
-    // destrava antes de reenquadrar — setMinZoom/MaxZoom da chamada
-    // anterior travava o zoom exatamente onde tinha ficado.
-    map.setMinZoom(0);
-    map.setMaxZoom(22);
-    map.fitBounds(bounds, { padding: { top: 40, bottom: 40, left: 40, right: 80 }, animate: false, maxZoom: 11 });
-    const z = map.getZoom();
-    map.setMinZoom(z);
-    map.setMaxZoom(z);
-  };
-
-  // Bolhas numeradas por município ativo — pedido em campo: "algo mais
-  // visual, tipo cluster" sem trocar o dado (continua município agregado,
-  // não vistoria por vistoria). Tamanho proporcional ao volume (raiz
-  // quadrada — é a área do círculo que precisa ser proporcional ao valor
-  // pra não distorcer a leitura, não o diâmetro). Mesmo padrão de
-  // mapboxgl.Marker já usado em MunicipiosMapWidget nesta tela.
-  const renderMarkers = (munis: Array<{ municipio: string; total: number }>) => {
-    const map = mapRef.current;
-    const geo = geoRef.current;
-    if (!map || !geo) return;
-    markersRef.current.forEach(mk => mk.remove());
-    markersRef.current = [];
-    const ativos = munis.filter(m => m.total > 0);
-    if (ativos.length === 0) return;
-    const topValor = Math.max(...ativos.map(m => m.total));
-    const MIN_PX = 28, MAX_PX = 60;
-    for (const m of ativos) {
-      const feature = (geo.features as Array<{ geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }>)
-        .find(f => normalizeStr(String(f.properties?.name ?? "")) === normalizeStr(m.municipio));
-      if (!feature) continue;
-      const coords = featureCentroid(feature.geometry as { type: string; coordinates: unknown });
-      if (!coords) continue;
-      const size = Math.round(MIN_PX + (MAX_PX - MIN_PX) * Math.sqrt(m.total / topValor));
-      const el = document.createElement("div");
-      el.style.cssText = [
-        `width:${size}px`, `height:${size}px`, "border-radius:50%",
-        "background:linear-gradient(135deg,#059669,#1a6b3c)",
-        "box-shadow:0 2px 10px rgba(5,150,105,0.45),0 0 0 3px rgba(255,255,255,0.55)",
-        "display:flex", "align-items:center", "justify-content:center", "color:#fff",
-        "font-family:ui-sans-serif,system-ui", "font-weight:800",
-        `font-size:${size >= 44 ? 13 : size >= 34 ? 11.5 : 10}px`,
-        "cursor:default", "transition:transform .18s ease",
-      ].join(";");
-      el.textContent = fmtNum(m.total);
-      el.onmouseenter = () => { el.style.transform = "scale(1.12)"; hoverApiRef.current.setHoverName(m.municipio); };
-      el.onmouseleave = () => { el.style.transform = "scale(1)"; hoverApiRef.current.setHoverName(null); };
-      const mk = new mapboxgl.Marker({ element: el, anchor: "center" }).setLngLat(coords).addTo(map);
-      markersRef.current.push(mk);
-    }
-  };
-
-  useEffect(() => {
-    if (!containerRef.current || !token) return;
-    injectStyle(
-      "vm-dash-heat-css",
-      ".vm-dash-heat .mapboxgl-ctrl-logo,.vm-dash-heat .mapboxgl-ctrl-attrib{display:none!important}" +
-      ".mapboxgl-popup-content{padding:0;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,0.12)}",
-    );
-    let alive = true;
-    mapboxgl.accessToken = token;
-    const { map } = novoMapa({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/empty-v9",
-      center: [-48.5, -22.0] as [number, number],
-      zoom: 5.7,
-      interactive: true,
-      scrollZoom: false,
-      doubleClickZoom: false,
-      dragPan: false,
-      dragRotate: false,
-      boxZoom: false,
-      touchZoomRotate: false,
-      keyboard: false,
-      attributionControl: false,
-    }, "painel/dashboard");
-    // Sem WebGL não dá pra desenhar: a tela segue viva e o motivo vai
-    // pro backend (ver lib/mapaSeguro.ts).
-    if (!map) return;
-    mapRef.current = map;
-
-    const ro = new ResizeObserver(() => { if (alive) map.resize(); });
-    ro.observe(containerRef.current);
-
-    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
-    popupRef.current = popup;
-
-    map.on("load", async () => {
-      map.resize();
-      map.addLayer({ id: "vm-sp-bg", type: "background", paint: { "background-color": dashMapBg() } });
-      try {
-        const res = await fetch(SP_GEOJSON_URL);
-        const geoJSON = await res.json();
-        if (!alive) return;
-        geoRef.current = geoJSON;
-
-        const enriched = enrich(munisRef.current);
-
-        map.addSource("vm-sp-src", {
-          type: "geojson",
-          data: enriched as never,
-          promoteId: "id",
-        });
-
-        map.addLayer({
-          id: "vm-sp-fill",
-          type: "fill",
-          source: "vm-sp-src",
-          paint: {
-            "fill-color": fillExpr(munisRef.current),
-            "fill-opacity": [
-              "case",
-              ["boolean", ["feature-state", "hover"], false],
-              1.0,
-              0.92,
-            ] as mapboxgl.Expression,
-          },
-        });
-
-        map.addLayer({
-          id: "vm-sp-outline",
-          type: "line",
-          source: "vm-sp-src",
-          paint: { "line-color": dashDark() ? "rgba(255,255,255,0.10)" : "#ffffff", "line-width": 0.5 },
-        });
-
-        map.addLayer({
-          id: "vm-sp-hover-outline",
-          type: "line",
-          source: "vm-sp-src",
-          paint: {
-            "line-color": "#1a6b3c",
-            "line-width": 1.6,
-            "line-opacity": [
-              "case",
-              ["boolean", ["feature-state", "hover"], false],
-              1,
-              0,
-            ] as mapboxgl.Expression,
-          },
-        });
-
-        applyBoundsForMunis(munisRef.current);
-        renderMarkers(munisRef.current);
-
-        // nome normalizado → id da feature (mesmo campo que promoteId lê,
-        // properties.id) — permite acender uma região a partir de FORA do
-        // mapa (hover numa linha do ranking ao lado), não só do mousemove.
-        const nameToId = new Map<string, string | number>();
-        for (const f of geoJSON.features as Array<{ properties: Record<string, unknown> }>) {
-          const nome = normalizeStr(String(f.properties?.name ?? ""));
-          const id = f.properties?.id;
-          if (nome && (typeof id === "string" || typeof id === "number")) nameToId.set(nome, id);
-        }
-
-        let hoveredId: string | number | null = null;
-        const setHover = (id: string | number | null) => {
-          if (hoveredId !== null && hoveredId !== id) {
-            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: false });
-          }
-          hoveredId = id;
-          if (hoveredId !== null) {
-            map.setFeatureState({ source: "vm-sp-src", id: hoveredId }, { hover: true });
-          }
-        };
-        // Hover disparado pela lista ao lado — mesma função, sem popup (a
-        // linha já mostra nome/contagem/%, um popup ali seria redundante).
-        hoverApiRef.current.setHoverName = (name) => {
-          setHover(name ? nameToId.get(normalizeStr(name)) ?? null : null);
-        };
-
-        map.on("mousemove", "vm-sp-fill", (e) => {
-          if (!e.features?.length) return;
-          const f  = e.features[0];
-          map.getCanvas().style.cursor = "crosshair";
-          setHover(f.id ?? null);
-          const name  = String(f.properties?.name ?? "");
-          const total = Number(f.properties?.total ?? 0);
-          const sum   = munisRef.current.reduce((s, m) => s + m.total, 0);
-          const pctStr = sum > 0 ? ((total / sum) * 100).toFixed(1) : "0";
-          popup
-            .setLngLat(e.lngLat)
-            .setHTML(
-              `<div style="font-family:ui-sans-serif,system-ui;padding:10px 14px;min-width:150px">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span style="display:inline-block;width:7px;height:7px;border-radius:999px;background:#1a6b3c;flex-shrink:0"></span>
-                  <span style="font-size:12.5px;font-weight:700;color:var(--vm-text)">${name || "—"}</span>
-                </div>
-                <div style="font-size:11px;color:var(--vm-text-soft);padding-left:13px">${total > 0 ? `<strong style="color:var(--vm-text);font-variant-numeric:tabular-nums">${total}</strong> concluídas · ${pctStr}% do total` : "Sem vistorias concluídas"}</div>
-              </div>`,
-            )
-            .addTo(map);
-        });
-
-        map.on("mouseleave", "vm-sp-fill", () => {
-          map.getCanvas().style.cursor = "";
-          setHover(null);
-          popup.remove();
-        });
-
-        setGeoLoaded(true);
-      } catch {
-        /* GeoJSON load failure is silent — widget degrades gracefully */
-      }
-    });
-
-    return () => {
-      alive = false;
-      ro.disconnect();
-      popup.remove();
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Update data + fill scale + enquadramento on poll refresh / troca de
-  // período, sem recriar o mapa. Reenquadra também (não só recolore) —
-  // o recorte muda de propósito quando o período muda quais cidades tem
-  // dado (ver applyBoundsForMunis).
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !map.getLayer("vm-sp-fill")) return;
-    const enriched = enrich(topMunicipios);
-    if (!enriched) return;
-    (map.getSource("vm-sp-src") as mapboxgl.GeoJSONSource | undefined)?.setData(enriched as never);
-    map.setPaintProperty("vm-sp-fill", "fill-color", fillExpr(topMunicipios));
-    applyBoundsForMunis(topMunicipios);
-    renderMarkers(topMunicipios);
-  }, [topMunicipios]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Limpa as bolhas ao desmontar — mesmo cuidado que o cleanup do mapa já
-  // faz pras outras camadas.
-  useEffect(() => {
-    return () => { markersRef.current.forEach(mk => mk.remove()); };
-  }, []);
-
   /* ── Indicadores com % — mesmo denominador (finalizadas do período) pra
      todos, calculado a cada render a partir do que os props já trazem.
      Cor institucional (verde) pra aprovadas; âmbar/vermelho SÓ nos outros
@@ -1079,15 +764,12 @@ function HeatmapMapWidget({
     ? ((totais.atribuidas - totais.atribuidasPeriodoAnterior) / totais.atribuidasPeriodoAnterior) * 100
     : null;
 
-  /* ── Ranking de municípios — mesmo dado do mapa, ordenado; sincroniza com
-     o mapa via hoverApiRef (ver useEffect acima). ── */
-  const ranking = [...topMunicipios].sort((a, b) => b.total - a.total).slice(0, 6);
-  const rankingMax = Math.max(...ranking.map((m) => m.total), 1);
-  const somaTotal = topMunicipios.reduce((s, m) => s + m.total, 0);
-
   // Ranking detalhado (Aprov./Pend./Reprov./%Aprov.) — pedido 2026-09-18,
-  // mesma ordenação por concluídas, mas com a quebra por status.
-  const rankingDetalhe = [...topMunicipiosDetalhe].sort((a, b) => b.concluidas - a.concluidas).slice(0, 6);
+  // mesma ordenação por concluídas, mas com a quebra por status. Agora
+  // com 8 (não mais 6): virou o único conteúdo da seção "Distribuição
+  // geográfica" (mapa coroplético removido, ver comentário abaixo), então
+  // sobrou largura cheia pra mostrar mais linhas.
+  const rankingDetalhe = [...topMunicipiosDetalhe].sort((a, b) => b.concluidas - a.concluidas).slice(0, 8);
 
   // Cor por status no feed "Últimas vistorias" — mesma paleta institucional
   // de tudo mais no widget (verde/âmbar/vermelho pras 3 decisões da
@@ -1203,133 +885,85 @@ function HeatmapMapWidget({
           </div>
         </div>
 
-        {/* ── Distribuição geográfica — mapa + ranking sincronizados ── */}
-        <div className="flex flex-col border-t border-[var(--vm-tile-2)] lg:flex-row">
-          <div className="relative min-h-[320px] w-full flex-1">
-            <div ref={containerRef} className="vm-dash-heat h-full w-full" />
-            {/* Legenda de cores vertical — única, sem repetir os quadradinhos do cabeçalho antigo */}
-            <div
-              className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 flex-col items-center justify-center gap-1"
-              style={{ width: 48 }}
-            >
-              <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Mais<br />vistorias</span>
-              <div
-                className="w-2.5 rounded-full"
-                style={{ height: 90, background: dashDark() ? "linear-gradient(to bottom,#22E0A6,#1E2733)" : "linear-gradient(to bottom,#1a6b3c,#e8f5ee)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
-              />
-              <span className="text-center text-[0.65rem] leading-tight text-[var(--vm-faint)]">Menos<br />vistorias</span>
-            </div>
-            {!geoLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[var(--vm-tile)]">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--vm-border)] border-t-[#059669]" />
-              </div>
-            )}
-          </div>
-
-          {/* Ranking — mesmo dado do fill do mapa; hover acende a região.
-              Tabela (não mais só barra) — pedido 2026-09-18: Total, Aprov.
-              (já somado com/sem pendência), Pend. (concluída, sem decisão
-              da concessionária ainda) e Repr., + % de aproveitamento. */}
-          <div
-            className="w-full shrink-0 overflow-x-auto border-t border-[var(--vm-tile-2)] px-4 py-3.5 lg:w-[400px] lg:border-l lg:border-t-0"
-          >
-            <p className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--vm-faint)]">
+        {/* ── Ranking de municípios — barra empilhada por cidade ──
+            Substitui o mapa coroplético SP + tabela lado a lado (pedido de
+            campo 2026-09-23: "ficou muito cheio de mapas" — o dashboard já
+            tem o mapa real da Equipe ao Vivo, esse aqui era redundante).
+            Opção escolhida entre as levas mostradas: barra empilhada por
+            município, mesma família visual do RankedBarList usado no
+            Equipe ao Vivo — mesmo dado de antes (topMunicipiosDetalhe), só
+            virou gráfico em vez de tabela + mapa. */}
+        <div className="border-t border-[var(--vm-tile-2)] px-5 py-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--vm-faint)]">
               Ranking de municípios
             </p>
-            {rankingDetalhe.length === 0 ? (
-              <p className="text-[11.5px] text-[var(--vm-faint)]">Sem dados no período.</p>
-            ) : (
-              <div className="min-w-[360px]">
-                <div
-                  className="grid gap-x-1.5 pb-1.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--vm-faint)]"
-                  style={{ gridTemplateColumns: "1fr 36px 36px 36px 36px 42px" }}
-                >
-                  <span>Município</span>
-                  <span className="text-right">Total</span>
-                  <span className="text-right" style={{ color: "#059669" }}>Aprov.</span>
-                  <span className="text-right" style={{ color: "#D97706" }}>Pend.</span>
-                  <span className="text-right" style={{ color: "#DC2626" }}>Repr.</span>
-                  <span className="text-right">% Aprov.</span>
-                </div>
-                <div className="flex flex-col divide-y" style={{ borderColor: "var(--vm-tile-2)" }}>
-                  {rankingDetalhe.map((m) => {
-                    const pctAprov = m.concluidas > 0 ? (m.aprovado / m.concluidas) * 100 : 0;
-                    return (
-                      <div
-                        key={m.municipio}
-                        className="group cursor-default py-1.5"
-                        onMouseEnter={() => hoverApiRef.current.setHoverName(m.municipio)}
-                        onMouseLeave={() => hoverApiRef.current.setHoverName(null)}
-                      >
-                        <div className="grid items-center gap-x-1.5" style={{ gridTemplateColumns: "1fr 36px 36px 36px 36px 42px" }}>
-                          <span className="truncate text-[11px] font-medium text-[var(--vm-text)] transition group-hover:text-[#059669]">
-                            {m.municipio}
-                          </span>
-                          <span className="text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
-                            {fmtNum(m.concluidas)}
-                          </span>
-                          <span className="text-right text-[11px] tabular-nums" style={{ color: "#059669" }}>
-                            {fmtNum(m.aprovado)}
-                          </span>
-                          <span className="text-right text-[11px] tabular-nums" style={{ color: "#D97706" }}>
-                            {fmtNum(m.pendente)}
-                          </span>
-                          <span className="text-right text-[11px] tabular-nums" style={{ color: "#DC2626" }}>
-                            {fmtNum(m.reprovado)}
-                          </span>
-                          <span className="text-right text-[10px] font-semibold tabular-nums" style={{ color: "var(--vm-text)" }}>
-                            {pctAprov.toFixed(0)}%
-                          </span>
-                        </div>
-                        {/* Status por município — barra (Aprov./Pend./Repr., mutuamente
-                            exclusivos) + chip de Impedido/Recusado à parte (eixo
-                            diferente: vem de outro sistema, recusas/impedimentos —
-                            ver historico.ts). */}
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <div className="flex h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
-                            {m.aprovado > 0 && (
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${(m.aprovado / m.concluidas) * 100}%` }}
-                                transition={{ duration: 0.6 }}
-                                style={{ background: "#059669", minWidth: 2 }}
-                                title={`${m.aprovado} aprovadas`}
-                              />
-                            )}
-                            {m.pendente > 0 && (
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${(m.pendente / m.concluidas) * 100}%` }}
-                                transition={{ duration: 0.6 }}
-                                style={{ background: "#D97706", minWidth: 2 }}
-                                title={`${m.pendente} pendentes`}
-                              />
-                            )}
-                            {m.reprovado > 0 && (
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${(m.reprovado / m.concluidas) * 100}%` }}
-                                transition={{ duration: 0.6 }}
-                                style={{ background: "#DC2626", minWidth: 2 }}
-                                title={`${m.reprovado} reprovadas`}
-                              />
-                            )}
-                          </div>
-                          {(m.impedimento > 0 || m.recusa > 0) && (
-                            <span className="shrink-0 text-[9px] font-semibold tabular-nums" style={{ color: "var(--vm-faint)" }}>
-                              {m.impedimento > 0 && `${m.impedimento} imped.`}
-                              {m.impedimento > 0 && m.recusa > 0 && " · "}
-                              {m.recusa > 0 && `${m.recusa} recus.`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            <div className="flex items-center gap-3 text-[9.5px] font-semibold text-[var(--vm-muted)]">
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Aprovado</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#D97706" }} />Pendente</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#DC2626" }} />Reprovado</span>
+            </div>
           </div>
+          {rankingDetalhe.length === 0 ? (
+            <p className="text-[11.5px] text-[var(--vm-faint)]">Sem dados no período.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {rankingDetalhe.map((m) => {
+                const pctAprov = m.concluidas > 0 ? (m.aprovado / m.concluidas) * 100 : 0;
+                return (
+                  <div key={m.municipio} className="flex items-center gap-3">
+                    <span className="w-[100px] shrink-0 truncate text-[11.5px] font-semibold text-[var(--vm-text-soft)]">
+                      {m.municipio}
+                    </span>
+                    <div className="flex-1">
+                      <div className="flex h-3 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
+                        {m.aprovado > 0 && (
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(m.aprovado / m.concluidas) * 100}%` }}
+                            transition={{ duration: 0.6 }}
+                            style={{ background: "#059669" }}
+                            title={`${m.aprovado} aprovadas`}
+                          />
+                        )}
+                        {m.pendente > 0 && (
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(m.pendente / m.concluidas) * 100}%` }}
+                            transition={{ duration: 0.6 }}
+                            style={{ background: "#D97706" }}
+                            title={`${m.pendente} pendentes`}
+                          />
+                        )}
+                        {m.reprovado > 0 && (
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(m.reprovado / m.concluidas) * 100}%` }}
+                            transition={{ duration: 0.6 }}
+                            style={{ background: "#DC2626" }}
+                            title={`${m.reprovado} reprovadas`}
+                          />
+                        )}
+                      </div>
+                      {(m.impedimento > 0 || m.recusa > 0) && (
+                        <p className="mt-1 text-[9px] font-semibold text-[var(--vm-faint)]">
+                          {m.impedimento > 0 && `${m.impedimento} imped.`}
+                          {m.impedimento > 0 && m.recusa > 0 && " · "}
+                          {m.recusa > 0 && `${m.recusa} recus.`}
+                        </p>
+                      )}
+                    </div>
+                    <span className="w-9 shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
+                      {fmtNum(m.concluidas)}
+                    </span>
+                    <span className="w-9 shrink-0 text-right text-[10px] font-semibold tabular-nums text-[var(--vm-muted)]">
+                      {pctAprov.toFixed(0)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* ── Evolução — mesma série diária de Vistorias Finalizadas ── */}
@@ -2659,21 +2293,13 @@ export default function PainelOverviewPage() {
       </div>
 
       {/* ════════════ Padrão Diário — elemento central, largura cheia ════════════
-          Ganhou espaço próprio (antes dividia linha com Equipe ao Vivo):
-          mapa + lista sincronizada + indicadores com % + evolução precisam de
-          mais que meia largura pra respirar como pedido ("mapa como elemento
-          central... evolução visual muito maior"). */}
+          Mapa coroplético removido 2026-09-23 (redundante com o mapa real da
+          Equipe ao Vivo, "ficou muito cheio de mapas") — ranking de
+          municípios virou barra empilhada, sem perder nenhum dado. */}
       <div className="vm-rise" style={{ animationDelay: "0.1s" }}>
         {/* Widget 02 — Padrão Diário: SP fill heatmap */}
         {historico ? (
           <HeatmapMapWidget
-            // Achado em campo 2026-09-18: isso usava historico.topMunicipios
-            // (TODO o histórico, por design — serve /painel/historico) e não
-            // mudava um número sequer entre 14 dias/Todo Período, apesar do
-            // título do widget dizer "{periodoLabel}". topMunicipiosPeriodo é
-            // a query irmã, filtrada pelo mesmo inicio..fim de tudo mais
-            // nesta tela.
-            topMunicipios={historico.topMunicipiosPeriodo.map((m) => ({ municipio: m.municipio, total: m.concluidas }))}
             topMunicipiosDetalhe={historico.topMunicipiosPeriodo}
             atividadeRecente={historico.atividadeRecente}
             totais={historico.totais}
