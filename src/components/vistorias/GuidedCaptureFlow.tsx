@@ -761,18 +761,21 @@ export function GuidedCaptureFlow({
         // aqui, o fallback "câmera do sistema" (onFallback — sem corte de
         // duração nem compressão) podia produzir vídeo de 30-40MB+.
         //
-        // Achado 2026-09-23 (mesmo Marco, agora com o gravador embutido
-        // funcionando de verdade): mesmo o gravador embutido, que se
-        // autolimita (15s/bitrate baixo — ver VideoRecorderSheet.tsx), não
-        // é garantia de arquivo pequeno — o encoder de pelo menos um
-        // aparelho real não respeitava o bitrate pedido e saiu ~15MB em vez
-        // de ~2-3MB. Bloquear tudo acima de 10MB deixava esse caso
-        // legítimo travado sem saída. Teto subiu pra 20MB (ainda barra o
-        // fallback pesado de 30-40MB) — o que passar daqui mas mesmo assim
-        // não conseguir subir por sinal fraco cai no fallback "envia sem
-        // vídeo, completa depois" do executeFinalize (syncRunner.ts), não
-        // fica mais preso na tela de captura.
-        const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20MB
+        // Achado 2026-09-23 (mesmo Marco, dois aparelhos diferentes): tentei
+        // reduzir bitrate/resolução pedidos (VideoRecorderSheet.tsx) e ainda
+        // assim o aparelho dele produziu 28,9MB em 13s — ~17,8Mbps efetivo,
+        // bem longe dos 700kbps pedidos. Testado no aparelho do usuário e em
+        // outro técnico: nenhum dos dois reproduz o problema, é o encoder
+        // ESPECÍFICO daquele aparelho ignorando os parâmetros por completo,
+        // não uma imprecisão pequena. Tamanho de arquivo NÃO é mais um jeito
+        // confiável de distinguir "gravador embutido, aparelho ruim" de
+        // "fallback pesado" — as faixas se sobrepõem. Teto sobe bem alto
+        // (50MB, só pra pegar caso patológico tipo vídeo da galeria) — daqui
+        // pra baixo sempre deixa passar. Quem não conseguir subir por sinal
+        // fraco cai no fallback "envia sem vídeo, completa depois" do
+        // executeFinalize (syncRunner.ts) — o técnico nunca mais fica preso
+        // na tela de captura por causa do encoder de um aparelho específico.
+        const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50MB — guarda-chuva, não filtro fino
         const url = URL.createObjectURL(file);
         let fb: Feedback;
         if (file.size === 0) {

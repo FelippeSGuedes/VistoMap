@@ -208,6 +208,26 @@ export function VideoRecorderSheet({
     };
     rec.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: picked.mime });
+      // Diagnóstico 2026-09-23 (Marco): pelo menos um aparelho real ignora
+      // completamente bitrate/resolução pedidos (saiu 28,9MB em 13s, ~17,8
+      // Mbps — bem longe dos 700kbps pedidos), mesmo depois de apertar os
+      // parâmetros. getSettings() diz o que o aparelho REALMENTE usou (não
+      // o que foi pedido) — registra sempre (não só erro) pra ter dado real
+      // na próxima vez que isso acontecer, em vez de só desconfiar.
+      const settings = stream.getVideoTracks()[0]?.getSettings();
+      void import("@/lib/reportClientError").then(({ reportClientError }) =>
+        reportClientError(
+          `video360 gravado: ${(blob.size / 1024 / 1024).toFixed(1)}MB em ${secs}s`,
+          "VideoRecorderSheet/gravado",
+          {
+            mime: picked.mime,
+            width: settings?.width,
+            height: settings?.height,
+            frameRate: settings?.frameRate,
+            bytesPerSecond: secs > 0 ? Math.round(blob.size / secs) : null,
+          }
+        )
+      );
       stopStream();
       const file = new File([blob], `video360.${picked.ext}`, {
         type: picked.mime,
