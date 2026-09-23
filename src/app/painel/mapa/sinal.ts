@@ -120,7 +120,14 @@ export function chaveSinal(
   statusAprovacao?: string | null
 ): ChaveSinal {
   if (situacao === "REJEITADA" && bloqueio === "impedimento") return "REJEITADA_IMP";
-  if (situacao === "VISTORIADO" || situacao === "REVISITADO") {
+  // REVISITADO só é setado por aprovarVistoria() (painel.ts) — é o analista
+  // Nansen fechando a revisita como aprovada internamente. Não existe
+  // caminho que chegue em REVISITADO sem ter sido por aí, então a situação
+  // sozinha já BASTA (pedido de campo 2026-09-23: "Revisitado === Aprovado
+  // portanto no mapa tem que ser igual") — diferente de VISTORIADO (1ª
+  // vistoria), que ainda pode estar em qualquer dos 3 estados de aprovação.
+  if (situacao === "REVISITADO") return "APROVADO";
+  if (situacao === "VISTORIADO") {
     if (statusAprovacao === "APROVADO") return "APROVADO";
     if (statusAprovacao === "REPROVADO") return "AGUARDANDO_REVISITA";
   }

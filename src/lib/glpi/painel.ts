@@ -892,8 +892,7 @@ export async function atualizarCamposVistoria(
  *   - aux.approval_status = 'APROVADO'; is_repeat = 0 (sai da fila revisitas)
  */
 export async function aprovarVistoria(
-  vistoriaId: number,
-  avaliadorId?: number
+  vistoriaId: number
 ): Promise<{
   affected: number;
   eraRevisita: boolean;
@@ -907,29 +906,29 @@ export async function aprovarVistoria(
   const eraRevisita = Number(auxRow?.is_repeat ?? 0) === 1;
   const now = nowBrasiliaSql();
 
-  const sets = [
-    "plugin_fields_statusvistoriafielddropdowns_id = ?",
-    "plugin_fields_pendnciafielddropdowns_id = ?",
-    `\`${SITUACAO_COLUMN}\` = ?`,
-    "datadavistoriafield = ?",
-    "dataenvioconcessionriafield = ?",
-  ];
-  const params: unknown[] = [
-    STATUS_VISTORIA_EM_ANALISE,
-    PENDENCIA_CPFL,
-    SITUACAO_REVISITADO,
-    now,
-    now,
-  ];
-  if (avaliadorId != null && avaliadorId > 0) {
-    sets.push(`\`${AVALIADOR_CPFL_USER_COLUMN}\` = ?`);
-    params.push(avaliadorId);
-  }
-  params.push(vistoriaId);
-
+  // NUNCA grava em AVALIADOR_CPFL_USER_COLUMN aqui — achado em campo
+  // 2026-09-23 (erro grave): essa aprovação é do ANALISTA NANSEN fechando
+  // a revisita internamente, não da CPFL. Quem fez a ação já fica no audit
+  // log (auditInsert, na rota que chama esta função). Escrever o id do
+  // analista no campo "Avaliador da Vistoria CPFL" contaminava o único
+  // sinal que recuperarAvaliadorViaLogsGlpi() usa pra saber se a CPFL já
+  // tem um avaliador de verdade atribuído (columna NULL/0 = ainda não).
   const r = await execute(
-    `UPDATE \`${TABLE_FIELDS}\` SET ${sets.join(", ")} WHERE items_id = ?`,
-    params
+    `UPDATE \`${TABLE_FIELDS}\` SET
+        plugin_fields_statusvistoriafielddropdowns_id = ?,
+        plugin_fields_pendnciafielddropdowns_id = ?,
+        \`${SITUACAO_COLUMN}\` = ?,
+        datadavistoriafield = ?,
+        dataenvioconcessionriafield = ?
+      WHERE items_id = ?`,
+    [
+      STATUS_VISTORIA_EM_ANALISE,
+      PENDENCIA_CPFL,
+      SITUACAO_REVISITADO,
+      now,
+      now,
+      vistoriaId,
+    ]
   );
 
   // Aux: marca como aprovado internamente + remove flag revisita.
@@ -955,9 +954,11 @@ export async function aprovarVistoria(
  */
 export async function reprovarVistoria(
   vistoriaId: number,
-  motivo?: string,
-  avaliadorId?: number
+  motivo?: string
 ): Promise<{ affected: number }> {
+  // NUNCA grava em AVALIADOR_CPFL_USER_COLUMN aqui — mesmo erro grave do
+  // aprovarVistoria() acima: quem reprova aqui é o analista Nansen (já
+  // fica no audit log), não a CPFL. Ver comentário lá pra detalhe.
   const sets: string[] = [
     "plugin_fields_statusvistoriafielddropdowns_id = ?",
     `\`${SITUACAO_COLUMN}\` = ?`,
@@ -966,10 +967,6 @@ export async function reprovarVistoria(
   if (motivo != null) {
     sets.push("motivofield = ?");
     params.push(motivo);
-  }
-  if (avaliadorId != null && avaliadorId > 0) {
-    sets.push(`\`${AVALIADOR_CPFL_USER_COLUMN}\` = ?`);
-    params.push(avaliadorId);
   }
   params.push(vistoriaId);
   const r = await execute(
