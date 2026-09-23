@@ -9,7 +9,7 @@ import {
   TABLE_STATUS_VISTORIA,
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
-import { RECUSA_MOTIVO_CATEGORIA, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
+import { RECUSA_MOTIVO_CATEGORIA, RECUSA_MOTIVO_LABEL, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
 
 // situaodavistoriafield: 3=Vistoriado, 6=Revisitado — mesma prioridade 1 que
 // resolveAdminStatus() já usa em painel.ts e que fetchVistoriasRealizadas()
@@ -112,6 +112,10 @@ export interface HistoricoAnalytics {
   }>;
   kmOperacional: number;
   motivosReprovacao: MotivoAgregado[];
+  /** Motivos de impedimento (glpi_plugin_vistomap_recusas, categoria
+   *  impedimento) no período — mesma fonte de topMunicipiosPeriodo.impedimento,
+   *  agora agrupado por motivo em vez de município. */
+  motivosImpedimento: Array<{ label: string; total: number }>;
 }
 
 function isoDaysAgo(d: number): string {
@@ -407,6 +411,23 @@ export async function fetchHistoricoAnalytics(
     ref[categoria]++;
     municipiosImpedimentosMap.set(municipio, ref);
   }
+
+  // Mesmas linhas de recusaRows, agora agrupadas por motivo (só categoria
+  // impedimento) — alimenta o painel "Motivos de Impedimentos" do dashboard,
+  // pedido pra sempre seguir o filtro de período central (achado em campo
+  // 2026-09-23: o resto da seção usa período, esse painel não podia ser
+  // diferente).
+  const motivosImpedimentoMap = new Map<string, number>();
+  for (const r of recusaRows) {
+    const categoria: RecusaCategoria =
+      r.categoria ?? RECUSA_MOTIVO_CATEGORIA[r.motivo as RecusaMotivo] ?? "recusa";
+    if (categoria !== "impedimento") continue;
+    const label = RECUSA_MOTIVO_LABEL[r.motivo as RecusaMotivo] ?? r.motivo;
+    motivosImpedimentoMap.set(label, (motivosImpedimentoMap.get(label) ?? 0) + 1);
+  }
+  const motivosImpedimento = [...motivosImpedimentoMap.entries()]
+    .map(([label, total]) => ({ label, total }))
+    .sort((a, b) => b.total - a.total);
 
   /* ── Últimas vistorias (feed "em tempo real") — pedido 2026-09-18.
      Combina DUAS fontes de horário real (nenhuma inventada):
@@ -725,5 +746,6 @@ export async function fetchHistoricoAnalytics(
     rankingTecnicos,
     kmOperacional: Math.round(kmTotal * 10) / 10,
     motivosReprovacao,
+    motivosImpedimento,
   };
 }

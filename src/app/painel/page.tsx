@@ -39,6 +39,7 @@ import { CountUp } from "@/components/ui/CountUp";
 import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type {
   HistoricoAnalytics,
+  RankingTecnicoItem,
   TopTecnicosDashboard,
 } from "@/services/painel";
 import { getMapboxToken } from "@/services/maps";
@@ -1526,11 +1527,16 @@ function corVistoriaMapa(v: PainelMapaVistoria): "real" | "pendente" | "reprovad
 }
 
 interface EquipeAoVivoWidgetProps {
-  equipeHoje: TecnicoAtivo[];
+  equipePeriodo: Array<{ ranking: RankingTecnicoItem; ativo: TecnicoAtivo }>;
   vistoriasMapa: PainelMapaVistoria[];
-  kpiAtribuidasHoje: number;
-  kpiRealizadasHoje: number;
-  kpiAproveitamentoHoje: number;
+  tecnicosMapa: PainelMapaTecnico[];
+  tecnicosPorReprovacao: RankingTecnicoItem[];
+  motivosReprovacao: Array<{ id: string; label: string; color: string; total: number; pct: number; exemplos: string[] }>;
+  motivosImpedimento: Array<{ label: string; total: number }>;
+  periodoLabel: string;
+  kpiAtribuidas: number;
+  kpiRealizadas: number;
+  kpiAproveitamento: number;
   kpiEmVistoria: number;
   kpiEmDeslocamento: number;
   kpiImpedimentos: number;
@@ -1538,63 +1544,26 @@ interface EquipeAoVivoWidgetProps {
 }
 
 function EquipeAoVivoWidget({
-  equipeHoje,
+  equipePeriodo,
   vistoriasMapa,
-  kpiAtribuidasHoje,
-  kpiRealizadasHoje,
-  kpiAproveitamentoHoje,
+  tecnicosMapa,
+  tecnicosPorReprovacao,
+  motivosReprovacao,
+  motivosImpedimento,
+  periodoLabel,
+  kpiAtribuidas,
+  kpiRealizadas,
+  kpiAproveitamento,
   kpiEmVistoria,
   kpiEmDeslocamento,
   kpiImpedimentos,
   kpiReprovadas,
 }: EquipeAoVivoWidgetProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const token        = getMapboxToken();
-
-  // Grid de análise 100% derivado do MESMO snapshot do mapa (vistoriasMapa,
-  // já filtrado pra "hoje/em aberto") — achado em campo 2026-09-23: antes
-  // misturava esse recorte "ao vivo" com dados de período (topTecsDash/
-  // historico), e os números não batiam entre os cards desta mesma seção.
-  const porMunicipio = useMemo(() => {
-    const acc = new Map<string, number>();
-    for (const v of vistoriasMapa) {
-      const m = v.municipio?.trim();
-      if (!m) continue;
-      acc.set(m, (acc.get(m) ?? 0) + 1);
-    }
-    return [...acc.entries()]
-      .map(([municipio, total]) => ({ municipio, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 6);
-  }, [vistoriasMapa]);
-
-  const porTecnicoReprovacao = useMemo(() => {
-    const acc = new Map<string, number>();
-    for (const v of vistoriasMapa) {
-      if (corVistoriaMapa(v) !== "reprovada") continue;
-      const nome = v.tecnico_nome?.trim();
-      if (!nome) continue;
-      acc.set(nome, (acc.get(nome) ?? 0) + 1);
-    }
-    return [...acc.entries()]
-      .map(([nome, total]) => ({ nome, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 6);
-  }, [vistoriasMapa]);
-
-  const porMotivo = useMemo(() => {
-    const acc = new Map<string, number>();
-    for (const v of vistoriasMapa) {
-      if (!v.bloqueio || !v.bloqueio_motivo_label) continue;
-      acc.set(v.bloqueio_motivo_label, (acc.get(v.bloqueio_motivo_label) ?? 0) + 1);
-    }
-    return [...acc.entries()]
-      .map(([label, total]) => ({ label, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 6);
-  }, [vistoriasMapa]);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const mapRef        = useRef<mapboxgl.Map | null>(null);
+  const markersRef    = useRef<mapboxgl.Marker[]>([]);
+  const tecMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const token         = getMapboxToken();
 
   useEffect(() => {
     if (!containerRef.current || !token) return;
@@ -1619,6 +1588,8 @@ function EquipeAoVivoWidget({
     return () => {
       markersRef.current.forEach(mk => mk.remove());
       markersRef.current = [];
+      tecMarkersRef.current.forEach(mk => mk.remove());
+      tecMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -1649,28 +1620,54 @@ function EquipeAoVivoWidget({
     if (map.isStyleLoaded()) place(); else map.once("load", place);
   }, [vistoriasMapa]);
 
+  // Posição da equipe — pino maior com a cor de identidade do técnico
+  // (mesma cor usada nos outros mapas do painel), acima dos pinos de
+  // vistoria pra não sumir atrás deles.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const place = () => {
+      tecMarkersRef.current.forEach(mk => mk.remove());
+      tecMarkersRef.current = [];
+      tecnicosMapa
+        .filter(t => t.latitude != null && t.longitude != null)
+        .forEach(t => {
+          const el = document.createElement("div");
+          el.style.cssText =
+            `width:20px;height:20px;border-radius:50%;background:${t.cor};border:2.5px solid #fff;` +
+            "box-shadow:0 2px 6px rgba(16,24,40,0.45);cursor:pointer;z-index:5";
+          el.title = `${t.nome} · ${t.status_operacional}`;
+          const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
+            .setLngLat([t.longitude!, t.latitude!])
+            .addTo(map);
+          tecMarkersRef.current.push(mk);
+        });
+    };
+    if (map.isStyleLoaded()) place(); else map.once("load", place);
+  }, [tecnicosMapa]);
+
   return (
     <div className="flex flex-col gap-4">
 
       {/* KPIs + Aproveitamento */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
-        <MiniKpiCard icon={ClipboardList} label="Atribuídas hoje" value={fmtNum(kpiAtribuidasHoje)} color="#3B82F6" bg="var(--vm-tile-blue)" caption="soma de toda a equipe" />
-        <MiniKpiCard icon={CheckCircle2} label="Realizadas hoje" value={fmtNum(kpiRealizadasHoje)} color="#059669" bg="var(--vm-accent-tint)" caption={`${kpiAproveitamentoHoje}% de aproveitamento`} />
+        <MiniKpiCard icon={ClipboardList} label="Atribuídas" value={fmtNum(kpiAtribuidas)} color="#3B82F6" bg="var(--vm-tile-blue)" caption={periodoLabel} />
+        <MiniKpiCard icon={CheckCircle2} label="Realizadas" value={fmtNum(kpiRealizadas)} color="#059669" bg="var(--vm-accent-tint)" caption={`${kpiAproveitamento}% de aproveitamento`} />
         <MiniKpiCard icon={Clock} label="Em Vistoria" value={fmtNum(kpiEmVistoria)} color="#F97316" bg="var(--vm-orange-tint)" caption="agora" />
         <MiniKpiCard icon={Route} label="Em Deslocamento" value={fmtNum(kpiEmDeslocamento)} color="#0891B2" bg="rgba(14,165,233,0.10)" caption="agora" />
-        <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption="sem infra/acesso" />
-        <MiniKpiCard icon={ShieldAlert} label="Reprovadas" value={fmtNum(kpiReprovadas)} color="#DC2626" bg="var(--vm-red-tint)" caption="CPFL, aguardando revisita" />
+        <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption={periodoLabel} />
+        <MiniKpiCard icon={ShieldAlert} label="Reprovadas" value={fmtNum(kpiReprovadas)} color="#DC2626" bg="var(--vm-red-tint)" caption={periodoLabel} />
 
         <Card className="col-span-2 p-4 md:col-span-3 xl:col-span-1" style={{ background: "var(--vm-accent-tint)", borderColor: "var(--vm-glass-border)" }}>
           <div className="flex h-full w-full items-center gap-4">
-            <MiniDonut value={kpiAproveitamentoHoje} color="#059669" caption="hoje" />
+            <MiniDonut value={kpiAproveitamento} color="#059669" caption={periodoLabel} />
             <div className="flex flex-1 flex-col gap-1.5">
               <span className="text-[11px] font-bold text-[var(--vm-text)]">Aproveitamento</span>
               <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]">
-                <span>Atribuídas</span><span className="tabular-nums font-bold">{kpiAtribuidasHoje}</span>
+                <span>Atribuídas</span><span className="tabular-nums font-bold">{kpiAtribuidas}</span>
               </div>
               <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]">
-                <span>Realizadas</span><span className="tabular-nums font-bold">{kpiRealizadasHoje}</span>
+                <span>Realizadas</span><span className="tabular-nums font-bold">{kpiRealizadas}</span>
               </div>
               <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]">
                 <span>Reprovadas</span><span className="tabular-nums font-bold">{kpiReprovadas}</span>
@@ -1691,34 +1688,34 @@ function EquipeAoVivoWidget({
             <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
           </div>
           <div className="flex flex-1 flex-col gap-2 px-3 pb-3">
-            {equipeHoje.length === 0 ? (
-              <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">Nenhum técnico ativo agora.</p>
+            {equipePeriodo.length === 0 ? (
+              <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">Nenhum técnico em campo agora.</p>
             ) : (
-              equipeHoje.slice(0, 8).map((t) => {
-                const pct = t.atribuidas > 0 ? Math.round((t.concluidasHoje / t.atribuidas) * 100) : 0;
+              equipePeriodo.slice(0, 8).map(({ ranking: t, ativo }) => {
+                const pct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
                 return (
                   <div key={t.id} className="rounded-xl border border-[var(--vm-border-soft)] bg-[var(--vm-tile)] p-2.5">
                     <div className="flex items-center gap-2">
                       <span
                         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white"
-                        style={{ background: STATUS_DOT[t.status] }}
+                        style={{ background: STATUS_DOT[ativo.status] }}
                       >
                         {initials(t.nome)}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[11.5px] font-bold leading-tight text-[var(--vm-text)]">{t.nome.split(" ")[0]}</p>
-                        <p className="flex items-center gap-1 truncate text-[9px] font-semibold" style={{ color: STATUS_DOT[t.status] }}>
-                          <span className="h-[4.5px] w-[4.5px] shrink-0 rounded-full" style={{ background: STATUS_DOT[t.status] }} />
-                          {STATUS_LABEL[t.status]} · {t.municipio ?? "—"}
+                        <p className="flex items-center gap-1 truncate text-[9px] font-semibold" style={{ color: STATUS_DOT[ativo.status] }}>
+                          <span className="h-[4.5px] w-[4.5px] shrink-0 rounded-full" style={{ background: STATUS_DOT[ativo.status] }} />
+                          {STATUS_LABEL[ativo.status]} · {ativo.municipio ?? "—"}
                         </p>
                       </div>
                       <div className="flex shrink-0 gap-3 pl-2 text-center">
                         <div>
-                          <p className="tabular-nums text-[13px] font-extrabold leading-none text-[var(--vm-text)]">{t.atribuidas}</p>
+                          <p className="tabular-nums text-[13px] font-extrabold leading-none text-[var(--vm-text)]">{t.total}</p>
                           <p className="text-[6.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]">Atrib.</p>
                         </div>
                         <div>
-                          <p className="tabular-nums text-[13px] font-extrabold leading-none text-[#059669]">{t.concluidasHoje}</p>
+                          <p className="tabular-nums text-[13px] font-extrabold leading-none text-[#059669]">{t.aprovadas}</p>
                           <p className="text-[6.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]">Real.</p>
                         </div>
                       </div>
@@ -1740,7 +1737,7 @@ function EquipeAoVivoWidget({
           <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
             <div>
               <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias no mapa</span>
-              <p className="text-[9.5px] text-[var(--vm-faint)]">Visualização das vistorias do dia</p>
+              <p className="text-[9.5px] text-[var(--vm-faint)]">Equipe em campo e vistorias do dia</p>
             </div>
             <div className="flex items-center gap-2.5 text-[9.5px] font-semibold text-[var(--vm-muted)]">
               <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Realizada</span>
@@ -1752,21 +1749,21 @@ function EquipeAoVivoWidget({
         </Card>
       </div>
 
-      {/* Grid de análise — mesmo recorte do mapa acima (hoje/em aberto) */}
+      {/* Grid de análise — segue o filtro de período central, igual o resto da tela */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-            <Building2 className="h-4 w-4 text-[#4A6CF7]" strokeWidth={2} />
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias por município</span>
+            <FileText className="h-4 w-4 text-[#DC2626]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Motivos de Reprovação</span>
           </div>
           <RankedBarList
-            items={porMunicipio}
-            keyFn={(m) => m.municipio}
-            labelFn={(m) => m.municipio}
+            items={motivosReprovacao}
+            keyFn={(m) => m.id}
+            labelFn={(m) => m.label}
             valueFn={(m) => String(m.total)}
-            pctFn={(m) => (porMunicipio[0]?.total ? (m.total / porMunicipio[0].total) * 100 : 0)}
-            colorFn={() => "#4A6CF7"}
-            emptyLabel="Sem vistorias hoje."
+            pctFn={(m) => (motivosReprovacao[0]?.total ? (m.total / motivosReprovacao[0].total) * 100 : 0)}
+            colorFn={(m) => m.color}
+            emptyLabel="Sem reprovações no período."
           />
         </Card>
 
@@ -1776,29 +1773,29 @@ function EquipeAoVivoWidget({
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</span>
           </div>
           <RankedBarList
-            items={porTecnicoReprovacao}
-            keyFn={(t) => t.nome}
+            items={tecnicosPorReprovacao}
+            keyFn={(t) => String(t.id)}
             labelFn={(t) => t.nome.split(" ")[0]}
-            valueFn={(t) => String(t.total)}
-            pctFn={(t) => (porTecnicoReprovacao[0]?.total ? (t.total / porTecnicoReprovacao[0].total) * 100 : 0)}
+            valueFn={(t) => String(t.revisitas)}
+            pctFn={(t) => (tecnicosPorReprovacao[0]?.revisitas ? (t.revisitas / tecnicosPorReprovacao[0].revisitas) * 100 : 0)}
             colorFn={() => "#DC2626"}
-            emptyLabel="Nenhuma reprovação hoje."
+            emptyLabel="Nenhuma reprovação no período."
           />
         </Card>
 
         <Card>
           <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-            <FileText className="h-4 w-4 text-[#B45309]" strokeWidth={2} />
-            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Principais motivos</span>
+            <Ban className="h-4 w-4 text-[#7C3AED]" strokeWidth={2} />
+            <span className="text-[13px] font-semibold text-[var(--vm-text)]">Motivos de Impedimentos</span>
           </div>
           <RankedBarList
-            items={porMotivo}
+            items={motivosImpedimento}
             keyFn={(m) => m.label}
             labelFn={(m) => m.label}
             valueFn={(m) => String(m.total)}
-            pctFn={(m) => (porMotivo[0]?.total ? (m.total / porMotivo[0].total) * 100 : 0)}
-            colorFn={() => "#B45309"}
-            emptyLabel="Sem impedimentos/recusas hoje."
+            pctFn={(m) => (motivosImpedimento[0]?.total ? (m.total / motivosImpedimento[0].total) * 100 : 0)}
+            colorFn={() => "#7C3AED"}
+            emptyLabel="Sem impedimentos no período."
           />
         </Card>
       </div>
@@ -2012,28 +2009,33 @@ export default function PainelOverviewPage() {
   const topTecs      = (topTecsDash?.tecnicos ?? []).slice(0, 6);
 
   // ── dados reais do novo "Equipe ao vivo" (EquipeAoVivoWidget) ──────────
-  // Atribuídas/Realizadas do KPI e da lista de equipe usam TecnicoAtivo
-  // (fetchTecnicos, "hoje" por definição — ver comentário do tipo) em vez
-  // de topTecsDash (que segue o filtro de período global): widget AO VIVO,
-  // não pode variar com "Todo Período" como os históricos.
-  const equipeHoje = useMemo(
-    () => [...tecnicos].sort((a, b) => b.atribuidas - a.atribuidas),
-    [tecnicos],
-  );
-  const kpiAtribuidasHoje = tecnicos.reduce((s, t) => s + t.atribuidas, 0);
-  const kpiRealizadasHoje = tecnicos.reduce((s, t) => s + t.concluidasHoje, 0);
-  const kpiAproveitamentoHoje = kpiAtribuidasHoje > 0
-    ? Math.round((kpiRealizadasHoje / kpiAtribuidasHoje) * 100)
-    : 0;
-  // Reprovadas: mesmo cálculo do KPI "Reprovados CPFL" do Hero NOC (linha
-  // acima) — não pode divergir, é o mesmo número em dois lugares da tela.
-  const kpiReprovadas = (stats?.aguardandoRevisita ?? 0) + (stats?.emRevisita ?? 0);
-  // /painel/mapa devolve TODO equipamento com lat/lng (até 10 mil linhas, sem
-  // recorte nenhum) — serve pro /painel/mapa dedicado, mas aqui o pedido é só
-  // "atribuídas do dia" (achado em campo 2026-09-23: mapa saindo pesado e
-  // mostrando vistoria de anos atrás). Mesmo critério dos KPIs desta seção:
-  // com técnico + (ainda em aberto OU finalizada hoje) — nada de backlog sem
-  // dono nem histórico já encerrado há muito tempo.
+  // Achado em campo 2026-09-23: os números desta seção têm que seguir o
+  // MESMO filtro de período central de todo o resto da tela (não "hoje"
+  // fixo) — por isso tudo aqui sai de topTecsDash/historico (já respeitam
+  // periodoRange), nunca de TecnicoAtivo.atribuidas/concluidasHoje.
+  const equipePeriodo = useMemo(() => {
+    const porId = new Map(tecnicos.map((t) => [String(t.id), t]));
+    return (topTecsDash?.tecnicos ?? [])
+      .map((ranking) => ({ ranking, ativo: porId.get(String(ranking.id)) }))
+      // Técnico offline não aparece em "Equipe em campo" — pedido explícito.
+      .filter((x): x is { ranking: typeof x.ranking; ativo: TecnicoAtivo } => !!x.ativo && x.ativo.status !== "offline")
+      .sort((a, b) => b.ranking.total - a.ranking.total);
+  }, [topTecsDash, tecnicos]);
+  const kpiAtribuidas = (topTecsDash?.tecnicos ?? []).reduce((s, t) => s + t.total, 0);
+  const kpiRealizadas = (topTecsDash?.tecnicos ?? []).reduce((s, t) => s + t.aprovadas, 0);
+  const kpiAproveitamento = kpiAtribuidas > 0 ? Math.round((kpiRealizadas / kpiAtribuidas) * 100) : 0;
+  const kpiReprovadas = (historico?.topMunicipiosPeriodo ?? []).reduce((s, m) => s + m.reprovado, 0);
+  const kpiImpedimentos = (historico?.topMunicipiosPeriodo ?? []).reduce((s, m) => s + m.impedimento, 0);
+  const tecnicosPorReprovacao = [...(topTecsDash?.tecnicos ?? [])]
+    .filter((t) => t.revisitas > 0)
+    .sort((a, b) => b.revisitas - a.revisitas)
+    .slice(0, 6);
+  const motivosReprovacaoEquipe = historico?.motivosReprovacao ?? [];
+  const motivosImpedimentoEquipe = historico?.motivosImpedimento ?? [];
+  // O MAPA continua "hoje/em aberto" mesmo com o resto da seção seguindo o
+  // período central — mostrar meses/anos de pontos sobrepostos reintroduziria
+  // o problema de mapa pesado/sem sentido já corrigido antes. É a exceção
+  // deliberada: geografia é "onde está agora", não "onde esteve no período".
   const vistoriasMapa = useMemo(() => {
     const todas = mapaRealtime?.vistorias ?? [];
     const hojeISO = new Date().toISOString().slice(0, 10);
@@ -2046,6 +2048,10 @@ export default function PainelOverviewPage() {
       return v.data_vistoria != null && v.data_vistoria.slice(0, 10) === hojeISO;
     });
   }, [mapaRealtime]);
+  const tecnicosMapa = useMemo(
+    () => (mapaRealtime?.tecnicos ?? []).filter((t) => t.status_operacional !== "offline"),
+    [mapaRealtime],
+  );
 
   // Rótulo legível do período pros títulos dos widgets — "Hoje" fica feio
   // como "1 dias", e Personalizado mostra o intervalo de fato escolhido.
@@ -2638,14 +2644,19 @@ export default function PainelOverviewPage() {
       {/* ════════════ Equipe ao vivo (redesenho 2026-09-23) ════════════ */}
       <div className="vm-rise" style={{ animationDelay: "0.12s" }}>
         <EquipeAoVivoWidget
-          equipeHoje={equipeHoje}
+          equipePeriodo={equipePeriodo}
           vistoriasMapa={vistoriasMapa}
-          kpiAtribuidasHoje={kpiAtribuidasHoje}
-          kpiRealizadasHoje={kpiRealizadasHoje}
-          kpiAproveitamentoHoje={kpiAproveitamentoHoje}
+          tecnicosMapa={tecnicosMapa}
+          tecnicosPorReprovacao={tecnicosPorReprovacao}
+          motivosReprovacao={motivosReprovacaoEquipe}
+          motivosImpedimento={motivosImpedimentoEquipe}
+          periodoLabel={periodoLabel}
+          kpiAtribuidas={kpiAtribuidas}
+          kpiRealizadas={kpiRealizadas}
+          kpiAproveitamento={kpiAproveitamento}
           kpiEmVistoria={stats?.emVistoria ?? 0}
           kpiEmDeslocamento={stats?.emDeslocamento ?? 0}
-          kpiImpedimentos={stats?.impedimentos ?? 0}
+          kpiImpedimentos={kpiImpedimentos}
           kpiReprovadas={kpiReprovadas}
         />
       </div>

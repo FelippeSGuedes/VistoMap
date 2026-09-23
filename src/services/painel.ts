@@ -381,6 +381,7 @@ export interface HistoricoAnalytics {
     pct: number;
     exemplos: string[];
   }>;
+  motivosImpedimento: Array<{ label: string; total: number }>;
 }
 
 export type TopTecnicosPeriodo = "hoje" | "semana" | "mes" | "personalizado";
@@ -456,6 +457,7 @@ export async function fetchHistorico(
     rankingTecnicos: [],
     kmOperacional: 0,
     motivosReprovacao: [],
+    motivosImpedimento: [],
   };
   const params = new URLSearchParams();
   if (inicio) params.set("inicio", inicio);
