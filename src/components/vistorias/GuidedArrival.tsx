@@ -16,7 +16,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Ban, Check, Clock, LocateFixed, Lock, MessageCircleQuestion, Navigation, Wrench, X, XCircle } from "lucide-react";
+import { Ban, Check, Clock, LocateFixed, Lock, MessageCircleQuestion, Navigation, Navigation2, Wrench, X, XCircle } from "lucide-react";
 import type { Vistoria } from "@/types";
 import type { ApiError } from "@/services/api";
 import { api } from "@/services/api";
@@ -496,7 +496,16 @@ export function GuidedArrival({
               </>
             ) : fase === "azul" ? (
               <>
-                {/* seta apontando pro poste */}
+                {/* seta apontando pro poste — achado 2026-09-23: o ícone
+                    "Navigation" do lucide NÃO aponta pra cima por padrão,
+                    a ponta fica a ~45° (formato "avião de papel"/bússola
+                    diagonal — ok como ícone estático, errado quando gira
+                    via transform assumindo 0°=pra cima). Com o cálculo de
+                    bearing/heading corretos, isso fazia a seta apontar
+                    sempre ~45° deslocada do poste de verdade, mesmo com a
+                    localização certa. "Navigation2" aponta exatamente reto
+                    pra cima (ponta em x=12,y=2 — centro do viewBox), o
+                    ícone certo pra girar por rotação dinâmica. */}
                 <motion.div
                   animate={{ rotate: arrowRotation }}
                   transition={{ type: "spring", stiffness: 90, damping: 16 }}
@@ -506,7 +515,7 @@ export function GuidedArrival({
                     boxShadow: "0 0 0 12px rgba(255,255,255,0.06)",
                   }}
                 >
-                  <Navigation className="h-24 w-24" fill="#fff" strokeWidth={1.2} />
+                  <Navigation2 className="h-24 w-24" fill="#fff" strokeWidth={1.2} />
                 </motion.div>
                 <div className="mt-8 text-[64px] font-bold leading-none tabular-nums">
                   {distancia}
