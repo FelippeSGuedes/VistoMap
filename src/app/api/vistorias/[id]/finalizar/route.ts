@@ -86,6 +86,25 @@ export async function POST(
     return NextResponse.json({ message: "Não autenticado" }, { status: 401 });
   }
 
+  let vistoria;
+  try {
+    vistoria = await getVistoria(id);
+  } catch (error) {
+    console.error("[api/vistorias/:id/finalizar] erro ao carregar vistoria", error);
+    void logError("app", "vistorias/:id/finalizar", error, { id });
+    return NextResponse.json({ message: "Falha ao finalizar vistoria", error: String(error) }, { status: 500 });
+  }
+  if (!vistoria) {
+    return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
+  }
+  if (actor.role === "tecnico" && String(actor.id) !== vistoria.tecnico.id) {
+    return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
+  }
+  // Repetidor não tem leitura de sinal celular (RSRP) nem operadora — mesma
+  // exceção do formulário (VistoriaExecucaoForm.tsx), senão toda finalização
+  // de Repetidor cai em 400 aqui (campo obrigatório que nunca é preenchido).
+  const isRepetidor = (vistoria.fields?.equipamentofield ?? "").trim().toLowerCase() === "repetidor";
+
   let payload: FinalizarPayload;
   const files: Array<FilePayload | null> = [];
   let videoFile: FilePayload | null = null;
@@ -115,12 +134,16 @@ export async function POST(
       ["Resistência (daN)", payload.danfield],
       ["Instalação de TP", payload.instalartpfield],
       ["Endereço", payload.endereofield],
-      ["Tipo (Claro)", payload.dropdowns?.tipoifield],
-      ["RSRP (Claro)", payload.rsrpifield],
-      ["Tipo (Vivo)", payload.dropdowns?.tipollfield],
-      ["RSRP (Vivo)", payload.rsrpllfield],
       ["Observações", payload.observacoes],
     ];
+    if (!isRepetidor) {
+      camposObrigatorios.push(
+        ["Tipo (Claro)", payload.dropdowns?.tipoifield],
+        ["RSRP (Claro)", payload.rsrpifield],
+        ["Tipo (Vivo)", payload.dropdowns?.tipollfield],
+        ["RSRP (Vivo)", payload.rsrpllfield]
+      );
+    }
     if (payload.instalartpfield === "1") {
       camposObrigatorios.push(["Tensão", payload.dropdowns?.tensovfield]);
     }
@@ -172,17 +195,6 @@ export async function POST(
   }
 
   try {
-    const vistoria = await getVistoria(id);
-    if (!vistoria) {
-      return NextResponse.json({ message: "Vistoria não encontrada" }, { status: 404 });
-    }
-    // Só reforça posse pra ator-técnico — token de painel (admin/moderador/
-    // leitura) não passa por essa rota na prática, mas por segurança não
-    // aplica a checagem a um papel que não seja o esperado aqui.
-    if (actor.role === "tecnico" && String(actor.id) !== vistoria.tecnico.id) {
-      return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
-    }
-
     const dropdownIds = payload.dropdowns
       ? await resolveDropdowns(payload.dropdowns)
       : {};
