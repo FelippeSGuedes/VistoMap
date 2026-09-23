@@ -102,6 +102,15 @@ export const SITUACOES: SituacaoOperacional[] = [
  * decidiu — isso vem de `status_aprovacao`, campo separado. Pedido de campo
  * 2026-09-23: "aprovados" não tinha cor própria no mapa, ficava idêntico a
  * um vistoriado comum ainda em análise.
+ *
+ * Achado em campo 2026-09-23 (JUN-G-A-153): reprovar pela concessionária
+ * NÃO move a situação pra AGUARDANDO_REVISITA sozinho — situação_id fica
+ * travado em VISTORIADO/REVISITADO (o técnico já terminou o trabalho DELE)
+ * até alguém criar/reatribuir a revisita à parte. Ou seja, "reprovado
+ * ainda sem revisita criada" é o MESMO tipo de gap que aprovado tinha: só
+ * dá pra saber olhando status_aprovacao, não a situação. Resolve
+ * reaproveitando a própria chave AGUARDANDO_REVISITA (mesma família/glifo
+ * "reprovado" já mapeados abaixo) em vez de inventar uma 2ª chave sintética.
  */
 export type ChaveSinal = SituacaoOperacional | "REJEITADA_IMP" | "APROVADO";
 
@@ -111,8 +120,9 @@ export function chaveSinal(
   statusAprovacao?: string | null
 ): ChaveSinal {
   if (situacao === "REJEITADA" && bloqueio === "impedimento") return "REJEITADA_IMP";
-  if ((situacao === "VISTORIADO" || situacao === "REVISITADO") && statusAprovacao === "APROVADO") {
-    return "APROVADO";
+  if (situacao === "VISTORIADO" || situacao === "REVISITADO") {
+    if (statusAprovacao === "APROVADO") return "APROVADO";
+    if (statusAprovacao === "REPROVADO") return "AGUARDANDO_REVISITA";
   }
   return (SINAL[situacao as ChaveSinal] ? situacao : "A_VISTORIAR") as ChaveSinal;
 }
