@@ -5,6 +5,18 @@ import Link from "next/link";
 import mapboxgl from "mapbox-gl";
 import { novoMapa } from "@/lib/mapaSeguro";
 import "mapbox-gl/dist/mapbox-gl.css";
+// Mesma linguagem visual (anel na cor do técnico + núcleo/glifo por família
+// de status) do /painel/mapa dedicado — pedido de campo 2026-09-23 pra não
+// destoar entre os dois mapas do painel. sinal.ts é um módulo puro (tipos +
+// funções + canvas), sem nada específico da rota /painel/mapa em si.
+import {
+  ANEL_SEM_TECNICO,
+  FAMILIA_COR,
+  FAMILIA_LABEL,
+  FAMILIA_ORDEM,
+  iconeDe,
+  registrarSpritesSinal,
+} from "./mapa/sinal";
 import { motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1517,17 +1529,9 @@ function RankedBarList<T>({
   );
 }
 
-/** Cor do pino no mapa: mesmos 3 estados do mockup aprovado (Realizada /
- * Pendente / Reprovada), calculados a partir dos campos reais que
- * /painel/mapa já devolve por vistoria. */
-function corVistoriaMapa(v: PainelMapaVistoria): "real" | "pendente" | "reprovada" {
-  if (v.status_aprovacao === "REPROVADO" || v.situacao === "REJEITADA") return "reprovada";
-  if (v.situacao === "VISTORIADO" || v.situacao === "REVISITADO") return "real";
-  return "pendente";
-}
 
 interface EquipeAoVivoWidgetProps {
-  equipePeriodo: Array<{ ranking: RankingTecnicoItem; ativo: TecnicoAtivo }>;
+  equipePeriodo: Array<{ ranking: RankingTecnicoItem; ativo: TecnicoAtivo | null }>;
   vistoriasMapa: PainelMapaVistoria[];
   tecnicosMapa: PainelMapaTecnico[];
   tecnicosPorReprovacao: RankingTecnicoItem[];
@@ -1561,7 +1565,6 @@ function EquipeAoVivoWidget({
 }: EquipeAoVivoWidgetProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const mapRef        = useRef<mapboxgl.Map | null>(null);
-  const markersRef    = useRef<mapboxgl.Marker[]>([]);
   const tecMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const token         = getMapboxToken();
 
@@ -1586,8 +1589,6 @@ function EquipeAoVivoWidget({
     mapRef.current = map;
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
     return () => {
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
       tecMarkersRef.current.forEach(mk => mk.remove());
       tecMarkersRef.current = [];
       map.remove();
@@ -1595,27 +1596,61 @@ function EquipeAoVivoWidget({
     };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Mesmo desenho do /painel/mapa: anel na cor do técnico (ou cinza sem
+  // dono) + núcleo/glifo por família de situação — os mesmos sprites
+  // registrados lá (registrarSpritesSinal é idempotente, sem custo extra).
+  // Camadas simplificadas (só anel + ícone, sem pulso/hover/foco): esse
+  // mapa é um resumo do dashboard, não a experiência interativa completa.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const CORES = { real: "#059669", pendente: "#D97706", reprovada: "#DC2626" };
+    const geojson = {
+      type: "FeatureCollection" as const,
+      features: vistoriasMapa
+        .filter((v) => v.latitude != null && v.longitude != null)
+        .map((v) => ({
+          type: "Feature" as const,
+          geometry: { type: "Point" as const, coordinates: [v.longitude, v.latitude] },
+          properties: {
+            icone: iconeDe(v.situacao, v.is_revisita, v.bloqueio, v.status_aprovacao),
+            tecnico_cor: v.tecnico_cor ?? ANEL_SEM_TECNICO,
+            tem_tecnico: v.tecnico_id ? 1 : 0,
+            atribuido: v.situacao === "ATRIBUIDO" ? 1 : 0,
+          },
+        })),
+    };
+    const EH_ATRIBUIDO = ["==", ["get", "atribuido"], 1] as unknown as boolean;
     const place = () => {
-      markersRef.current.forEach(mk => mk.remove());
-      markersRef.current = [];
-      vistoriasMapa
-        .filter(v => v.latitude != null && v.longitude != null)
-        .forEach(v => {
-          const cor = corVistoriaMapa(v);
-          const el = document.createElement("div");
-          el.style.cssText =
-            `width:14px;height:14px;border-radius:50%;background:${CORES[cor]};border:2px solid #fff;` +
-            "box-shadow:0 1px 3px rgba(16,24,40,0.35);cursor:pointer";
-          el.title = `${v.equipamento} · ${v.municipio ?? "—"}${v.tecnico_nome ? ` · ${v.tecnico_nome}` : ""}`;
-          const mk = new mapboxgl.Marker({ element: el, anchor: "center" })
-            .setLngLat([v.longitude, v.latitude])
-            .addTo(map);
-          markersRef.current.push(mk);
-        });
+      registrarSpritesSinal(map);
+      const src = map.getSource("vm-dash-equipe-vist") as mapboxgl.GeoJSONSource | undefined;
+      if (src) {
+        src.setData(geojson as never);
+        return;
+      }
+      map.addSource("vm-dash-equipe-vist", { type: "geojson", data: geojson as never });
+      map.addLayer({
+        id: "vm-dash-equipe-vist-anel",
+        type: "circle",
+        source: "vm-dash-equipe-vist",
+        paint: {
+          "circle-color": ["case", EH_ATRIBUIDO, ["get", "tecnico_cor"], "#FFFFFF"] as never,
+          "circle-radius": 9,
+          "circle-stroke-color": ["case", EH_ATRIBUIDO, "#FFFFFF", ["get", "tecnico_cor"]] as never,
+          "circle-stroke-width": 2.2,
+          "circle-stroke-opacity": ["case", EH_ATRIBUIDO, 0.95, ["==", ["get", "tem_tecnico"], 1], 1, 0.6] as never,
+        },
+      });
+      map.addLayer({
+        id: "vm-dash-equipe-vist-icone",
+        type: "symbol",
+        source: "vm-dash-equipe-vist",
+        layout: {
+          "icon-image": ["get", "icone"] as never,
+          "icon-anchor": "center",
+          "icon-allow-overlap": true,
+          "icon-size": 0.55,
+        },
+      });
     };
     if (map.isStyleLoaded()) place(); else map.once("load", place);
   }, [vistoriasMapa]);
@@ -1693,20 +1728,26 @@ function EquipeAoVivoWidget({
             ) : (
               equipePeriodo.slice(0, 8).map(({ ranking: t, ativo }) => {
                 const pct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
+                // Sem registro ao vivo (ex.: técnico que já saiu da empresa,
+                // ainda aparecendo porque o período selecionado cobre quando
+                // ele trabalhou) — mesmo rótulo neutro que
+                // fetchRankingTecnicosPeriodo já usa pra esse caso.
+                const statusCor = ativo ? STATUS_DOT[ativo.status] : "var(--vm-faint)";
+                const statusLabel = ativo ? STATUS_LABEL[ativo.status] : "Desligado";
                 return (
                   <div key={t.id} className="rounded-xl border border-[var(--vm-border-soft)] bg-[var(--vm-tile)] p-2.5">
                     <div className="flex items-center gap-2">
                       <span
                         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white"
-                        style={{ background: STATUS_DOT[ativo.status] }}
+                        style={{ background: statusCor }}
                       >
                         {initials(t.nome)}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[11.5px] font-bold leading-tight text-[var(--vm-text)]">{t.nome.split(" ")[0]}</p>
-                        <p className="flex items-center gap-1 truncate text-[9px] font-semibold" style={{ color: STATUS_DOT[ativo.status] }}>
-                          <span className="h-[4.5px] w-[4.5px] shrink-0 rounded-full" style={{ background: STATUS_DOT[ativo.status] }} />
-                          {STATUS_LABEL[ativo.status]} · {ativo.municipio ?? "—"}
+                        <p className="flex items-center gap-1 truncate text-[9px] font-semibold" style={{ color: statusCor }}>
+                          <span className="h-[4.5px] w-[4.5px] shrink-0 rounded-full" style={{ background: statusCor }} />
+                          {statusLabel} · {ativo?.municipio ?? "—"}
                         </p>
                       </div>
                       <div className="flex shrink-0 gap-3 pl-2 text-center">
@@ -1739,10 +1780,15 @@ function EquipeAoVivoWidget({
               <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias no mapa</span>
               <p className="text-[9.5px] text-[var(--vm-faint)]">Equipe em campo e vistorias do dia</p>
             </div>
-            <div className="flex items-center gap-2.5 text-[9.5px] font-semibold text-[var(--vm-muted)]">
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Realizada</span>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#D97706" }} />Pendente</span>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#DC2626" }} />Reprovada</span>
+            <div className="flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1 text-[9.5px] font-semibold text-[var(--vm-muted)]">
+              {/* Mesma paleta/família do /painel/mapa (FAMILIA_ORDEM) — não
+                  inventa uma legenda paralela pros mesmos pinos. */}
+              {FAMILIA_ORDEM.map((fam) => (
+                <span key={fam} className="flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: FAMILIA_COR[fam] }} />
+                  {FAMILIA_LABEL[fam]}
+                </span>
+              ))}
             </div>
           </div>
           <div ref={containerRef} className="vm-dash-equipe h-[360px] w-full shrink-0" />
@@ -2016,9 +2062,14 @@ export default function PainelOverviewPage() {
   const equipePeriodo = useMemo(() => {
     const porId = new Map(tecnicos.map((t) => [String(t.id), t]));
     return (topTecsDash?.tecnicos ?? [])
-      .map((ranking) => ({ ranking, ativo: porId.get(String(ranking.id)) }))
-      // Técnico offline não aparece em "Equipe em campo" — pedido explícito.
-      .filter((x): x is { ranking: typeof x.ranking; ativo: TecnicoAtivo } => !!x.ativo && x.ativo.status !== "offline")
+      .map((ranking) => ({ ranking, ativo: porId.get(String(ranking.id)) ?? null }))
+      // Só exclui quem está CONFIRMADAMENTE offline agora (tem registro ao
+      // vivo e o status é offline). Quem não tem registro ao vivo — técnico
+      // que já saiu da empresa, ex.: José Renato — continua aparecendo em
+      // "Todo Período"/período que cobre quando ele trabalhou; achado em
+      // campo 2026-09-23: exigir `ativo` sempre presente escondia todo
+      // técnico desligado, mesmo com dado real do período selecionado.
+      .filter((x) => x.ativo?.status !== "offline")
       .sort((a, b) => b.ranking.total - a.ranking.total);
   }, [topTecsDash, tecnicos]);
   const kpiAtribuidas = (topTecsDash?.tecnicos ?? []).reduce((s, t) => s + t.total, 0);
