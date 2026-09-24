@@ -1632,7 +1632,9 @@ export default function PainelOverviewPage() {
       // quando responde com sucesso; senão mantém o último valor bom e
       // avisa no console (achado em campo 2026-09-18, ver comentário do
       // MAX_DIAS/lookbackDias acima).
-      const mapaQs = concessionaria ? `?concessionaria=${encodeURIComponent(concessionaria)}` : "";
+      const mapaParams = new URLSearchParams({ inicio: periodoRange.inicio, fim: periodoRange.fim });
+      if (concessionaria) mapaParams.set("concessionaria", concessionaria);
+      const mapaQs = `?${mapaParams.toString()}`;
       const [s, t, r, a, h, mp] = await Promise.allSettled([
         painelService.fetchStats(concessionaria),
         painelService.fetchTecnicos(),
@@ -1728,22 +1730,15 @@ export default function PainelOverviewPage() {
     .slice(0, 6);
   const motivosReprovacaoEquipe = historico?.motivosReprovacao ?? [];
   const motivosImpedimentoEquipe = historico?.motivosImpedimento ?? [];
-  // O MAPA continua "hoje/em aberto" mesmo com o resto da seção seguindo o
-  // período central — mostrar meses/anos de pontos sobrepostos reintroduziria
-  // o problema de mapa pesado/sem sentido já corrigido antes. É a exceção
-  // deliberada: geografia é "onde está agora", não "onde esteve no período".
-  const vistoriasMapa = useMemo(() => {
-    const todas = mapaRealtime?.vistorias ?? [];
-    const hojeISO = new Date().toISOString().slice(0, 10);
-    const EM_ABERTO = new Set<PainelMapaVistoria["situacao"]>([
-      "ATRIBUIDO", "EM_DESLOCAMENTO", "EM_VISTORIA", "AGUARDANDO_REVISITA", "EM_REVISITA", "DEVOLVIDA", "REJEITADA",
-    ]);
-    return todas.filter((v) => {
-      if (v.tecnico_id == null) return false;
-      if (EM_ABERTO.has(v.situacao)) return true;
-      return v.data_vistoria != null && v.data_vistoria.slice(0, 10) === hojeISO;
-    });
-  }, [mapaRealtime]);
+  // Fiel aos KPIs (2026-09-24): antes o mapa só mostrava "hoje/em aberto" e
+  // nunca batia com "Atribuídas" do período (ex.: 325 atribuídas, poucos
+  // pinos) — o corte por período+concessionária agora é feito no servidor
+  // (fetchPainelMapa), igual ao critério de Atribuídas. Aqui só filtra o
+  // que realmente não dá pra plotar (sem técnico ou sem coordenada válida).
+  const vistoriasMapa = useMemo(
+    () => (mapaRealtime?.vistorias ?? []).filter((v) => v.tecnico_id != null),
+    [mapaRealtime],
+  );
   const tecnicosMapa = useMemo(
     () => (mapaRealtime?.tecnicos ?? []).filter((t) => t.status_operacional !== "offline"),
     [mapaRealtime],

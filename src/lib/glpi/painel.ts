@@ -1948,13 +1948,40 @@ export async function fetchParadoDesdeMin(
   return resultado;
 }
 
-/** `concessionaria` — filtro global do dashboard: restringe as "vistorias" do mapa (técnicos continuam sem filtro, representam pessoas, não equipamento). */
-export async function fetchPainelMapa(concessionaria?: string): Promise<PainelMapaResponse> {
+/**
+ * `concessionaria` — filtro global do dashboard: restringe as "vistorias" do
+ * mapa (técnicos continuam sem filtro, representam pessoas, não equipamento).
+ *
+ * `inicio`/`fim` — mesmo período do resto do dashboard (2026-09-24, achado
+ * em campo: o mapa só mostrava "hoje/em aberto" e nunca batia com os KPIs
+ * do período, ex.: "Atribuídas: 325" mas só uns poucos pinos no mapa —
+ * eram dados de recortes DIFERENTES). Quando omitidos (uso do /painel/mapa
+ * standalone, que não tem filtro de período), preserva o comportamento
+ * antigo: mostra tudo que tem técnico, sem corte de data.
+ */
+export async function fetchPainelMapa(
+  concessionaria?: string,
+  inicio?: string,
+  fim?: string
+): Promise<PainelMapaResponse> {
   const concJoinMapa = concessionaria
     ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
     : "";
   const concWhereMapa = concessionaria ? "AND conc.name = ?" : "";
   const concParamsMapa = concessionaria ? [concessionaria] : [];
+
+  // Igual ao critério de "Atribuídas" (topTecnicosDashboard.ts): finalizada
+  // dentro do período OU, independente de data, em andamento agora mesmo
+  // (Em Vistoria/Em Deslocamento) — sem isso, filtrar por período escondia
+  // do mapa quem está literalmente vistoriando neste instante.
+  const periodoWhereMapa = inicio && fim
+    ? `AND f.users_id_vistoriadorafield IS NOT NULL AND f.users_id_vistoriadorafield > 0
+       AND (
+         (f.datadavistoriafield IS NOT NULL AND DATE(f.datadavistoriafield) BETWEEN ? AND ?)
+         OR f.\`${SITUACAO_COLUMN}\` IN (${SITUACAO_EM_VISTORIA}, ${SITUACAO_EM_DESLOCAMENTO})
+       )`
+    : "";
+  const periodoParamsMapa = inicio && fim ? [inicio, fim] : [];
 
   const group = process.env.GLPI_VISTOMAP_GROUP ?? "VistoMap-Tecnicos";
   const groupAlt =
@@ -2068,9 +2095,10 @@ export async function fetchPainelMapa(concessionaria?: string): Promise<PainelMa
         AND REPLACE(f.latitudefield, ',', '.') + 0.0 <> 0
         AND REPLACE(f.longitudefield, ',', '.') + 0.0 <> 0
         ${concWhereMapa}
+        ${periodoWhereMapa}
       LIMIT 10000
     `,
-    concParamsMapa
+    [...concParamsMapa, ...periodoParamsMapa]
   );
 
   const now = Date.now();
