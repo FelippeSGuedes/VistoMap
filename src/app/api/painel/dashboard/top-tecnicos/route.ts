@@ -54,6 +54,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const periodo = searchParams.get("periodo") ?? "mes";
     const concessionaria = searchParams.get("concessionaria") || undefined;
+    const limitParam = Number(searchParams.get("limit"));
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 8;
     const { inicio, fim } = resolvePeriodo(
       periodo,
       searchParams.get("inicio"),
@@ -61,7 +63,7 @@ export async function GET(req: Request) {
     );
 
     const [tecnicos, pendentesCpflPorMunicipio, aprovadosPorMunicipio] = await Promise.all([
-      fetchRankingTecnicosPeriodo(inicio, fim, 8, concessionaria),
+      fetchRankingTecnicosPeriodo(inicio, fim, limit, concessionaria),
       fetchPendentesCpflPorMunicipio(),
       fetchAprovadosPorMunicipio(),
     ]);

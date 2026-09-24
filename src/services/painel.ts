@@ -436,6 +436,7 @@ export interface RankingTecnicoItem {
   nome: string;
   total: number;
   aprovadas: number;
+  reprovadas: number;
   revisitas: number;
   cidades: number;
   kmPercorrido?: number;
@@ -459,7 +460,8 @@ export async function fetchTopTecnicosDashboard(
   periodo: TopTecnicosPeriodo,
   inicio?: string,
   fim?: string,
-  concessionaria?: string
+  concessionaria?: string,
+  limit?: number
 ): Promise<TopTecnicosDashboard> {
   const fb: TopTecnicosDashboard = {
     periodo: { inicio: "", fim: "" },
@@ -473,6 +475,7 @@ export async function fetchTopTecnicosDashboard(
     params.set("fim", fim);
   }
   if (concessionaria) params.set("concessionaria", concessionaria);
+  if (limit) params.set("limit", String(limit));
   return tryReal(
     api
       .get<TopTecnicosDashboard>(`/painel/dashboard/top-tecnicos?${params.toString()}`)
@@ -603,6 +606,70 @@ export async function fetchRealizadas(
     api.get<RealizadasResponse>(url).then(r => r.data),
     { items: [], stats: EMPTY_REALIZADAS_STATS }
   );
+}
+
+/* ── Análise Operacional dos Técnicos ───────────────────────────────── */
+
+export interface VistoriaTecnicoPeriodo {
+  id: number;
+  glpiId: string;
+  equipamento: string;
+  municipio: string;
+  endereco: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  dataVistoria: string | null;
+  situacaoId: number | null;
+  statusName: string | null;
+  isRepeat: boolean;
+  motivo: string | null;
+}
+
+/** Vistorias de um técnico no período — mapa/timeline/KPIs/donut/cidades da Análise Operacional. */
+export async function fetchVistoriasTecnico(
+  tecnicoId: number,
+  desde: string,
+  ate: string,
+  concessionaria?: string
+): Promise<VistoriaTecnicoPeriodo[]> {
+  const p = new URLSearchParams({ users_id: String(tecnicoId), desde, ate });
+  if (concessionaria) p.set("concessionaria", concessionaria);
+  return tryReal(
+    api
+      .get<{ vistorias: VistoriaTecnicoPeriodo[] }>(`/painel/tecnico-vistorias?${p.toString()}`)
+      .then((r) => r.data.vistorias),
+    []
+  );
+}
+
+export interface TecnicoObservacao {
+  id: number;
+  tecnicoId: number;
+  autorId: number;
+  autorNome: string;
+  texto: string;
+  criadoEm: string;
+}
+
+export async function fetchTecnicoObservacoes(tecnicoId: number): Promise<TecnicoObservacao[]> {
+  return tryReal(
+    api
+      .get<{ observacoes: TecnicoObservacao[] }>(`/painel/tecnico-observacoes?tecnico_id=${tecnicoId}`)
+      .then((r) => r.data.observacoes),
+    []
+  );
+}
+
+export async function criarTecnicoObservacao(tecnicoId: number, texto: string): Promise<TecnicoObservacao> {
+  const { data } = await api.post<{ observacao: TecnicoObservacao }>("/painel/tecnico-observacoes", {
+    tecnicoId,
+    texto,
+  });
+  return data.observacao;
+}
+
+export async function excluirTecnicoObservacao(id: number): Promise<void> {
+  await api.delete(`/painel/tecnico-observacoes/${id}`);
 }
 
 export interface ServiceCheck {
@@ -766,4 +833,8 @@ export const painelService = {
   sincronizarStatusCPFL,
   recuperarAvaliadorCPFL,
   fetchTopTecnicosDashboard,
+  fetchVistoriasTecnico,
+  fetchTecnicoObservacoes,
+  criarTecnicoObservacao,
+  excluirTecnicoObservacao,
 };

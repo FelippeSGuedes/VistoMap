@@ -28,6 +28,8 @@ export interface RankingTecnicoItem {
   nome: string;
   total: number;
   aprovadas: number;
+  /** Reprovadas no período (status_name) — adicionado 2026-09-24 pra Análise Operacional dos Técnicos. */
+  reprovadas: number;
   revisitas: number;
   cidades: number;
   kmPercorrido?: number;
@@ -77,6 +79,7 @@ export async function fetchRankingTecnicosPeriodo(
     realname: string | null;
     total: number;
     aprovadas: number;
+    reprovadas: number;
     revisitas: number;
     cidades: number;
   }>(
@@ -85,6 +88,7 @@ export async function fetchRankingTecnicosPeriodo(
              u.id, u.name, u.firstname, u.realname,
              COUNT(*) AS total,
              SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado','Aprovado com Pendências') THEN 1 ELSE 0 END) AS aprovadas,
+             SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovadas,
              SUM(CASE WHEN COALESCE(aux.is_repeat,0) = 1 THEN 1 ELSE 0 END) AS revisitas,
              COUNT(DISTINCT TRIM(f.municipiofield)) AS cidades
         FROM \`${TABLE_FIELDS}\` f
@@ -197,6 +201,7 @@ export async function fetchRankingTecnicosPeriodo(
         : `${r.firstname ?? ""} ${r.realname ?? ""}`.trim() || r.name || "—",
     total: Number(r.total) || 0,
     aprovadas: Number(r.aprovadas) || 0,
+    reprovadas: Number(r.reprovadas) || 0,
     revisitas: Number(r.revisitas) || 0,
     cidades: Number(r.cidades) || 0,
     kmPercorrido:

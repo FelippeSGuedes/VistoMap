@@ -22,6 +22,7 @@ import {
   SITUACAO_EM_REVISITA,
   SITUACAO_EM_VISTORIA,
   SITUACAO_REVISITADO,
+  SITUACAO_VISTORIADO,
   STATE_AGUARDANDO_VISTORIA,
   STATUS_VISTORIA_PENDENTE,
   STATUS_VISTORIA_APROVADO,
@@ -1652,6 +1653,119 @@ export async function fetchVistoriasRealizadas(
   });
 
   return filtros.status ? items.filter(i => i.status === filtros.status) : items;
+}
+
+export interface VistoriaTecnicoPeriodo {
+  id: number;
+  glpiId: string;
+  equipamento: string;
+  municipio: string;
+  endereco: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  dataVistoria: string | null;
+  situacaoId: number | null;
+  statusName: string | null;
+  isRepeat: boolean;
+  /** Motivo de reprovação (dropdown CPFL, com fallback pro texto legado) — só relevante quando reprovada. */
+  motivo: string | null;
+}
+
+interface VistoriaTecnicoRow {
+  id: number;
+  name: string;
+  municipio: string | null;
+  endereco: string | null;
+  motivo: string | null;
+  motivo_cpfl: string | null;
+  descricao_detalhada_cpfl: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  data_vistoria: string | null;
+  status_name: string | null;
+  situacao_id: number | null;
+  is_repeat: number | null;
+}
+
+/**
+ * Vistorias de UM técnico num período — espinha dorsal da Análise
+ * Operacional dos Técnicos (mapa/timeline/KPIs/donut/cidades). Fusão de
+ * fetchFilaVistorias (filtro por técnico) + fetchVistoriasRealizadas
+ * (endereço + motivo CPFL + lat/lng), mas sem restringir a status
+ * concluído — usa a mesma regra de fetchPainelMapa() ("concluída no
+ * período OU em aberto agora"), senão pendentes de ciclos anteriores
+ * ficariam invisíveis. Sem paginação/LIMIT: volume de um único técnico é
+ * pequeno e o mapa/gráfico de rota precisam do conjunto inteiro.
+ */
+export async function fetchVistoriasTecnicoPeriodo(
+  tecnicoId: number,
+  inicio: string,
+  fim: string,
+  concessionaria?: string
+): Promise<VistoriaTecnicoPeriodo[]> {
+  const concJoin = concessionaria
+    ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
+    : "";
+  const concWhere = concessionaria ? "AND conc.name = ?" : "";
+  const concParams = concessionaria ? [concessionaria] : [];
+
+  const rows = await query<VistoriaTecnicoRow>(
+    `
+      SELECT
+        ne.id,
+        ne.name,
+        f.municipiofield       AS municipio,
+        f.endereofield         AS endereco,
+        f.motivofield          AS motivo,
+        mr.name                AS motivo_cpfl,
+        f.\`${DESCRICAO_DETALHADA_CPFL_COLUMN}\` AS descricao_detalhada_cpfl,
+        f.latitudefield        AS latitude,
+        f.longitudefield       AS longitude,
+        f.datadavistoriafield  AS data_vistoria,
+        sv.name                AS status_name,
+        f.\`${SITUACAO_COLUMN}\`              AS situacao_id,
+        COALESCE(aux.is_repeat, 0)           AS is_repeat
+      FROM \`${TABLE_NE}\` ne
+      INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
+      LEFT  JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+             ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+      LEFT  JOIN \`${TABLE_AUX}\` aux
+             ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+      LEFT  JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+             ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
+      ${concJoin}
+      WHERE ne.is_deleted = 0
+        AND f.users_id_vistoriadorafield = ?
+        AND (
+          (f.datadavistoriafield IS NOT NULL AND DATE(f.datadavistoriafield) BETWEEN ? AND ?)
+          OR f.\`${SITUACAO_COLUMN}\` NOT IN (${SITUACAO_VISTORIADO}, ${SITUACAO_REVISITADO})
+        )
+        ${concWhere}
+      ORDER BY f.datadavistoriafield ASC, ne.id ASC
+    `,
+    [tecnicoId, inicio, fim, ...concParams]
+  );
+
+  const parseCoord = (s: string | null): number | null => {
+    if (s == null || String(s).trim() === "") return null;
+    const n = Number(String(s).replace(",", "."));
+    return Number.isFinite(n) && n !== 0 ? n : null;
+  };
+
+  return rows.map((r) => ({
+    id: r.id,
+    glpiId: `NE-${r.id}`,
+    equipamento: r.name,
+    municipio: r.municipio?.trim() || "—",
+    endereco: r.endereco?.trim() || null,
+    latitude: parseCoord(r.latitude),
+    longitude: parseCoord(r.longitude),
+    dataVistoria: r.data_vistoria,
+    situacaoId: r.situacao_id != null ? Number(r.situacao_id) : null,
+    statusName: r.status_name,
+    isRepeat: Number(r.is_repeat) === 1,
+    motivo: composeMotivoReprovacaoCpfl(r.motivo_cpfl, r.descricao_detalhada_cpfl, r.motivo),
+  }));
 }
 
 export interface VistoriasRealizadasStats {

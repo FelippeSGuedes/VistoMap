@@ -64,6 +64,8 @@ import { asset } from "@/utils/asset";
 // Promise.all da Vistoria — zero acoplamento com o fluxo de dados dela.
 import { fetchInstalacoesStats } from "@/services/painel-instalacoes";
 import type { PainelInstalacoesStats } from "@/types/painel-instalacoes";
+import AnaliseOperacionalTecnicos from "./AnaliseOperacionalTecnicos";
+import { VelocityChart } from "./VelocityChart";
 
 /* ─── helpers ───────────────────────────────────────────────────────────── */
 
@@ -259,151 +261,6 @@ function Card({
       style={{ border: "1px solid var(--vm-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", ...style }}
     >
       {children}
-    </div>
-  );
-}
-
-/* ── VelocityChart (self-contained — Widget 01) ────────────────────────────
-   SVG próprio para não tocar no AreaChart compartilhado (usado no histórico).
-   Linha verde 2px, área gradiente, linha de média tracejada laranja, ponto de
-   pico destacado e eixo X com datas. */
-function VelocityChart({
-  values,
-  labels,
-  avg,
-  peak,
-}: {
-  values: number[];
-  labels: string[];
-  avg: number;
-  peak: number;
-}) {
-  if (!values.length) return null;
-  const VB_W = 1000;
-  const H = 160;
-  const padX = 12;
-  const padTop = 22;
-  const padBottom = 24;
-  const plotH = H - padTop - padBottom;
-  const n = values.length;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const range = Math.max(max - min, 1);
-
-  const x = (i: number) => padX + (n === 1 ? 0 : (i / (n - 1)) * (VB_W - padX * 2));
-  const y = (v: number) => padTop + (1 - (v - min) / range) * plotH;
-
-  const pts = values.map((v, i) => [x(i), y(v)] as const);
-  const line = pts
-    .map(([px, py], i) => {
-      if (i === 0) return `M${px.toFixed(1)},${py.toFixed(1)}`;
-      const [qx, qy] = pts[i - 1];
-      const mx = (qx + px) / 2;
-      return `Q${qx.toFixed(1)},${qy.toFixed(1)} ${mx.toFixed(1)},${((qy + py) / 2).toFixed(1)} T${px.toFixed(1)},${py.toFixed(1)}`;
-    })
-    .join(" ");
-  const fill = `${line} L${x(n - 1).toFixed(1)},${H - padBottom} L${x(0).toFixed(1)},${H - padBottom} Z`;
-
-  const avgY = y(avg);
-  const peakIdx = values.indexOf(peak);
-  const peakX = peakIdx >= 0 ? x(peakIdx) : 0;
-  const peakY = peakIdx >= 0 ? y(peak) : 0;
-
-  // 5 marcações de eixo X distribuídas
-  const tickIdx = Array.from({ length: Math.min(5, n) }, (_, k) =>
-    Math.round((k / (Math.min(5, n) - 1 || 1)) * (n - 1))
-  );
-
-  const pctLeft = (px: number) => `${(px / VB_W) * 100}%`;
-
-  return (
-    <div className="relative" style={{ height: H }}>
-      <svg viewBox={`0 0 ${VB_W} ${H}`} preserveAspectRatio="none" className="h-full w-full">
-        <defs>
-          <linearGradient id="vm-vel-grad" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#16a34a" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="#16a34a" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* grid horizontal */}
-        {[0.25, 0.5, 0.75].map((t) => (
-          <line
-            key={t}
-            x1={padX}
-            x2={VB_W - padX}
-            y1={padTop + plotH * t}
-            y2={padTop + plotH * t}
-            stroke="var(--vm-border-soft)"
-            strokeWidth="1"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-        {/* linha de média (tracejada laranja) */}
-        <line
-          x1={padX}
-          x2={VB_W - padX}
-          y1={avgY}
-          y2={avgY}
-          stroke="#f59e0b"
-          strokeWidth="1.6"
-          strokeDasharray="6 5"
-          vectorEffect="non-scaling-stroke"
-        />
-        <path d={fill} fill="url(#vm-vel-grad)" />
-        <path
-          d={line}
-          fill="none"
-          stroke="#16a34a"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-
-      {/* label MÉDIA */}
-      <span
-        className="pointer-events-none absolute right-1 rounded bg-amber-50 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-700"
-        style={{ top: `${avgY - 8}px` }}
-      >
-        Média
-      </span>
-
-      {/* ponto de pico + data */}
-      {peakIdx >= 0 && peak > 0 && (
-        <>
-          <span
-            className="pointer-events-none absolute -translate-x-1/2 rounded-full"
-            style={{
-              left: pctLeft(peakX),
-              top: `${peakY - 4}px`,
-              width: 8,
-              height: 8,
-              background: "#16a34a",
-              boxShadow: "0 0 0 3px rgba(22,163,74,0.18)",
-            }}
-          />
-          <span
-            className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap text-[9px] font-bold text-[#16a34a]"
-            style={{ left: pctLeft(peakX), top: `${peakY - 22}px` }}
-          >
-            {labels[peakIdx]}
-          </span>
-        </>
-      )}
-
-      {/* eixo X */}
-      <div className="absolute inset-x-0 bottom-0 h-[16px]">
-        {tickIdx.map((i) => (
-          <span
-            key={i}
-            className="absolute -translate-x-1/2 text-[0.7rem] text-[var(--vm-faint)]"
-            style={{ left: pctLeft(x(i)) }}
-          >
-            {labels[i]}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1705,7 +1562,12 @@ export default function PainelOverviewPage() {
     setTopTecsLoading(true);
     const load = () =>
       painelService
-        .fetchTopTecnicosDashboard("personalizado", periodoRange.inicio, periodoRange.fim, concessionaria)
+        // limit=50 (não o default 8): a Análise Operacional dos Técnicos
+        // precisa da equipe INTEIRA na lateral pra seleção, não só o top 8 —
+        // e como kpiAtribuidas/kpiRealizadas/tecnicosPorReprovacao/
+        // equipePeriodo somam sobre esse mesmo array, também deixam de
+        // ficar (silenciosamente) truncados no top 8.
+        .fetchTopTecnicosDashboard("personalizado", periodoRange.inicio, periodoRange.fim, concessionaria, 50)
         .then((d) => { if (alive) setTopTecsDash(d); })
         .finally(() => { if (alive) setTopTecsLoading(false); });
     load();
@@ -1719,8 +1581,6 @@ export default function PainelOverviewPage() {
     () => tecnicos.filter(t => t.status === "em-campo" || t.status === "base").length,
     [tecnicos],
   );
-  const topTecs      = (topTecsDash?.tecnicos ?? []).slice(0, 6);
-
   // ── dados reais do novo "Equipe ao vivo" (EquipeAoVivoWidget) ──────────
   // Achado em campo 2026-09-23: os números desta seção têm que seguir o
   // MESMO filtro de período central de todo o resto da tela (não "hoje"
@@ -2384,125 +2244,18 @@ export default function PainelOverviewPage() {
         />
       </div>
 
-      {/* ════════════ Top Técnicos | Atividade ao vivo ════════════ */}
+      {/* ════════════ Análise Operacional dos Técnicos | Atividade ao vivo ════════════ */}
       <div className="vm-rise grid grid-cols-1 gap-4 md:grid-cols-2" style={{ animationDelay: "0.16s" }}>
-        {/* Widget 05 — Top Técnicos: performance cockpit */}
-        <Card>
-          <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-2.5">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-[#059669]" strokeWidth={2} />
-              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Top Técnicos · {periodoLabel}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
-            </div>
-          </div>
-          <div className="flex flex-col gap-0 px-3 pb-3">
-            {topTecs.length > 0 ? (
-              topTecs.map((t, i) => {
-                const maxTotal = topTecs[0]?.total ?? 1;
-                const pct = (t.total / maxTotal) * 100;
-                const aprovPct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
-                const badgeColors = ["#F59E0B", "var(--vm-faint)", "#B45309", "var(--vm-muted)", "var(--vm-muted)"];
-                const badgeBg    = ["var(--vm-amber-100)", "var(--vm-tile-2)", "var(--vm-amber-100)", "var(--vm-tile)", "var(--vm-tile)"];
-                return (
-                  <motion.div
-                    key={t.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.06 * i, duration: 0.35, ease: "easeOut" }}
-                    className="rounded-xl px-2 py-2.5 transition hover:bg-[var(--vm-tile)]"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums"
-                        style={{ background: badgeBg[i], color: badgeColors[i] }}
-                      >
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <span className="truncate text-[12px] font-semibold text-[var(--vm-text)]">{t.nome.split(" ")[0]}</span>
-                          <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-[var(--vm-text)]">{t.total}</span>
-                        </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                          <motion.div
-                            className="h-full rounded-full"
-                            style={{ background: "linear-gradient(90deg,#059669,#34D399)" }}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ duration: 0.8, delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[34px]">
-                      {/* Amostra pequena (< 3 vistorias) distorce %: 1/1 mostraria
-                          "100% aprov." lado a lado com técnicos de 40+ vistorias,
-                          como se fossem comparáveis. Mostra a contagem crua. */}
-                      {t.total >= 3 ? (
-                        <span className="rounded-full bg-emerald-50 px-1.5 py-[2px] text-[9px] font-semibold text-emerald-700">
-                          {aprovPct}% aprov.
-                        </span>
-                      ) : (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "var(--vm-tile-2)", color: "var(--vm-faint)" }}
-                          title="Amostra pequena demais pra calcular percentual"
-                        >
-                          {t.aprovadas}/{t.total} aprov.
-                        </span>
-                      )}
-                      {t.cidades > 0 && (
-                        <span className="rounded-full bg-[var(--vm-tile-purple)] px-1.5 py-[2px] text-[9px] font-semibold text-[#7C3AED]">
-                          {t.cidades} cidade{t.cidades !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {t.revisitas > 0 && (
-                        <span className="rounded-full bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold text-amber-700">
-                          {t.revisitas} rev.
-                        </span>
-                      )}
-                      {t.slaExecucaoMedioMin != null && (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "rgba(59,130,246,0.10)", color: "#2563EB" }}
-                          title="SLA médio de execução (Iniciada → Finalizada)"
-                        >
-                          SLA {fmtMin(t.slaExecucaoMedioMin)}
-                        </span>
-                      )}
-                      {t.tempoDeslocamentoMedioMin != null && (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "rgba(14,165,233,0.10)", color: "#0891B2" }}
-                          title="Tempo médio de deslocamento (Em Deslocamento → Iniciada)"
-                        >
-                          desloc {fmtMin(t.tempoDeslocamentoMedioMin)}
-                        </span>
-                      )}
-                      {t.kmPercorrido != null && t.kmPercorrido > 0 && (
-                        <span
-                          className="rounded-full px-1.5 py-[2px] text-[9px] font-semibold"
-                          style={{ background: "rgba(100,116,139,0.12)", color: "var(--vm-text-soft)" }}
-                          title="Distância percorrida no período"
-                        >
-                          {t.kmPercorrido.toFixed(1).replace(".", ",")} km
-                        </span>
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })
-            ) : topTecsLoading ? (
-              <Skeleton h={200} />
-            ) : (
-              <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">
-                Nenhuma vistoria finalizada nesse período.
-              </p>
-            )}
-          </div>
-        </Card>
+        {/* Widget 05 — Análise Operacional dos Técnicos (substitui o antigo ranking "Top Técnicos", 2026-09-24) */}
+        <div className="md:col-span-2">
+          <AnaliseOperacionalTecnicos
+            periodoRange={periodoRange}
+            periodoModo={periodoModo}
+            periodoLabel={periodoLabel}
+            concessionaria={concessionaria}
+            equipePeriodo={equipePeriodo}
+          />
+        </div>
 
         {/* Widget 06 — Atividade ao Vivo: operational timeline */}
         <Card>
