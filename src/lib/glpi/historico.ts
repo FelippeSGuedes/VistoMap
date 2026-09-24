@@ -197,13 +197,15 @@ export async function fetchHistoricoAnalytics(
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+        ${concJoin}
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
          AND DATE(f.datadavistoriafield) <= ?
+         ${concWhere}
        GROUP BY DATE(f.datadavistoriafield), sv.name, f.\`${SITUACAO_COLUMN}\`
        ORDER BY dia
     `,
-    [inicioSerie, fim]
+    [inicioSerie, fim, ...concParams]
   );
 
   // Constrói série dia-a-dia (preenche dias faltantes com 0).
@@ -278,11 +280,13 @@ export async function fetchHistoricoAnalytics(
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
         LEFT JOIN \`${TABLE_AUX}\` aux
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+        ${concJoin}
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) >= ?
          AND DATE(f.datadavistoriafield) <= ?
+         ${concWhere}
     `,
-    [inicio, fim]
+    [inicio, fim, ...concParams]
   );
 
   const finalizadas = Number(agg?.finalizadas ?? 0);

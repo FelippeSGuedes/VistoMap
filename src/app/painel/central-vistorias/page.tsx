@@ -127,6 +127,7 @@ function vistoriaMatchesFiltro(v: Vistoria, filtro: string): boolean {
   if (filtro === "1") return estadoDaVistoria(v.situacao_id, !!v.tecnico_nome) === 1;
   if (filtro === "APROVADO") return v.status_name === "Aprovado" || v.status_name === "Aprovada";
   if (filtro === "APROVADO_PENDENCIA") return v.status_name === "Aprovado com Pendências";
+  if (filtro === "REPROVADO") return v.status_name === "Reprovado" || v.status_name === "Reprovada";
   return v.situacao_id === Number(filtro);
 }
 
@@ -147,6 +148,7 @@ const FILTRO_SITUACAO_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "8", label: SITUACAO_LABEL[8] },
   { value: "APROVADO", label: "Aprovado" },
   { value: "APROVADO_PENDENCIA", label: "Aprovado com Pendência" },
+  { value: "REPROVADO", label: "Reprovado" },
 ];
 
 /**

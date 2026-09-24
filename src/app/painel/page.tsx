@@ -1067,6 +1067,13 @@ function HeatmapMapWidget({
    validado com o usuário antes de entrar aqui (ver memória do projeto).
    ══════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * `href` (2026-09-24) — quando presente, o card inteiro vira link pra
+ * Central de Vistorias/Ocorrências já filtrada naquela categoria. Sem
+ * filtro de período/concessionária na fila (decisão explícita: a fila é
+ * "estado atual", não tem esse conceito) — mostra a MESMA categoria, não
+ * necessariamente a mesma contagem exata do KPI.
+ */
 function MiniKpiCard({
   icon: Icon,
   label,
@@ -1074,6 +1081,7 @@ function MiniKpiCard({
   color,
   bg,
   caption,
+  href,
 }: {
   icon: LucideIcon;
   label: string;
@@ -1081,19 +1089,29 @@ function MiniKpiCard({
   color: string;
   bg: string;
   caption?: string;
+  href?: string;
 }) {
-  return (
-    <Card className="p-4">
+  const body = (
+    <>
       <div className="flex items-center gap-2.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: bg, color }}>
           <Icon className="h-4 w-4" strokeWidth={2.1} />
         </span>
         <span className="text-[11px] font-semibold text-[var(--vm-muted)]">{label}</span>
+        {href && <ArrowRight className="ml-auto h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" style={{ color }} />}
       </div>
       <p className="mt-2 text-[24px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{value}</p>
       {caption && <p className="mt-1.5 text-[10.5px] text-[var(--vm-faint)]">{caption}</p>}
-    </Card>
+    </>
   );
+  if (href) {
+    return (
+      <Link href={href} className="group block">
+        <Card className="cursor-pointer p-4 transition hover:shadow-md">{body}</Card>
+      </Link>
+    );
+  }
+  return <Card className="p-4">{body}</Card>;
 }
 
 /** Lista ranqueada genérica (barrinha + posição + valor) — mesmo padrão
@@ -1320,12 +1338,12 @@ function EquipeAoVivoWidget({
 
       {/* KPIs + Aproveitamento */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
-        <MiniKpiCard icon={ClipboardList} label="Atribuídas" value={fmtNum(kpiAtribuidas)} color="#3B82F6" bg="var(--vm-tile-blue)" caption={periodoLabel} />
-        <MiniKpiCard icon={CheckCircle2} label="Realizadas" value={fmtNum(kpiRealizadas)} color="#059669" bg="var(--vm-accent-tint)" caption={`${kpiAproveitamento}% de aproveitamento`} />
-        <MiniKpiCard icon={Clock} label="Em Vistoria" value={fmtNum(kpiEmVistoria)} color="#F97316" bg="var(--vm-orange-tint)" caption="agora" />
-        <MiniKpiCard icon={Route} label="Em Deslocamento" value={fmtNum(kpiEmDeslocamento)} color="#0891B2" bg="rgba(14,165,233,0.10)" caption="agora" />
-        <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption={periodoLabel} />
-        <MiniKpiCard icon={ShieldAlert} label="Reprovadas" value={fmtNum(kpiReprovadas)} color="#DC2626" bg="var(--vm-red-tint)" caption={periodoLabel} />
+        <MiniKpiCard icon={ClipboardList} label="Atribuídas" value={fmtNum(kpiAtribuidas)} color="#3B82F6" bg="var(--vm-tile-blue)" caption={periodoLabel} href="/painel/central-vistorias?status=ATRIBUIDO" />
+        <MiniKpiCard icon={CheckCircle2} label="Realizadas" value={fmtNum(kpiRealizadas)} color="#059669" bg="var(--vm-accent-tint)" caption={`${kpiAproveitamento}% de aproveitamento`} href="/painel/central-vistorias?status=APROVADO,APROVADO_PENDENCIA" />
+        <MiniKpiCard icon={Clock} label="Em Vistoria" value={fmtNum(kpiEmVistoria)} color="#F97316" bg="var(--vm-orange-tint)" caption="agora" href="/painel/central-vistorias?status=2" />
+        <MiniKpiCard icon={Route} label="Em Deslocamento" value={fmtNum(kpiEmDeslocamento)} color="#0891B2" bg="rgba(14,165,233,0.10)" caption="agora" href="/painel/central-vistorias?status=7" />
+        <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption={periodoLabel} href="/painel/ocorrencias?tipo=impedimento" />
+        <MiniKpiCard icon={ShieldAlert} label="Reprovadas" value={fmtNum(kpiReprovadas)} color="#DC2626" bg="var(--vm-red-tint)" caption={periodoLabel} href="/painel/central-vistorias?status=REPROVADO" />
 
         <Card className="col-span-2 p-4 md:col-span-3 xl:col-span-1" style={{ background: "var(--vm-accent-tint)", borderColor: "var(--vm-glass-border)" }}>
           <div className="flex h-full w-full items-center gap-4">
@@ -1432,10 +1450,11 @@ function EquipeAoVivoWidget({
       {/* Grid de análise — segue o filtro de período central, igual o resto da tela */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
-          <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+          <Link href="/painel/central-vistorias?status=REPROVADO" className="group flex items-center gap-2 px-5 pt-4 pb-2">
             <FileText className="h-4 w-4 text-[#DC2626]" strokeWidth={2} />
             <span className="text-[13px] font-semibold text-[var(--vm-text)]">Motivos de Reprovação</span>
-          </div>
+            <ArrowRight className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" style={{ color: "#DC2626" }} />
+          </Link>
           <RankedBarList
             items={motivosReprovacao}
             keyFn={(m) => m.label}
