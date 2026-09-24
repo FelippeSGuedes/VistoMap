@@ -853,6 +853,38 @@ const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "descricaodetalhadacpflfield",
 ]);
 
+/**
+ * Valores ATUAIS de tudo que o EditarVistoriaModal pode editar — usado pra
+ * pré-preencher o modal de verdade, em vez de cada página que o abre ter
+ * que montar um `initial` na mão (é assim que ficava faltando campo: cada
+ * chamador só passava o que lembrava, geralmente só o motivo).
+ */
+export async function fetchCamposEditaveis(
+  vistoriaId: number
+): Promise<AtualizarCamposInput & { alimentacaodoequipamento?: string; motivoReprovacaoCpfl?: string }> {
+  const rows = await query<
+    AtualizarCamposInput & { alimentacaodoequipamento: string | null; motivoReprovacaoCpfl: string | null }
+  >(
+    `SELECT ${[...EDITAVEL_COLS].map((c) => `f.\`${c}\``).join(",")},
+            alim.name AS alimentacaodoequipamento,
+            mr.name AS motivoReprovacaoCpfl
+       FROM \`${TABLE_FIELDS}\` f
+       LEFT JOIN \`${DROPDOWN_TABLES.alimentacaodoequipamento}\` alim
+              ON alim.id = f.\`${DROPDOWN_COLUMNS.alimentacaodoequipamento}\`
+       LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+              ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
+      WHERE f.items_id = ? LIMIT 1`,
+    [vistoriaId]
+  );
+  const r = rows[0];
+  if (!r) return {};
+  return {
+    ...r,
+    alimentacaodoequipamento: r.alimentacaodoequipamento ?? undefined,
+    motivoReprovacaoCpfl: r.motivoReprovacaoCpfl ?? undefined,
+  };
+}
+
 export async function atualizarCamposVistoria(
   vistoriaId: number,
   input: AtualizarCamposInput,

@@ -275,6 +275,39 @@ export async function editarVistoria(input: EditarVistoriaInput) {
   return data;
 }
 
+/** Valores atuais de tudo que o EditarVistoriaModal edita — pré-preenche o form de verdade. */
+export interface CamposEditaveis {
+  endereofield?: string;
+  alturadaantenafield?: string;
+  aterramentofield?: string;
+  observaofield?: string;
+  pspostefield?: string;
+  latitudefield?: string;
+  longitudefield?: string;
+  municipiofield?: string;
+  alturadopostemfield?: string;
+  materialfield?: string;
+  danfield?: string;
+  instalartpfield?: string;
+  rsrpifield?: string;
+  rsrpllfield?: string;
+  redeprimriafield?: string;
+  redesecundriafield?: string;
+  transformadorfield?: string;
+  religadorfield?: string;
+  descricaodetalhadacpflfield?: string;
+  alimentacaodoequipamento?: string;
+  motivoReprovacaoCpfl?: string;
+}
+
+export async function getCamposEditaveis(vistoriaId: number | string) {
+  const id = String(vistoriaId).replace(/^NE-|^rev-/, "");
+  const { data } = await api.get<{ campos: CamposEditaveis }>(
+    `/painel/vistoria/${id}/campos-editaveis`
+  );
+  return data.campos;
+}
+
 /**
  * Finaliza a tratativa de "Pendência Nansen" (ver /painel/cpfl): marca
  * pendência = Sem Pendências, grava a data de resolução e agenda a
@@ -712,6 +745,7 @@ export const painelService = {
   fetchAgendamentos,
   cancelarAgendamento,
   editarVistoria,
+  getCamposEditaveis,
   aprovarVistoria,
   reprovarVistoria,
   resolverPendenciaCpfl,

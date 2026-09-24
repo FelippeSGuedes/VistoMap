@@ -99,6 +99,7 @@ export function EditarVistoriaModal({
   const [regenerarPdf, setRegenerarPdf] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [carregandoCampos, setCarregandoCampos] = useState(false);
 
   // Busca de PSPOSTE no PostGIS (cadastro-mestre de postes) — confirma que o
   // PS existe e já preenche município/lat/long/material/altura/rede/
@@ -108,15 +109,45 @@ export function EditarVistoriaModal({
   const [buscando, setBuscando] = useState(false);
   const [buscaResultado, setBuscaResultado] = useState<{ ok: boolean; texto: string } | null>(null);
 
+  // Depende de `vistoriaId` (estável), NÃO de `initial` — `initial` é um
+  // objeto literal recriado a cada render do componente pai (ex.: o polling
+  // de 20s da Central de Reprovações), então usá-lo como dependência fazia
+  // este efeito disparar de novo a cada re-render do pai e apagar o que o
+  // analista tinha acabado de digitar, mesmo com o modal já aberto.
   useEffect(() => {
-    if (open) {
-      setCampos(initial ?? {});
-      setPspostefield(initial?.pspostefield ?? "");
-      setRegenerarPdf(false);
-      setError(null);
-      setBuscaResultado(null);
-    }
-  }, [open, initial]);
+    if (!open) return;
+    setCampos(initial ?? {});
+    setPspostefield(initial?.pspostefield ?? "");
+    setRegenerarPdf(false);
+    setError(null);
+    setBuscaResultado(null);
+
+    // `initial` só traz o que a página que abriu o modal lembrou de passar
+    // (normalmente só 1-2 campos) — busca aqui os valores ATUAIS de tudo
+    // que o modal edita, pra não mostrar em branco um campo que já tem
+    // valor real no GLPI.
+    if (vistoriaId == null) return;
+    let cancelado = false;
+    setCarregandoCampos(true);
+    painelService
+      .getCamposEditaveis(vistoriaId)
+      .then((full) => {
+        if (cancelado) return;
+        setCampos(full);
+        setPspostefield(full.pspostefield ?? "");
+      })
+      .catch(() => {
+        /* silencioso — modal segue usável com o `initial` já carregado acima */
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoCampos(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+    // `initial` de propósito fora do array — ver comentário acima do efeito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, vistoriaId]);
 
   async function buscarPoste() {
     const ps = pspostefield.trim();
@@ -267,6 +298,12 @@ export function EditarVistoriaModal({
             </header>
 
             <div className="max-h-[60dvh] overflow-y-auto px-5 py-4">
+              {carregandoCampos && (
+                <p className="mb-3 flex items-center gap-1.5 text-[11px] font-medium" style={{ color: "#7A8896" }}>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Carregando dados atuais do GLPI…
+                </p>
+              )}
               <label className="mb-3 flex flex-col gap-1">
                 <span className="text-[9.5px] font-bold uppercase tracking-[0.16em]" style={{ color: "#7A8896" }}>
                   PS do poste
