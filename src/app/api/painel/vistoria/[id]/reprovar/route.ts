@@ -37,7 +37,10 @@ export async function POST(
   }
 
   try {
-    const body = (await req.json().catch(() => ({}))) as { motivo?: string };
+    const body = (await req.json().catch(() => ({}))) as {
+      motivoCpfl?: string;
+      descricaoDetalhada?: string;
+    };
 
     const [actor, neRow] = await Promise.all([
       getActorFromRequest(req),
@@ -47,7 +50,7 @@ export async function POST(
       ).then((r) => r[0]),
     ]);
 
-    const result = await reprovarVistoria(id, body.motivo);
+    const result = await reprovarVistoria(id, body.motivoCpfl, body.descricaoDetalhada);
 
     void auditInsert({
       ator: actor ?? { id: 0, nome: "Sistema", role: "admin" },
@@ -57,8 +60,8 @@ export async function POST(
         id: String(id),
         label: neRow?.name ?? `NE-${id}`,
       },
-      descricao: body.motivo
-        ? `Reprovada · ${body.motivo}`
+      descricao: body.motivoCpfl
+        ? `Reprovada · ${body.motivoCpfl}`
         : "Reprovada · enviada para Central de Revisitas",
     });
     void sendPainelWebPush({

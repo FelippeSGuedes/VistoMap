@@ -30,7 +30,9 @@
 import { query } from "@/lib/db";
 import {
   AVALIADOR_CPFL_USER_COLUMN,
+  DESCRICAO_DETALHADA_CPFL_COLUMN,
   ITEMTYPE_NE,
+  MOTIVO_REPROVACAO_CPFL_COLUMN,
   PENDENCIA_CPFL,
   PENDENCIA_NANSEN,
   STATUS_VISTORIA_APROVADO,
@@ -39,6 +41,7 @@ import {
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
   TABLE_FIELDS,
+  TABLE_MOTIVO_REPROVACAO_CPFL,
   TABLE_NE,
   TABLE_PENDENCIA,
   TABLE_USERS,
@@ -47,6 +50,7 @@ import {
   VALIDADOR_CPFL_USER_COLUMN,
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
+import { composeMotivoReprovacaoCpfl } from "./motivoReprovacaoCpfl";
 
 /** Etapa da vistoria no ciclo da concessionária. */
 export type EtapaCPFL = "AGUARDANDO" | "APROVADA" | "REPROVADA";
@@ -125,6 +129,8 @@ interface CPFLRow {
   data_envio: string | null;
   data_aprovacao: string | null;
   motivo: string | null;
+  motivo_cpfl: string | null;
+  descricao_detalhada_cpfl: string | null;
   pdf_path: string | null;
   validacao_cpfl: string | null;
   validador_cpfl: string | null;
@@ -200,7 +206,9 @@ const JOINS = `
       LEFT  JOIN \`${TABLE_USERS}\` u
              ON u.id = f.users_id_vistoriadorafield
       LEFT  JOIN \`${TABLE_USERS}\` av
-             ON av.id = f.${AVALIADOR_CPFL_USER_COLUMN}`;
+             ON av.id = f.${AVALIADOR_CPFL_USER_COLUMN}
+      LEFT  JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+             ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\``;
 
 export async function fetchVistoriasCPFL(
   filtros: CPFLFilters = {}
@@ -222,6 +230,8 @@ export async function fetchVistoriasCPFL(
         f.dataenvioconcessionriafield  AS data_envio,
         f.dataaprovaoconcessionriafield AS data_aprovacao,
         f.motivofield     AS motivo,
+        mr.name           AS motivo_cpfl,
+        f.\`${DESCRICAO_DETALHADA_CPFL_COLUMN}\` AS descricao_detalhada_cpfl,
         aux.pdf_path,
         valcpfl.name      AS validacao_cpfl,
         valu.name         AS validador_cpfl,
@@ -299,7 +309,7 @@ export async function fetchVistoriasCPFL(
       dataEnvio: limpa(r.data_envio),
       dataAprovacao: limpa(r.data_aprovacao),
       diasAguardando,
-      motivo: limpa(r.motivo),
+      motivo: composeMotivoReprovacaoCpfl(r.motivo_cpfl, r.descricao_detalhada_cpfl, r.motivo),
       pdfPath: r.pdf_path ?? null,
       validacaoCpfl: limpa(r.validacao_cpfl),
       validadorCpfl: limpa(r.validador_cpfl),

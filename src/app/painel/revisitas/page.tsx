@@ -582,7 +582,10 @@ export default function RevisitasPage() {
         vistoriaId={editarOpen ? editarOpen.id.replace(/^rev-/, "") : null}
         equipamento={editarOpen?.equipamento}
         municipio={editarOpen?.municipio}
-        initial={{ motivofield: editarOpen?.motivoReprovacao ?? "" }}
+        initial={{
+          motivoReprovacaoCpfl: editarOpen?.motivoReprovacaoCpfl ?? "",
+          descricaodetalhadacpflfield: editarOpen?.descricaoDetalhadaCpfl ?? "",
+        }}
         onClose={() => setEditarOpen(null)}
         onSaved={(r) => {
           setToast(r.regeneradoPdf ? "Salvo · PDF marcado para regeneração." : `Salvo · ${r.affected} campo(s) atualizado(s).`);

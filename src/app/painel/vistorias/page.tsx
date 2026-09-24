@@ -2159,7 +2159,10 @@ export default function FilaVistoriasPage() {
         vistoriaId={editarOpen ? String(editarOpen.id) : null}
         equipamento={editarOpen?.equipamento}
         municipio={editarOpen?.municipio}
-        initial={{ motivofield: editarOpen?.motivoReprovacao ?? "" }}
+        initial={{
+          motivoReprovacaoCpfl: editarOpen?.motivoReprovacaoCpfl ?? "",
+          descricaodetalhadacpflfield: editarOpen?.descricaoDetalhadaCpfl ?? "",
+        }}
         onClose={() => setEditarOpen(null)}
         onSaved={(r) => {
           showToast(

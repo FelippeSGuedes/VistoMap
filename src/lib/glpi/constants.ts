@@ -38,6 +38,7 @@ export const DROPDOWN_TABLES = {
   tensovfield: "glpi_plugin_fields_tensovfielddropdowns",
   tipoifield: "glpi_plugin_fields_tipoifielddropdowns",
   tipollfield: "glpi_plugin_fields_tipollfielddropdowns",
+  motivoReprovacaoCpfl: "glpi_plugin_fields_motivoreprovacaocpflfielddropdowns",
 } as const;
 
 export type DropdownKey = keyof typeof DROPDOWN_TABLES;
@@ -55,6 +56,7 @@ export const DROPDOWN_COLUMNS: Record<DropdownKey, string> = {
   tensovfield: "plugin_fields_tensovfielddropdowns_id",
   tipoifield: "plugin_fields_tipoifielddropdowns_id",
   tipollfield: "plugin_fields_tipollfielddropdowns_id",
+  motivoReprovacaoCpfl: "plugin_fields_motivoreprovacaocpflfielddropdowns_id",
 };
 
 /**
@@ -180,6 +182,22 @@ export const STATE_VISTORIADO = 7;
 
 /** Avaliador CPFL — preenchido quando aprova/reprova (aprovarVistoria/reprovarVistoria). */
 export const AVALIADOR_CPFL_USER_COLUMN = "users_id_avaliadordavistoriacpflfield";
+
+/**
+ * Motivo de reprovação do CPFL — dropdown dedicado (campo GLPI Fields criado
+ * em 2026-09-24, 19 opções + "Outros"), preenchido pelo analista ao editar
+ * uma reprovação em /painel/revisitas (EditarVistoriaModal). Substitui o
+ * antigo hábito de reaproveitar `motivofield` ali, que colidia com o texto
+ * livre que o TÉCNICO já escreve nesse mesmo campo ao finalizar a vistoria
+ * (2 pessoas preenchendo a mesma coluna). `motivofield` continua existindo e
+ * pertence exclusivamente ao fluxo do técnico — não escrever nele por aqui.
+ */
+export const MOTIVO_REPROVACAO_CPFL_COLUMN =
+  "plugin_fields_motivoreprovacaocpflfielddropdowns_id";
+export const TABLE_MOTIVO_REPROVACAO_CPFL =
+  "glpi_plugin_fields_motivoreprovacaocpflfielddropdowns";
+/** Texto livre complementar ao dropdown acima, mesmo campo/fluxo. */
+export const DESCRICAO_DETALHADA_CPFL_COLUMN = "descricaodetalhadacpflfield";
 
 /** Checklist de instalação — colunas sim/não em TABLE_FIELDS (yesno: 1/0). */
 export const INSTALACAO_CHECKLIST_COLUMNS = {

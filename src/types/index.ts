@@ -112,7 +112,8 @@ export type DropdownKey =
   | "localdeinstalacao"
   | "tipoifield"
   | "tipollfield"
-  | "tensovfield";
+  | "tensovfield"
+  | "motivoReprovacaoCpfl";
 
 export interface VistoriaFields {
   pspostefield?: string;
@@ -529,6 +530,10 @@ export interface RevisitaPendente {
   glpiId: string;
   municipio: string;
   motivoReprovacao: string;
+  /** Valor cru do dropdown "Motivo de Reprovação CPFL" — usado pra pré-preencher o EditarVistoriaModal. */
+  motivoReprovacaoCpfl?: string | null;
+  /** Texto livre complementar ao dropdown acima — mesmo propósito de pré-preenchimento. */
+  descricaoDetalhadaCpfl?: string | null;
   reprovadoEm: string;
   reprovadoPor: string;
   /** Técnico atual atribuído (se já houver). */

@@ -3,11 +3,13 @@ import { execute, query } from "@/lib/db";
 import { resolveDropdowns } from "./dropdowns";
 import {
   AVALIADOR_CPFL_USER_COLUMN,
+  DESCRICAO_DETALHADA_CPFL_COLUMN,
   DROPDOWN_COLUMNS,
   type DropdownKey,
   DROPDOWN_TABLES,
   ITEMTYPE_NE,
   isRevisitaAtual,
+  MOTIVO_REPROVACAO_CPFL_COLUMN,
   PENDENCIA_CPFL,
   PENDENCIA_NANSEN,
   PENDENCIA_SEM,
@@ -26,6 +28,7 @@ import {
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
+  TABLE_MOTIVO_REPROVACAO_CPFL,
   TABLE_PROJETOS_PLUGIN,
   TABLE_FIELDS,
   TABLE_NE,
@@ -36,6 +39,7 @@ import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import { getCoresIdentidade } from "./tecnicoIdentidade";
 import { cancelarDevolucoesPorVistoria } from "./devolucoes";
 import { RECUSA_MOTIVO_CATEGORIA, RECUSA_MOTIVO_LABEL, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
+import { composeMotivoReprovacaoCpfl } from "./motivoReprovacaoCpfl";
 import { nowBrasiliaSql } from "@/lib/timezone";
 import type {
   AdminStatus,
@@ -488,6 +492,8 @@ interface RevisitaRow {
   name: string;
   municipio: string | null;
   motivo: string | null;
+  motivo_cpfl: string | null;
+  descricao_detalhada_cpfl: string | null;
   data_vistoria: string | null;
   status_name: string | null;
   tecnico_id: number | null;
@@ -509,6 +515,8 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
         ne.name,
         f.municipiofield AS municipio,
         f.motivofield AS motivo,
+        mr.name AS motivo_cpfl,
+        f.\`${DESCRICAO_DETALHADA_CPFL_COLUMN}\` AS descricao_detalhada_cpfl,
         f.datadavistoriafield AS data_vistoria,
         sv.name AS status_name,
         u.id AS tecnico_id,
@@ -524,6 +532,8 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
               ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
       LEFT JOIN \`${TABLE_USERS}\` u
               ON u.id = f.users_id_vistoriadorafield
+      LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+              ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
       WHERE ne.is_deleted = 0
         AND (
               -- Situacao operacional explicita (campo novo): aguardando ou em revisita
@@ -573,7 +583,11 @@ export async function fetchRevisitasPendentes(): Promise<RevisitaPendente[]> {
       equipamento: r.name,
       glpiId: `NE-${r.id}`,
       municipio: r.municipio ?? "—",
-      motivoReprovacao: r.motivo?.trim() || "Motivo não informado.",
+      motivoReprovacao:
+        composeMotivoReprovacaoCpfl(r.motivo_cpfl, r.descricao_detalhada_cpfl, r.motivo) ??
+        "Motivo não informado.",
+      motivoReprovacaoCpfl: r.motivo_cpfl?.trim() || null,
+      descricaoDetalhadaCpfl: r.descricao_detalhada_cpfl?.trim() || null,
       reprovadoEm: r.data_vistoria ?? new Date().toISOString(),
       reprovadoPor: "Auditoria Concessionária",
       tecnicoAtribuido: r.tecnico_id
@@ -596,6 +610,10 @@ export interface FilaItem {
   status: AdminStatus;
   isRepeat: boolean;
   motivoReprovacao: string | null;
+  /** Valor cru do dropdown "Motivo de Reprovação CPFL" — usado pra pré-preencher o EditarVistoriaModal. */
+  motivoReprovacaoCpfl?: string | null;
+  /** Texto livre complementar ao dropdown acima — mesmo propósito de pré-preenchimento. */
+  descricaoDetalhadaCpfl?: string | null;
   latitude: number | null;
   longitude: number | null;
   dataVistoria: string | null;
@@ -618,6 +636,8 @@ interface FilaRow {
   municipio: string | null;
   endereco: string | null;
   motivo: string | null;
+  motivo_cpfl: string | null;
+  descricao_detalhada_cpfl: string | null;
   status_name: string | null;
   situacao_id: number | null;
   is_repeat: number | null;
@@ -684,6 +704,8 @@ export async function fetchFilaVistorias(
         f.municipiofield AS municipio,
         f.endereofield AS endereco,
         f.motivofield AS motivo,
+        mr.name AS motivo_cpfl,
+        f.\`${DESCRICAO_DETALHADA_CPFL_COLUMN}\` AS descricao_detalhada_cpfl,
         sv.name AS status_name,
         f.\`${SITUACAO_COLUMN}\` AS situacao_id,
         COALESCE(aux.is_repeat, 0) AS is_repeat,
@@ -702,6 +724,8 @@ export async function fetchFilaVistorias(
               ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
       LEFT JOIN \`${TABLE_USERS}\` u
               ON u.id = f.users_id_vistoriadorafield
+      LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+              ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
       WHERE ${where.join(" AND ")}
       ORDER BY
         CASE WHEN COALESCE(f.\`${SITUACAO_COLUMN}\`, 0) = 1 OR sv.name IS NULL OR sv.name = 'Pendente' THEN 0
@@ -752,7 +776,9 @@ export async function fetchFilaVistorias(
       endereco: r.endereco?.trim() ?? null,
       status,
       isRepeat,
-      motivoReprovacao: r.motivo?.trim() ?? null,
+      motivoReprovacao: composeMotivoReprovacaoCpfl(r.motivo_cpfl, r.descricao_detalhada_cpfl, r.motivo),
+      motivoReprovacaoCpfl: r.motivo_cpfl?.trim() || null,
+      descricaoDetalhadaCpfl: r.descricao_detalhada_cpfl?.trim() || null,
       latitude: parseCoord(r.latitude),
       longitude: parseCoord(r.longitude),
       dataVistoria: r.data_vistoria,
@@ -774,7 +800,6 @@ export async function fetchFilaVistorias(
 
 export interface AtualizarCamposInput {
   endereofield?: string;
-  motivofield?: string;
   alturadaantenafield?: string;
   aterramentofield?: string;
   observaofield?: string;
@@ -799,11 +824,15 @@ export interface AtualizarCamposInput {
   redesecundriafield?: string;
   transformadorfield?: string;
   religadorfield?: string;
+  // Descrição livre complementar ao dropdown "Motivo de Reprovação CPFL" —
+  // o dropdown em si vai pelo parâmetro `dropdowns` (ver resolveDropdowns),
+  // não por aqui. Ver constants.ts pro porquê de motivofield ter saído
+  // deste whitelist (colidia com o texto livre do técnico).
+  descricaodetalhadacpflfield?: string;
 }
 
 const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "endereofield",
-  "motivofield",
   "alturadaantenafield",
   "aterramentofield",
   "observaofield",
@@ -821,6 +850,7 @@ const EDITAVEL_COLS = new Set<keyof AtualizarCamposInput>([
   "redesecundriafield",
   "transformadorfield",
   "religadorfield",
+  "descricaodetalhadacpflfield",
 ]);
 
 export async function atualizarCamposVistoria(
@@ -951,10 +981,16 @@ export async function aprovarVistoria(
  *   - situaodavistoria = Aguardando Revisita (4)
  *   - aux.approval_status = 'REPROVADO'
  *   - aux.is_repeat = 1
+ *
+ * `motivoCpfl`/`descricaoDetalhada` gravam no dropdown "Motivo de Reprovação
+ * CPFL" + texto livre companheiro (campos GLPI Fields criados em 2026-09-24)
+ * — NUNCA em `motivofield`, que é exclusivo do técnico (2 pessoas
+ * preenchendo a mesma coluna era o bug original, ver constants.ts).
  */
 export async function reprovarVistoria(
   vistoriaId: number,
-  motivo?: string
+  motivoCpfl?: string,
+  descricaoDetalhada?: string
 ): Promise<{ affected: number }> {
   // NUNCA grava em AVALIADOR_CPFL_USER_COLUMN aqui — mesmo erro grave do
   // aprovarVistoria() acima: quem reprova aqui é o analista Nansen (já
@@ -964,9 +1000,17 @@ export async function reprovarVistoria(
     `\`${SITUACAO_COLUMN}\` = ?`,
   ];
   const params: unknown[] = [STATUS_VISTORIA_REPROVADO, SITUACAO_AGUARDANDO_REVISITA];
-  if (motivo != null) {
-    sets.push("motivofield = ?");
-    params.push(motivo);
+  if (motivoCpfl != null) {
+    const resolved = await resolveDropdowns({ motivoReprovacaoCpfl: motivoCpfl });
+    const motivoId = resolved.motivoReprovacaoCpfl;
+    if (motivoId != null) {
+      sets.push(`\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\` = ?`);
+      params.push(motivoId);
+    }
+  }
+  if (descricaoDetalhada != null) {
+    sets.push(`\`${DESCRICAO_DETALHADA_CPFL_COLUMN}\` = ?`);
+    params.push(descricaoDetalhada);
   }
   params.push(vistoriaId);
   const r = await execute(
@@ -1376,6 +1420,8 @@ interface RealizadaRow {
   rsrp_vivo: string | null;
   tipo_equipamento: string | null;
   observacao: string | null;
+  motivo_cpfl: string | null;
+  descricao_detalhada_cpfl: string | null;
   data_vistoria: string | null;
   data_envio: string | null;
   latitude: string | null;
@@ -1438,6 +1484,8 @@ export async function fetchVistoriasRealizadas(
         f.municipiofield       AS municipio,
         f.endereofield         AS endereco,
         f.motivofield          AS motivo,
+        mr.name                AS motivo_cpfl,
+        f.\`${DESCRICAO_DETALHADA_CPFL_COLUMN}\` AS descricao_detalhada_cpfl,
         f.alturadaantenafield  AS altura_antena,
         f.aterramentofield     AS aterramento,
         f.rsrpifield            AS rsrp_claro,
@@ -1469,6 +1517,8 @@ export async function fetchVistoriasRealizadas(
              ON u.id = f.users_id_vistoriadorafield
       LEFT  JOIN \`${DROPDOWN_TABLES.equipamento}\` d_eq
              ON d_eq.id = f.${DROPDOWN_COLUMNS.equipamento}
+      LEFT  JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+             ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
       WHERE ${where.join(" AND ")}
       ORDER BY f.datadavistoriafield DESC, ne.id DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -1523,7 +1573,7 @@ export async function fetchVistoriasRealizadas(
       latitude: parseCoord(r.latitude),
       longitude: parseCoord(r.longitude),
       tecnico: hasTecnico ? { id: Number(r.tecnico_id), nome: tecnicoNome! } : null,
-      motivo: r.motivo?.trim() ?? null,
+      motivo: composeMotivoReprovacaoCpfl(r.motivo_cpfl, r.descricao_detalhada_cpfl, r.motivo),
       alturaAntena: r.altura_antena != null ? String(r.altura_antena).trim() || null : null,
       aterramento: r.aterramento != null && Number(r.aterramento) !== 0 ? String(r.aterramento).trim() || null : null,
       rsrpClaro: r.rsrp_claro != null ? String(r.rsrp_claro).trim() || null : null,
@@ -2182,6 +2232,8 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
             rsrpllfield                                   = NULL,
             motivofield                                   = NULL,
             observaofield                                 = NULL,
+            \`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`           = 0,
+            \`${DESCRICAO_DETALHADA_CPFL_COLUMN}\`         = NULL,
             projetodevistoriafoigeradofield                = 0
       WHERE items_id = ?`,
     [SITUACAO_A_VISTORIAR, STATUS_VISTORIA_PENDENTE, vistoriaId]

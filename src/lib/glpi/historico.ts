@@ -2,14 +2,17 @@ import "server-only";
 import { query } from "@/lib/db";
 import {
   ITEMTYPE_NE,
+  MOTIVO_REPROVACAO_CPFL_COLUMN,
   SITUACAO_COLUMN,
   TABLE_AUX,
   TABLE_FIELDS,
+  TABLE_MOTIVO_REPROVACAO_CPFL,
   TABLE_NE,
   TABLE_STATUS_VISTORIA,
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import { RECUSA_MOTIVO_CATEGORIA, RECUSA_MOTIVO_LABEL, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
+import { composeMotivoReprovacaoCpfl } from "./motivoReprovacaoCpfl";
 
 // situaodavistoriafield: 3=Vistoriado, 6=Revisitado — mesma prioridade 1 que
 // resolveAdminStatus() já usa em painel.ts e que fetchVistoriasRealizadas()
@@ -671,17 +674,21 @@ export async function fetchHistoricoAnalytics(
   // Coleta motivofield bruto de vistorias reprovadas no período +
   // de revisitas pendentes (is_repeat=1) — qualquer registro com motivo.
   // Classifica por keywords (lib motivos.ts) → distribuição %.
-  const motivosRows = await query<{ motivo: string | null }>(
+  const motivosRows = await query<{ motivo: string | null; motivo_cpfl: string | null }>(
     `
-      SELECT f.motivofield AS motivo
+      SELECT f.motivofield AS motivo, mr.name AS motivo_cpfl
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
         LEFT JOIN \`${TABLE_AUX}\` aux
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
-       WHERE f.motivofield IS NOT NULL
-         AND TRIM(f.motivofield) <> ''
+        LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+                ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
+       WHERE (
+              (f.motivofield IS NOT NULL AND TRIM(f.motivofield) <> '')
+           OR mr.id IS NOT NULL
+         )
          AND (
               sv.name IN ('Reprovada','Reprovado')
            OR COALESCE(aux.is_repeat, 0) = 1
@@ -694,7 +701,12 @@ export async function fetchHistoricoAnalytics(
     `,
     [inicio, fim]
   );
-  const motivosReprovacao = agregarMotivos(motivosRows.map((r) => r.motivo));
+  // Prioriza o dropdown novo (motivo de reprovação categorizado pelo
+  // analista) — fallback pro motivofield legado cobre reprovações antigas e
+  // as que a CPFL ainda faz direto no GLPI nativo, sem usar o dropdown.
+  const motivosReprovacao = agregarMotivos(
+    motivosRows.map((r) => composeMotivoReprovacaoCpfl(r.motivo_cpfl, null, r.motivo))
+  );
 
   const aprovacaoPct = finalizadas > 0
     ? Math.round((aprovadas / finalizadas) * 100)

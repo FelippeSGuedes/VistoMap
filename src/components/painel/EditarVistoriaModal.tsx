@@ -13,6 +13,8 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Pencil, RefreshCcw, Save, Search, X } from "lucide-react";
 import { painelService } from "@/services/painel";
 import { buscarPostePorPsposte } from "@/services/postes";
+import { MOTIVO_REPROVACAO_CPFL_OPTIONS } from "@/lib/glpi/motivoReprovacaoCpfl";
+import type { DropdownKey } from "@/types";
 
 export interface EditarVistoriaModalProps {
   open: boolean;
@@ -21,7 +23,8 @@ export interface EditarVistoriaModalProps {
   municipio?: string;
   initial?: {
     endereofield?: string;
-    motivofield?: string;
+    motivoReprovacaoCpfl?: string;
+    descricaodetalhadacpflfield?: string;
     alturadaantenafield?: string;
     aterramentofield?: string;
     observaofield?: string;
@@ -77,8 +80,9 @@ const FIELDS: Array<{
   { key: "transformadorfield", label: "Transformador", placeholder: "1 (Sim) / 0 (Não)" },
   { key: "religadorfield", label: "Religador", placeholder: "1 (Sim) / 0 (Não)" },
   { key: "alimentacaodoequipamento", label: "Alimentação do Equipamento", options: ["BT", "MT"] },
-  { key: "motivofield", label: "Motivo", placeholder: "Motivo operacional…" },
   { key: "observaofield", label: "Observações", placeholder: "Notas adicionais…", multiline: true },
+  { key: "motivoReprovacaoCpfl", label: "Motivo de Reprovação CPFL", options: [...MOTIVO_REPROVACAO_CPFL_OPTIONS] },
+  { key: "descricaodetalhadacpflfield", label: "Descrição Detalhada CPFL", placeholder: "Detalhe o motivo…", multiline: true },
 ];
 
 
@@ -169,11 +173,14 @@ export function EditarVistoriaModal({
     setSaving(true);
     setError(null);
     try {
-      const { alimentacaodoequipamento, ...camposTexto } = campos;
+      const { alimentacaodoequipamento, motivoReprovacaoCpfl, ...camposTexto } = campos;
+      const dropdowns: Partial<Record<DropdownKey, string>> = {};
+      if (alimentacaodoequipamento) dropdowns.alimentacaodoequipamento = alimentacaodoequipamento;
+      if (motivoReprovacaoCpfl) dropdowns.motivoReprovacaoCpfl = motivoReprovacaoCpfl;
       const r = await painelService.editarVistoria({
         vistoria_id: vistoriaId,
         campos: { ...camposTexto, pspostefield: pspostefield.trim() || undefined },
-        dropdowns: alimentacaodoequipamento ? { alimentacaodoequipamento } : undefined,
+        dropdowns: Object.keys(dropdowns).length > 0 ? dropdowns : undefined,
         regenerar_pdf: regenerarPdf,
       });
       onSaved?.({ affected: r.affected, regeneradoPdf: regenerarPdf });

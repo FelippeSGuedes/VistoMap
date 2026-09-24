@@ -24,6 +24,10 @@ export interface FilaItem {
   status: AdminStatus;
   isRepeat: boolean;
   motivoReprovacao: string | null;
+  /** Valor cru do dropdown "Motivo de Reprovação CPFL" — usado pra pré-preencher o EditarVistoriaModal. */
+  motivoReprovacaoCpfl?: string | null;
+  /** Texto livre complementar ao dropdown acima — mesmo propósito de pré-preenchimento. */
+  descricaoDetalhadaCpfl?: string | null;
   latitude: number | null;
   longitude: number | null;
   dataVistoria: string | null;
@@ -230,7 +234,6 @@ export interface EditarVistoriaInput {
   vistoria_id: number | string;
   campos: {
     endereofield?: string;
-    motivofield?: string;
     alturadaantenafield?: string;
     aterramentofield?: string;
     observaofield?: string;
@@ -250,6 +253,8 @@ export interface EditarVistoriaInput {
     redesecundriafield?: string;
     transformadorfield?: string;
     religadorfield?: string;
+    /** Texto livre complementar ao dropdown "Motivo de Reprovação CPFL". */
+    descricaodetalhadacpflfield?: string;
   };
   /** Ex.: { alimentacaodoequipamento: "BT" } — dropdown, não coluna de texto. */
   dropdowns?: Partial<Record<DropdownKey, string>>;
@@ -296,13 +301,14 @@ export async function aprovarVistoria(vistoriaId: number | string) {
 
 export async function reprovarVistoria(
   vistoriaId: number | string,
-  motivo?: string
+  motivoCpfl?: string,
+  descricaoDetalhada?: string
 ) {
   const id = String(vistoriaId).replace(/^NE-|^rev-/, "");
   const { data } = await api.post<{
     ok: true;
     affected: number;
-  }>(`/painel/vistoria/${id}/reprovar`, motivo ? { motivo } : {});
+  }>(`/painel/vistoria/${id}/reprovar`, { motivoCpfl, descricaoDetalhada });
   return data;
 }
 

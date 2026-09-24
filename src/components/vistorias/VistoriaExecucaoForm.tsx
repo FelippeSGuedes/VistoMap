@@ -391,7 +391,9 @@ export function VistoriaExecucaoForm({
     }, 280);
     try {
       const dropdowns: Partial<Record<DropdownKey, string>> = {};
-      const dropdownKeys: DropdownKey[] = [
+      // Subconjunto explícito (não o DropdownKey inteiro) — campos como
+      // motivoReprovacaoCpfl são exclusivos do admin e nem existem em FormState.
+      const dropdownKeys: Array<"tipoifield" | "tipollfield" | "tensovfield" | "alimentacaodoequipamento"> = [
         "tipoifield",
         "tipollfield",
         "tensovfield",
