@@ -622,12 +622,23 @@ function HeatmapMapWidget({
     : null;
 
   // Ranking detalhado (Aprov./Pend./Reprov./%Aprov.) — pedido 2026-09-18,
-  // mesma ordenação por concluídas, com a quebra por status. Sem corte
-  // (2026-09-24): mostra TODOS os municípios com movimentação, não só um
-  // top-N fixo — com o filtro de Concessionária, cortar em 8 escondia a
-  // maior parte da operação de quem tem mais município (CPFL Paulista
-  // sozinha tem 30). O backend já limita a 50 (universo real é 43).
-  const rankingDetalhe = [...topMunicipiosDetalhe].sort((a, b) => b.concluidas - a.concluidas);
+  // mesma ordenação por concluídas, com a quebra por status. Sem corte por
+  // quantidade (2026-09-24): mostra TODOS os municípios com movimentação,
+  // não só um top-N fixo — com o filtro de Concessionária, cortar em 8
+  // escondia a maior parte da operação de quem tem mais município (CPFL
+  // Paulista sozinha tem 30). O backend já limita a 50 (universo real é 43).
+  // Filtro por QUALIDADE (2026-09-24, pedido de campo "muito feio e
+  // grotesco"): esconde município com 0 aprovado — antes a lista ficava
+  // cheia de barras 100% cinza/pendente sem nenhuma aprovação real, só
+  // poluindo a visão de quem já está aprovando.
+  const rankingDetalhe = [...topMunicipiosDetalhe]
+    .filter((m) => m.aprovado > 0)
+    .sort((a, b) => b.concluidas - a.concluidas);
+  // Largura da barra agora é relativa ao MAIOR município do recorte (não
+  // sempre 100% do próprio total) — sem isso, um município com 1 vistoria
+  // desenhava uma barra do mesmo tamanho que um com 50, e o "ranking"
+  // virava só uma pilha de barras idênticas sem nenhuma leitura de volume.
+  const maxConcluidasMunicipio = Math.max(...rankingDetalhe.map((m) => m.concluidas), 1);
 
   // Cor por status no feed "Últimas vistorias" — mesma paleta institucional
   // de tudo mais no widget (verde/âmbar/vermelho pras 3 decisões da
@@ -756,52 +767,46 @@ function HeatmapMapWidget({
             <p className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--vm-faint)]">
               Ranking de municípios
             </p>
-            <div className="flex items-center gap-3 text-[9.5px] font-semibold text-[var(--vm-muted)]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9.5px] font-semibold text-[var(--vm-muted)]">
               <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Aprovado</span>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#D97706" }} />Pendente</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#D97706" }} />Aprov. c/ pend.</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#64748B" }} />Pendente</span>
               <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#DC2626" }} />Reprovado</span>
             </div>
           </div>
           {rankingDetalhe.length === 0 ? (
-            <p className="text-[11.5px] text-[var(--vm-faint)]">Sem dados no período.</p>
+            <p className="text-[11.5px] text-[var(--vm-faint)]">Nenhum município com aprovação no período.</p>
           ) : (
             <div className="flex flex-col gap-3">
               {rankingDetalhe.map((m) => {
                 const pctAprov = m.concluidas > 0 ? (m.aprovado / m.concluidas) * 100 : 0;
+                const barPct = (m.concluidas / maxConcluidasMunicipio) * 100;
                 return (
                   <div key={m.municipio} className="flex items-center gap-3">
                     <span className="w-[100px] shrink-0 truncate text-[11.5px] font-semibold text-[var(--vm-text-soft)]">
                       {m.municipio}
                     </span>
                     <div className="flex-1">
-                      <div className="flex h-3 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
-                        {m.aprovado > 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(m.aprovado / m.concluidas) * 100}%` }}
-                            transition={{ duration: 0.6 }}
-                            style={{ background: "#059669" }}
-                            title={`${m.aprovado} aprovadas`}
-                          />
-                        )}
-                        {m.pendente > 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(m.pendente / m.concluidas) * 100}%` }}
-                            transition={{ duration: 0.6 }}
-                            style={{ background: "#D97706" }}
-                            title={`${m.pendente} pendentes`}
-                          />
-                        )}
-                        {m.reprovado > 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(m.reprovado / m.concluidas) * 100}%` }}
-                            transition={{ duration: 0.6 }}
-                            style={{ background: "#DC2626" }}
-                            title={`${m.reprovado} reprovadas`}
-                          />
-                        )}
+                      <div className="h-3 overflow-hidden rounded-full" style={{ background: "var(--vm-tile-2)" }}>
+                        <motion.div
+                          className="flex h-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${barPct}%` }}
+                          transition={{ duration: 0.7, ease: [0.22, 0.7, 0.2, 1] }}
+                        >
+                          {m.aprovado > 0 && (
+                            <div style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} title={`${m.aprovado} aprovadas`} />
+                          )}
+                          {m.aprovadoComPendencia > 0 && (
+                            <div style={{ width: `${(m.aprovadoComPendencia / m.concluidas) * 100}%`, background: "#D97706" }} title={`${m.aprovadoComPendencia} aprovadas com pendência`} />
+                          )}
+                          {m.pendente > 0 && (
+                            <div style={{ width: `${(m.pendente / m.concluidas) * 100}%`, background: "#64748B" }} title={`${m.pendente} pendentes`} />
+                          )}
+                          {m.reprovado > 0 && (
+                            <div style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} title={`${m.reprovado} reprovadas`} />
+                          )}
+                        </motion.div>
                       </div>
                       {(m.impedimento > 0 || m.recusa > 0) && (
                         <p className="mt-1 text-[9px] font-semibold text-[var(--vm-faint)]">
@@ -811,6 +816,9 @@ function HeatmapMapWidget({
                         </p>
                       )}
                     </div>
+                    <span className="w-14 shrink-0 text-right text-[11px] font-bold tabular-nums text-[#059669]">
+                      {fmtNum(m.aprovado)} aprov.
+                    </span>
                     <span className="w-9 shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
                       {fmtNum(m.concluidas)}
                     </span>

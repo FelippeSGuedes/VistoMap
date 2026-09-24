@@ -19,7 +19,7 @@
  * backend (togglePausaAlmoco sem uso).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -93,10 +93,16 @@ function fmtKm(km: number): string {
   return `${km.toFixed(1).replace(".", ",")} km`;
 }
 
-const REALIZADA_STATUS = ["Aprovada", "Aprovado", "Aprovado com Pendências"];
+// "Realizada" = o TÉCNICO concluiu a vistoria — inclui "Em análise" (só
+// finalizou, aguardando a decisão da concessionária), não só o que já foi
+// decidido (Aprovada/Aprovado/Aprovado com Pendências). Sem "Em análise"
+// aqui, toda vistoria finalizada HOJE (que ainda não teve tempo de ser
+// decidida) caía fora de "Realizadas" e virava "Pendente" por engano —
+// bug relatado em campo 2026-09-24 ("filtrei Hoje e mostrou só 1
+// realizada, o que não é verdade"). Mesmo critério de "concluída" já usado
+// em fetchRankingTecnicosPeriodo (STATUS_CONCLUIDO_SQL).
+const REALIZADA_STATUS = ["Em análise", "Em analise", "Finalizada", "Finalizado", "Aprovada", "Aprovado", "Aprovado com Pendências"];
 const REPROVADA_STATUS = ["Reprovada", "Reprovado"];
-const SITUACAO_VISTORIADO = 3;
-const SITUACAO_REVISITADO = 6;
 
 const statusCfg: Record<TecnicoAtivo["status"], { label: string; color: string }> = {
   "em-campo": { label: "Em campo", color: "#00B388" },
@@ -200,9 +206,9 @@ export default function AnaliseOperacionalTecnicos({
     const atribuidas = vistorias.length;
     const realizadas = vistorias.filter((v) => v.statusName && REALIZADA_STATUS.includes(v.statusName)).length;
     const reprovadas = vistorias.filter((v) => v.statusName && REPROVADA_STATUS.includes(v.statusName)).length;
-    const pendentes = vistorias.filter(
-      (v) => v.situacaoId !== SITUACAO_VISTORIADO && v.situacaoId !== SITUACAO_REVISITADO
-    ).length;
+    // Por subtração (não por situação): garante que as 3 categorias somam
+    // exatamente "atribuídas" — usadas juntas no donut de distribuição.
+    const pendentes = Math.max(atribuidas - realizadas - reprovadas, 0);
     const aproveitamento = atribuidas > 0 ? Math.round((realizadas / atribuidas) * 100) : null;
     const tempoEmCampoMin = expediente.reduce((s, e) => s + (e.duracao_min ?? 0), 0);
     const cidadesMap = new Map<string, number>();
@@ -230,6 +236,14 @@ export default function AnaliseOperacionalTecnicos({
     }
     return { values, labels };
   }, [vistorias, periodoModo]);
+
+  // Maior SLA médio de execução entre a equipe no período — referência de
+  // escala pro anel do gráfico "Tempo médio de vistoria" (não é bom/ruim,
+  // só a magnitude relativa ao restante da equipe).
+  const maxSlaEquipe = useMemo(
+    () => Math.max(...equipePeriodo.map((x) => x.ranking.slaExecucaoMedioMin).filter((n): n is number => n != null), 1),
+    [equipePeriodo]
+  );
 
   /* ── alertas operacionais (linguagem descritiva, nunca acusatória) ──────── */
   const alertas = useMemo(() => {
@@ -506,6 +520,31 @@ export default function AnaliseOperacionalTecnicos({
               </div>
             </div>
 
+            {/* Desempenho do técnico — aproveitamento total + tempo médio de vistoria */}
+            <div className="rounded-xl p-3" style={{ border: "1px solid var(--vm-border-soft)" }}>
+              <span className="mb-3 flex items-center gap-1.5 text-[12px] font-semibold text-[var(--vm-text)]">
+                <TrendingUp className="h-3.5 w-3.5 text-[#16A34A]" /> Desempenho do técnico
+              </span>
+              <div className="flex flex-wrap items-center justify-around gap-4">
+                <RadialStat
+                  label="Aproveitamento total"
+                  valueLabel={kpis.aproveitamento != null ? `${kpis.aproveitamento}%` : "—"}
+                  fraction={kpis.aproveitamento != null ? kpis.aproveitamento / 100 : null}
+                  color="#059669"
+                />
+                <RadialStat
+                  label="Tempo médio de vistoria"
+                  valueLabel={selecionado.ranking.slaExecucaoMedioMin != null ? fmtDuracaoMin(selecionado.ranking.slaExecucaoMedioMin) : "—"}
+                  fraction={
+                    selecionado.ranking.slaExecucaoMedioMin != null && maxSlaEquipe > 0
+                      ? selecionado.ranking.slaExecucaoMedioMin / maxSlaEquipe
+                      : null
+                  }
+                  color="#2563EB"
+                />
+              </div>
+            </div>
+
             {/* Aproveitamento ao longo do período + Distribuição/Cidades */}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <div className="rounded-xl p-3" style={{ border: "1px solid var(--vm-border-soft)" }}>
@@ -632,6 +671,65 @@ function KpiTile({ icon: Icon, label, value, color }: { icon: React.ElementType;
         <Icon className="h-3 w-3" /> {label}
       </span>
       <span className="text-[16px] font-bold tabular-nums text-[var(--vm-text)]">{value}</span>
+    </div>
+  );
+}
+
+/** Anel único (gauge) — "Aproveitamento total"/"Tempo médio de vistoria". `fraction` é 0–1 (null = sem dado, anel fica cinza/vazio); o rótulo central é livre (%, ou uma duração formatada). */
+function RadialStat({
+  label,
+  valueLabel,
+  fraction,
+  color,
+}: {
+  label: string;
+  valueLabel: string;
+  fraction: number | null;
+  color: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setShown(true); io.disconnect(); } }, { threshold: 0.3 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const size = 104;
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const cx = size / 2;
+  const clamped = fraction == null ? 0 : Math.min(1, Math.max(0, fraction));
+  const dash = shown ? clamped * c : 0;
+
+  return (
+    <div ref={ref} className="flex flex-col items-center gap-1.5">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--vm-tile-2)" strokeWidth={stroke} />
+          {fraction != null && (
+            <circle
+              cx={cx}
+              cy={cx}
+              r={r}
+              fill="none"
+              stroke={color}
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              strokeDasharray={`${dash} ${c}`}
+              transform={`rotate(-90 ${cx} ${cx})`}
+              style={{ transition: "stroke-dasharray 1.1s cubic-bezier(.22,.7,.2,1)" }}
+            />
+          )}
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center text-[15px] font-bold tabular-nums text-[var(--vm-text)]">
+          {valueLabel}
+        </div>
+      </div>
+      <span className="text-center text-[10.5px] font-semibold text-[var(--vm-muted)]">{label}</span>
     </div>
   );
 }
