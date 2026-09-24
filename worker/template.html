@@ -103,7 +103,7 @@
         <tr class="row-min row-357">
           <td colspan="7" class="text-justify">{{OBSERVACAO}}</td>
         </tr>
-        {% if STATUSVISTORIA == 'Reprovado' %}
+        {% if STATUSVISTORIA == 'Reprovado' and MOTIVOREPROVACAOCPFL and MOTIVOREPROVACAOCPFL != 'N/I' %}
         <tr class="row-min row-25 section-row">
           <td colspan="7">Motivo de Reprovação CPFL</td>
         </tr>

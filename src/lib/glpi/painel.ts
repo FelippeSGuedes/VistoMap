@@ -928,7 +928,15 @@ export async function atualizarCamposVistoria(
     params
   );
 
-  if (marcarProjetoPendente) {
+  // Motivo/Descrição de Reprovação CPFL só existem pra entrar no PDF — regera
+  // sozinho mesmo sem o analista marcar "Regenerar PDF" na mão, senão o
+  // documento fica com a informação certa no banco mas o arquivo não reflete
+  // (achado em produção 2026-09-24: analista preencheu e o PDF não mudou).
+  const mudouMotivoCpfl =
+    (dropdowns && "motivoReprovacaoCpfl" in dropdowns) ||
+    "descricaodetalhadacpflfield" in input;
+
+  if (marcarProjetoPendente || mudouMotivoCpfl) {
     await execute(
       `UPDATE \`${TABLE_AUX}\`
           SET project_status = 'PENDENTE'
