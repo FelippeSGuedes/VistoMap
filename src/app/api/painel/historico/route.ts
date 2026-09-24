@@ -36,6 +36,7 @@ export async function GET(req: Request) {
     const inicioParam = searchParams.get("inicio");
     const fimParam = searchParams.get("fim");
     const inicioSerieParam = searchParams.get("inicioSerie");
+    const concessionaria = searchParams.get("concessionaria") || undefined;
 
     const fim = fimParam && ISO_DATE.test(fimParam) ? fimParam : diasAtras(0);
     const inicio = inicioParam && ISO_DATE.test(inicioParam) ? inicioParam : diasAtras(29);
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ message: "Período máximo é de 10 anos." }, { status: 400 });
     }
 
-    const data = await fetchHistoricoAnalytics(inicio, fim, inicioSerie);
+    const data = await fetchHistoricoAnalytics(inicio, fim, inicioSerie, concessionaria);
     return NextResponse.json(data);
   } catch (err) {
     console.error("[api/painel/historico] error", err);

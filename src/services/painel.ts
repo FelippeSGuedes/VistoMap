@@ -46,10 +46,22 @@ async function tryReal<T>(p: Promise<T>, fb: T): Promise<T> {
   }
 }
 
-export async function fetchStats(): Promise<PainelStats> {
+/** `concessionaria` — filtro global do dashboard (label exato, ex.: "CPFL Paulista"); omitido/"" = Tudo. */
+export async function fetchStats(concessionaria?: string): Promise<PainelStats> {
+  const params = new URLSearchParams();
+  if (concessionaria) params.set("concessionaria", concessionaria);
+  const qs = params.toString();
   return tryReal(
-    api.get<PainelStats>("/painel/stats").then((r) => r.data),
+    api.get<PainelStats>(`/painel/stats${qs ? `?${qs}` : ""}`).then((r) => r.data),
     MOCK_PAINEL_STATS
+  );
+}
+
+/** Opções do filtro global "Concessionária" do dashboard. */
+export async function fetchConcessionarias(): Promise<string[]> {
+  return tryReal(
+    api.get<string[]>("/painel/concessionarias").then((r) => r.data),
+    []
   );
 }
 
@@ -412,14 +424,8 @@ export interface HistoricoAnalytics {
     slaExecucaoMedioMin?: number | null;
   }>;
   kmOperacional: number;
-  motivosReprovacao: Array<{
-    id: string;
-    label: string;
-    color: string;
-    total: number;
-    pct: number;
-    exemplos: string[];
-  }>;
+  /** Agrupado direto pelo dropdown "Motivo de Reprovação CPFL" (2026-09-24) — mesmo formato de motivosImpedimento. */
+  motivosReprovacao: Array<{ label: string; total: number }>;
   motivosImpedimento: Array<{ label: string; total: number }>;
 }
 
@@ -452,7 +458,8 @@ export interface TopTecnicosDashboard {
 export async function fetchTopTecnicosDashboard(
   periodo: TopTecnicosPeriodo,
   inicio?: string,
-  fim?: string
+  fim?: string,
+  concessionaria?: string
 ): Promise<TopTecnicosDashboard> {
   const fb: TopTecnicosDashboard = {
     periodo: { inicio: "", fim: "" },
@@ -465,6 +472,7 @@ export async function fetchTopTecnicosDashboard(
     params.set("inicio", inicio);
     params.set("fim", fim);
   }
+  if (concessionaria) params.set("concessionaria", concessionaria);
   return tryReal(
     api
       .get<TopTecnicosDashboard>(`/painel/dashboard/top-tecnicos?${params.toString()}`)
@@ -482,7 +490,8 @@ export async function fetchTopTecnicosDashboard(
 export async function fetchHistorico(
   inicio?: string,
   fim?: string,
-  inicioSerie?: string
+  inicioSerie?: string,
+  concessionaria?: string
 ): Promise<HistoricoAnalytics> {
   const fb: HistoricoAnalytics = {
     periodo: { inicio: inicio ?? "", fim: fim ?? "", dias: 30 },
@@ -502,6 +511,7 @@ export async function fetchHistorico(
   if (inicio) params.set("inicio", inicio);
   if (fim) params.set("fim", fim);
   if (inicioSerie) params.set("inicioSerie", inicioSerie);
+  if (concessionaria) params.set("concessionaria", concessionaria);
   return tryReal(
     api.get<HistoricoAnalytics>(`/painel/historico?${params.toString()}`).then((r) => r.data),
     fb
@@ -732,6 +742,7 @@ export async function recuperarAvaliadorCPFL() {
 
 export const painelService = {
   fetchStats,
+  fetchConcessionarias,
   fetchTecnicos,
   fetchRevisitas,
   fetchAudit,

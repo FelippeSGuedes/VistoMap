@@ -10,7 +10,9 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
-    const data = await fetchPainelMapa();
+    const { searchParams } = new URL(req.url);
+    const concessionaria = searchParams.get("concessionaria") || undefined;
+    const data = await fetchPainelMapa(concessionaria);
     return NextResponse.json(data);
   } catch (err) {
     console.error("[api/painel/mapa] GET error", err);

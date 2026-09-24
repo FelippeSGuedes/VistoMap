@@ -467,10 +467,10 @@ export default function HistoricoPainelPage() {
               className="mt-0.5 text-[16px] font-semibold tracking-[-0.2px]"
               style={{ color: "var(--vm-ink)" }}
             >
-              Categorização automática · {(data?.motivosReprovacao ?? []).reduce((a, m) => a + m.total, 0)} casos
+              Motivo de Reprovação CPFL · {(data?.motivosReprovacao ?? []).reduce((a, m) => a + m.total, 0)} casos
             </h3>
             <p className="mt-0.5 text-[11px]" style={{ color: "var(--vm-muted)" }}>
-              Motivos brutos do GIOC agrupados por padrão semântico (poste, antena, aterramento, etc).
+              Agrupado pelo dropdown que o analista escolhe ao tratar a reprovação.
             </p>
           </div>
           <span className="text-[10.5px]" style={{ color: "#A0ACBA" }}>
@@ -478,23 +478,30 @@ export default function HistoricoPainelPage() {
           </span>
         </div>
 
-        {(data?.motivosReprovacao ?? []).length === 0 ? (
-          <p className="mt-6 py-6 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>
-            Sem reprovações classificáveis no período.
-          </p>
-        ) : (
+        {(() => {
+          const motivos = data?.motivosReprovacao ?? [];
+          const maiorTotal = motivos[0]?.total || 1;
+          const somaTotal = motivos.reduce((a, m) => a + m.total, 0) || 1;
+          const MOTIVO_COR = "#DC2626";
+          return motivos.length === 0 ? (
+            <p className="mt-6 py-6 text-center text-[12px]" style={{ color: "var(--vm-faint)" }}>
+              Sem reprovações no período.
+            </p>
+          ) : (
           <div className="mt-4 grid grid-cols-12 gap-4">
-            {/* Lista de categorias com barras */}
+            {/* Lista de motivos com barras */}
             <div className="col-span-7 space-y-2">
-              {(data?.motivosReprovacao ?? []).map((m) => (
-                <div key={m.id} className="group">
+              {motivos.map((m) => {
+                const pct = (m.total / somaTotal) * 100;
+                return (
+                <div key={m.label} className="group">
                   <div className="flex items-baseline justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
                       <span
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
                         style={{
-                          background: m.color,
-                          boxShadow: `0 0 8px ${m.color}66`,
+                          background: MOTIVO_COR,
+                          boxShadow: `0 0 8px ${MOTIVO_COR}66`,
                         }}
                       />
                       <span
@@ -507,9 +514,9 @@ export default function HistoricoPainelPage() {
                     <div className="flex shrink-0 items-baseline gap-2 tabular-nums">
                       <span
                         className="text-[12.5px] font-semibold"
-                        style={{ color: m.color }}
+                        style={{ color: MOTIVO_COR }}
                       >
-                        {m.pct.toFixed(1).replace(".", ",")}%
+                        {pct.toFixed(1).replace(".", ",")}%
                       </span>
                       <span className="text-[10.5px]" style={{ color: "var(--vm-faint)" }}>
                         {m.total} {m.total === 1 ? "caso" : "casos"}
@@ -523,28 +530,20 @@ export default function HistoricoPainelPage() {
                     <motion.div
                       className="h-full rounded-full"
                       style={{
-                        background: `linear-gradient(90deg, ${m.color}, ${m.color}CC)`,
-                        boxShadow: `0 0 8px ${m.color}55`,
+                        background: `linear-gradient(90deg, ${MOTIVO_COR}, ${MOTIVO_COR}CC)`,
+                        boxShadow: `0 0 8px ${MOTIVO_COR}55`,
                       }}
                       initial={{ width: 0 }}
-                      animate={{ width: `${Math.max(m.pct, 2)}%` }}
+                      animate={{ width: `${Math.max((m.total / maiorTotal) * 100, 2)}%` }}
                       transition={{ duration: 0.7, ease: [0.22, 0.7, 0.2, 1] }}
                     />
                   </div>
-                  {m.exemplos.length > 0 && (
-                    <p
-                      className="mt-1 truncate text-[10px] italic opacity-70"
-                      style={{ color: "var(--vm-muted)" }}
-                      title={m.exemplos.join(" · ")}
-                    >
-                      ex: "{m.exemplos[0]}"{m.exemplos.length > 1 ? ` · +${m.exemplos.length - 1}` : ""}
-                    </p>
-                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Painel lateral: top 3 destaque + insights */}
+            {/* Painel lateral: top causa + explicação */}
             <div className="col-span-5 space-y-3">
               <div
                 className="rounded-[14px] p-4"
@@ -560,13 +559,13 @@ export default function HistoricoPainelPage() {
                 >
                   Top causa
                 </p>
-                {(data?.motivosReprovacao ?? [])[0] && (
+                {motivos[0] && (
                   <>
                     <p
                       className="mt-1 text-[18px] font-semibold tracking-[-0.3px]"
-                      style={{ color: (data?.motivosReprovacao ?? [])[0].color }}
+                      style={{ color: MOTIVO_COR }}
                     >
-                      {(data?.motivosReprovacao ?? [])[0].label}
+                      {motivos[0].label}
                     </p>
                     <p
                       className="mt-0.5 text-[11.5px]"
@@ -574,7 +573,7 @@ export default function HistoricoPainelPage() {
                     >
                       Responde por{" "}
                       <span className="font-semibold tabular-nums">
-                        {(data?.motivosReprovacao ?? [])[0].pct.toFixed(1).replace(".", ",")}%
+                        {((motivos[0].total / somaTotal) * 100).toFixed(1).replace(".", ",")}%
                       </span>{" "}
                       das reprovações no período.
                     </p>
@@ -596,21 +595,23 @@ export default function HistoricoPainelPage() {
                   Como funciona
                 </p>
                 <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--vm-muted-b)" }}>
-                  Textos livres de motivos (ex: "altura do poste errada",
-                  "PSPOSTE incorreto") são normalizados (sem acento/caixa) e
-                  classificados por palavras-chave em{" "}
+                  O analista escolhe o motivo num{" "}
                   <span className="font-semibold" style={{ color: "var(--vm-ink)" }}>
-                    10 categorias operacionais
-                  </span>
-                  . Variações da mesma raiz caem na mesma categoria.
+                    menu suspenso dedicado
+                  </span>{" "}
+                  (campo GLPI Fields "Motivo de Reprovação CPFL") ao tratar a
+                  reprovação — sem mais depender de texto livre classificado
+                  por palavra-chave.
                 </p>
                 <p className="mt-2 text-[10.5px]" style={{ color: "var(--vm-muted)" }}>
-                  Não classificáveis vão para "Outros".
+                  Reprovações antigas, ou decididas direto no GLPI nativo sem
+                  usar o campo novo, aparecem como "Não categorizado".
                 </p>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </motion.section>
 
       {/* RANKING TÉCNICOS */}

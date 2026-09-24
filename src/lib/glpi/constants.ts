@@ -19,6 +19,15 @@ export const TABLE_PROJETOS_PLUGIN = "glpi_plugin_vistomapprojetos_projects";
 export const ITEMTYPE_NE = "NetworkEquipment";
 
 /**
+ * Concessionária (CPFL Paulista/Piratininga/Santa Cruz) — filtro global do
+ * dashboard (/painel), criado em 2026-09-24. Único dropdown já 100%
+ * preenchido na base (0 registros sem valor, conferido na criação deste
+ * filtro), por isso não precisa de tratamento pra "sem concessionária".
+ */
+export const CONCESSIONARIA_COLUMN = "plugin_fields_concessionriafielddropdowns_id";
+export const TABLE_CONCESSIONARIA = "glpi_plugin_fields_concessionriafielddropdowns";
+
+/**
  * Whitelist: campo do payload  →  tabela GLPI Fields que armazena a opção.
  * O nome do field segue o padrão do plugin GLPI Fields:
  *   `plugin_fields_<slug>fielddropdowns_id`

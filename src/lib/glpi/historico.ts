@@ -1,10 +1,12 @@
 import "server-only";
 import { query } from "@/lib/db";
 import {
+  CONCESSIONARIA_COLUMN,
   ITEMTYPE_NE,
   MOTIVO_REPROVACAO_CPFL_COLUMN,
   SITUACAO_COLUMN,
   TABLE_AUX,
+  TABLE_CONCESSIONARIA,
   TABLE_FIELDS,
   TABLE_MOTIVO_REPROVACAO_CPFL,
   TABLE_NE,
@@ -12,7 +14,6 @@ import {
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import { RECUSA_MOTIVO_CATEGORIA, RECUSA_MOTIVO_LABEL, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
-import { composeMotivoReprovacaoCpfl } from "./motivoReprovacaoCpfl";
 
 // situaodavistoriafield: 3=Vistoriado, 6=Revisitado — mesma prioridade 1 que
 // resolveAdminStatus() já usa em painel.ts e que fetchVistoriasRealizadas()
@@ -21,7 +22,6 @@ import { composeMotivoReprovacaoCpfl } from "./motivoReprovacaoCpfl";
 // das séries/ranking deste arquivo — divergindo do card "Concluídas" e de
 // /painel/realizadas, que já consideravam essas vistorias.
 const SITUACAO_CONCLUIDA_SQL = `f.\`${SITUACAO_COLUMN}\` IN (3, 6)`;
-import { agregarMotivos, type MotivoAgregado } from "./motivos";
 
 /**
  * Histórico operacional agregado para /painel/historico.
@@ -114,7 +114,8 @@ export interface HistoricoAnalytics {
     slaExecucaoMedioMin?: number | null;
   }>;
   kmOperacional: number;
-  motivosReprovacao: MotivoAgregado[];
+  /** Agrupado direto pelo dropdown "Motivo de Reprovação CPFL" (2026-09-24) — mesmo formato de motivosImpedimento. */
+  motivosReprovacao: Array<{ label: string; total: number }>;
   /** Motivos de impedimento (glpi_plugin_vistomap_recusas, categoria
    *  impedimento) no período — mesma fonte de topMunicipiosPeriodo.impedimento,
    *  agora agrupado por motivo em vez de município. */
@@ -169,8 +170,16 @@ export async function fetchHistoricoAnalytics(
    * período de fato selecionado (2026-09-15 — filtro de período único do
    * dashboard, com Hoje/7 dias/30 dias/Personalizado).
    */
-  inicioSerie: string = inicio
+  inicioSerie: string = inicio,
+  /** Filtro global do dashboard (2026-09-24) — label exato (ex.: "CPFL Paulista"); omitido/"" = Tudo. */
+  concessionaria?: string
 ): Promise<HistoricoAnalytics> {
+  const concJoin = concessionaria
+    ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
+    : "";
+  const concWhere = concessionaria ? "AND conc.name = ?" : "";
+  const concParams = concessionaria ? [concessionaria] : [];
+
   /* ── Séries diárias ─────────────────────────────────────────── */
   // Conta por dia agrupando por status name.
   const serieRows = await query<{
@@ -342,12 +351,15 @@ export async function fetchHistoricoAnalytics(
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+        ${concJoin}
        WHERE f.municipiofield IS NOT NULL
          AND TRIM(f.municipiofield) <> ''
+         ${concWhere}
        GROUP BY TRIM(f.municipiofield)
        ORDER BY concluidas DESC
        LIMIT 20
-    `
+    `,
+    concParams
   );
 
   /* ── Vistorias ATRIBUÍDAS no período — pedido 2026-09-18, "tem que
@@ -398,11 +410,13 @@ export async function fetchHistoricoAnalytics(
         FROM glpi_plugin_vistomap_recusas r
         INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = r.vistoria_id
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        ${concJoin}
        WHERE r.status IN ('PENDENTE', 'APROVADO')
          AND DATE(r.criado_em) >= ?
          AND DATE(r.criado_em) <= ?
+         ${concWhere}
     `,
-    [inicio, fim]
+    [inicio, fim, ...concParams]
   );
   const municipiosImpedimentosMap = new Map<string, { impedimento: number; recusa: number }>();
   for (const r of recusaRows) {
@@ -670,13 +684,17 @@ export async function fetchHistoricoAnalytics(
     slaExecucaoMedioMin: mediaMin(tempoMap.get(r.tecnico_id)?.sla ?? []),
   }));
 
-  /* ── Motivos de reprovação (classificados) ───────────────────── */
-  // Coleta motivofield bruto de vistorias reprovadas no período +
-  // de revisitas pendentes (is_repeat=1) — qualquer registro com motivo.
-  // Classifica por keywords (lib motivos.ts) → distribuição %.
-  const motivosRows = await query<{ motivo: string | null; motivo_cpfl: string | null }>(
+  /* ── Motivos de reprovação ─────────────────────────────────────
+     Agrupa direto pelo dropdown "Motivo de Reprovação CPFL" (campo GLPI
+     Fields criado em 2026-09-24) — antes disso passava pelo classificador
+     de texto livre (lib motivos.ts, keywords), necessário enquanto o único
+     dado era motivofield (texto livre do técnico). Reprovações que ainda
+     não têm o dropdown preenchido (antigas, ou decididas direto no GLPI
+     nativo pela CPFL sem usar o campo novo) caem em "Não categorizado" —
+     não somem do total, só não têm motivo específico ainda. */
+  const motivosReprovacaoRows = await query<{ motivo: string; total: number }>(
     `
-      SELECT f.motivofield AS motivo, mr.name AS motivo_cpfl
+      SELECT COALESCE(mr.name, 'Não categorizado') AS motivo, COUNT(*) AS total
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -685,11 +703,8 @@ export async function fetchHistoricoAnalytics(
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
         LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
                 ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
+        ${concJoin}
        WHERE (
-              (f.motivofield IS NOT NULL AND TRIM(f.motivofield) <> '')
-           OR mr.id IS NOT NULL
-         )
-         AND (
               sv.name IN ('Reprovada','Reprovado')
            OR COALESCE(aux.is_repeat, 0) = 1
          )
@@ -697,16 +712,16 @@ export async function fetchHistoricoAnalytics(
               f.datadavistoriafield IS NULL
            OR (DATE(f.datadavistoriafield) >= ? AND DATE(f.datadavistoriafield) <= ?)
          )
-       LIMIT 2000
+         ${concWhere}
+       GROUP BY COALESCE(mr.name, 'Não categorizado')
+       ORDER BY total DESC
     `,
-    [inicio, fim]
+    [inicio, fim, ...concParams]
   );
-  // Prioriza o dropdown novo (motivo de reprovação categorizado pelo
-  // analista) — fallback pro motivofield legado cobre reprovações antigas e
-  // as que a CPFL ainda faz direto no GLPI nativo, sem usar o dropdown.
-  const motivosReprovacao = agregarMotivos(
-    motivosRows.map((r) => composeMotivoReprovacaoCpfl(r.motivo_cpfl, null, r.motivo))
-  );
+  const motivosReprovacao = motivosReprovacaoRows.map((r) => ({
+    label: r.motivo,
+    total: Number(r.total) || 0,
+  }));
 
   const aprovacaoPct = finalizadas > 0
     ? Math.round((aprovadas / finalizadas) * 100)

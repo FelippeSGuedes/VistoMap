@@ -1169,7 +1169,7 @@ interface EquipeAoVivoWidgetProps {
   vistoriasMapa: PainelMapaVistoria[];
   tecnicosMapa: PainelMapaTecnico[];
   tecnicosPorReprovacao: RankingTecnicoItem[];
-  motivosReprovacao: Array<{ id: string; label: string; color: string; total: number; pct: number; exemplos: string[] }>;
+  motivosReprovacao: Array<{ label: string; total: number }>;
   motivosImpedimento: Array<{ label: string; total: number }>;
   periodoLabel: string;
   kpiAtribuidas: number;
@@ -1438,11 +1438,11 @@ function EquipeAoVivoWidget({
           </div>
           <RankedBarList
             items={motivosReprovacao}
-            keyFn={(m) => m.id}
+            keyFn={(m) => m.label}
             labelFn={(m) => m.label}
             valueFn={(m) => String(m.total)}
             pctFn={(m) => (motivosReprovacao[0]?.total ? (m.total / motivosReprovacao[0].total) * 100 : 0)}
-            colorFn={(m) => m.color}
+            colorFn={() => "#DC2626"}
             emptyLabel="Sem reprovações no período."
           />
         </Card>
@@ -1585,6 +1585,16 @@ export default function PainelOverviewPage() {
     return { inicio: isoDiasAtras(29), fim: hoje, dias: 30 };
   }, [periodoModo, periodoCustomInicio, periodoCustomFim]);
 
+  // Filtro global "Concessionária" (2026-09-24) — "" = Tudo. Junto com
+  // periodoRange, é a outra dimensão que TODO widget alimentado por
+  // stats/historico/topTecsDash/mapaRealtime tem que respeitar (achado em
+  // campo: "Vistorias no mapa tem que ser fidedigno aos filtros também").
+  const [concessionaria, setConcessionaria] = useState("");
+  const [concessionariasDisponiveis, setConcessionariasDisponiveis] = useState<string[]>([]);
+  useEffect(() => {
+    painelService.fetchConcessionarias().then(setConcessionariasDisponiveis).catch(() => {});
+  }, []);
+
   const [stats,        setStats]        = useState<PainelStats | null>(null);
   const [tecnicos,     setTecnicos]     = useState<TecnicoAtivo[]>([]);
   const [revisitas,    setRevisitas]    = useState<RevisitaPendente[]>([]);
@@ -1622,13 +1632,14 @@ export default function PainelOverviewPage() {
       // quando responde com sucesso; senão mantém o último valor bom e
       // avisa no console (achado em campo 2026-09-18, ver comentário do
       // MAX_DIAS/lookbackDias acima).
+      const mapaQs = concessionaria ? `?concessionaria=${encodeURIComponent(concessionaria)}` : "";
       const [s, t, r, a, h, mp] = await Promise.allSettled([
-        painelService.fetchStats(),
+        painelService.fetchStats(concessionaria),
         painelService.fetchTecnicos(),
         painelService.fetchRevisitas(),
         painelService.fetchAudit({ limit: 8 }),
-        painelService.fetchHistorico(periodoRange.inicio, periodoRange.fim, inicioSerie),
-        api.get<PainelMapaResponse>("/painel/mapa").then(res => res.data).catch(() => null),
+        painelService.fetchHistorico(periodoRange.inicio, periodoRange.fim, inicioSerie, concessionaria),
+        api.get<PainelMapaResponse>(`/painel/mapa${mapaQs}`).then(res => res.data).catch(() => null),
       ]);
       if (!alive) return;
       if (s.status === "fulfilled") setStats(s.value); else console.warn("[painel] fetchStats falhou:", s.reason);
@@ -1643,7 +1654,7 @@ export default function PainelOverviewPage() {
     const poll = window.setInterval(load, 20_000);
     const tick = window.setInterval(() => setNow(new Date()), 1_000);
     return () => { alive = false; clearInterval(poll); clearInterval(tick); };
-  }, [periodoRange]);
+  }, [periodoRange, concessionaria]);
 
   // Instalação — poll totalmente independente do bloco acima (nunca entra
   // no Promise.all da Vistoria), pra garantir zero interferência se essa
@@ -1672,13 +1683,13 @@ export default function PainelOverviewPage() {
     setTopTecsLoading(true);
     const load = () =>
       painelService
-        .fetchTopTecnicosDashboard("personalizado", periodoRange.inicio, periodoRange.fim)
+        .fetchTopTecnicosDashboard("personalizado", periodoRange.inicio, periodoRange.fim, concessionaria)
         .then((d) => { if (alive) setTopTecsDash(d); })
         .finally(() => { if (alive) setTopTecsLoading(false); });
     load();
     const poll = window.setInterval(load, 30_000);
     return () => { alive = false; clearInterval(poll); };
-  }, [periodoRange]);
+  }, [periodoRange, concessionaria]);
 
   /* ── derived ── */
   const emCampo    = useMemo(() => tecnicos.filter(t => t.status === "em-campo").length, [tecnicos]);
@@ -2078,6 +2089,26 @@ export default function PainelOverviewPage() {
             />
           </div>
         )}
+
+        {/* Filtro global "Concessionária" (2026-09-24) — DIFERENTE do período
+            acima: este afeta TUDO, inclusive os widgets "ao vivo" (Equipe ao
+            Vivo, mapa) — pedido explícito pra não ficar nenhum número/pin
+            fora do filtro selecionado. */}
+        <div className="ml-auto flex items-center gap-1.5" style={{ color: "var(--vm-muted)" }}>
+          <Building2 className="h-3.5 w-3.5" />
+          <span className="text-[12px] font-semibold">Concessionária</span>
+        </div>
+        <select
+          value={concessionaria}
+          onChange={(e) => setConcessionaria(e.target.value)}
+          className="rounded-xl px-3 py-1.5 text-[11.5px] font-semibold outline-none"
+          style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+        >
+          <option value="">Tudo</option>
+          {concessionariasDisponiveis.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
       {/* ════════════ LINHA 1a: Vistorias Finalizadas | Aprovações — lado a lado, mesmo tamanho ════════════ */}

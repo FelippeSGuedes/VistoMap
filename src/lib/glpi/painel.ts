@@ -3,6 +3,7 @@ import { execute, query } from "@/lib/db";
 import { resolveDropdowns } from "./dropdowns";
 import {
   AVALIADOR_CPFL_USER_COLUMN,
+  CONCESSIONARIA_COLUMN,
   DESCRICAO_DETALHADA_CPFL_COLUMN,
   DROPDOWN_COLUMNS,
   type DropdownKey,
@@ -28,6 +29,7 @@ import {
   STATUS_VISTORIA_EM_ANALISE,
   STATUS_VISTORIA_REPROVADO,
   TABLE_AUX,
+  TABLE_CONCESSIONARIA,
   TABLE_MOTIVO_REPROVACAO_CPFL,
   TABLE_PROJETOS_PLUGIN,
   TABLE_FIELDS,
@@ -112,7 +114,17 @@ interface StatsRow {
  * fora da contagem de "Concluídas" (o card mostrava menos do que o real,
  * divergindo de /painel/realizadas, que já cruzava os dois campos).
  */
-export async function fetchPainelStats(): Promise<PainelStats> {
+/**
+ * `concessionaria` — filtro global do dashboard (2026-09-24), label exato
+ * da tabela de dropdown (ex.: "CPFL Paulista"). Omitido/vazio = Tudo.
+ */
+export async function fetchPainelStats(concessionaria?: string): Promise<PainelStats> {
+  const concJoin = concessionaria
+    ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
+    : "";
+  const concWhere = concessionaria ? "AND conc.name = ?" : "";
+  const concParams = concessionaria ? [concessionaria] : [];
+
   const rows = await query<StatsRow>(
     `
       SELECT
@@ -127,9 +139,12 @@ export async function fetchPainelStats(): Promise<PainelStats> {
               ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
       LEFT JOIN \`${TABLE_AUX}\` aux
               ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+      ${concJoin}
       WHERE ne.is_deleted = 0
+      ${concWhere}
       GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield, f.\`${SITUACAO_COLUMN}\`
-    `
+    `,
+    concParams
   );
 
   let pendentes = 0;
@@ -226,9 +241,11 @@ export async function fetchPainelStats(): Promise<PainelStats> {
       SELECT COUNT(*) AS total
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        ${concJoin}
        WHERE f.\`${SITUACAO_COLUMN}\` = ?
+       ${concWhere}
     `,
-    [SITUACAO_EM_DESLOCAMENTO]
+    [SITUACAO_EM_DESLOCAMENTO, ...concParams]
   );
   const emDeslocamento = deslocRow?.total ?? 0;
 
@@ -340,6 +357,14 @@ export async function fetchPainelStats(): Promise<PainelStats> {
     atribuidasMes,
     ultimaSincronizacao: new Date().toISOString(),
   };
+}
+
+/** Opções do filtro global "Concessionária" do dashboard — direto da tabela de dropdown, sem hardcode. */
+export async function fetchConcessionariasDisponiveis(): Promise<string[]> {
+  const rows = await query<{ name: string }>(
+    `SELECT name FROM \`${TABLE_CONCESSIONARIA}\` ORDER BY name ASC`
+  );
+  return rows.map((r) => r.name);
 }
 
 /* ── Técnicos ───────────────────────────────────────────────────── */
@@ -1923,7 +1948,14 @@ export async function fetchParadoDesdeMin(
   return resultado;
 }
 
-export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
+/** `concessionaria` — filtro global do dashboard: restringe as "vistorias" do mapa (técnicos continuam sem filtro, representam pessoas, não equipamento). */
+export async function fetchPainelMapa(concessionaria?: string): Promise<PainelMapaResponse> {
+  const concJoinMapa = concessionaria
+    ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
+    : "";
+  const concWhereMapa = concessionaria ? "AND conc.name = ?" : "";
+  const concParamsMapa = concessionaria ? [concessionaria] : [];
+
   const group = process.env.GLPI_VISTOMAP_GROUP ?? "VistoMap-Tecnicos";
   const groupAlt =
     group === "VistoMap-Tecnicos" ? "VistoMap-Técnicos" : "VistoMap-Tecnicos";
@@ -2029,13 +2061,16 @@ export async function fetchPainelMapa(): Promise<PainelMapaResponse> {
         ON u.id = f.users_id_vistoriadorafield
       LEFT JOIN \`glpi_plugin_vistomap_recusas\` rec
         ON rec.vistoria_id = ne.id AND rec.status = 'APROVADO'
+      ${concJoinMapa}
       WHERE ne.is_deleted = 0
         AND f.latitudefield IS NOT NULL AND f.longitudefield IS NOT NULL
         AND TRIM(f.latitudefield) <> '' AND TRIM(f.longitudefield) <> ''
         AND REPLACE(f.latitudefield, ',', '.') + 0.0 <> 0
         AND REPLACE(f.longitudefield, ',', '.') + 0.0 <> 0
+        ${concWhereMapa}
       LIMIT 10000
-    `
+    `,
+    concParamsMapa
   );
 
   const now = Date.now();

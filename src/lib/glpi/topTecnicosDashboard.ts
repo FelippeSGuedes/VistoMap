@@ -1,8 +1,10 @@
 import "server-only";
 import { query } from "@/lib/db";
 import {
+  CONCESSIONARIA_COLUMN,
   ITEMTYPE_NE,
   TABLE_AUX,
+  TABLE_CONCESSIONARIA,
   TABLE_FIELDS,
   TABLE_NE,
   TABLE_STATUS_VISTORIA,
@@ -51,12 +53,22 @@ function haversineKm(
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/** @param inicio,fim — 'YYYY-MM-DD', ambos inclusivos. */
+/**
+ * @param inicio,fim — 'YYYY-MM-DD', ambos inclusivos.
+ * @param concessionaria — filtro global do dashboard (2026-09-24), label exato; omitido/"" = Tudo.
+ */
 export async function fetchRankingTecnicosPeriodo(
   inicio: string,
   fim: string,
-  limit = 8
+  limit = 8,
+  concessionaria?: string
 ): Promise<RankingTecnicoItem[]> {
+  const concJoin = concessionaria
+    ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
+    : "";
+  const concWhere = concessionaria ? "AND conc.name = ?" : "";
+  const concParams = concessionaria ? [concessionaria] : [];
+
   const tecRows = await query<{
     tecnico_id: number;
     id: number | null;
@@ -82,15 +94,17 @@ export async function fetchRankingTecnicosPeriodo(
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
         LEFT JOIN \`${TABLE_AUX}\` aux
                 ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
+        ${concJoin}
        WHERE f.datadavistoriafield IS NOT NULL
          AND DATE(f.datadavistoriafield) BETWEEN ? AND ?
          AND f.users_id_vistoriadorafield > 0
          AND (${SITUACAO_CONCLUIDA_SQL} OR ${STATUS_CONCLUIDO_SQL})
+         ${concWhere}
        GROUP BY f.users_id_vistoriadorafield
        ORDER BY total DESC
        LIMIT ${Math.min(Math.max(limit, 1), 50)}
     `,
-    [inicio, fim]
+    [inicio, fim, ...concParams]
   );
 
   if (tecRows.length === 0) return [];

@@ -53,6 +53,7 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const periodo = searchParams.get("periodo") ?? "mes";
+    const concessionaria = searchParams.get("concessionaria") || undefined;
     const { inicio, fim } = resolvePeriodo(
       periodo,
       searchParams.get("inicio"),
@@ -60,7 +61,7 @@ export async function GET(req: Request) {
     );
 
     const [tecnicos, pendentesCpflPorMunicipio, aprovadosPorMunicipio] = await Promise.all([
-      fetchRankingTecnicosPeriodo(inicio, fim, 8),
+      fetchRankingTecnicosPeriodo(inicio, fim, 8, concessionaria),
       fetchPendentesCpflPorMunicipio(),
       fetchAprovadosPorMunicipio(),
     ]);
