@@ -335,9 +335,12 @@ export async function fetchHistoricoAnalytics(
      tanto quem nunca foi vistoriado quanto quem está em revisita/análise.
      Por isso não recebe `inicio`/`fim` — o filtro "Todo Período" da tela
      não afeta mais este ranking/mapa, só os indicadores e a evolução
-     (que continuam por período, ver `agg`/`serieDiaria` acima). LIMIT 20
-     (não 10, como `muniRows`) — ajuda o mapa a enquadrar o cluster de
-     atuação inteiro, não só o topo. */
+     (que continuam por período, ver `agg`/`serieDiaria` acima). LIMIT 50
+     (não 10, como `muniRows`) — o universo real hoje é 43 municípios no
+     total (conferido 2026-09-24); com o filtro de Concessionária, CPFL
+     Paulista sozinha já tem 30 — um LIMIT 20 cortava município de quem
+     tem mais operação, bem o oposto do que "Padrão Diário" deveria
+     mostrar (todos que tiveram movimentação, em ordem). */
   const muniPeriodoRows = await query<{
     municipio: string;
     concluidas: number;
@@ -361,7 +364,7 @@ export async function fetchHistoricoAnalytics(
          ${concWhere}
        GROUP BY TRIM(f.municipiofield)
        ORDER BY concluidas DESC
-       LIMIT 20
+       LIMIT 50
     `,
     concParams
   );

@@ -765,11 +765,12 @@ function HeatmapMapWidget({
     : null;
 
   // Ranking detalhado (Aprov./Pend./Reprov./%Aprov.) — pedido 2026-09-18,
-  // mesma ordenação por concluídas, mas com a quebra por status. Agora
-  // com 8 (não mais 6): virou o único conteúdo da seção "Distribuição
-  // geográfica" (mapa coroplético removido, ver comentário abaixo), então
-  // sobrou largura cheia pra mostrar mais linhas.
-  const rankingDetalhe = [...topMunicipiosDetalhe].sort((a, b) => b.concluidas - a.concluidas).slice(0, 8);
+  // mesma ordenação por concluídas, com a quebra por status. Sem corte
+  // (2026-09-24): mostra TODOS os municípios com movimentação, não só um
+  // top-N fixo — com o filtro de Concessionária, cortar em 8 escondia a
+  // maior parte da operação de quem tem mais município (CPFL Paulista
+  // sozinha tem 30). O backend já limita a 50 (universo real é 43).
+  const rankingDetalhe = [...topMunicipiosDetalhe].sort((a, b) => b.concluidas - a.concluidas);
 
   // Cor por status no feed "Últimas vistorias" — mesma paleta institucional
   // de tudo mais no widget (verde/âmbar/vermelho pras 3 decisões da
