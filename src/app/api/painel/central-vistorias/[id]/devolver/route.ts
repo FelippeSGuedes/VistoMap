@@ -80,8 +80,14 @@ export async function POST(
   const longitude = typeof body.longitude === "number" && Number.isFinite(body.longitude) ? body.longitude : undefined;
   const localizacaoCorrigida = psPoste != null || endereco != null || latitude != null || longitude != null;
 
-  const [row] = await query<{ equipamento: string; tecnico_id: number | null; tecnico_nome: string | null }>(
-    `SELECT ne.name AS equipamento, f.users_id_vistoriadorafield AS tecnico_id, u.name AS tecnico_nome
+  const [row] = await query<{
+    equipamento: string;
+    tecnico_id: number | null;
+    tecnico_nome: string | null;
+    status_atual: number | null;
+  }>(
+    `SELECT ne.name AS equipamento, f.users_id_vistoriadorafield AS tecnico_id, u.name AS tecnico_nome,
+            f.plugin_fields_statusvistoriafielddropdowns_id AS status_atual
        FROM glpi_networkequipments ne
        JOIN glpi_plugin_fields_networkequipmentdispositivosderedes f ON f.items_id = ne.id
        LEFT JOIN glpi_users u ON u.id = f.users_id_vistoriadorafield
@@ -129,6 +135,7 @@ export async function POST(
     motivos,
     motivoOutro,
     precisaDeslocamento,
+    statusAnterior: row.status_atual,
   });
 
   if (tecnicoFinalId) {

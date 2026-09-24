@@ -70,6 +70,17 @@ export async function ensureDevolucoesTable(): Promise<void> {
     );
   }
 
+  // Migração defensiva: lembra o statusvistoria QUE JÁ EXISTIA no momento da
+  // devolução (ex.: 7 = Aprovado com Pendências) — achado em produção
+  // (2026-09-24): devolverVistoria() zera esse campo pra Pendente(1) na hora
+  // (pra sair do bloqueio de fila do técnico), e corrigir-devolucao/route.ts
+  // não tinha de onde recuperar o valor original depois, então sempre
+  // jogava tudo em "Em Análise" — mesmo quando a CPFL já tinha decidido
+  // Aprovado/Aprovado com Pendências antes da correção.
+  if (!names.has("status_anterior")) {
+    await execute(`ALTER TABLE \`${TABLE}\` ADD COLUMN status_anterior INT NULL AFTER precisa_deslocamento`);
+  }
+
   ensured = true;
 }
 
@@ -84,6 +95,8 @@ export interface CriarDevolucaoInput {
   motivos: string[];
   motivoOutro?: string | null;
   precisaDeslocamento: boolean;
+  /** statusvistoria do equipamento ANTES desta devolução zerar pra Pendente — ver migração de status_anterior acima. */
+  statusAnterior?: number | null;
 }
 
 export async function criarDevolucao(input: CriarDevolucaoInput): Promise<number> {
@@ -91,8 +104,8 @@ export async function criarDevolucao(input: CriarDevolucaoInput): Promise<number
   const { insertId } = await execute(
     `INSERT INTO \`${TABLE}\`
        (vistoria_id, equipamento, tecnico_id, tecnico_nome, analista_id, analista_nome,
-        itens_json, motivos_json, motivo_outro, precisa_deslocamento, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE')`,
+        itens_json, motivos_json, motivo_outro, precisa_deslocamento, status_anterior, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE')`,
     [
       input.vistoriaId,
       input.equipamento,
@@ -104,6 +117,7 @@ export async function criarDevolucao(input: CriarDevolucaoInput): Promise<number
       JSON.stringify(input.motivos),
       input.motivoOutro ?? null,
       input.precisaDeslocamento ? 1 : 0,
+      input.statusAnterior ?? null,
     ]
   );
   return insertId;
@@ -121,6 +135,7 @@ export interface DevolucaoRow {
   motivos_json: string | null;
   motivo_outro: string | null;
   precisa_deslocamento: number;
+  status_anterior: number | null;
   status: "PENDENTE" | "RESOLVIDA" | "CANCELADA";
   criado_em: string;
   resolvido_em: string | null;
@@ -138,6 +153,7 @@ export interface Devolucao {
   motivos: string[];
   motivoOutro: string | null;
   precisaDeslocamento: boolean;
+  statusAnterior: number | null;
   status: "PENDENTE" | "RESOLVIDA" | "CANCELADA";
   criadoEm: string;
   resolvidoEm: string | null;
@@ -166,6 +182,7 @@ function mapRow(r: DevolucaoRow): Devolucao {
     motivos: parseJsonArray(r.motivos_json),
     motivoOutro: r.motivo_outro,
     precisaDeslocamento: !!r.precisa_deslocamento,
+    statusAnterior: r.status_anterior,
     status: r.status,
     criadoEm: r.criado_em,
     resolvidoEm: r.resolvido_em,

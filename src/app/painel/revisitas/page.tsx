@@ -224,8 +224,11 @@ function RevisitaCard({
 
       {/* AÇÕES — leitura só visualiza, sem botões de ação. As 3 secundárias
           usam o mesmo tom neutro de propósito: cores diferentes por botão
-          competiam entre si e com o bloco de motivo acima — só "Aprovar"
-          (o que fecha o caso) precisa se destacar. */}
+          competiam entre si e com o bloco de motivo acima — só "Concluir
+          Revisita" (o que fecha o caso) precisa se destacar. Nome deliberado
+          (não "Aprovar"): quem aprova/reprova de fato é a CPFL — isso aqui é
+          o analista Nansen fechando o ciclo interno e reenviando à
+          concessionária (ver aprovarVistoria() em painel.ts). */}
       {podeAgir && (
         <div
           className="flex items-center gap-1.5 border-t px-4 py-2.5 pl-6"
@@ -267,7 +270,7 @@ function RevisitaCard({
             style={{ background: "linear-gradient(135deg,#00C99B,#00875F)", boxShadow: "0 2px 8px rgba(0,135,95,0.28)" }}
           >
             <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
-            Aprovar
+            Concluir Revisita
           </button>
         </div>
       )}
@@ -354,21 +357,21 @@ export default function RevisitasPage() {
   };
 
   const handleAprovar = async (r: RevisitaPendente) => {
-    if (!confirm(`Aprovar ${r.equipamento}? Sai da fila de reprovações.`)) return;
+    if (!confirm(`Concluir a revisita de ${r.equipamento}? Sai da fila de reprovações e volta pra análise da CPFL.`)) return;
     setSubmitting(r.id);
     try {
       const res = await painelService.aprovarVistoria(r.id);
       setToast(
         res.eraRevisita
-          ? `${r.equipamento} aprovado · situação: Revisitado.`
-          : `${r.equipamento} aprovada · situação: Vistoriado.`
+          ? `Revisita de ${r.equipamento} concluída · situação: Revisitado.`
+          : `Revisita de ${r.equipamento} concluída · situação: Vistoriado.`
       );
       setTimeout(() => setToast(null), 3000);
       carregar();
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message ?? "Falha ao aprovar.";
+          ?.message ?? "Falha ao concluir a revisita.";
       setToast(`❌ ${msg}`);
       setTimeout(() => setToast(null), 4000);
     } finally {

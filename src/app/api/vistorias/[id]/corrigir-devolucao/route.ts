@@ -8,6 +8,8 @@ import {
   SITUACAO_REVISITADO,
   SITUACAO_VISTORIADO,
   SITUACAO_COLUMN,
+  STATUS_VISTORIA_APROVADO,
+  STATUS_VISTORIA_APROVADO_COM_PENDENCIAS,
   STATUS_VISTORIA_EM_ANALISE,
   type DropdownKey,
 } from "@/lib/glpi/constants";
@@ -210,10 +212,22 @@ export async function POST(
     // Situação + status + datas sempre voltam, mesmo se a devolução era só
     // de fotos (nenhum campo de formulário no updateInput acima). O status
     // (plugin_fields_statusvistoriafielddropdowns_id) também precisa voltar
-    // pra "Em análise" aqui — devolverVistoria() deixa ele em Pendente(1)
-    // pra vistoria sair do bloqueio de fila do técnico, e sem resetar de
-    // volta aqui a vistoria corrigida ficava mostrando "Pendente" pro
-    // analista mesmo já reenviada, igual uma vistoria nunca feita.
+    // aqui — devolverVistoria() deixa ele em Pendente(1) pra vistoria sair
+    // do bloqueio de fila do técnico, e sem resetar de volta aqui a vistoria
+    // corrigida ficava mostrando "Pendente" pro analista mesmo já reenviada,
+    // igual uma vistoria nunca feita.
+    //
+    // Se a CPFL já tinha decidido Aprovado/Aprovado com Pendências ANTES da
+    // devolução (guardado em devolucao.statusAnterior, ver devolucoes.ts),
+    // restaura esse mesmo status em vez de cair sempre em "Em Análise" —
+    // achado em produção (2026-09-24): postes que a CPFL já tinha aprovado
+    // com ressalva ficavam mostrando "Em Análise" pra sempre depois de
+    // corrigidos, como se ninguém nunca tivesse decidido nada.
+    const statusRestaurado =
+      devolucao.statusAnterior === STATUS_VISTORIA_APROVADO ||
+      devolucao.statusAnterior === STATUS_VISTORIA_APROVADO_COM_PENDENCIAS
+        ? devolucao.statusAnterior
+        : STATUS_VISTORIA_EM_ANALISE;
     await execute(
       `UPDATE glpi_plugin_fields_networkequipmentdispositivosderedes
           SET \`${SITUACAO_COLUMN}\` = ?,
@@ -221,7 +235,7 @@ export async function POST(
               datadavistoriafield = ?,
               dataenvioconcessionriafield = ?
         WHERE items_id = ?`,
-      [situacaoFinal, STATUS_VISTORIA_EM_ANALISE, agora, agora, id]
+      [situacaoFinal, statusRestaurado, agora, agora, id]
     );
 
     // Fotos/vídeo apontados — só salva o que veio no FormData.
