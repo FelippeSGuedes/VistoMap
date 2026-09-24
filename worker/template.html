@@ -103,6 +103,14 @@
         <tr class="row-min row-357">
           <td colspan="7" class="text-justify">{{OBSERVACAO}}</td>
         </tr>
+        {% if STATUSVISTORIA == 'Reprovado' %}
+        <tr class="row-min row-25 section-row">
+          <td colspan="7">Motivo de Reprovação CPFL</td>
+        </tr>
+        <tr class="row-min row-357">
+          <td colspan="7" class="text-justify">{{MOTIVOREPROVACAOCPFL}}{% if DESCRICAODETALHADACPFL and DESCRICAODETALHADACPFL != 'N/I' %} — {{DESCRICAODETALHADACPFL}}{% endif %}</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
 

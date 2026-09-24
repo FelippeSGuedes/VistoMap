@@ -25,6 +25,8 @@ DROPDOWN_MAP: Dict[str, str] = {
     "tipodeantenafield":           "glpi_plugin_fields_tipodeantenafielddropdowns",
     "ganhodbifield":               "glpi_plugin_fields_ganhodbifielddropdowns",
     "equipamentofield":            "glpi_plugin_fields_equipamentofielddropdowns",  # DCU / Repetidor — "Modo de Operação"
+    "statusvistoriafield":         "glpi_plugin_fields_statusvistoriafielddropdowns",
+    "motivoreprovacaocpflfield":   "glpi_plugin_fields_motivoreprovacaocpflfielddropdowns",
 }
 
 # ─── Campos booleanos: (valor_verdadeiro, valor_falso) ────────────────────────
@@ -61,6 +63,11 @@ FIELD_TO_KEY: Dict[str, str] = {
     # Booleano
     "aterramentofield":            "ATERRAMENTO",
     "instalartpfield":             "INSTALARTP",    # instalou Transformador de Potencial?
+    # Reprovação CPFL (set/2026) — MOTIVOREPROVACAOCPFL só é relevante quando
+    # STATUSVISTORIA == "Reprovado" (ver condicional no template.html).
+    "statusvistoriafield":         "STATUSVISTORIA",   # dropdown
+    "motivoreprovacaocpflfield":   "MOTIVOREPROVACAOCPFL",  # dropdown
+    "descricaodetalhadacpflfield": "DESCRICAODETALHADACPFL",
 }
 
 _TRUTHY = {1, "1", True, "true", "True", "sim", "Sim", "SIM", "yes", "Yes", "YES"}

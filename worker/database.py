@@ -130,7 +130,10 @@ class Database:
                 f.plugin_fields_equipamentofielddropdowns_id,
 
                 f.plugin_fields_statusvistoriafielddropdowns_id,
-                f.plugin_fields_pendnciafielddropdowns_id
+                f.plugin_fields_pendnciafielddropdowns_id,
+
+                f.plugin_fields_motivoreprovacaocpflfielddropdowns_id,
+                f.descricaodetalhadacpflfield
 
             FROM glpi_plugin_fields_networkequipmentdispositivosderedes f
             INNER JOIN glpi_networkequipments ne
@@ -182,8 +185,9 @@ class Database:
             "plugin_fields_tipodeantenafielddropdowns_id":           "tipodeantenafield",
             "plugin_fields_ganhodbifielddropdowns_id":               "ganhodbifield",
             "plugin_fields_equipamentofielddropdowns_id":            "equipamentofield",
-            "plugin_fields_statusvistoriafielddropdowns_id":         "plugin_fields_statusvistoriafielddropdowns_id",
+            "plugin_fields_statusvistoriafielddropdowns_id":         "statusvistoriafield",
             "plugin_fields_pendnciafielddropdowns_id":               "plugin_fields_pendnciafielddropdowns_id",
+            "plugin_fields_motivoreprovacaocpflfielddropdowns_id":   "motivoreprovacaocpflfield",
         }
         normalized: Dict = {}
         for k, v in row.items():
