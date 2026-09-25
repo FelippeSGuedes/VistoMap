@@ -31,11 +31,15 @@ export const FAMILIA_COR: Record<FamiliaSinal, string> = {
   pendente: "#F97316",
   ativo: "#3B82F6",
   concluido: "#00B388",
-  // Dourado — a única família que não é "estado do processo", é a LINHA DE
-  // CHEGADA: a concessionária já aprovou. Precisa saltar aos olhos e nunca
-  // ser confundida com o verde-água de "concluído" (técnico terminou, mas
-  // ainda não tem decisão da CPFL).
-  aprovado: "#EAB308",
+  // Verde mais escuro/saturado — de propósito NA MESMA família de "concluído"
+  // (pedido de campo 2026-09-25: "aprovados tem que ser verde, vistoriado
+  // também"), mas um tom diferente pra não virar a mesma cor: aprovado é a
+  // LINHA DE CHEGADA (concessionária já decidiu), concluído é só o técnico
+  // ter terminado (ainda sem decisão). O glifo (estrela vs. check) é quem
+  // desempata de perto; a cor aqui só precisa dizer "os dois são positivos"
+  // à distância. Antes era dourado (#EAB308) — trocado porque o pedido era
+  // exatamente unificar a sensação de verde entre os dois.
+  aprovado: "#16A34A",
   // Rosa/magenta — pedido de campo 2026-09-23, "igual aprovação": a
   // concessionária REPROVOU precisa saltar aos olhos igual o aprovado salta,
   // sem repetir o vermelho de "problema" (Devolvida) nem o cinza de "fora"
