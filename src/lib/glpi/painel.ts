@@ -119,12 +119,14 @@ interface StatsRow {
  * `concessionaria` — filtro global do dashboard (2026-09-24), label exato
  * da tabela de dropdown (ex.: "CPFL Paulista"). Omitido/vazio = Tudo.
  */
-export async function fetchPainelStats(concessionaria?: string): Promise<PainelStats> {
+export async function fetchPainelStats(concessionaria?: string, municipio?: string): Promise<PainelStats> {
   const concJoin = concessionaria
     ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
     : "";
   const concWhere = concessionaria ? "AND conc.name = ?" : "";
   const concParams = concessionaria ? [concessionaria] : [];
+  const muniWhere = municipio ? "AND TRIM(f.municipiofield) = ?" : "";
+  const muniParams = municipio ? [municipio] : [];
 
   const rows = await query<StatsRow>(
     `
@@ -143,9 +145,10 @@ export async function fetchPainelStats(concessionaria?: string): Promise<PainelS
       ${concJoin}
       WHERE ne.is_deleted = 0
       ${concWhere}
+      ${muniWhere}
       GROUP BY sv.name, COALESCE(aux.is_repeat,0), f.users_id_vistoriadorafield, f.\`${SITUACAO_COLUMN}\`
     `,
-    concParams
+    [...concParams, ...muniParams]
   );
 
   let pendentes = 0;
@@ -245,8 +248,9 @@ export async function fetchPainelStats(concessionaria?: string): Promise<PainelS
         ${concJoin}
        WHERE f.\`${SITUACAO_COLUMN}\` = ?
        ${concWhere}
+       ${muniWhere}
     `,
-    [SITUACAO_EM_DESLOCAMENTO, ...concParams]
+    [SITUACAO_EM_DESLOCAMENTO, ...concParams, ...muniParams]
   );
   const emDeslocamento = deslocRow?.total ?? 0;
 

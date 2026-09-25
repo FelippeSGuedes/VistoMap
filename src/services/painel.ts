@@ -46,10 +46,11 @@ async function tryReal<T>(p: Promise<T>, fb: T): Promise<T> {
   }
 }
 
-/** `concessionaria` — filtro global do dashboard (label exato, ex.: "CPFL Paulista"); omitido/"" = Tudo. */
-export async function fetchStats(concessionaria?: string): Promise<PainelStats> {
+/** `concessionaria`/`municipio` — filtros globais do dashboard (label exato); omitido/"" = Tudo. */
+export async function fetchStats(concessionaria?: string, municipio?: string): Promise<PainelStats> {
   const params = new URLSearchParams();
   if (concessionaria) params.set("concessionaria", concessionaria);
+  if (municipio) params.set("municipio", municipio);
   const qs = params.toString();
   return tryReal(
     api.get<PainelStats>(`/painel/stats${qs ? `?${qs}` : ""}`).then((r) => r.data),
@@ -369,6 +370,8 @@ export interface HistoricoAnalytics {
     atribuidas: number;
     /** Mesmo cálculo, no período equivalente imediatamente anterior — pra variação %. */
     atribuidasPeriodoAnterior: number;
+    /** Mesmo cálculo de período anterior, aplicado a reprovadas (2026-09-25). */
+    reprovadasPeriodoAnterior: number;
   };
   taxas: { aprovacaoPct: number; revisitaPct: number };
   medias: { diariaVistorias: number; semanalVistorias: number };
@@ -381,6 +384,8 @@ export interface HistoricoAnalytics {
     /** Subconjunto de `aprovadas` — só "Aprovado com Pendências". */
     aprovadasComPendencia: number;
     reprovadas: number;
+    /** Atribuídas nesse dia (audit log) — 2026-09-25. */
+    atribuidas: number;
   }>;
   topMunicipios: Array<{ municipio: string; total: number; concluidas: number }>;
   /** Mesmo ranking, mas concluídas DENTRO do período — usado pelo mapa/
@@ -409,7 +414,21 @@ export interface HistoricoAnalytics {
     status: "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
     equipamento: string;
     municipio: string | null;
+    tecnico: string | null;
+    /** Só preenchido em linhas Reprovada. */
+    motivo: string | null;
+    tempoEmCampoMin: number | null;
   }>;
+  /** Tempo médio (minutos) de cada fase operacional, equipe toda no período — 2026-09-25. null = sem amostra. */
+  tempoMedioPorStatus: {
+    realizadaMin: number | null;
+    emVistoriaMin: number | null;
+    emDeslocamentoMin: number | null;
+    impedimentoMin: number | null;
+    reprovadaMin: number | null;
+  };
+  /** Volume por hora do dia (0-23), no período — 2026-09-25, só horas com atividade. */
+  vistoriasPorHora: Array<{ hora: number; total: number }>;
   rankingTecnicos: Array<{
     id: number;
     nome: string;
@@ -461,7 +480,8 @@ export async function fetchTopTecnicosDashboard(
   inicio?: string,
   fim?: string,
   concessionaria?: string,
-  limit?: number
+  limit?: number,
+  municipio?: string
 ): Promise<TopTecnicosDashboard> {
   const fb: TopTecnicosDashboard = {
     periodo: { inicio: "", fim: "" },
@@ -476,6 +496,7 @@ export async function fetchTopTecnicosDashboard(
   }
   if (concessionaria) params.set("concessionaria", concessionaria);
   if (limit) params.set("limit", String(limit));
+  if (municipio) params.set("municipio", municipio);
   return tryReal(
     api
       .get<TopTecnicosDashboard>(`/painel/dashboard/top-tecnicos?${params.toString()}`)
@@ -494,17 +515,20 @@ export async function fetchHistorico(
   inicio?: string,
   fim?: string,
   inicioSerie?: string,
-  concessionaria?: string
+  concessionaria?: string,
+  municipio?: string
 ): Promise<HistoricoAnalytics> {
   const fb: HistoricoAnalytics = {
     periodo: { inicio: inicio ?? "", fim: fim ?? "", dias: 30 },
-    totais: { vistoriasFinalizadas: 0, revisitasFinalizadas: 0, aprovadas: 0, reprovadas: 0, pdfsGerados: 0, atribuidas: 0, atribuidasPeriodoAnterior: 0 },
+    totais: { vistoriasFinalizadas: 0, revisitasFinalizadas: 0, aprovadas: 0, reprovadas: 0, pdfsGerados: 0, atribuidas: 0, atribuidasPeriodoAnterior: 0, reprovadasPeriodoAnterior: 0 },
     taxas: { aprovacaoPct: 0, revisitaPct: 0 },
     medias: { diariaVistorias: 0, semanalVistorias: 0 },
     serieDiaria: [],
     topMunicipios: [],
     topMunicipiosPeriodo: [],
     atividadeRecente: [],
+    tempoMedioPorStatus: { realizadaMin: null, emVistoriaMin: null, emDeslocamentoMin: null, impedimentoMin: null, reprovadaMin: null },
+    vistoriasPorHora: [],
     rankingTecnicos: [],
     kmOperacional: 0,
     motivosReprovacao: [],
@@ -515,6 +539,7 @@ export async function fetchHistorico(
   if (fim) params.set("fim", fim);
   if (inicioSerie) params.set("inicioSerie", inicioSerie);
   if (concessionaria) params.set("concessionaria", concessionaria);
+  if (municipio) params.set("municipio", municipio);
   return tryReal(
     api.get<HistoricoAnalytics>(`/painel/historico?${params.toString()}`).then((r) => r.data),
     fb
