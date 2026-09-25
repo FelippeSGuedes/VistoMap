@@ -49,6 +49,7 @@ import {
   Ban,
   Building2,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Compass,
   Maximize,
@@ -499,54 +500,50 @@ function VistoriasPorPeriodoChart({
   );
 }
 
-/** Ranking compacto de municípios com toggle de 3 vias. */
+/**
+ * Vistorias por município — pedido de campo 2026-09-26: "mais resoluto e
+ * claro", com quantas faltam e percentual, sempre ordenado pelos
+ * municípios com mais vistorias (sem toggle — uma leitura só, direta).
+ *
+ * `topMunicipiosPeriodo[].concluidas` (nome legado, ver historico.ts) é na
+ * verdade o INVENTÁRIO TOTAL do município (todas as situações); `aprovado`
+ * + `aprovadoComPendencia` + `reprovado` são as que já têm decisão da
+ * concessionária; `pendente` (resíduo) é "ainda falta decidir" — o que
+ * inclui tanto quem nem foi vistoriado quanto quem está aguardando
+ * decisão. Percentual = % já resolvido (decidido) do total.
+ */
 function MunicipioRankingCompacto({ historico }: { historico: HistoricoAnalytics | null }) {
-  const [ordenar, setOrdenar] = useState<"vistorias" | "realizadas" | "reprovacoes">("vistorias");
   const linhas = useMemo(() => {
     const rows = historico?.topMunicipiosPeriodo ?? [];
-    const sorted = [...rows].sort((a, b) => {
-      if (ordenar === "realizadas") return b.aprovado - a.aprovado;
-      if (ordenar === "reprovacoes") return b.reprovado - a.reprovado;
-      return b.concluidas - a.concluidas;
-    });
-    return sorted.slice(0, 8);
-  }, [historico, ordenar]);
-  const valorDe = (m: (typeof linhas)[number]) =>
-    ordenar === "realizadas" ? m.aprovado : ordenar === "reprovacoes" ? m.reprovado : m.concluidas;
-  const max = Math.max(...linhas.map(valorDe), 1);
+    return [...rows].sort((a, b) => b.concluidas - a.concluidas);
+  }, [historico]);
+  const max = Math.max(...linhas.map((m) => m.concluidas), 1);
 
   return (
     <div>
-      <div className="mb-2 flex gap-1.5">
-        {([
-          ["vistorias", "Vistorias"],
-          ["realizadas", "Realizadas"],
-          ["reprovacoes", "Reprovações"],
-        ] as const).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setOrdenar(id)}
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold transition"
-            style={ordenar === id ? { background: "#059669", color: "#fff" } : { background: "var(--vm-tile)", color: "var(--vm-muted)" }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
       {linhas.length === 0 ? (
         <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>
       ) : (
-        <div className="flex flex-col gap-1.5">
-          {linhas.map((m) => (
-            <div key={m.municipio} className="flex items-center gap-2">
-              <span className="w-[92px] shrink-0 truncate text-[10.5px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                <div className="h-full rounded-full" style={{ width: `${(valorDe(m) / max) * 100}%`, background: "#059669" }} />
+        <div className="flex flex-col gap-2">
+          {linhas.map((m) => {
+            const decidido = m.aprovado + m.reprovado;
+            const pctResolvido = m.concluidas > 0 ? Math.round((decidido / m.concluidas) * 100) : 0;
+            return (
+              <div key={m.municipio} className="flex items-center gap-3">
+                <span className="w-[110px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                  <div className="flex h-full" style={{ width: `${(m.concluidas / max) * 100}%` }}>
+                    {m.aprovado > 0 && <div className="h-full" style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} />}
+                    {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
+                    {m.pendente > 0 && <div className="h-full" style={{ width: `${(m.pendente / m.concluidas) * 100}%`, background: "#94A3B8" }} />}
+                  </div>
+                </div>
+                <span className="w-10 shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]" title="Total no município">{m.concluidas}</span>
+                <span className="w-[70px] shrink-0 text-right text-[10px] font-semibold tabular-nums text-[var(--vm-muted)]" title="Ainda faltam (sem decisão)">{m.pendente} faltam</span>
+                <span className="w-10 shrink-0 text-right text-[10.5px] font-bold tabular-nums" style={{ color: "#059669" }} title="Percentual já resolvido">{pctResolvido}%</span>
               </div>
-              <span className="w-7 shrink-0 text-right text-[10.5px] font-bold tabular-nums text-[var(--vm-text)]">{valorDe(m)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -817,16 +814,21 @@ export default function EquipeAoVivo({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5" style={{ background: "var(--vm-tile)" }}>
-            <Building2 className="h-3.5 w-3.5 text-[var(--vm-muted)]" />
+          <div
+            className="relative flex items-center gap-1.5 rounded-xl px-3 py-1.5 transition hover:bg-[var(--vm-tile-2)]"
+            style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border-soft)", minWidth: 168 }}
+          >
+            <Building2 className="h-3.5 w-3.5 shrink-0 text-[var(--vm-muted)]" />
             <select
               value={municipio}
               onChange={(e) => onMunicipioChange(e.target.value)}
-              className="bg-transparent text-[11.5px] font-semibold text-[var(--vm-text)] outline-none"
+              className="w-full cursor-pointer appearance-none bg-transparent pr-4 text-[11.5px] font-semibold text-[var(--vm-text)] outline-none"
+              title="Filtrar por município"
             >
               <option value="">Todos os municípios</option>
               {municipiosDisponiveis.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 h-3 w-3 text-[var(--vm-faint)]" />
           </div>
           <button
             type="button"
@@ -958,16 +960,28 @@ export default function EquipeAoVivo({
         </div>
       </div>
 
-      {/* ═══════ Análises — 4 cards lado a lado, cada um com sua própria
-          identidade visual (barra, donut, barra agrupada) ═══════ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card style={{ height: 300 }}>
-          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por município</p>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
-            <MunicipioRankingCompacto historico={historico} />
+      {/* ═══════ Vistorias por município — card grande e proeminente à parte
+          (pedido de campo: mais claro/resoluto, com quantas faltam e %,
+          merece mais espaço que os outros 3 por ter mais informação por
+          linha) ═══════ */}
+      <Card style={{ height: 380 }}>
+        <div className="flex items-center justify-between px-5 pt-4 pb-1">
+          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias por município</span>
+          <div className="flex items-center gap-3 text-[9.5px] font-semibold text-[var(--vm-muted)]">
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Aprovado</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#DC2626" }} />Reprovado</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#94A3B8" }} />Faltam</span>
           </div>
-        </Card>
+        </div>
+        <p className="px-5 pb-2 text-[9.5px] text-[var(--vm-faint)]">Ordenado pelos municípios com mais vistorias · total, quantas faltam decidir e % já resolvido</p>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+          <MunicipioRankingCompacto historico={historico} />
+        </div>
+      </Card>
 
+      {/* ═══════ Análises — 3 cards lado a lado, cada um com sua própria
+          identidade visual (barra, donut, barra agrupada) ═══════ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card style={{ height: 300 }}>
           <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</p>
           <div className="min-h-0 flex-1 overflow-y-auto">
