@@ -34,7 +34,8 @@ import { useAuthStore } from "@/store/auth";
 import { vistoriasService } from "@/services/vistorias";
 import { api } from "@/services/api";
 import { MOCK_SYNC_SNAPSHOTS } from "@/utils/mock";
-import type { DashboardStats, SyncSnapshot } from "@/types";
+import type { DashboardStats, SyncSnapshot, Vistoria } from "@/types";
+import { OfflinePrepDiaBanner } from "@/components/dashboard/OfflinePrepDiaBanner";
 
 interface DevolucaoResumoResponse {
   totalPendentes: number;
@@ -206,6 +207,10 @@ export default function DashboardPage() {
   const openVistorias = useVistoriasAccessGuard();
   const { hydrated, session, logout } = useAuthStore();
   const [stats, setStats]     = useState<DashboardStats | null>(null);
+  // Guardada à parte de `stats` (que já é derivado/agregado) só pro
+  // useOfflinePrepDia identificar quais vistorias de hoje são repetidor e
+  // baixar os postes da região antes do técnico sair pra rota.
+  const [vistoriasHoje, setVistoriasHoje] = useState<Vistoria[]>([]);
   const [online, setOnline]   = useState(true);
   const [devolucaoResumo, setDevolucaoResumo] = useState<DevolucaoResumoResponse | null>(null);
   const [rotaPromptDismissed, setRotaPromptDismissed] = useState(false);
@@ -303,6 +308,7 @@ export default function DashboardPage() {
         const devolucoes =
           resumo?.totalPendentes ?? vistorias.filter((v) => v.status === "DEVOLVIDA").length;
 
+        setVistoriasHoje(vistorias);
         setStats({
           ...s,
           total: vistorias.length,
@@ -462,6 +468,10 @@ export default function DashboardPage() {
 
         {/* Banner permissão de notificações — some quando concedida/negada */}
         <NotificationPermissionCard />
+
+        {/* Pré-carrega os postes de todo repetidor de hoje antes da rota —
+            some sozinho quando não há nada novo pra baixar. */}
+        <OfflinePrepDiaBanner vistorias={vistoriasHoje} />
 
         {/* Card de expediente — sempre visivel, gate de inicio de vistorias */}
         <ExpedienteCard />
