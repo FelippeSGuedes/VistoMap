@@ -12,8 +12,7 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const concessionaria = searchParams.get("concessionaria") || undefined;
-    const municipio = searchParams.get("municipio") || undefined;
-    const stats = await fetchPainelStats(concessionaria, municipio);
+    const stats = await fetchPainelStats(concessionaria);
     return NextResponse.json(stats);
   } catch (err) {
     console.error("[api/painel/stats] error", err);

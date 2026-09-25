@@ -58,22 +58,18 @@ function haversineKm(
 /**
  * @param inicio,fim — 'YYYY-MM-DD', ambos inclusivos.
  * @param concessionaria — filtro global do dashboard (2026-09-24), label exato; omitido/"" = Tudo.
- * @param municipio — filtro global do dashboard (2026-09-25), mesmo alcance — restringe às vistorias feitas NESSE município (um técnico que atua em vários municípios só conta o que fez ali).
  */
 export async function fetchRankingTecnicosPeriodo(
   inicio: string,
   fim: string,
   limit = 8,
-  concessionaria?: string,
-  municipio?: string
+  concessionaria?: string
 ): Promise<RankingTecnicoItem[]> {
   const concJoin = concessionaria
     ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
     : "";
   const concWhere = concessionaria ? "AND conc.name = ?" : "";
   const concParams = concessionaria ? [concessionaria] : [];
-  const muniWhere = municipio ? "AND TRIM(f.municipiofield) = ?" : "";
-  const muniParams = municipio ? [municipio] : [];
 
   const tecRows = await query<{
     tecnico_id: number;
@@ -108,12 +104,11 @@ export async function fetchRankingTecnicosPeriodo(
          AND f.users_id_vistoriadorafield > 0
          AND (${SITUACAO_CONCLUIDA_SQL} OR ${STATUS_CONCLUIDO_SQL})
          ${concWhere}
-         ${muniWhere}
        GROUP BY f.users_id_vistoriadorafield
        ORDER BY total DESC
        LIMIT ${Math.min(Math.max(limit, 1), 50)}
     `,
-    [inicio, fim, ...concParams, ...muniParams]
+    [inicio, fim, ...concParams]
   );
 
   if (tecRows.length === 0) return [];
