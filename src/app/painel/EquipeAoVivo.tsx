@@ -515,7 +515,8 @@ function VistoriasPorPeriodoChart({
 function MunicipioRankingCompacto({ historico }: { historico: HistoricoAnalytics | null }) {
   const linhas = useMemo(() => {
     const rows = historico?.topMunicipiosPeriodo ?? [];
-    return [...rows].sort((a, b) => b.concluidas - a.concluidas);
+    // Card compacto — só os 7 maiores (pedido de campo: "mostrar 6-8, não 15").
+    return [...rows].sort((a, b) => b.concluidas - a.concluidas).slice(0, 7);
   }, [historico]);
   const max = Math.max(...linhas.map((m) => m.concluidas), 1);
 
@@ -524,23 +525,23 @@ function MunicipioRankingCompacto({ historico }: { historico: HistoricoAnalytics
       {linhas.length === 0 ? (
         <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           {linhas.map((m) => {
             const decidido = m.aprovado + m.reprovado;
             const pctResolvido = m.concluidas > 0 ? Math.round((decidido / m.concluidas) * 100) : 0;
             return (
-              <div key={m.municipio} className="flex items-center gap-3">
-                <span className="w-[110px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+              <div key={m.municipio} className="flex items-center gap-2">
+                <span className="w-[72px] shrink-0 truncate text-[10px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                   <div className="flex h-full" style={{ width: `${(m.concluidas / max) * 100}%` }}>
                     {m.aprovado > 0 && <div className="h-full" style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} />}
                     {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
                     {m.pendente > 0 && <div className="h-full" style={{ width: `${(m.pendente / m.concluidas) * 100}%`, background: "#94A3B8" }} />}
                   </div>
                 </div>
-                <span className="w-10 shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]" title="Total no município">{m.concluidas}</span>
-                <span className="w-[70px] shrink-0 text-right text-[10px] font-semibold tabular-nums text-[var(--vm-muted)]" title="Ainda faltam (sem decisão)">{m.pendente} faltam</span>
-                <span className="w-10 shrink-0 text-right text-[10.5px] font-bold tabular-nums" style={{ color: "#059669" }} title="Percentual já resolvido">{pctResolvido}%</span>
+                <span className="w-6 shrink-0 text-right text-[10px] font-bold tabular-nums text-[var(--vm-text)]" title="Total no município">{m.concluidas}</span>
+                <span className="w-8 shrink-0 text-right text-[9px] font-semibold tabular-nums text-[var(--vm-faint)]" title="Ainda faltam decidir">-{m.pendente}</span>
+                <span className="w-8 shrink-0 text-right text-[9.5px] font-bold tabular-nums" style={{ color: "#059669" }} title="Percentual já resolvido">{pctResolvido}%</span>
               </div>
             );
           })}
@@ -876,7 +877,7 @@ export default function EquipeAoVivo({
           um seu próprio card, alturas parelhas (pedido explícito: nada de
           faixa horizontal única achatada) ═══════ */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.25fr_0.58fr_0.24fr]">
-        <Card style={{ height: 420 }}>
+        <Card style={{ height: 340 }}>
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-[#059669]" strokeWidth={2.2} />
@@ -925,7 +926,7 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card style={{ height: 420 }}>
+        <Card style={{ height: 340 }}>
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div>
               <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Vistorias no mapa</span>
@@ -944,7 +945,7 @@ export default function EquipeAoVivo({
           <div ref={mapContainerRef} className="vm-equipe-vivo-map min-h-0 flex-1 w-full" />
         </Card>
 
-        <div className="flex flex-col gap-4" style={{ height: 420 }}>
+        <div className="flex flex-col gap-4" style={{ height: 340 }}>
           <Card className="min-h-0 flex-1">
             <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Distribuição das vistorias</p>
             <div className="flex min-h-0 flex-1 items-center px-4 pb-3">
@@ -960,30 +961,20 @@ export default function EquipeAoVivo({
         </div>
       </div>
 
-      {/* ═══════ Vistorias por município — card grande e proeminente à parte
-          (pedido de campo: mais claro/resoluto, com quantas faltam e %,
-          merece mais espaço que os outros 3 por ter mais informação por
-          linha) ═══════ */}
-      <Card style={{ height: 380 }}>
-        <div className="flex items-center justify-between px-5 pt-4 pb-1">
-          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias por município</span>
-          <div className="flex items-center gap-3 text-[9.5px] font-semibold text-[var(--vm-muted)]">
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Aprovado</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#DC2626" }} />Reprovado</span>
-            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#94A3B8" }} />Faltam</span>
+      {/* ═══════ Análises — 4 cards lado a lado, todos do mesmo tamanho
+          (revertido 2026-09-26: uma versão anterior tinha tirado "Vistorias
+          por Município" pra um card grande sozinho — pedido de campo foi
+          claro que a composição de 4 iguais era a boa, não mexer de novo) ═══════ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card style={{ height: 205 }}>
+          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por município</p>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
+            <MunicipioRankingCompacto historico={historico} />
           </div>
-        </div>
-        <p className="px-5 pb-2 text-[9.5px] text-[var(--vm-faint)]">Ordenado pelos municípios com mais vistorias · total, quantas faltam decidir e % já resolvido</p>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-          <MunicipioRankingCompacto historico={historico} />
-        </div>
-      </Card>
+        </Card>
 
-      {/* ═══════ Análises — 3 cards lado a lado, cada um com sua própria
-          identidade visual (barra, donut, barra agrupada) ═══════ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card style={{ height: 300 }}>
-          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</p>
+        <Card style={{ height: 205 }}>
+          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</p>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <RankedBarList
               items={tecnicosPorReprovacao}
@@ -997,24 +988,24 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card style={{ height: 300 }}>
-          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Principais motivos de reprovação</p>
-          <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-4 pb-3">
-            <MultiDonut segments={(historico?.motivosReprovacao ?? []).slice(0, 7).map((m, i) => ({ label: m.label, value: m.total, color: DONUT_MOTIVOS_CORES[i % DONUT_MOTIVOS_CORES.length] }))} centerLabel="Reprovações" />
+        <Card style={{ height: 205 }}>
+          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Principais motivos de reprovação</p>
+          <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-4 pb-2">
+            <MultiDonut segments={(historico?.motivosReprovacao ?? []).slice(0, 6).map((m, i) => ({ label: m.label, value: m.total, color: DONUT_MOTIVOS_CORES[i % DONUT_MOTIVOS_CORES.length] }))} centerLabel="Reprovações" />
           </div>
         </Card>
 
-        <Card style={{ height: 300 }}>
-          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Atribuídas x Realizadas por técnico</p>
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-            <GroupedBarChart items={[...(topTecsDash?.tecnicos ?? [])].sort((a, b) => b.total - a.total).slice(0, 6)} />
+        <Card style={{ height: 205 }}>
+          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Atribuídas x Realizadas por técnico</p>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+            <GroupedBarChart items={[...(topTecsDash?.tecnicos ?? [])].sort((a, b) => b.total - a.total).slice(0, 5)} />
           </div>
         </Card>
       </div>
 
       {/* ═══════ Tempo real — Últimas vistorias + 2 gráficos menores ═══════ */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.5fr_0.5fr]">
-        <Card style={{ height: 320 }}>
+        <Card style={{ height: 190 }}>
           <div className="flex items-center gap-2 px-4 pt-4 pb-2">
             <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
             <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Últimas vistorias</span>
@@ -1040,7 +1031,7 @@ export default function EquipeAoVivo({
                 {(historico?.atividadeRecente ?? []).length === 0 ? (
                   <tr><td colSpan={7} className="px-2 py-8 text-center text-[var(--vm-faint)]">Sem eventos recentes.</td></tr>
                 ) : (
-                  (historico?.atividadeRecente ?? []).slice(0, 8).map((a, i) => {
+                  (historico?.atividadeRecente ?? []).slice(0, 5).map((a, i) => {
                     const cor =
                       a.status === "Aprovada" || a.status === "Aprovado com Pendência" ? "#059669"
                       : a.status === "Reprovada" ? "#DC2626"
@@ -1070,14 +1061,14 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card style={{ height: 320 }}>
+        <Card style={{ height: 190 }}>
           <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Tempo médio por status</p>
           <div className="flex-1 px-3 pb-3">
             <TempoMedioBarChart items={tempoMedioItems} />
           </div>
         </Card>
 
-        <Card style={{ height: 320 }}>
+        <Card style={{ height: 190 }}>
           <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por período</p>
           <div className="flex-1 px-3 pb-3">
             <VistoriasPorPeriodoChart historico={historico} periodoRange={periodoRange} />
