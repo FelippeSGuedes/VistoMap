@@ -2,9 +2,9 @@
 
 /**
  * OfflinePrepDiaBanner — mostra o progresso do useOfflinePrepDia no
- * Dashboard: baixa de uma vez só os postes de TODOS os repetidores
- * atribuídos ao técnico hoje, antes dele sair pra rota (pedido de campo
- * 2026-09-25 — ver useOfflinePrepDia pro racional completo).
+ * Dashboard: baixa de uma vez só os postes de TODAS as vistorias do técnico
+ * hoje, antes dele sair pra rota (pedido de campo 2026-09-25 — ver
+ * useOfflinePrepDia pro racional completo).
  *
  * Best-effort: nunca trava o resto do app. Se já estava tudo em cache
  * (dia comum, nada novo pra baixar), não aparece nada.
@@ -61,7 +61,7 @@ export function OfflinePrepDiaBanner({ vistorias }: { vistorias: Vistoria[] }) {
             {state.fase === "parcial" && <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: cor.fg }} />}
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] font-semibold" style={{ color: cor.fg }}>
-                {state.fase === "baixando" && "Preparando repetidores para funcionar sem internet"}
+                {state.fase === "baixando" && "Preparando vistorias de hoje para funcionar sem internet"}
                 {state.fase === "pronto" && "Modo offline pronto"}
                 {state.fase === "parcial" && "Modo offline parcialmente pronto"}
               </p>
@@ -69,7 +69,7 @@ export function OfflinePrepDiaBanner({ vistorias }: { vistorias: Vistoria[] }) {
                 {state.fase === "baixando" &&
                   `Baixando os locais de hoje antes de você sair (${state.concluidos} de ${state.total})…`}
                 {state.fase === "pronto" &&
-                  `Os ${state.total} repetidor${state.total !== 1 ? "es" : ""} de hoje já funcionam sem sinal.`}
+                  `As vistorias de hoje (${state.total} local${state.total !== 1 ? "is" : ""}) já funcionam sem sinal.`}
                 {state.fase === "parcial" &&
                   `${state.concluidos} de ${state.total} prontos. Os demais baixam automaticamente ao chegar no local, se houver sinal.`}
               </p>

@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * OfflinePrepBanner — aparece quando o "Equipamento" da vistoria é
- * "Repetidor" (sinal de zona rural / pouca cobertura, sugerido pelos
- * técnicos em campo). Baixa antecipadamente os postes próximos (mesmo
- * cache que MudarPosteFlow/usePostesProximos usa) enquanto ainda há sinal,
- * pra troca de poste funcionar offline mais tarde.
+ * OfflinePrepBanner — baixa antecipadamente os postes próximos da vistoria
+ * (mesmo cache que MudarPosteFlow/usePostesProximos usa) enquanto ainda há
+ * sinal, pra troca de poste funcionar offline mais tarde. Vale pra qualquer
+ * vistoria (2026-09-25) — na prática raramente aparece, porque
+ * useOfflinePrepDia já pré-aqueceu o cache no Dashboard antes do técnico
+ * sair pra rota; isso aqui só cobre o local que passou batido.
  *
  * Best-effort: nunca bloqueia a vistoria. Se já está em cache, não mostra
  * nada. Se falhar, avisa e some sozinho — o técnico segue normalmente.
@@ -17,14 +18,13 @@ import { CloudDownload, CheckCircle2, WifiOff } from "lucide-react";
 import { useOfflinePrep } from "@/hooks/useOfflinePrep";
 
 interface OfflinePrepBannerProps {
-  equipamento?: string | null;
   lat: number;
   lng: number;
   municipio?: string;
 }
 
-export function OfflinePrepBanner({ equipamento, lat, lng, municipio }: OfflinePrepBannerProps) {
-  const { fase, progresso } = useOfflinePrep({ equipamento, lat, lng, municipio });
+export function OfflinePrepBanner({ lat, lng, municipio }: OfflinePrepBannerProps) {
+  const { fase, progresso } = useOfflinePrep({ lat, lng, municipio });
   const [mostrar, setMostrar] = useState(false);
   const passouPorBaixando = useRef(false);
 

@@ -54,7 +54,6 @@ export default function VistoriaExecucaoPage() {
         subtitle={`${vistoria.cidade}${vistoria.estado ? " · " + vistoria.estado : ""}`}
       />
       <OfflinePrepBanner
-        equipamento={vistoria.fields?.equipamentofield}
         lat={vistoria.latitude}
         lng={vistoria.longitude}
         municipio={vistoria.cidade}

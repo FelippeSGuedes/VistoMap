@@ -1,11 +1,17 @@
 "use client";
 
 /**
- * useOfflinePrep — prepara o cache offline de postes próximos quando o
- * "Equipamento" da vistoria é "Repetidor" (indício de zona rural / pouca
- * cobertura, sinalizado pelos técnicos em campo). Compartilhado entre o
- * banner informativo da tela de execução (OfflinePrepBanner) e o cadeado
- * do botão "Selecionar rota" (GuidedArrival).
+ * useOfflinePrep — prepara o cache offline de postes próximos de UMA
+ * vistoria, na chegada. Compartilhado entre o banner informativo da tela de
+ * execução (OfflinePrepBanner) e o cadeado do botão "Selecionar rota"
+ * (GuidedArrival).
+ *
+ * Vale pra qualquer vistoria (2026-09-25: generalizado, antes só rodava pra
+ * "Repetidor") — o app trabalha offline como regra, não como exceção. Na
+ * prática isso quase nunca baixa nada aqui: o useOfflinePrepDia (Dashboard)
+ * já pré-aquece o cache de TODAS as vistorias pendentes do dia antes do
+ * técnico sair; este hook só entra em ação de verdade quando aquele não deu
+ * conta de algum local (sem sinal na hora, vistoria nova atribuída depois).
  *
  * Best-effort: nunca bloqueia a vistoria em definitivo — se o download
  * falhar, `bloqueado` volta a false e o técnico segue normalmente.
@@ -22,21 +28,18 @@ const RAIO_PADRAO = 500;
 export type OfflinePrepFase = "idle" | "checando" | "baixando" | "pronto" | "falhou";
 
 interface UseOfflinePrepInput {
-  equipamento?: string | null;
   lat: number;
   lng: number;
   municipio?: string;
 }
 
-export function useOfflinePrep({ equipamento, lat, lng, municipio }: UseOfflinePrepInput) {
+export function useOfflinePrep({ lat, lng, municipio }: UseOfflinePrepInput) {
   const [fase, setFase] = useState<OfflinePrepFase>("idle");
   const [progresso, setProgresso] = useState(0);
   const lastKeyRef = useRef<string | null>(null);
 
-  const isRepetidor = (equipamento ?? "").trim().toLowerCase() === "repetidor";
-
   useEffect(() => {
-    if (!isRepetidor || !lat || !lng) {
+    if (!lat || !lng) {
       setFase("idle");
       return;
     }
@@ -93,9 +96,9 @@ export function useOfflinePrep({ equipamento, lat, lng, municipio }: UseOfflineP
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRepetidor, lat, lng, municipio]);
+  }, [lat, lng, municipio]);
 
-  const bloqueado = isRepetidor && (fase === "checando" || fase === "baixando");
+  const bloqueado = fase === "checando" || fase === "baixando";
 
-  return { fase, progresso, isRepetidor, bloqueado };
+  return { fase, progresso, bloqueado };
 }

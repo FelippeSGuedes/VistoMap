@@ -142,10 +142,11 @@ export function GuidedArrival({
   const [recusarOpen, setRecusarOpen] = useState(false);
   const [recusarMotivoFixo, setRecusarMotivoFixo] = useState<RecusaMotivo | undefined>(undefined);
 
-  // Zona rural / pouco sinal (equipamento "Repetidor"): baixa os postes da
-  // região antes de liberar a rota, pra troca de poste funcionar offline.
+  // Baixa os postes da região antes de liberar a rota, pra troca de poste
+  // funcionar offline — vale pra qualquer vistoria (2026-09-25), não só
+  // "Repetidor"; na prática raramente baixa algo aqui porque
+  // useOfflinePrepDia já pré-aqueceu o cache no Dashboard.
   const offlinePrep = useOfflinePrep({
-    equipamento: vistoria?.fields?.equipamentofield,
     lat: vistoria?.latitude ?? 0,
     lng: vistoria?.longitude ?? 0,
     municipio: vistoria?.cidade,
