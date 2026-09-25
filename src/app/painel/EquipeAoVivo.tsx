@@ -2,13 +2,20 @@
 
 /**
  * EquipeAoVivo — super-dashboard consolidado (2026-09-25), pedido de campo
- * com foto de referência anexada. Substitui por completo 3 pedaços que
- * antes eram widgets separados e repetiam número/ranking/motivo em vários
- * lugares: "Padrão Diário" (HeatmapMapWidget), "Equipe ao Vivo"
- * (EquipeAoVivoWidget) e o seletor individual de técnico "Análise
- * Operacional dos Técnicos" (AnaliseOperacionalTecnicos.tsx, aposentado —
- * ver plano em C:\Users\nsn102098\.claude\plans\moonlit-dancing-wigderson.md
- * pro histórico completo da decisão).
+ * com foto de referência anexada. Substitui só 2 widgets antigos que
+ * repetiam número/ranking/motivo em vários lugares: "Padrão Diário"
+ * (HeatmapMapWidget) e "Equipe ao Vivo" (EquipeAoVivoWidget). NÃO mexe na
+ * "Análise Operacional dos Técnicos" (seletor individual de técnico,
+ * AnaliseOperacionalTecnicos.tsx) — esse componente continua separado e
+ * intocado (ver [[feedback-nao-inferir-escopo-widget]] na memória: já
+ * causou um revert de emergência confundir esse escopo uma vez).
+ *
+ * Layout (2026-09-25, 2ª correção): cada análise é o seu PRÓPRIO card com
+ * altura fixa, lado a lado numa grade — não uma faixa horizontal única
+ * dividida por cor de fundo. A primeira versão desenhava tudo dentro de UM
+ * card gigante com grid-rows, o que achatava cada seção numa faixa larga e
+ * baixa; pedido de campo foi explícito pra reverter pra cards individuais
+ * bem proporcionados, do jeito que a foto de referência mostra.
  *
  * Nota de implementação: os primitivos visuais (Card/MiniKpiCard/MiniDonut/
  * RankedBarList/STATUS_DOT etc.) são cópias locais dos mesmos componentes
@@ -49,8 +56,6 @@ import {
   RefreshCw,
   Route,
   ShieldAlert,
-  ShieldCheck,
-  TrendingUp,
   Users,
   Wrench,
   Zap,
@@ -101,17 +106,22 @@ const STATUS_LABEL: Record<TecnicoAtivo["status"], string> = {
   offline: "Offline",
 };
 
+/** Paleta fixa (não semântica) só pro donut "Principais motivos de reprovação" — cada motivo precisa de uma cor própria pra distinguir fatia, sem repetir o vermelho já usado no resto da tela pra "reprovado" no geral. */
+const DONUT_MOTIVOS_CORES = ["#DC2626", "#F97316", "#EAB308", "#8B5CF6", "#0EA5E9", "#EC4899", "#64748B", "#94A3B8"];
+
 function Card({
   children,
   className = "",
+  style,
 }: {
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <div
       className={`vm-card flex flex-col overflow-hidden rounded-2xl bg-white ${className}`}
-      style={{ border: "1px solid var(--vm-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+      style={{ border: "1px solid var(--vm-border)", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", ...style }}
     >
       {children}
     </div>
@@ -283,7 +293,14 @@ function GroupedBarChart({ items }: { items: RankingTecnicoItem[] }) {
 }
 
 /** Donut multi-categoria — "Distribuição das vistorias" (genérico, N segmentos). */
-function MultiDonut({ segments }: { segments: Array<{ label: string; value: number; color: string }> }) {
+function MultiDonut({
+  segments,
+  centerLabel,
+}: {
+  segments: Array<{ label: string; value: number; color: string }>;
+  /** Rótulo pequeno embaixo do número central (ex.: "Reprovações"). Sem isso, só o número. */
+  centerLabel?: string;
+}) {
   const total = segments.reduce((s, x) => s + x.value, 0);
   const size = 112, stroke = 15;
   const r = (size - stroke) / 2;
@@ -291,7 +308,7 @@ function MultiDonut({ segments }: { segments: Array<{ label: string; value: numb
   const cx = size / 2;
   let acc = 0;
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex w-full items-center gap-4">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
         <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--vm-tile-2)" strokeWidth={stroke} />
         {total > 0 && segments.filter((s) => s.value > 0).map((s, i) => {
@@ -303,18 +320,26 @@ function MultiDonut({ segments }: { segments: Array<{ label: string; value: numb
               strokeDasharray={`${len} ${c - len}`} strokeDashoffset={dashoffset} transform={`rotate(-90 ${cx} ${cx})`} />
           );
         })}
-        <text x={cx} y={cx} textAnchor="middle" dominantBaseline="central" className="fill-[var(--vm-text)]" style={{ fontSize: 20, fontWeight: 700 }}>
+        <text x={cx} y={centerLabel ? cx - 6 : cx} textAnchor="middle" dominantBaseline="central" className="fill-[var(--vm-text)]" style={{ fontSize: 20, fontWeight: 700 }}>
           {total}
         </text>
+        {centerLabel && (
+          <text x={cx} y={cx + 14} textAnchor="middle" dominantBaseline="central" className="fill-[var(--vm-faint)]" style={{ fontSize: 8, fontWeight: 600, textTransform: "uppercase" }}>
+            {centerLabel}
+          </text>
+        )}
       </svg>
-      <div className="flex-1 space-y-1.5">
+      <div className="min-w-0 flex-1 space-y-1.5 overflow-y-auto">
         {segments.map((s, i) => (
-          <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+          <div key={i} className="flex items-center justify-between gap-2 text-[10.5px]">
             <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-[var(--vm-text-soft)]">
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
               <span className="truncate">{s.label}</span>
             </span>
-            <span className="shrink-0 font-bold tabular-nums text-[var(--vm-text)]">{s.value}</span>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <span className="font-bold tabular-nums text-[var(--vm-text)]">{s.value}</span>
+              {total > 0 && <span className="w-8 text-right text-[9px] text-[var(--vm-faint)]">{Math.round((s.value / total) * 100)}%</span>}
+            </span>
           </div>
         ))}
       </div>
@@ -324,15 +349,17 @@ function MultiDonut({ segments }: { segments: Array<{ label: string; value: numb
 
 /** Linha de 3 séries (Atribuídas/Realizadas/Reprovadas) com toggle de período — clone do padrão já usado no dashboard (VelocityChart/AprovacoesChart), generalizado pra 3 séries. */
 function EvolucaoTresSeriesChart({
-  labels, atribuidas, realizadas, reprovadas,
+  labels, atribuidas, realizadas, reprovadas, compact = false,
 }: {
   labels: string[];
   atribuidas: number[];
   realizadas: number[];
   reprovadas: number[];
+  /** Card mais baixo (empilhado ao lado do mapa) — reduz a altura do SVG. */
+  compact?: boolean;
 }) {
   if (labels.length === 0) return <p className="px-2 py-8 text-center text-[11.5px] text-[var(--vm-faint)]">Dados insuficientes no período.</p>;
-  const VB_W = 1000, H = 170, padX = 12, padTop = 14, padBottom = 20;
+  const VB_W = 1000, H = compact ? 110 : 170, padX = 12, padTop = 14, padBottom = 20;
   const plotH = H - padTop - padBottom;
   const n = labels.length;
   const max = Math.max(...atribuidas, ...realizadas, ...reprovadas, 1);
@@ -843,22 +870,24 @@ export default function EquipeAoVivo({
         </Card>
       </div>
 
-      {/* ═══════ Equipe em campo + Mapa ═══════ */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.42fr_1fr]">
-        <Card className="h-full">
-          <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
+      {/* ═══════ Equipe + Mapa + Distribuição/Evolução — uma linha só, cada
+          um seu próprio card, alturas parelhas (pedido explícito: nada de
+          faixa horizontal única achatada) ═══════ */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.25fr_0.58fr_0.24fr]">
+        <Card style={{ height: 420 }}>
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-[#059669]" strokeWidth={2.2} />
-              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Equipe em campo ({equipeFiltrada.length})</span>
+              <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Equipe em campo ({equipeFiltrada.length})</span>
             </div>
-            <Link href="/painel/tecnicos" className="text-[10.5px] font-semibold text-[#059669] hover:underline">ver todos</Link>
+            <Link href="/painel/tecnicos" className="text-[10px] font-semibold text-[#059669] hover:underline">ver todos</Link>
           </div>
-          <p className="px-5 pb-2 text-[9.5px] text-[var(--vm-faint)]">Vistorias atribuídas para o período · {periodoLabel}</p>
-          <div className="flex flex-1 flex-col gap-2 px-3 pb-3">
+          <p className="px-4 pb-2 text-[9px] text-[var(--vm-faint)]">Vistorias atribuídas · {periodoLabel}</p>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
             {equipeFiltrada.length === 0 ? (
               <p className="px-2 py-8 text-center text-[11.5px] font-medium text-[var(--vm-faint)]">Nenhum técnico em campo agora.</p>
             ) : (
-              equipeFiltrada.slice(0, 8).map(({ ranking: t, ativo }) => {
+              equipeFiltrada.map(({ ranking: t, ativo }) => {
                 const pct = t.total > 0 ? Math.round((t.aprovadas / t.total) * 100) : 0;
                 const statusCor = ativo ? STATUS_DOT[ativo.status] : "var(--vm-faint)";
                 const statusLabel = ativo ? STATUS_LABEL[ativo.status] : "Desligado";
@@ -875,22 +904,13 @@ export default function EquipeAoVivo({
                           {statusLabel} · {ativo?.municipio ?? "—"}
                         </p>
                       </div>
-                      <div className="flex shrink-0 gap-2.5 pl-1 text-center">
-                        <div>
-                          <p className="tabular-nums text-[12px] font-extrabold leading-none text-[var(--vm-text)]">{t.total}</p>
-                          <p className="text-[6.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]">Atrib.</p>
-                        </div>
-                        <div>
-                          <p className="tabular-nums text-[12px] font-extrabold leading-none text-[#059669]">{t.aprovadas}</p>
-                          <p className="text-[6.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]">Real.</p>
-                        </div>
-                        <div>
-                          <p className="tabular-nums text-[12px] font-extrabold leading-none text-[#DC2626]">{t.reprovadas}</p>
-                          <p className="text-[6.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]">Reprov.</p>
-                        </div>
-                      </div>
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-1.5 flex items-center gap-2.5 pl-8 text-[9.5px] text-[var(--vm-faint)]">
+                      <span><b className="text-[var(--vm-text)]">{t.total}</b> atrib.</span>
+                      <span><b className="text-[#059669]">{t.aprovadas}</b> real.</span>
+                      <span><b className="text-[#DC2626]">{t.reprovadas}</b> reprov.</span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-2">
                       <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#059669" }} />
                       </div>
@@ -903,13 +923,13 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card className="h-full">
-          <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
+        <Card style={{ height: 420 }}>
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div>
-              <span className="text-[13px] font-semibold text-[var(--vm-text)]">Vistorias no mapa</span>
-              <p className="text-[9.5px] text-[var(--vm-faint)]">Visualização em tempo real da equipe e das vistorias do dia</p>
+              <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Vistorias no mapa</span>
+              <p className="text-[9px] text-[var(--vm-faint)]">Equipe e vistorias do dia em tempo real</p>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1 text-[9.5px] font-semibold text-[var(--vm-muted)]">
+            <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[9px] font-semibold text-[var(--vm-muted)]">
               {FAMILIA_ORDEM.map((fam) => (
                 <span key={fam} className="flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: FAMILIA_COR[fam] }} />
@@ -919,27 +939,38 @@ export default function EquipeAoVivo({
               <span className="flex items-center gap-1"><Compass className="h-3 w-3" />Equipe</span>
             </div>
           </div>
-          <div ref={mapContainerRef} className="vm-equipe-vivo-map h-[360px] w-full shrink-0" />
+          <div ref={mapContainerRef} className="vm-equipe-vivo-map min-h-0 flex-1 w-full" />
         </Card>
+
+        <div className="flex flex-col gap-4" style={{ height: 420 }}>
+          <Card className="min-h-0 flex-1">
+            <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Distribuição das vistorias</p>
+            <div className="flex min-h-0 flex-1 items-center px-4 pb-3">
+              <MultiDonut segments={donutSegments} />
+            </div>
+          </Card>
+          <Card className="min-h-0 flex-1">
+            <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Evolução no período</p>
+            <div className="flex-1 px-4 pb-2">
+              <EvolucaoTresSeriesChart labels={evolucao.labels} atribuidas={evolucao.atribuidas} realizadas={evolucao.realizadas} reprovadas={evolucao.reprovadas} compact />
+            </div>
+          </Card>
+        </div>
       </div>
 
-      {/* ═══════ ANÁLISE OPERACIONAL DOS TÉCNICOS — card único ═══════ */}
-      <Card>
-        <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
-          <TrendingUp className="h-4.5 w-4.5 text-[#059669]" strokeWidth={2.2} />
-          <div className="leading-tight">
-            <span className="text-[14px] font-bold text-[var(--vm-text)]">Análise Operacional dos Técnicos</span>
-            <p className="text-[10px] text-[var(--vm-faint)]">Visão consolidada de produtividade, desempenho e qualidade das vistorias</p>
+      {/* ═══════ Análises — 4 cards lado a lado, cada um com sua própria
+          identidade visual (barra, donut, barra agrupada) ═══════ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card style={{ height: 300 }}>
+          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por município</p>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
+            <MunicipioRankingCompacto historico={historico} />
           </div>
-        </div>
+        </Card>
 
-        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] px-5 py-4 md:grid-cols-3">
-          <div className="bg-[var(--vm-card)] pr-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Atribuídas x Realizadas por técnico</p>
-            <GroupedBarChart items={[...(topTecsDash?.tecnicos ?? [])].sort((a, b) => b.total - a.total).slice(0, 6)} />
-          </div>
-          <div className="bg-[var(--vm-card)] px-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Técnicos com mais reprovações</p>
+        <Card style={{ height: 300 }}>
+          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</p>
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <RankedBarList
               items={tecnicosPorReprovacao}
               keyFn={(t) => String(t.id)}
@@ -950,106 +981,95 @@ export default function EquipeAoVivo({
               emptyLabel="Nenhuma reprovação no período."
             />
           </div>
-          <div className="bg-[var(--vm-card)] pl-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Principais motivos de reprovação</p>
-            <RankedBarList
-              items={historico?.motivosReprovacao ?? []}
-              keyFn={(m) => m.label}
-              labelFn={(m) => m.label}
-              valueFn={(m) => String(m.total)}
-              pctFn={(m) => {
-                const maior = historico?.motivosReprovacao?.[0]?.total ?? 0;
-                return maior ? (m.total / maior) * 100 : 0;
-              }}
-              colorFn={() => "#DC2626"}
-              emptyLabel="Sem reprovações no período."
-            />
-          </div>
-        </div>
+        </Card>
 
-        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] px-5 py-4 md:grid-cols-2">
-          <div className="bg-[var(--vm-card)] pr-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Distribuição das vistorias</p>
-            <MultiDonut segments={donutSegments} />
+        <Card style={{ height: 300 }}>
+          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Principais motivos de reprovação</p>
+          <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-4 pb-3">
+            <MultiDonut segments={(historico?.motivosReprovacao ?? []).slice(0, 7).map((m, i) => ({ label: m.label, value: m.total, color: DONUT_MOTIVOS_CORES[i % DONUT_MOTIVOS_CORES.length] }))} centerLabel="Reprovações" />
           </div>
-          <div className="bg-[var(--vm-card)] pl-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Evolução no período</p>
-            <EvolucaoTresSeriesChart labels={evolucao.labels} atribuidas={evolucao.atribuidas} realizadas={evolucao.realizadas} reprovadas={evolucao.reprovadas} />
-          </div>
-        </div>
+        </Card>
 
-        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] px-5 py-4 md:grid-cols-3">
-          <div className="bg-[var(--vm-card)] pr-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Tempo médio por status</p>
+        <Card style={{ height: 300 }}>
+          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Atribuídas x Realizadas por técnico</p>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+            <GroupedBarChart items={[...(topTecsDash?.tecnicos ?? [])].sort((a, b) => b.total - a.total).slice(0, 6)} />
+          </div>
+        </Card>
+      </div>
+
+      {/* ═══════ Tempo real — Últimas vistorias + 2 gráficos menores ═══════ */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.5fr_0.5fr]">
+        <Card style={{ height: 320 }}>
+          <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+            <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
+            <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Últimas vistorias</span>
+            <span className="ml-1 flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-blue-600">
+              <span className="h-1 w-1 rounded-full bg-blue-500" style={{ animation: "vmBlink 1.4s ease-in-out infinite" }} />
+              tempo real
+            </span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-2 pb-3">
+            <table className="w-full min-w-[640px] border-collapse text-[11px]">
+              <thead>
+                <tr className="text-left text-[9px] font-semibold uppercase tracking-wide text-[var(--vm-faint)]">
+                  <th className="px-2 py-1.5">Horário</th>
+                  <th className="px-2 py-1.5">Técnico</th>
+                  <th className="px-2 py-1.5">Código</th>
+                  <th className="px-2 py-1.5">Município</th>
+                  <th className="px-2 py-1.5">Status</th>
+                  <th className="px-2 py-1.5">Motivo</th>
+                  <th className="px-2 py-1.5 text-right">Tempo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(historico?.atividadeRecente ?? []).length === 0 ? (
+                  <tr><td colSpan={7} className="px-2 py-8 text-center text-[var(--vm-faint)]">Sem eventos recentes.</td></tr>
+                ) : (
+                  (historico?.atividadeRecente ?? []).slice(0, 8).map((a, i) => {
+                    const cor =
+                      a.status === "Aprovada" || a.status === "Aprovado com Pendência" ? "#059669"
+                      : a.status === "Reprovada" ? "#DC2626"
+                      : a.status === "Vistoriada" ? "#3B82F6"
+                      : a.status === "Impedida" ? "#F59E0B"
+                      : "#6B7280";
+                    return (
+                      <tr key={`${a.ts}-${i}`} className="border-t border-[var(--vm-tile-2)] hover:bg-[var(--vm-tile)]">
+                        <td className="px-2 py-1.5 tabular-nums text-[var(--vm-text-soft)]">{new Date(a.ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</td>
+                        <td className="px-2 py-1.5 font-medium text-[var(--vm-text)]">{a.tecnico ?? "—"}</td>
+                        <td className="px-2 py-1.5 font-mono text-[10px] text-[var(--vm-muted)]">{a.equipamento}</td>
+                        <td className="px-2 py-1.5 text-[var(--vm-text-soft)]">{a.municipio ?? "—"}</td>
+                        <td className="px-2 py-1.5">
+                          <span className="inline-flex items-center gap-1 font-semibold" style={{ color: cor }}>
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
+                            {a.status}
+                          </span>
+                        </td>
+                        <td className="max-w-[160px] truncate px-2 py-1.5 text-[var(--vm-faint)]">{a.motivo ?? "-"}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-[var(--vm-text-soft)]">{a.tempoEmCampoMin != null ? `${a.tempoEmCampoMin} min` : "—"}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card style={{ height: 320 }}>
+          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Tempo médio por status</p>
+          <div className="flex-1 px-3 pb-3">
             <TempoMedioBarChart items={tempoMedioItems} />
           </div>
-          <div className="bg-[var(--vm-card)] px-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Vistorias por período</p>
+        </Card>
+
+        <Card style={{ height: 320 }}>
+          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por período</p>
+          <div className="flex-1 px-3 pb-3">
             <VistoriasPorPeriodoChart historico={historico} periodoRange={periodoRange} />
           </div>
-          <div className="bg-[var(--vm-card)] pl-4">
-            <p className="mb-2 text-[11px] font-semibold text-[var(--vm-text-soft)]">Vistorias por município</p>
-            <MunicipioRankingCompacto historico={historico} />
-          </div>
-        </div>
-      </Card>
-
-      {/* ═══════ Últimas vistorias ═══════ */}
-      <Card>
-        <div className="flex items-center gap-2 px-5 pt-4 pb-2.5">
-          <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
-          <span className="text-[13px] font-semibold text-[var(--vm-text)]">Últimas vistorias</span>
-          <span className="ml-1 flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-blue-600">
-            <span className="h-1 w-1 rounded-full bg-blue-500" style={{ animation: "vmBlink 1.4s ease-in-out infinite" }} />
-            atualizando em tempo real
-          </span>
-        </div>
-        <div className="overflow-x-auto px-2 pb-3">
-          <table className="w-full min-w-[720px] border-collapse text-[11.5px]">
-            <thead>
-              <tr className="text-left text-[9.5px] font-semibold uppercase tracking-wide text-[var(--vm-faint)]">
-                <th className="px-3 py-1.5">Horário</th>
-                <th className="px-3 py-1.5">Técnico</th>
-                <th className="px-3 py-1.5">Código</th>
-                <th className="px-3 py-1.5">Município</th>
-                <th className="px-3 py-1.5">Status</th>
-                <th className="px-3 py-1.5">Motivo</th>
-                <th className="px-3 py-1.5 text-right">Tempo em campo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(historico?.atividadeRecente ?? []).length === 0 ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-[var(--vm-faint)]">Sem eventos recentes.</td></tr>
-              ) : (
-                (historico?.atividadeRecente ?? []).slice(0, 6).map((a, i) => {
-                  const cor =
-                    a.status === "Aprovada" || a.status === "Aprovado com Pendência" ? "#059669"
-                    : a.status === "Reprovada" ? "#DC2626"
-                    : a.status === "Vistoriada" ? "#3B82F6"
-                    : a.status === "Impedida" ? "#F59E0B"
-                    : "#6B7280";
-                  return (
-                    <tr key={`${a.ts}-${i}`} className="border-t border-[var(--vm-tile-2)] hover:bg-[var(--vm-tile)]">
-                      <td className="px-3 py-2 tabular-nums text-[var(--vm-text-soft)]">{new Date(a.ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</td>
-                      <td className="px-3 py-2 font-medium text-[var(--vm-text)]">{a.tecnico ?? "—"}</td>
-                      <td className="px-3 py-2 font-mono text-[10.5px] text-[var(--vm-muted)]">{a.equipamento}</td>
-                      <td className="px-3 py-2 text-[var(--vm-text-soft)]">{a.municipio ?? "—"}</td>
-                      <td className="px-3 py-2">
-                        <span className="inline-flex items-center gap-1 font-semibold" style={{ color: cor }}>
-                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
-                          {a.status}
-                        </span>
-                      </td>
-                      <td className="max-w-[220px] truncate px-3 py-2 text-[var(--vm-faint)]">{a.motivo ?? "-"}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-[var(--vm-text-soft)]">{a.tempoEmCampoMin != null ? `${a.tempoEmCampoMin} min` : "—"}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }
