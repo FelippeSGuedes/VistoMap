@@ -2,6 +2,7 @@ import "server-only";
 import { query } from "@/lib/db";
 import {
   CONCESSIONARIA_COLUMN,
+  DESCRICAO_DETALHADA_CPFL_COLUMN,
   ITEMTYPE_NE,
   MOTIVO_REPROVACAO_CPFL_COLUMN,
   SITUACAO_COLUMN,
@@ -11,9 +12,11 @@ import {
   TABLE_MOTIVO_REPROVACAO_CPFL,
   TABLE_NE,
   TABLE_STATUS_VISTORIA,
+  TABLE_USERS,
 } from "./constants";
 import { nomesDeUsuariosRemovidos } from "./usuariosRemovidos";
 import { RECUSA_MOTIVO_CATEGORIA, RECUSA_MOTIVO_LABEL, type RecusaCategoria, type RecusaMotivo } from "./recusaMotivos";
+import { composeMotivoReprovacaoCpfl } from "./motivoReprovacaoCpfl";
 
 // situaodavistoriafield: 3=Vistoriado, 6=Revisitado — mesma prioridade 1 que
 // resolveAdminStatus() já usa em painel.ts e que fetchVistoriasRealizadas()
@@ -48,6 +51,8 @@ export interface HistoricoAnalytics {
     atribuidas: number;
     /** Mesmo cálculo, no período equivalente imediatamente anterior — pra variação %. */
     atribuidasPeriodoAnterior: number;
+    /** Mesmo cálculo de período anterior, aplicado a reprovadas — pra variação % do KPI Reprovadas (2026-09-25). */
+    reprovadasPeriodoAnterior: number;
   };
   taxas: {
     aprovacaoPct: number;
@@ -66,6 +71,8 @@ export interface HistoricoAnalytics {
     /** Subconjunto de `aprovadas` — só "Aprovado com Pendências". */
     aprovadasComPendencia: number;
     reprovadas: number;
+    /** Atribuídas nesse dia (audit log) — 2026-09-25, pra evolução de 3 séries. */
+    atribuidas: number;
   }>;
   topMunicipios: Array<{
     municipio: string;
@@ -102,7 +109,30 @@ export interface HistoricoAnalytics {
     status: "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
     equipamento: string;
     municipio: string | null;
+    /** null quando o técnico não pôde ser resolvido (registro antigo/purgado). */
+    tecnico: string | null;
+    /** Só preenchido em linhas Reprovada — dropdown novo, com fallback pro texto legado. */
+    motivo: string | null;
+    /** Iniciada→Finalizada dessa vistoria (mesmo par de eventos do SLA de execução) — null sem os dois marcos. */
+    tempoEmCampoMin: number | null;
   }>;
+  /** Tempo médio (minutos) de cada fase operacional, agregado pra equipe
+   *  toda no período — 2026-09-25. Deslocamento/Em vistoria/Realizada vêm
+   *  do mesmo encadeamento de eventos de auditoria (em-deslocamento →
+   *  em-vistoria → iniciada → finalizada); Reprovada usa o mesmo par
+   *  iniciada→finalizada, só que das vistorias cujo desfecho foi reprovado
+   *  (o técnico faz o mesmo trabalho de campo, decisão vem depois);
+   *  Impedimento vem de outra fonte (glpi_plugin_vistomap_recusas,
+   *  criado_em→resolvido_em). null = sem amostra suficiente no período. */
+  tempoMedioPorStatus: {
+    realizadaMin: number | null;
+    emVistoriaMin: number | null;
+    emDeslocamentoMin: number | null;
+    impedimentoMin: number | null;
+    reprovadaMin: number | null;
+  };
+  /** Volume de vistorias concluídas por hora do dia (0-23), no período — 2026-09-25, só horas com alguma atividade. */
+  vistoriasPorHora: Array<{ hora: number; total: number }>;
   rankingTecnicos: Array<{
     id: number;
     nome: string;
@@ -172,13 +202,17 @@ export async function fetchHistoricoAnalytics(
    */
   inicioSerie: string = inicio,
   /** Filtro global do dashboard (2026-09-24) — label exato (ex.: "CPFL Paulista"); omitido/"" = Tudo. */
-  concessionaria?: string
+  concessionaria?: string,
+  /** Filtro global de Município (2026-09-25), mesmo alcance de `concessionaria` — omitido/"" = Todos. Não aplicado nos rankings QUE JÁ SÃO por município (topMunicipios/topMunicipiosPeriodo) nem nas contagens de "atribuídas" (audit log sem join a município, mesmo recorte que concessionaria já deixava de fora). */
+  municipio?: string
 ): Promise<HistoricoAnalytics> {
   const concJoin = concessionaria
     ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
     : "";
   const concWhere = concessionaria ? "AND conc.name = ?" : "";
   const concParams = concessionaria ? [concessionaria] : [];
+  const muniWhere = municipio ? "AND TRIM(f.municipiofield) = ?" : "";
+  const muniParams = municipio ? [municipio] : [];
 
   /* ── Séries diárias ─────────────────────────────────────────── */
   // Conta por dia agrupando por status name.
@@ -202,10 +236,26 @@ export async function fetchHistoricoAnalytics(
          AND DATE(f.datadavistoriafield) >= ?
          AND DATE(f.datadavistoriafield) <= ?
          ${concWhere}
+         ${muniWhere}
        GROUP BY DATE(f.datadavistoriafield), sv.name, f.\`${SITUACAO_COLUMN}\`
        ORDER BY dia
     `,
-    [inicioSerie, fim, ...concParams]
+    [inicioSerie, fim, ...concParams, ...muniParams]
+  );
+
+  // Atribuídas por dia (audit log) — mesma fonte/critério de `atribRow`
+  // abaixo (não filtra por concessionária, igual o total já não filtrava —
+  // manter os dois consistentes entre si).
+  const atribDiariaRows = await query<{ dia: string; total: number }>(
+    `
+      SELECT DATE(ts) AS dia, COUNT(*) AS total
+        FROM glpi_plugin_vistomap_audit
+       WHERE acao = 'vistoria-atribuida'
+         AND DATE(ts) >= ?
+         AND DATE(ts) <= ?
+       GROUP BY DATE(ts)
+    `,
+    [inicioSerie, fim]
   );
 
   // Constrói série dia-a-dia (preenche dias faltantes com 0).
@@ -217,6 +267,7 @@ export async function fetchHistoricoAnalytics(
       aprovadasSemPendencia: number;
       aprovadasComPendencia: number;
       reprovadas: number;
+      atribuidas: number;
     }
   >();
   for (const dia of eachDateInclusive(inicioSerie, fim)) {
@@ -226,7 +277,12 @@ export async function fetchHistoricoAnalytics(
       aprovadasSemPendencia: 0,
       aprovadasComPendencia: 0,
       reprovadas: 0,
+      atribuidas: 0,
     });
+  }
+  for (const r of atribDiariaRows) {
+    const ref = diasMap.get(r.dia);
+    if (ref) ref.atribuidas = Number(r.total) || 0;
   }
   for (const r of serieRows) {
     const ref = diasMap.get(r.dia);
@@ -256,6 +312,7 @@ export async function fetchHistoricoAnalytics(
     aprovadasSemPendencia: v.aprovadasSemPendencia,
     aprovadasComPendencia: v.aprovadasComPendencia,
     reprovadas: v.reprovadas,
+    atribuidas: v.atribuidas,
   }));
 
   /* ── Totais agregados ───────────────────────────────────────── */
@@ -285,8 +342,9 @@ export async function fetchHistoricoAnalytics(
          AND DATE(f.datadavistoriafield) >= ?
          AND DATE(f.datadavistoriafield) <= ?
          ${concWhere}
+         ${muniWhere}
     `,
-    [inicio, fim, ...concParams]
+    [inicio, fim, ...concParams, ...muniParams]
   );
 
   const finalizadas = Number(agg?.finalizadas ?? 0);
@@ -398,6 +456,27 @@ export async function fetchHistoricoAnalytics(
   const atribuidasPeriodo = Number(atribRow?.atual ?? 0);
   const atribuidasPeriodoAnterior = Number(atribRow?.anterior ?? 0);
 
+  /* ── Reprovadas no período ANTERIOR equivalente — mesmo padrão acima,
+     pro delta % do KPI Reprovadas (2026-09-25). Mesmo critério de `agg`
+     (datadavistoriafield + status name), respeitando concessionária. */
+  const [reprovAnteriorRow] = await query<{ total: number }>(
+    `
+      SELECT SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+                ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+        ${concJoin}
+       WHERE f.datadavistoriafield IS NOT NULL
+         AND DATE(f.datadavistoriafield) >= ?
+         AND DATE(f.datadavistoriafield) <= ?
+         ${concWhere}
+         ${muniWhere}
+    `,
+    [inicioAnterior, fimAnterior, ...concParams, ...muniParams]
+  );
+  const reprovadasPeriodoAnterior = Number(reprovAnteriorRow?.total ?? 0);
+
   /* ── Impedidos/Recusadas por município no período — pedido 2026-09-18
      ("status por município... impedidos, recusadas"). Fonte é OUTRO
      sistema (glpi_plugin_vistomap_recusas, não o status de vistoria), por
@@ -411,9 +490,11 @@ export async function fetchHistoricoAnalytics(
     municipio: string | null;
     motivo: string;
     categoria: RecusaCategoria | null;
+    criado_em: string;
+    resolvido_em: string | null;
   }>(
     `
-      SELECT TRIM(f.municipiofield) AS municipio, r.motivo, r.categoria
+      SELECT TRIM(f.municipiofield) AS municipio, r.motivo, r.categoria, r.criado_em, r.resolvido_em
         FROM glpi_plugin_vistomap_recusas r
         INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = r.vistoria_id
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
@@ -422,9 +503,26 @@ export async function fetchHistoricoAnalytics(
          AND DATE(r.criado_em) >= ?
          AND DATE(r.criado_em) <= ?
          ${concWhere}
+         ${muniWhere}
     `,
-    [inicio, fim, ...concParams]
+    [inicio, fim, ...concParams, ...muniParams]
   );
+
+  /* ── Tempo médio de Impedimento (minutos) — criado_em→resolvido_em das
+     linhas de categoria impedimento já buscadas acima (2026-09-25, pra
+     "Tempo médio por status" da Análise Operacional). null sem amostra. */
+  const impedimentoDuracoes: number[] = [];
+  for (const r of recusaRows) {
+    const categoria: RecusaCategoria =
+      r.categoria ?? RECUSA_MOTIVO_CATEGORIA[r.motivo as RecusaMotivo] ?? "recusa";
+    if (categoria !== "impedimento" || !r.resolvido_em) continue;
+    const min = (new Date(r.resolvido_em).getTime() - new Date(r.criado_em).getTime()) / 60000;
+    if (min >= 0 && min <= 10_080) impedimentoDuracoes.push(min); // teto de 7 dias — descarta outlier absurdo
+  }
+  const impedimentoMedioMin =
+    impedimentoDuracoes.length > 0
+      ? Math.round(impedimentoDuracoes.reduce((a, b) => a + b, 0) / impedimentoDuracoes.length)
+      : null;
   const municipiosImpedimentosMap = new Map<string, { impedimento: number; recusa: number }>();
   for (const r of recusaRows) {
     const municipio = (r.municipio ?? "").trim();
@@ -473,12 +571,18 @@ export async function fetchHistoricoAnalytics(
     categoria: RecusaCategoria | null;
     equipamento: string;
     municipio: string | null;
+    vistoria_id: number | null;
+    tecnico_name: string | null;
+    tecnico_firstname: string | null;
+    tecnico_realname: string | null;
   }>(
     `
       SELECT a.ts, a.acao, a.categoria, a.alvo_label AS equipamento,
-             TRIM(f.municipiofield) AS municipio
+             TRIM(f.municipiofield) AS municipio, f.items_id AS vistoria_id,
+             u.name AS tecnico_name, u.firstname AS tecnico_firstname, u.realname AS tecnico_realname
         FROM glpi_plugin_vistomap_audit a
         LEFT JOIN \`${TABLE_FIELDS}\` f ON f.items_id = CAST(a.alvo_id AS UNSIGNED)
+        LEFT JOIN \`${TABLE_USERS}\` u ON u.id = f.users_id_vistoriadorafield
        WHERE a.acao IN ('vistoria-finalizada', 'recusa-aprovada')
          AND DATE(a.ts) >= ?
          AND DATE(a.ts) <= ?
@@ -492,14 +596,27 @@ export async function fetchHistoricoAnalytics(
     status_name: string;
     equipamento: string;
     municipio: string | null;
+    vistoria_id: number;
+    tecnico_name: string | null;
+    tecnico_firstname: string | null;
+    tecnico_realname: string | null;
+    motivo_cpfl: string | null;
+    descricao_detalhada_cpfl: string | null;
+    motivo_legado: string | null;
   }>(
     `
       SELECT ne.date_mod AS ts, sv.name AS status_name, ne.name AS equipamento,
-             TRIM(f.municipiofield) AS municipio
+             TRIM(f.municipiofield) AS municipio, ne.id AS vistoria_id,
+             u.name AS tecnico_name, u.firstname AS tecnico_firstname, u.realname AS tecnico_realname,
+             mr.name AS motivo_cpfl, f.\`${DESCRICAO_DETALHADA_CPFL_COLUMN}\` AS descricao_detalhada_cpfl,
+             f.motivofield AS motivo_legado
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+        LEFT JOIN \`${TABLE_USERS}\` u ON u.id = f.users_id_vistoriadorafield
+        LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
+                ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
        WHERE sv.name IN ('Aprovado', 'Aprovada', 'Aprovado com Pendências', 'Reprovado', 'Reprovada')
          AND DATE(ne.date_mod) >= ?
          AND DATE(ne.date_mod) <= ?
@@ -509,16 +626,30 @@ export async function fetchHistoricoAnalytics(
     [inicio, fim]
   );
   type AtividadeStatus = "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
-  const atividadeRecente: Array<{ ts: string; status: AtividadeStatus; equipamento: string; municipio: string | null }> = [];
+  interface AtividadeRow {
+    ts: string;
+    status: AtividadeStatus;
+    equipamento: string;
+    municipio: string | null;
+    vistoriaId: number | null;
+    tecnico: string | null;
+    motivo: string | null;
+  }
+  const nomeTecnico = (r: { tecnico_name: string | null; tecnico_firstname: string | null; tecnico_realname: string | null }): string | null =>
+    `${r.tecnico_firstname ?? ""} ${r.tecnico_realname ?? ""}`.trim() || r.tecnico_name || null;
+  const atividadeRecente: AtividadeRow[] = [];
   for (const r of atividadeAuditRows) {
     if (r.acao === "vistoria-finalizada") {
-      atividadeRecente.push({ ts: r.ts, status: "Vistoriada", equipamento: r.equipamento, municipio: r.municipio });
+      atividadeRecente.push({ ts: r.ts, status: "Vistoriada", equipamento: r.equipamento, municipio: r.municipio, vistoriaId: r.vistoria_id, tecnico: nomeTecnico(r), motivo: null });
     } else if (r.acao === "recusa-aprovada") {
       atividadeRecente.push({
         ts: r.ts,
         status: r.categoria === "impedimento" ? "Impedida" : "Recusada",
         equipamento: r.equipamento,
         municipio: r.municipio,
+        vistoriaId: r.vistoria_id,
+        tecnico: nomeTecnico(r),
+        motivo: null,
       });
     }
   }
@@ -527,10 +658,54 @@ export async function fetchHistoricoAnalytics(
       r.status_name === "Reprovado" || r.status_name === "Reprovada" ? "Reprovada"
       : r.status_name === "Aprovado com Pendências" ? "Aprovado com Pendência"
       : "Aprovada";
-    atividadeRecente.push({ ts: r.ts, status, equipamento: r.equipamento, municipio: r.municipio });
+    atividadeRecente.push({
+      ts: r.ts,
+      status,
+      equipamento: r.equipamento,
+      municipio: r.municipio,
+      vistoriaId: r.vistoria_id,
+      tecnico: nomeTecnico(r),
+      motivo: status === "Reprovada" ? composeMotivoReprovacaoCpfl(r.motivo_cpfl, r.descricao_detalhada_cpfl, r.motivo_legado) : null,
+    });
   }
   atividadeRecente.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
-  const atividadeRecenteTop = atividadeRecente.slice(0, 10);
+  const atividadeRecenteTop10 = atividadeRecente.slice(0, 10);
+
+  /* ── Tempo em campo de cada linha do feed acima — mesmo par
+     iniciada→finalizada usado no SLA de execução (2026-09-25), buscado só
+     pros itens que de fato aparecem no feed (poucos, não vale generalizar
+     pra todo o período aqui). */
+  const idsFeed = [...new Set(atividadeRecenteTop10.map((r) => r.vistoriaId).filter((id): id is number => id != null))];
+  const tempoEmCampoPorId = new Map<number, number>();
+  if (idsFeed.length > 0) {
+    const placeholders = idsFeed.map(() => "?").join(",");
+    const feedTempoRows = await query<{ alvo_id: string; t_ini: string | null; t_fim: string | null }>(
+      `
+        SELECT alvo_id,
+               MAX(CASE WHEN acao = 'vistoria-iniciada'   THEN ts END) AS t_ini,
+               MAX(CASE WHEN acao = 'vistoria-finalizada' THEN ts END) AS t_fim
+          FROM glpi_plugin_vistomap_audit
+         WHERE acao IN ('vistoria-iniciada','vistoria-finalizada')
+           AND alvo_id IN (${placeholders})
+         GROUP BY alvo_id
+      `,
+      idsFeed.map(String)
+    );
+    for (const r of feedTempoRows) {
+      if (!r.t_ini || !r.t_fim) continue;
+      const min = Math.round((new Date(r.t_fim).getTime() - new Date(r.t_ini).getTime()) / 60000);
+      if (min >= 0 && min <= 600) tempoEmCampoPorId.set(Number(r.alvo_id), min);
+    }
+  }
+  const atividadeRecenteTop = atividadeRecenteTop10.map((r) => ({
+    ts: r.ts,
+    status: r.status,
+    equipamento: r.equipamento,
+    municipio: r.municipio,
+    tecnico: r.tecnico,
+    motivo: r.motivo,
+    tempoEmCampoMin: r.vistoriaId != null ? tempoEmCampoPorId.get(r.vistoriaId) ?? null : null,
+  }));
 
   /* ── Ranking técnicos ──────────────────────────────────────── */
   // LEFT JOIN de propósito (era INNER): um técnico purgado do GLPI (ver
@@ -720,15 +895,115 @@ export async function fetchHistoricoAnalytics(
            OR (DATE(f.datadavistoriafield) >= ? AND DATE(f.datadavistoriafield) <= ?)
          )
          ${concWhere}
+         ${muniWhere}
        GROUP BY COALESCE(mr.name, 'Não categorizado')
        ORDER BY total DESC
     `,
-    [inicio, fim, ...concParams]
+    [inicio, fim, ...concParams, ...muniParams]
   );
   const motivosReprovacao = motivosReprovacaoRows.map((r) => ({
     label: r.motivo,
     total: Number(r.total) || 0,
   }));
+
+  /* ── Tempo médio por status (equipe toda) — 2026-09-25, Análise
+     Operacional dos Técnicos. Reconstrói a mesma cadeia de eventos que já
+     alimenta tempoDeslocamentoMedioMin/slaExecucaoMedioMin por técnico
+     (mais abaixo), mas agregada pra equipe inteira e com um marco a mais
+     (vistoria-em-vistoria = chegada no local, feito quando o técnico marca
+     situação "Em Vistoria" — ver src/app/api/vistorias/[id]/situacao/
+     route.ts): Em deslocamento = chegada−saída; Em vistoria = início−
+     chegada; Realizada/Reprovada = fim−início, separadas pelo desfecho
+     (Realizada inclui "Em análise", mesmo critério de "Em análise ≠ não
+     realizada" já documentado em memória). */
+  const statusDuracoes = {
+    desloc: [] as number[],
+    emVistoria: [] as number[],
+    realizada: [] as number[],
+    reprovada: [] as number[],
+  };
+  try {
+    const stageRows = await query<{
+      alvo_id: string;
+      t_desloc: string | null;
+      t_chegada: string | null;
+      t_ini: string | null;
+      t_fim: string | null;
+      status_name: string | null;
+    }>(
+      `
+        SELECT ev.alvo_id, ev.t_desloc, ev.t_chegada, ev.t_ini, ev.t_fim, sv.name AS status_name
+          FROM (
+            SELECT alvo_id,
+                   MAX(CASE WHEN acao = 'vistoria-em-deslocamento' THEN ts END) AS t_desloc,
+                   MAX(CASE WHEN acao = 'vistoria-em-vistoria'     THEN ts END) AS t_chegada,
+                   MAX(CASE WHEN acao = 'vistoria-iniciada'        THEN ts END) AS t_ini,
+                   MAX(CASE WHEN acao = 'vistoria-finalizada'      THEN ts END) AS t_fim
+              FROM glpi_plugin_vistomap_audit
+             WHERE acao IN ('vistoria-em-deslocamento','vistoria-em-vistoria','vistoria-iniciada','vistoria-finalizada')
+               AND ts >= ? AND ts < DATE_ADD(?, INTERVAL 1 DAY)
+             GROUP BY alvo_id
+          ) ev
+          LEFT JOIN \`${TABLE_FIELDS}\` f ON f.items_id = CAST(ev.alvo_id AS UNSIGNED)
+          LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
+                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
+          ${concJoin}
+         WHERE 1=1
+         ${concWhere}
+         ${muniWhere}
+      `,
+      [inicio, fim, ...concParams, ...muniParams]
+    );
+    for (const r of stageRows) {
+      if (r.t_desloc && r.t_chegada) {
+        const d = (new Date(r.t_chegada).getTime() - new Date(r.t_desloc).getTime()) / 60000;
+        if (d >= 0 && d <= 600) statusDuracoes.desloc.push(d);
+      }
+      if (r.t_chegada && r.t_ini) {
+        const d = (new Date(r.t_ini).getTime() - new Date(r.t_chegada).getTime()) / 60000;
+        if (d >= 0 && d <= 600) statusDuracoes.emVistoria.push(d);
+      }
+      if (r.t_ini && r.t_fim) {
+        const d = (new Date(r.t_fim).getTime() - new Date(r.t_ini).getTime()) / 60000;
+        if (d >= 0 && d <= 600) {
+          const s = r.status_name ?? "";
+          if (s === "Reprovada" || s === "Reprovado") statusDuracoes.reprovada.push(d);
+          else statusDuracoes.realizada.push(d);
+        }
+      }
+    }
+  } catch {
+    // tabela de auditoria ausente — buckets ficam vazios (médias saem null)
+  }
+  const mediaMinTeam = (arr: number[]): number | null =>
+    arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+  const tempoMedioPorStatus = {
+    realizadaMin: mediaMinTeam(statusDuracoes.realizada),
+    emVistoriaMin: mediaMinTeam(statusDuracoes.emVistoria),
+    emDeslocamentoMin: mediaMinTeam(statusDuracoes.desloc),
+    impedimentoMin: impedimentoMedioMin,
+    reprovadaMin: mediaMinTeam(statusDuracoes.reprovada),
+  };
+
+  /* ── Vistorias por hora do dia — 2026-09-25, toggle "Hora" de "Vistorias
+     por período". Só horas com alguma atividade (não força 0-23 fixo). */
+  const horaRows = await query<{ hora: number; total: number }>(
+    `
+      SELECT HOUR(f.datadavistoriafield) AS hora, COUNT(*) AS total
+        FROM \`${TABLE_FIELDS}\` f
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        ${concJoin}
+       WHERE f.datadavistoriafield IS NOT NULL
+         AND DATE(f.datadavistoriafield) >= ?
+         AND DATE(f.datadavistoriafield) <= ?
+         ${concWhere}
+         ${muniWhere}
+       GROUP BY HOUR(f.datadavistoriafield)
+       ORDER BY hora
+    `,
+    [inicio, fim, ...concParams, ...muniParams]
+  );
+  const vistoriasPorHora = horaRows.map((r) => ({ hora: Number(r.hora), total: Number(r.total) || 0 }));
 
   const aprovacaoPct = finalizadas > 0
     ? Math.round((aprovadas / finalizadas) * 100)
@@ -750,6 +1025,7 @@ export async function fetchHistoricoAnalytics(
       pdfsGerados,
       atribuidas: atribuidasPeriodo,
       atribuidasPeriodoAnterior,
+      reprovadasPeriodoAnterior,
     },
     taxas: { aprovacaoPct, revisitaPct },
     medias: { diariaVistorias, semanalVistorias },
@@ -777,6 +1053,8 @@ export async function fetchHistoricoAnalytics(
       };
     }),
     atividadeRecente: atividadeRecenteTop,
+    tempoMedioPorStatus,
+    vistoriasPorHora,
     rankingTecnicos,
     kmOperacional: Math.round(kmTotal * 10) / 10,
     motivosReprovacao,
