@@ -608,10 +608,13 @@ function HeatmapMapWidget({
      reprovação), não decoração. ── */
   const totalFinalizadas = totais.vistoriasFinalizadas || 0;
   const pctOf = (n: number) => (totalFinalizadas > 0 ? (n / totalFinalizadas) * 100 : 0);
+  // "Aprovado com Pendência" unificado em "Aprovadas" (pedido 2026-09-25) —
+  // pra este widget as duas contam como aprovação; a quebra fina entre
+  // com/sem pendência continua existindo à parte, no widget "Aprovações".
+  const totalAprovadas = aprovadasSemPendencia + aprovadasComPendencia;
   const indicadores = [
-    { key: "aprovadas",  label: "Aprovadas",              value: aprovadasSemPendencia,  pct: pctOf(aprovadasSemPendencia),  color: "#059669", icon: ShieldCheck },
-    { key: "pendencia",  label: "Aprovado com Pendência", value: aprovadasComPendencia,  pct: pctOf(aprovadasComPendencia),  color: "#D97706", icon: ShieldAlert },
-    { key: "reprovadas", label: "Reprovadas",             value: totais.reprovadas,      pct: pctOf(totais.reprovadas),      color: "#DC2626", icon: Ban },
+    { key: "aprovadas",  label: "Aprovadas",  value: totalAprovadas,    pct: pctOf(totalAprovadas),    color: "#059669", icon: ShieldCheck },
+    { key: "reprovadas", label: "Reprovadas", value: totais.reprovadas, pct: pctOf(totais.reprovadas), color: "#DC2626", icon: Ban },
   ];
 
   // Atribuídas — audit log, não estado atual (ver historico.ts). Delta vs.
@@ -630,9 +633,10 @@ function HeatmapMapWidget({
   // Filtro por QUALIDADE (2026-09-24, pedido de campo "muito feio e
   // grotesco"): esconde município com 0 aprovado — antes a lista ficava
   // cheia de barras 100% cinza/pendente sem nenhuma aprovação real, só
-  // poluindo a visão de quem já está aprovando.
+  // poluindo a visão de quem já está aprovando. "Aprovado com Pendência"
+  // conta como aprovação aqui também (unificado, 2026-09-25).
   const rankingDetalhe = [...topMunicipiosDetalhe]
-    .filter((m) => m.aprovado > 0)
+    .filter((m) => m.aprovado + m.aprovadoComPendencia > 0)
     .sort((a, b) => b.concluidas - a.concluidas);
   // Largura da barra agora é relativa ao MAIOR município do recorte (não
   // sempre 100% do próprio total) — sem isso, um município com 1 vistoria
@@ -643,14 +647,18 @@ function HeatmapMapWidget({
   // Cor por status no feed "Últimas vistorias" — mesma paleta institucional
   // de tudo mais no widget (verde/âmbar/vermelho pras 3 decisões da
   // concessionária); Impedida/Recusada reaproveitam o mesmo par já usado
-  // pra essas duas categorias em outros lugares do painel.
+  // pra essas duas categorias em outros lugares do painel. "Aprovado com
+  // Pendência" exibe como "Aprovada" (unificado, 2026-09-25).
   const ATIVIDADE_COR: Record<string, string> = {
     Vistoriada: "#3B82F6",
     Impedida: "#F59E0B",
     Recusada: "#EF4444",
     Aprovada: "#059669",
-    "Aprovado com Pendência": "#D97706",
+    "Aprovado com Pendência": "#059669",
     Reprovada: "#DC2626",
+  };
+  const ATIVIDADE_LABEL: Record<string, string> = {
+    "Aprovado com Pendência": "Aprovada",
   };
 
   /* ── Mini-evolução — mesma série diária de Vistorias Finalizadas
@@ -686,7 +694,7 @@ function HeatmapMapWidget({
         </div>
 
         {/* ── Indicadores — quantidade + % do total, com barra ── */}
-        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-px bg-[var(--vm-tile-2)] sm:grid-cols-3">
           {indicadores.map((ind) => {
             const Icon = ind.icon;
             return (
@@ -769,7 +777,6 @@ function HeatmapMapWidget({
             </p>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9.5px] font-semibold text-[var(--vm-muted)]">
               <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Aprovado</span>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#D97706" }} />Aprov. c/ pend.</span>
               <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#64748B" }} />Pendente</span>
               <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#DC2626" }} />Reprovado</span>
             </div>
@@ -779,7 +786,9 @@ function HeatmapMapWidget({
           ) : (
             <div className="flex flex-col gap-3">
               {rankingDetalhe.map((m) => {
-                const pctAprov = m.concluidas > 0 ? (m.aprovado / m.concluidas) * 100 : 0;
+                // "Aprovado com Pendência" unificado em "Aprovado" (2026-09-25).
+                const aprovadoTotal = m.aprovado + m.aprovadoComPendencia;
+                const pctAprov = m.concluidas > 0 ? (aprovadoTotal / m.concluidas) * 100 : 0;
                 const barPct = (m.concluidas / maxConcluidasMunicipio) * 100;
                 return (
                   <div key={m.municipio} className="flex items-center gap-3">
@@ -794,11 +803,8 @@ function HeatmapMapWidget({
                           animate={{ width: `${barPct}%` }}
                           transition={{ duration: 0.7, ease: [0.22, 0.7, 0.2, 1] }}
                         >
-                          {m.aprovado > 0 && (
-                            <div style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} title={`${m.aprovado} aprovadas`} />
-                          )}
-                          {m.aprovadoComPendencia > 0 && (
-                            <div style={{ width: `${(m.aprovadoComPendencia / m.concluidas) * 100}%`, background: "#D97706" }} title={`${m.aprovadoComPendencia} aprovadas com pendência`} />
+                          {aprovadoTotal > 0 && (
+                            <div style={{ width: `${(aprovadoTotal / m.concluidas) * 100}%`, background: "#059669" }} title={`${aprovadoTotal} aprovadas`} />
                           )}
                           {m.pendente > 0 && (
                             <div style={{ width: `${(m.pendente / m.concluidas) * 100}%`, background: "#64748B" }} title={`${m.pendente} pendentes`} />
@@ -817,7 +823,7 @@ function HeatmapMapWidget({
                       )}
                     </div>
                     <span className="w-14 shrink-0 text-right text-[11px] font-bold tabular-nums text-[#059669]">
-                      {fmtNum(m.aprovado)} aprov.
+                      {fmtNum(aprovadoTotal)} aprov.
                     </span>
                     <span className="w-9 shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">
                       {fmtNum(m.concluidas)}
@@ -880,7 +886,7 @@ function HeatmapMapWidget({
                   <div key={`${a.ts}-${i}`} className="flex items-center gap-2.5">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: cor }} />
                     <span className="shrink-0 text-[11px] font-semibold" style={{ color: cor }}>
-                      {a.status}
+                      {ATIVIDADE_LABEL[a.status] ?? a.status}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: "var(--vm-text)" }}>
                       {a.equipamento}
