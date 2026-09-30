@@ -538,7 +538,15 @@ function VistoriasPorPeriodoChart({
  * inclui tanto quem nem foi vistoriado quanto quem está aguardando
  * decisão. Percentual = % já resolvido (decidido) do total.
  */
-function MunicipioRankingCompacto({ historico }: { historico: HistoricoAnalytics | null }) {
+function MunicipioRankingCompacto({
+  historico,
+  colunas = 1,
+}: {
+  historico: HistoricoAnalytics | null;
+  /** 2 = layout de impressão (lista inteira, sem scroll) flui em 2 colunas
+   *  balanceadas (CSS columns) em vez de uma coluna única e comprida. */
+  colunas?: 1 | 2;
+}) {
   const [ordem, setOrdem] = useState<"finalizadas" | "volume">("finalizadas");
 
   const linhas = useMemo(() => {
@@ -571,11 +579,11 @@ function MunicipioRankingCompacto({ historico }: { historico: HistoricoAnalytics
       {linhas.length === 0 ? (
         <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className={colunas === 2 ? "gap-x-4" : "flex flex-col gap-1.5"} style={colunas === 2 ? { columnCount: 2 } : undefined}>
           {linhas.map((m) => {
             const pctResolvido = m.concluidas > 0 ? Math.round((m.decidido / m.concluidas) * 100) : 0;
             return (
-              <div key={m.municipio} className="flex items-center gap-1.5">
+              <div key={m.municipio} className="flex items-center gap-1.5" style={colunas === 2 ? { breakInside: "avoid", marginBottom: 6 } : undefined}>
                 <span className="w-[62px] shrink-0 truncate text-[10px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                   <div className="flex h-full" style={{ width: `${(m.concluidas / max) * 100}%` }}>
@@ -614,6 +622,10 @@ export interface EquipeAoVivoProps {
   municipio: string;
   onMunicipioChange: (m: string) => void;
   onRefresh: () => void;
+  /** Modo exportação em PDF (2026-09-30) — esconde controles interativos
+   *  (filtro/atualizar/tela cheia) e deixa "Vistorias por município" listar
+   *  tudo sem scroll (a página de print não tem card de altura fixa). */
+  print?: boolean;
 }
 
 function fmtRelativo(d: Date | null): string {
@@ -638,6 +650,7 @@ export default function EquipeAoVivo({
   municipio,
   onMunicipioChange,
   onRefresh,
+  print = false,
 }: EquipeAoVivoProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -861,42 +874,48 @@ export default function EquipeAoVivo({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div
-            className="relative flex items-center gap-1.5 rounded-xl px-3 py-1.5 transition hover:bg-[var(--vm-tile-2)]"
-            style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border-soft)", minWidth: 168 }}
-          >
-            <Building2 className="h-3.5 w-3.5 shrink-0 text-[var(--vm-muted)]" />
-            <select
-              value={municipio}
-              onChange={(e) => onMunicipioChange(e.target.value)}
-              className="w-full cursor-pointer appearance-none bg-transparent pr-4 text-[11.5px] font-semibold text-[var(--vm-text)] outline-none"
-              title="Filtrar por município"
+        {print ? (
+          <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">
+            {municipio || "Todos os municípios"}
+          </span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div
+              className="relative flex items-center gap-1.5 rounded-xl px-3 py-1.5 transition hover:bg-[var(--vm-tile-2)]"
+              style={{ background: "var(--vm-tile)", border: "1px solid var(--vm-border-soft)", minWidth: 168 }}
             >
-              <option value="">Todos os municípios</option>
-              {municipiosDisponiveis.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 h-3 w-3 text-[var(--vm-faint)]" />
+              <Building2 className="h-3.5 w-3.5 shrink-0 text-[var(--vm-muted)]" />
+              <select
+                value={municipio}
+                onChange={(e) => onMunicipioChange(e.target.value)}
+                className="w-full cursor-pointer appearance-none bg-transparent pr-4 text-[11.5px] font-semibold text-[var(--vm-text)] outline-none"
+                title="Filtrar por município"
+              >
+                <option value="">Todos os municípios</option>
+                {municipiosDisponiveis.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 h-3 w-3 text-[var(--vm-faint)]" />
+            </div>
+            <button
+              type="button"
+              onClick={() => { onRefresh(); }}
+              className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-[var(--vm-tile)]"
+              style={{ border: "1px solid var(--vm-border-soft)" }}
+              title="Atualizar"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-[var(--vm-muted)]" />
+            </button>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-[var(--vm-tile)]"
+              style={{ border: "1px solid var(--vm-border-soft)" }}
+              title={fullscreen ? "Sair da tela cheia" : "Tela cheia"}
+            >
+              {fullscreen ? <Minimize className="h-3.5 w-3.5 text-[var(--vm-muted)]" /> : <Maximize className="h-3.5 w-3.5 text-[var(--vm-muted)]" />}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => { onRefresh(); }}
-            className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-[var(--vm-tile)]"
-            style={{ border: "1px solid var(--vm-border-soft)" }}
-            title="Atualizar"
-          >
-            <RefreshCw className="h-3.5 w-3.5 text-[var(--vm-muted)]" />
-          </button>
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-[var(--vm-tile)]"
-            style={{ border: "1px solid var(--vm-border-soft)" }}
-            title={fullscreen ? "Sair da tela cheia" : "Tela cheia"}
-          >
-            {fullscreen ? <Minimize className="h-3.5 w-3.5 text-[var(--vm-muted)]" /> : <Maximize className="h-3.5 w-3.5 text-[var(--vm-muted)]" />}
-          </button>
-        </div>
+        )}
       </div>
 
       {/* ═══════ KPIs + Aproveitamento ═══════ */}
@@ -1013,10 +1032,10 @@ export default function EquipeAoVivo({
           por Município" pra um card grande sozinho — pedido de campo foi
           claro que a composição de 4 iguais era a boa, não mexer de novo) ═══════ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card style={{ height: 205 }}>
+        <Card style={print ? undefined : { height: 205 }}>
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por município</p>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
-            <MunicipioRankingCompacto historico={historico} />
+          <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
+            <MunicipioRankingCompacto historico={historico} colunas={print ? 2 : 1} />
           </div>
         </Card>
 

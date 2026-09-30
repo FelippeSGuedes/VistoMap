@@ -50,6 +50,16 @@ ENV PORT=3000
 # Standalone bind em 0.0.0.0 — sem isto containers ficam inalcançáveis.
 ENV HOSTNAME=0.0.0.0
 
+# Chromium do sistema — só pro painel (export de PDF via Puppeteer, ver
+# /api/painel/export-pdf). O binário baixado pelo próprio puppeteer não
+# roda em Alpine (musl/glibc); o pacote apk resolve isso. Não instala na
+# variante tecnico pra não inflar (~200MB) o APK/app de campo à toa.
+ARG BUILD_VARIANT=tecnico
+RUN if [ "$BUILD_VARIANT" = "painel" ]; then \
+      apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont; \
+    fi
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
 

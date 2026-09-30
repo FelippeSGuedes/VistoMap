@@ -29,8 +29,10 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  Download,
   FileText,
   Layers,
+  Loader2,
   Map as MapIcon,
   RotateCw,
   Route,
@@ -592,6 +594,37 @@ export default function PainelOverviewPage() {
   useEffect(() => {
     painelService.fetchConcessionarias().then(setConcessionariasDisponiveis).catch(() => {});
   }, []);
+  // Exporta o dashboard "Equipe ao vivo" em PDF (2026-09-30) — servidor
+  // renderiza /painel/print via Puppeteer com os MESMOS filtros ativos aqui.
+  const [exportandoPdf, setExportandoPdf] = useState(false);
+  const exportarPdf = async () => {
+    if (exportandoPdf) return;
+    setExportandoPdf(true);
+    try {
+      const qs = new URLSearchParams({
+        inicio: periodoRange.inicio,
+        fim: periodoRange.fim,
+        dias: String(periodoRange.dias),
+        periodoLabel,
+      });
+      if (concessionaria) qs.set("concessionaria", concessionaria);
+      if (municipio) qs.set("municipio", municipio);
+      const res = await api.get(`/painel/export-pdf?${qs.toString()}`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `vistomap-equipe-ao-vivo-${isoHoje()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[painel] exportarPdf falhou:", err);
+      window.alert("Não foi possível gerar o PDF agora. Tente novamente em instantes.");
+    } finally {
+      setExportandoPdf(false);
+    }
+  };
   // Filtro global de Município (2026-09-25) — mesmo alcance de concessionária.
   const [municipio, setMunicipio] = useState("");
   // Incrementado pelo botão "Atualizar" da Equipe ao Vivo — força o load()
@@ -1103,6 +1136,17 @@ export default function PainelOverviewPage() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={exportarPdf}
+          disabled={exportandoPdf}
+          className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11.5px] font-semibold transition disabled:opacity-60"
+          style={{ background: "var(--vm-tile-2)", border: "1px solid var(--vm-border)", color: "var(--vm-text)" }}
+          title="Baixar o dashboard Equipe ao vivo em PDF"
+        >
+          {exportandoPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          {exportandoPdf ? "Gerando PDF…" : "Baixar PDF"}
+        </button>
       </div>
 
       {/* ════════════ LINHA 1a: Vistorias Finalizadas | Aprovações — lado a lado, mesmo tamanho ════════════ */}
