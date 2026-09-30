@@ -159,6 +159,7 @@ export default function AnaliseOperacionalTecnicos({
 
   /* ── dados do técnico selecionado ──────────────────────────────────────── */
   const [vistorias, setVistorias] = useState<VistoriaTecnicoPeriodo[]>([]);
+  const [trail, setTrail] = useState<Array<[number, number]>>([]);
   const [auditoria, setAuditoria] = useState<AuditEntry[]>([]);
   const [expediente, setExpediente] = useState<ExpedienteHistItem[]>([]);
   const [observacoes, setObservacoes] = useState<TecnicoObservacao[]>([]);
@@ -178,13 +179,16 @@ export default function AnaliseOperacionalTecnicos({
     const desdeExp = `${periodoRange.inicio} 00:00:00`;
     const ateExp = `${periodoRange.fim} 23:59:59`;
     (async () => {
-      const [v, a, e, o] = await Promise.allSettled([
+      const [v, a, e, o, t] = await Promise.allSettled([
         painelService.fetchVistoriasTecnico(selecionadoId, periodoRange.inicio, periodoRange.fim, concessionaria),
         painelService.fetchAudit({ ator_id: selecionadoId, limit: 100 }),
         api.get<{ itens: ExpedienteHistItem[] }>(
           `/painel/expediente/historico?users_id=${selecionadoId}&desde=${encodeURIComponent(desdeExp)}&ate=${encodeURIComponent(ateExp)}&limit=200`
         ),
         painelService.fetchTecnicoObservacoes(selecionadoId),
+        api.get<{ coords: Array<[number, number]> }>(
+          `/painel/tecnico-trail?users_id=${selecionadoId}&desde=${encodeURIComponent(desdeExp)}&ate=${encodeURIComponent(ateExp)}`
+        ),
       ]);
       if (!alive) return;
       if (v.status === "fulfilled") setVistorias(v.value);
@@ -195,6 +199,8 @@ export default function AnaliseOperacionalTecnicos({
       else { setExpediente([]); console.warn("[analise-operacional] expediente/historico falhou:", e.reason); }
       if (o.status === "fulfilled") setObservacoes(o.value);
       else { setObservacoes([]); console.warn("[analise-operacional] fetchTecnicoObservacoes falhou:", o.reason); }
+      if (t.status === "fulfilled") setTrail(t.value.data.coords);
+      else { setTrail([]); console.warn("[analise-operacional] tecnico-trail falhou:", t.reason); }
       setAtualizadoEm(new Date());
       setCarregandoTecnico(false);
     })();
@@ -475,10 +481,10 @@ export default function AnaliseOperacionalTecnicos({
                   <span className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--vm-text)]">
                     <MapPin className="h-3.5 w-3.5 text-[#00875F]" /> Rota do dia
                   </span>
-                  <span className="text-[9.5px] text-[var(--vm-faint)]">pino = data da vistoria</span>
+                  <span className="text-[9.5px] text-[var(--vm-faint)]">linha = trajeto real (GPS) · pino = vistoria</span>
                 </div>
                 <div className="h-[280px]">
-                  <AnaliseOperacionalMapa vistorias={vistorias} />
+                  <AnaliseOperacionalMapa vistorias={vistorias} trail={trail} />
                 </div>
               </div>
 

@@ -461,21 +461,30 @@ function VistoriasPorPeriodoChart({
   const dados = modo === "hora" ? dadosHora : modo === "dia" ? dadosDia : dadosSemana;
   const max = Math.max(...dados.map((d) => d.total), 1);
   const semDado = dados.every((d) => d.total === 0);
+  const soma = dados.reduce((a, d) => a + d.total, 0);
+  const pico = dados.reduce((best, d) => (d.total > best.total ? d : best), dados[0] ?? { label: "", total: 0 });
 
   return (
     <div>
-      <div className="mb-2 flex gap-1.5">
-        {(["hora", "dia", "semana"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setModo(m)}
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize transition"
-            style={modo === m ? { background: "#3B82F6", color: "#fff" } : { background: "var(--vm-tile)", color: "var(--vm-muted)" }}
-          >
-            {m}
-          </button>
-        ))}
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="flex gap-1.5">
+          {(["hora", "dia", "semana"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setModo(m)}
+              className="rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize transition"
+              style={modo === m ? { background: "#3B82F6", color: "#fff" } : { background: "var(--vm-tile)", color: "var(--vm-muted)" }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        {!semDado && (
+          <span className="whitespace-nowrap text-right text-[9.5px] text-[var(--vm-faint)]">
+            <b className="text-[var(--vm-text)]">{soma}</b> no total · pico <b className="text-[var(--vm-text)]">{pico.label}</b> ({pico.total})
+          </span>
+        )}
       </div>
       {semDado ? (
         <p className="px-2 py-8 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados nesse recorte.</p>
@@ -484,9 +493,17 @@ function VistoriasPorPeriodoChart({
           {dados.map((d, i) => (
             <div key={i} className="group relative flex flex-1 flex-col items-center justify-end" style={{ height: "100%" }}>
               <div
-                className="w-full rounded-t"
-                style={{ height: `${Math.max((d.total / max) * 100, d.total > 0 ? 4 : 0)}%`, background: "#3B82F6", minHeight: d.total > 0 ? 2 : 0 }}
-                title={`${d.label}: ${d.total}`}
+                className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9.5px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"
+                style={{ background: "#111827" }}
+              >
+                {d.label}: {d.total}
+              </div>
+              <div
+                className="w-full rounded-t transition-colors"
+                style={{
+                  height: `${Math.max((d.total / max) * 100, 3)}%`,
+                  background: d.total > 0 ? "#3B82F6" : "var(--vm-tile-2)",
+                }}
               />
             </div>
           ))}
@@ -507,9 +524,12 @@ function VistoriasPorPeriodoChart({
 }
 
 /**
- * Vistorias por município — pedido de campo 2026-09-26: "mais resoluto e
- * claro", com quantas faltam e percentual, sempre ordenado pelos
- * municípios com mais vistorias (sem toggle — uma leitura só, direta).
+ * Vistorias por município — pedido de campo 2026-09-30: filtro pra
+ * ordenar por "mais vistorias finalizadas" (não só por volume bruto de
+ * equipamentos, que deixava município parado no 0% no topo da lista) +
+ * número explícito de "vistoriado", não só a barra. Lista inteira agora
+ * (sem cap em 7) — o card usa a mesma altura fixa de sempre, quem rola é
+ * o conteúdo (wrapper pai já tem overflow-y-auto).
  *
  * `topMunicipiosPeriodo[].concluidas` (nome legado, ver historico.ts) é na
  * verdade o INVENTÁRIO TOTAL do município (todas as situações); `aprovado`
@@ -519,25 +539,44 @@ function VistoriasPorPeriodoChart({
  * decisão. Percentual = % já resolvido (decidido) do total.
  */
 function MunicipioRankingCompacto({ historico }: { historico: HistoricoAnalytics | null }) {
+  const [ordem, setOrdem] = useState<"finalizadas" | "volume">("finalizadas");
+
   const linhas = useMemo(() => {
     const rows = historico?.topMunicipiosPeriodo ?? [];
-    // Card compacto — só os 7 maiores (pedido de campo: "mostrar 6-8, não 15").
-    return [...rows].sort((a, b) => b.concluidas - a.concluidas).slice(0, 7);
-  }, [historico]);
+    const comDecidido = rows.map((m) => ({ ...m, decidido: m.aprovado + m.reprovado }));
+    return ordem === "finalizadas"
+      ? comDecidido.sort((a, b) => b.decidido - a.decidido || b.concluidas - a.concluidas)
+      : comDecidido.sort((a, b) => b.concluidas - a.concluidas);
+  }, [historico, ordem]);
   const max = Math.max(...linhas.map((m) => m.concluidas), 1);
 
   return (
-    <div>
+    <div className="flex h-full flex-col">
+      <div className="mb-1.5 flex shrink-0 gap-1.5">
+        {([
+          ["finalizadas", "Mais finalizadas"],
+          ["volume", "Mais equipamentos"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setOrdem(id)}
+            className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold transition"
+            style={ordem === id ? { background: "#3B82F6", color: "#fff" } : { background: "var(--vm-tile)", color: "var(--vm-muted)" }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {linhas.length === 0 ? (
         <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {linhas.map((m) => {
-            const decidido = m.aprovado + m.reprovado;
-            const pctResolvido = m.concluidas > 0 ? Math.round((decidido / m.concluidas) * 100) : 0;
+            const pctResolvido = m.concluidas > 0 ? Math.round((m.decidido / m.concluidas) * 100) : 0;
             return (
-              <div key={m.municipio} className="flex items-center gap-2">
-                <span className="w-[72px] shrink-0 truncate text-[10px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
+              <div key={m.municipio} className="flex items-center gap-1.5">
+                <span className="w-[62px] shrink-0 truncate text-[10px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
                   <div className="flex h-full" style={{ width: `${(m.concluidas / max) * 100}%` }}>
                     {m.aprovado > 0 && <div className="h-full" style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} />}
@@ -545,9 +584,11 @@ function MunicipioRankingCompacto({ historico }: { historico: HistoricoAnalytics
                     {m.pendente > 0 && <div className="h-full" style={{ width: `${(m.pendente / m.concluidas) * 100}%`, background: "#94A3B8" }} />}
                   </div>
                 </div>
-                <span className="w-6 shrink-0 text-right text-[10px] font-bold tabular-nums text-[var(--vm-text)]" title="Total no município">{m.concluidas}</span>
-                <span className="w-8 shrink-0 text-right text-[9px] font-semibold tabular-nums text-[var(--vm-faint)]" title="Ainda faltam decidir">-{m.pendente}</span>
-                <span className="w-8 shrink-0 text-right text-[9.5px] font-bold tabular-nums" style={{ color: "#059669" }} title="Percentual já resolvido">{pctResolvido}%</span>
+                <span className="w-[38px] shrink-0 text-right text-[9.5px] font-bold tabular-nums text-[var(--vm-text)]" title="Vistoriado / total de equipamentos">
+                  {m.decidido}<span className="font-normal text-[var(--vm-faint)]">/{m.concluidas}</span>
+                </span>
+                <span className="w-7 shrink-0 text-right text-[9px] font-semibold tabular-nums text-[var(--vm-faint)]" title="Ainda faltam decidir">-{m.pendente}</span>
+                <span className="w-7 shrink-0 text-right text-[9.5px] font-bold tabular-nums" style={{ color: "#059669" }} title="Percentual já resolvido">{pctResolvido}%</span>
               </div>
             );
           })}
