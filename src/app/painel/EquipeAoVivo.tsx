@@ -152,17 +152,17 @@ function MiniKpiCard({
   const body = (
     <>
       <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: bg, color }}>
-          <Icon className="h-4 w-4" strokeWidth={2.1} />
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: bg, color }}>
+          <Icon className="h-4.5 w-4.5" strokeWidth={2.1} />
         </span>
-        <span className="text-[11px] font-semibold text-[var(--vm-muted)]">{label}</span>
+        <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">{label}</span>
         {href && <ArrowRight className="ml-auto h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" style={{ color }} />}
       </div>
-      <div className="mt-2 flex items-baseline gap-2">
-        <p className="text-[24px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{value}</p>
+      <div className="mt-3 flex items-baseline gap-2">
+        <p className="text-[29px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{value}</p>
         {delta && (
           <span
-            className="inline-flex items-center gap-0.5 text-[11px] font-bold tabular-nums"
+            className="inline-flex items-center gap-0.5 text-[11.5px] font-bold tabular-nums"
             style={{ color: delta.up ? "#059669" : "#DC2626" }}
           >
             <ArrowUp className={`h-2.5 w-2.5 ${delta.up ? "" : "rotate-180"}`} strokeWidth={2.8} />
@@ -170,17 +170,17 @@ function MiniKpiCard({
           </span>
         )}
       </div>
-      {caption && <p className="mt-1.5 text-[10.5px] text-[var(--vm-faint)]">{caption}</p>}
+      {caption && <p className="mt-2 text-[11px] text-[var(--vm-faint)]">{caption}</p>}
     </>
   );
   if (href) {
     return (
       <Link href={href} className="group block">
-        <Card className="cursor-pointer p-4 transition hover:shadow-md">{body}</Card>
+        <Card className="cursor-pointer p-5 transition hover:shadow-md">{body}</Card>
       </Link>
     );
   }
-  return <Card className="p-4">{body}</Card>;
+  return <Card className="p-5">{body}</Card>;
 }
 
 function MiniDonut({ value, color, caption }: { value: number; color: string; caption: string }) {
@@ -193,7 +193,7 @@ function MiniDonut({ value, color, caption }: { value: number; color: string; ca
     io.observe(el);
     return () => io.disconnect();
   }, []);
-  const size = 84, stroke = 9;
+  const size = 104, stroke = 11;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.min(100, Math.max(0, value));
@@ -210,11 +210,11 @@ function MiniDonut({ value, color, caption }: { value: number; color: string; ca
             style={{ transition: "stroke-dasharray 1.1s cubic-bezier(.22,.7,.2,1)" }}
           />
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-[1.6rem] font-bold tabular-nums" style={{ color: "var(--vm-text)" }}>
+        <div className="absolute inset-0 flex items-center justify-center text-[1.85rem] font-bold tabular-nums" style={{ color: "var(--vm-text)" }}>
           {Math.round(clamped)}%
         </div>
       </div>
-      <p className="mt-1.5 text-center text-[10px] text-[var(--vm-faint)]">{caption}</p>
+      <p className="mt-2 text-center text-[10.5px] text-[var(--vm-faint)]">{caption}</p>
     </div>
   );
 }
@@ -404,10 +404,10 @@ function TempoMedioBarChart({ items }: { items: Array<{ label: string; min: numb
   const comDado = items.filter((i) => i.min != null) as Array<{ label: string; min: number; color: string }>;
   const max = Math.max(...comDado.map((i) => i.min), 1);
   return (
-    <div className="flex items-end justify-between gap-3 px-1 pt-2" style={{ height: 130 }}>
+    <div className="flex items-end justify-between gap-4 px-2 pt-3" style={{ height: 195 }}>
       {items.map((it) => (
-        <div key={it.label} className="flex flex-1 flex-col items-center gap-1.5">
-          <span className="text-[10.5px] font-bold tabular-nums text-[var(--vm-text)]">{it.min != null ? `${it.min}min` : "—"}</span>
+        <div key={it.label} className="flex flex-1 flex-col items-center gap-2">
+          <span className="text-[13px] font-bold tabular-nums text-[var(--vm-text)]">{it.min != null ? `${it.min}min` : "—"}</span>
           <div className="flex w-full flex-1 items-end">
             <div
               className="w-full rounded-t-md"
@@ -417,7 +417,7 @@ function TempoMedioBarChart({ items }: { items: Array<{ label: string; min: numb
               }}
             />
           </div>
-          <span className="text-center text-[9px] font-semibold leading-tight text-[var(--vm-muted)]">{it.label}</span>
+          <span className="text-center text-[10.5px] font-semibold leading-tight text-[var(--vm-muted)]">{it.label}</span>
         </div>
       ))}
     </div>
@@ -467,14 +467,14 @@ function VistoriasPorPeriodoChart({
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex gap-1.5">
           {(["hora", "dia", "semana"] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setModo(m)}
-              className="rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize transition"
+              className="rounded-full px-3 py-1.5 text-[11px] font-semibold capitalize transition"
               style={modo === m ? { background: "#3B82F6", color: "#fff" } : { background: "var(--vm-tile)", color: "var(--vm-muted)" }}
             >
               {m}
@@ -482,7 +482,7 @@ function VistoriasPorPeriodoChart({
           ))}
         </div>
         {!semDado && (
-          <span className="whitespace-nowrap text-right text-[9.5px] text-[var(--vm-faint)]">
+          <span className="whitespace-nowrap text-right text-[10.5px] text-[var(--vm-faint)]">
             <b className="text-[var(--vm-text)]">{soma}</b> no total · pico <b className="text-[var(--vm-text)]">{pico.label}</b> ({pico.total})
           </span>
         )}
@@ -490,7 +490,7 @@ function VistoriasPorPeriodoChart({
       {semDado ? (
         <p className="px-2 py-8 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados nesse recorte.</p>
       ) : (
-        <div className="flex items-end gap-[3px]" style={{ height: 110 }}>
+        <div className="flex items-end gap-[4px]" style={{ height: 175 }}>
           {dados.map((d, i) => (
             <div key={i} className="group relative flex flex-1 flex-col items-center justify-end" style={{ height: "100%" }}>
               <div
@@ -1161,14 +1161,14 @@ export default function EquipeAoVivo({
         <MiniKpiCard icon={Route} label="Em deslocamento" value={fmtNum(kpiEmDeslocamento)} color="#0891B2" bg="rgba(14,165,233,0.10)" caption="agora" href="/painel/central-vistorias?status=7" />
         <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption={periodoLabel} href="/painel/ocorrencias?tipo=impedimento" />
         <MiniKpiCard icon={ShieldAlert} label="Reprovadas" value={fmtNum(kpiReprovadas)} color="#DC2626" bg="var(--vm-red-tint)" caption={periodoLabel} delta={reprovDelta} href="/painel/central-vistorias?status=REPROVADO" />
-        <Card className="col-span-2 p-4 md:col-span-3 xl:col-span-1">
-          <div className="flex h-full w-full items-center gap-4" style={{ background: "var(--vm-accent-tint)", margin: -16, padding: 16, borderRadius: 16 }}>
+        <Card className="col-span-2 p-5 md:col-span-3 xl:col-span-1">
+          <div className="flex h-full w-full items-center gap-5" style={{ background: "var(--vm-accent-tint)", margin: -20, padding: 20, borderRadius: 16 }}>
             <MiniDonut value={kpiAproveitamento} color="#059669" caption="Aproveitamento do dia" />
-            <div className="flex flex-1 flex-col gap-1.5">
-              <span className="text-[11px] font-bold text-[var(--vm-text)]">Aproveitamento</span>
-              <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]"><span>Atribuídas</span><span className="tabular-nums font-bold">{kpiAtribuidas}</span></div>
-              <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]"><span>Realizadas</span><span className="tabular-nums font-bold">{kpiRealizadas}</span></div>
-              <div className="flex items-baseline justify-between text-[10.5px] text-[var(--vm-text-soft)]"><span>Reprovadas</span><span className="tabular-nums font-bold">{kpiReprovadas}</span></div>
+            <div className="flex flex-1 flex-col gap-2.5">
+              <span className="text-[12.5px] font-bold text-[var(--vm-text)]">Aproveitamento</span>
+              <div className="flex items-baseline justify-between text-[11.5px] text-[var(--vm-text-soft)]"><span>Atribuídas</span><span className="tabular-nums font-bold">{kpiAtribuidas}</span></div>
+              <div className="flex items-baseline justify-between text-[11.5px] text-[var(--vm-text-soft)]"><span>Realizadas</span><span className="tabular-nums font-bold">{kpiRealizadas}</span></div>
+              <div className="flex items-baseline justify-between text-[11.5px] text-[var(--vm-text-soft)]"><span>Reprovadas</span><span className="tabular-nums font-bold">{kpiReprovadas}</span></div>
             </div>
           </div>
         </Card>
@@ -1321,9 +1321,12 @@ export default function EquipeAoVivo({
         </Card>
       </div>
 
-      {/* ═══════ Tempo real — Últimas vistorias + 2 gráficos menores ═══════ */}
+      {/* ═══════ Tempo real — Últimas vistorias + 2 gráficos menores
+          (esticados 2026-09-30: "tudo muito espremido e pequeno" — 190
+          -> 260px, gráficos internos e fontes maiores, mais linhas na
+          tabela pra não sobrar vazio embaixo). ═══════ */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.5fr_0.5fr]">
-        <Card style={{ height: 190 }}>
+        <Card style={{ height: 260 }}>
           <div className="flex items-center gap-2 px-4 pt-4 pb-2">
             <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
             <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Últimas vistorias</span>
@@ -1349,7 +1352,7 @@ export default function EquipeAoVivo({
                 {(historico?.atividadeRecente ?? []).length === 0 ? (
                   <tr><td colSpan={7} className="px-2 py-8 text-center text-[var(--vm-faint)]">Sem eventos recentes.</td></tr>
                 ) : (
-                  (historico?.atividadeRecente ?? []).slice(0, 5).map((a, i) => {
+                  (historico?.atividadeRecente ?? []).slice(0, 8).map((a, i) => {
                     const cor =
                       a.status === "Aprovada" || a.status === "Aprovado com Pendência" ? "#059669"
                       : a.status === "Reprovada" ? "#DC2626"
@@ -1379,14 +1382,14 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card style={{ height: 190 }}>
+        <Card style={{ height: 260 }}>
           <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Tempo médio por status</p>
           <div className="flex-1 px-3 pb-3">
             <TempoMedioBarChart items={tempoMedioItems} />
           </div>
         </Card>
 
-        <Card style={{ height: 190 }}>
+        <Card style={{ height: 260 }}>
           <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por período</p>
           <div className="flex-1 px-3 pb-3">
             <VistoriasPorPeriodoChart historico={historico} periodoRange={periodoRange} />
