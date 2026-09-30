@@ -120,6 +120,19 @@ export async function GET(req: NextRequest) {
       console.warn("[api/painel/export-pdf] __PDF_READY__ não chegou a tempo; gerando assim mesmo");
     }
 
+    // O mapa do PDF é uma imagem estática (ver MapaEstaticoPdf) — sem isto
+    // o page.pdf podia disparar antes dela pintar e o mapa sair em branco.
+    await page
+      .evaluate(
+        () =>
+          Promise.all(
+            Array.from(document.images)
+              .filter((img) => !img.complete)
+              .map((img) => new Promise((r) => { img.onload = img.onerror = r; }))
+          )
+      )
+      .catch(() => {});
+
     const pdf = await page.pdf({
       format: "A4",
       landscape: true,

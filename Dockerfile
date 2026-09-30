@@ -56,7 +56,7 @@ ENV HOSTNAME=0.0.0.0
 # variante tecnico pra não inflar (~200MB) o APK/app de campo à toa.
 ARG BUILD_VARIANT=tecnico
 RUN if [ "$BUILD_VARIANT" = "painel" ]; then \
-      apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont; \
+      apk add --no-cache chromium chromium-swiftshader nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont; \
     fi
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 

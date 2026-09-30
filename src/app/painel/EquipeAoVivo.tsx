@@ -37,6 +37,7 @@ import { motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ANEL_SEM_TECNICO,
+  corMarcador,
   FAMILIA_COR,
   FAMILIA_LABEL,
   FAMILIA_ORDEM,
@@ -539,6 +540,108 @@ function VistoriasPorPeriodoChart({
  * inclui tanto quem nem foi vistoriado quanto quem está aguardando
  * decisão. Percentual = % já resolvido (decidido) do total.
  */
+/**
+ * Mapa do PDF — imagem estática (Mapbox Static Images API) com os pinos
+ * desenhados por cima em HTML.
+ *
+ * Motivo (2026-09-30): o Mapbox GL precisa de WebGL 2 e o Chromium
+ * headless do container não entrega — no PDF o mapa saía como a caixa
+ * "Mapa indisponível neste computador". Imagem estática não depende de
+ * GPU nenhuma, então sempre sai. Os pinos são posicionados na mão em
+ * Web Mercator, com o MESMO center/zoom pedidos à API, o que evita o
+ * limite de tamanho de URL de overlay (são centenas de vistorias) e
+ * mantém a cor idêntica à do mapa da tela (corMarcador).
+ */
+function MapaEstaticoPdf({ vistorias }: { vistorias: PainelMapaVistoria[] }) {
+  const token = getMapboxToken();
+  const L = 1000;
+  const A = 420;
+  const TILE = 512;
+
+  const pontos = vistorias.filter(
+    (v): v is PainelMapaVistoria & { latitude: number; longitude: number } =>
+      v.latitude != null && v.longitude != null
+  );
+
+  const projX = (lng: number) => (lng + 180) / 360;
+  const projY = (lat: number) => {
+    const s = Math.sin((lat * Math.PI) / 180);
+    return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+  };
+
+  // Centro/zoom que enquadram todos os pontos no tamanho fixo da imagem —
+  // calculados aqui (não pelo "auto" da API) porque preciso dos mesmos
+  // números pra projetar os pinos.
+  let centroLng = -47.0626;
+  let centroLat = -22.9064;
+  let zoom = 9.4;
+  if (pontos.length > 0) {
+    const xs = pontos.map((p) => projX(p.longitude));
+    const ys = pontos.map((p) => projY(p.latitude));
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const dx = Math.max(xMax - xMin, 1e-6);
+    const dy = Math.max(yMax - yMin, 1e-6);
+    // 0.9 = respiro nas bordas pra pino não colar no canto.
+    const zx = Math.log2((L * 0.9) / (dx * TILE));
+    const zy = Math.log2((A * 0.9) / (dy * TILE));
+    zoom = Math.max(2, Math.min(14, Math.min(zx, zy)));
+    const xc = (xMin + xMax) / 2;
+    const yc = (yMin + yMax) / 2;
+    centroLng = xc * 360 - 180;
+    const n = Math.PI * (1 - 2 * yc);
+    centroLat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+  }
+
+  const mundo = TILE * Math.pow(2, zoom);
+  const xCentro = projX(centroLng);
+  const yCentro = projY(centroLat);
+
+  const url =
+    `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/` +
+    `${centroLng.toFixed(5)},${centroLat.toFixed(5)},${zoom.toFixed(2)},0/${L}x${A}@2x` +
+    `?access_token=${token}&attribution=false&logo=false`;
+
+  if (!token) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center text-[11px] text-[var(--vm-faint)]">
+        Token do Mapbox não configurado.
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative min-h-0 flex-1 overflow-hidden" style={{ width: "100%" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="Mapa das vistorias" width={L} height={A} style={{ width: "100%", height: "auto", display: "block" }} />
+      {pontos.map((v, i) => {
+        const px = (projX(v.longitude) - xCentro) * mundo + L / 2;
+        const py = (projY(v.latitude) - yCentro) * mundo + A / 2;
+        if (px < 0 || px > L || py < 0 || py > A) return null;
+        const cor = corMarcador(v.situacao, v.tecnico_cor ?? null, v.bloqueio, v.status_aprovacao);
+        return (
+          <span
+            key={i}
+            style={{
+              position: "absolute",
+              left: `${(px / L) * 100}%`,
+              top: `${(py / A) * 100}%`,
+              width: 9,
+              height: 9,
+              marginLeft: -4.5,
+              marginTop: -4.5,
+              borderRadius: "50%",
+              background: cor,
+              border: "1.5px solid #FFFFFF",
+              boxShadow: "0 0 1px rgba(0,0,0,0.5)",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function MunicipioCabecalho() {
   return (
     <div className="flex items-center gap-2 border-b pb-1 text-[9px] font-bold uppercase tracking-wide text-[var(--vm-faint)]" style={{ borderColor: "var(--vm-border-soft)" }}>
@@ -1042,7 +1145,11 @@ export default function EquipeAoVivo({
               <span className="flex items-center gap-1"><Compass className="h-3 w-3" />Equipe</span>
             </div>
           </div>
-          <div ref={mapContainerRef} className="vm-equipe-vivo-map min-h-0 flex-1 w-full" />
+          {print ? (
+            <MapaEstaticoPdf vistorias={vistoriasMapaFiltradas} />
+          ) : (
+            <div ref={mapContainerRef} className="vm-equipe-vivo-map min-h-0 flex-1 w-full" />
+          )}
         </Card>
 
         <div className="flex flex-col gap-4" style={{ height: 340 }}>
