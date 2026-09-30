@@ -609,7 +609,15 @@ export default function PainelOverviewPage() {
       });
       if (concessionaria) qs.set("concessionaria", concessionaria);
       if (municipio) qs.set("municipio", municipio);
-      const res = await api.get(`/painel/export-pdf?${qs.toString()}`, { responseType: "blob" });
+      // Timeout default do `api` é 20s (bom pra endpoints normais) — gerar o
+      // PDF (subir Chromium + carregar a página + esperar os mapas) passa
+      // disso fácil. Sem sobrescrever aqui, o axios cancelava a chamada
+      // ANTES do servidor responder — daí o erro genérico sempre igual,
+      // nunca a mensagem real (não existe response nenhuma pra ler).
+      const res = await api.get(`/painel/export-pdf?${qs.toString()}`, {
+        responseType: "blob",
+        timeout: 90_000,
+      });
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement("a");
       a.href = url;
