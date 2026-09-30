@@ -533,12 +533,17 @@ function VistoriasPorPeriodoChart({
  * proporcional ao maior município — aquela deixava quase todo mundo com
  * um risquinho ilegível e não casava com o % ao lado.
  *
- * `topMunicipiosPeriodo[].concluidas` (nome legado, ver historico.ts) é na
- * verdade o INVENTÁRIO TOTAL do município (todas as situações); `aprovado`
- * + `aprovadoComPendencia` + `reprovado` são as que já têm decisão da
- * concessionária; `pendente` (resíduo) é "ainda falta decidir" — o que
- * inclui tanto quem nem foi vistoriado quanto quem está aguardando
- * decisão. Percentual = % já resolvido (decidido) do total.
+ * O que cada número significa (corrigido 2026-09-30 — antes "Feitas"
+ * contava só o que a concessionária já tinha decidido, e Jundiaí aparecia
+ * com 210 feitas tendo 282 vistoriadas):
+ *   - total     = `concluidas` (nome legado, ver historico.ts) = INVENTÁRIO
+ *                 do município, todo equipamento cadastrado;
+ *   - Feitas    = `vistoriado` = o técnico foi lá e fez, DECIDIDA OU NÃO;
+ *   - Faltam    = total - Feitas = ninguém foi lá ainda;
+ *   - %         = Feitas / total.
+ * `aprovado`/`reprovado` (decisão da concessionária) e o resíduo
+ * "aguardando decisão" aparecem só como cor dentro da barra — são um
+ * recorte DE DENTRO das feitas, não um estágio depois delas.
  */
 /**
  * Mapa do PDF — imagem estática (Mapbox Static Images API) com os pinos
@@ -676,13 +681,20 @@ function MunicipioRankingCompacto({
     const todas = historico?.topMunicipiosPeriodo ?? [];
     const rows = municipio ? todas.filter((m) => m.municipio === municipio) : todas;
     const comDecidido = rows.map((m) => {
+      // "Feitas" = VISTORIADAS (o técnico foi lá e fez), não "decididas
+      // pela concessionária" — achado em campo 2026-09-30: Jundiaí
+      // aparecia com 210 feitas quando 282 já tinham sido vistoriadas,
+      // porque as que estão "Em análise" (feitas, aguardando decisão)
+      // caíam em "faltam". Ver [[status-em-analise-gotcha]].
+      const feitas = m.vistoriado;
       const decidido = m.aprovado + m.reprovado;
-      const pct = m.concluidas > 0 ? decidido / m.concluidas : 0;
-      return { ...m, decidido, pct };
+      const aguardando = Math.max(feitas - decidido, 0);
+      const pct = m.concluidas > 0 ? feitas / m.concluidas : 0;
+      return { ...m, feitas, decidido, aguardando, pct };
     });
-    if (ordem === "percentual") return comDecidido.sort((a, b) => b.pct - a.pct || b.decidido - a.decidido);
+    if (ordem === "percentual") return comDecidido.sort((a, b) => b.pct - a.pct || b.feitas - a.feitas);
     if (ordem === "volume") return comDecidido.sort((a, b) => b.concluidas - a.concluidas);
-    return comDecidido.sort((a, b) => b.decidido - a.decidido || b.concluidas - a.concluidas);
+    return comDecidido.sort((a, b) => b.feitas - a.feitas || b.concluidas - a.concluidas);
   }, [historico, municipio, ordem]);
 
   const grupos = useMemo(() => {
@@ -710,6 +722,19 @@ function MunicipioRankingCompacto({
           </button>
         ))}
       </div>
+      <div className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-semibold text-[var(--vm-muted)]">
+        {([
+          ["#059669", "Aprovada"],
+          ["#DC2626", "Reprovada"],
+          ["#F59E0B", "Aguardando decisão"],
+          ["var(--vm-tile-2)", "Falta vistoriar"],
+        ] as const).map(([cor, label]) => (
+          <span key={label} className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
+            {label}
+          </span>
+        ))}
+      </div>
       {linhas.length === 0 ? (
         <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>
       ) : (
@@ -724,16 +749,23 @@ function MunicipioRankingCompacto({
                     <span className="w-[104px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
                       {m.municipio}
                     </span>
-                    {/* Barra = progresso do próprio município (verde decidido
-                        aprovado, vermelho reprovado, resto cinza = falta). */}
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                    {/* Barra = progresso do próprio município. A parte
+                        colorida é tudo que JÁ FOI VISTORIADO: verde
+                        aprovado, vermelho reprovado, âmbar vistoriado mas
+                        ainda sem decisão da concessionária. Cinza = falta
+                        vistoriar. */}
+                    <div
+                      className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]"
+                      title={`${m.feitas} vistoriadas de ${m.concluidas} · ${m.aprovado} aprovadas, ${m.reprovado} reprovadas, ${m.aguardando} aguardando decisão`}
+                    >
                       <div className="flex h-full">
                         {m.aprovado > 0 && <div className="h-full" style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} />}
                         {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
+                        {m.aguardando > 0 && <div className="h-full" style={{ width: `${(m.aguardando / m.concluidas) * 100}%`, background: "#F59E0B" }} />}
                       </div>
                     </div>
-                    <span className="w-[42px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.decidido}</span>
-                    <span className="w-[42px] shrink-0 text-right text-[11px] tabular-nums text-[var(--vm-muted)]">{m.pendente}</span>
+                    <span className="w-[42px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.feitas}</span>
+                    <span className="w-[42px] shrink-0 text-right text-[11px] tabular-nums text-[var(--vm-muted)]">{m.concluidas - m.feitas}</span>
                     <span
                       className="w-[34px] shrink-0 text-right text-[11px] font-bold tabular-nums"
                       style={{ color: pctResolvido > 0 ? "#059669" : "var(--vm-faint)" }}

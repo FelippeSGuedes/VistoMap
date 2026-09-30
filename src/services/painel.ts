@@ -395,6 +395,9 @@ export interface HistoricoAnalytics {
   topMunicipiosPeriodo: Array<{
     municipio: string;
     concluidas: number;
+    /** Já vistoriadas (têm data de vistoria), decididas ou não — "vistoriada"
+     *  ≠ "decidida pela concessionária". Ver historico.ts. */
+    vistoriado: number;
     aprovado: number;
     aprovadoComPendencia: number;
     pendente: number;

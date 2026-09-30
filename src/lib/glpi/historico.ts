@@ -90,6 +90,15 @@ export interface HistoricoAnalytics {
   topMunicipiosPeriodo: Array<{
     municipio: string;
     concluidas: number;
+    /** Quantas JÁ FORAM VISTORIADAS (têm data de vistoria preenchida),
+     *  independente da concessionária ter decidido ou não — mesmo critério
+     *  de `topMunicipios.concluidas`. Existe separado de
+     *  `aprovado`/`reprovado` porque "vistoriada" ≠ "decidida": vistoria
+     *  em "Em análise" JÁ foi feita pelo técnico, só aguarda decisão (ver
+     *  [[status-em-analise-gotcha]]). Achado em campo 2026-09-30: o card
+     *  "Vistorias por município" mostrava 210 feitas em Jundiaí quando 282
+     *  já tinham sido vistoriadas, porque somava só as decididas. */
+    vistoriado: number;
     aprovado: number;
     aprovadoComPendencia: number;
     pendente: number;
@@ -402,6 +411,7 @@ export async function fetchHistoricoAnalytics(
   const muniPeriodoRows = await query<{
     municipio: string;
     concluidas: number;
+    vistoriado: number;
     aprovado: number;
     aprovadoComPendencia: number;
     reprovado: number;
@@ -409,6 +419,7 @@ export async function fetchHistoricoAnalytics(
     `
       SELECT TRIM(f.municipiofield) AS municipio,
              COUNT(*) AS concluidas,
+             SUM(CASE WHEN f.datadavistoriafield IS NOT NULL THEN 1 ELSE 0 END) AS vistoriado,
              SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovado,
              SUM(CASE WHEN sv.name = 'Aprovado com Pendências' THEN 1 ELSE 0 END) AS aprovadoComPendencia,
              SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovado
@@ -1040,10 +1051,18 @@ export async function fetchHistoricoAnalytics(
       const aprovadoComPendencia = Number(r.aprovadoComPendencia) || 0;
       const reprovado = Number(r.reprovado) || 0;
       const concluidas = Number(r.concluidas) || 0;
+      // Piso em aprovado+reprovado: decisão sem data de vistoria gravada
+      // existe (correção manual no GLPI) e deixaria "vistoriado" menor que
+      // "decidido", o que não faz sentido em tela nenhuma.
+      const vistoriado = Math.min(
+        concluidas,
+        Math.max(Number(r.vistoriado) || 0, aprovado + aprovadoComPendencia + reprovado)
+      );
       const impedRecusa = municipiosImpedimentosMap.get(r.municipio) ?? { impedimento: 0, recusa: 0 };
       return {
         municipio: r.municipio,
         concluidas,
+        vistoriado,
         aprovado: aprovado + aprovadoComPendencia,
         aprovadoComPendencia,
         pendente: Math.max(concluidas - aprovado - aprovadoComPendencia - reprovado, 0),
