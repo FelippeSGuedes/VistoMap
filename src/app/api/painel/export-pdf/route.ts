@@ -81,11 +81,30 @@ export async function GET(req: NextRequest) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1080, deviceScaleFactor: 1.5 });
 
-    // Semeia o token ANTES de qualquer script da página rodar — quando o
-    // React monta e o services/api.ts lê o token, ele já está lá.
-    await page.evaluateOnNewDocument((tk: string) => {
-      window.localStorage.setItem("vistomap.token", tk);
-    }, token);
+    // Semeia sessão + token ANTES de qualquer script da página rodar. Só o
+    // token não bastava: o guard do /painel lê `vistomap.session` (ver
+    // services/auth.ts) e, sem ela, mandava a aba do Puppeteer pra tela de
+    // login — o PDF saía com a tela de login (achado em campo 2026-09-30).
+    // A sessão é montada aqui a partir das claims do JWT JÁ VALIDADO acima,
+    // nunca de algo que o cliente mandou, e vale só os minutos do export.
+    const sessao = {
+      token,
+      tecnico: {
+        id: auth.claims.tecnicoId ?? auth.claims.sub,
+        nome: "Exportação PDF",
+        email: auth.claims.email ?? "",
+      },
+      expiresAt: Date.now() + 10 * 60_000,
+      role: auth.claims.role,
+    };
+    await page.evaluateOnNewDocument(
+      (tk: string, ss: string) => {
+        window.localStorage.setItem("vistomap.token", tk);
+        window.localStorage.setItem("vistomap.session", ss);
+      },
+      token,
+      JSON.stringify(sessao)
+    );
 
     await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 45_000 });
     // Melhor esforço: espera o sinal "dados + mapas prontos" da própria

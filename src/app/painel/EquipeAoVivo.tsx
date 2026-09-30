@@ -524,12 +524,13 @@ function VistoriasPorPeriodoChart({
 }
 
 /**
- * Vistorias por município — pedido de campo 2026-09-30: filtro pra
- * ordenar por "mais vistorias finalizadas" (não só por volume bruto de
- * equipamentos, que deixava município parado no 0% no topo da lista) +
- * número explícito de "vistoriado", não só a barra. Lista inteira agora
- * (sem cap em 7) — o card usa a mesma altura fixa de sempre, quem rola é
- * o conteúdo (wrapper pai já tem overflow-y-auto).
+ * Vistorias por município — redesenhado 2026-09-30 depois de "esse card é
+ * o pior de todos, extremamente confuso": ganhou metade da largura da
+ * linha (escolha do usuário entre 3 opções), cabeçalho de coluna dizendo
+ * o que é cada número, nome do município inteiro (antes cortado em 62px)
+ * e barra de PROGRESSO DO PRÓPRIO município (0-100%) no lugar da barra
+ * proporcional ao maior município — aquela deixava quase todo mundo com
+ * um risquinho ilegível e não casava com o % ao lado.
  *
  * `topMunicipiosPeriodo[].concluidas` (nome legado, ver historico.ts) é na
  * verdade o INVENTÁRIO TOTAL do município (todas as situações); `aprovado`
@@ -538,13 +539,25 @@ function VistoriasPorPeriodoChart({
  * inclui tanto quem nem foi vistoriado quanto quem está aguardando
  * decisão. Percentual = % já resolvido (decidido) do total.
  */
+function MunicipioCabecalho() {
+  return (
+    <div className="flex items-center gap-2 border-b pb-1 text-[9px] font-bold uppercase tracking-wide text-[var(--vm-faint)]" style={{ borderColor: "var(--vm-border-soft)" }}>
+      <span className="w-[104px] shrink-0">Município</span>
+      <span className="flex-1">Progresso</span>
+      <span className="w-[42px] shrink-0 text-right">Feitas</span>
+      <span className="w-[42px] shrink-0 text-right">Faltam</span>
+      <span className="w-[34px] shrink-0 text-right">%</span>
+    </div>
+  );
+}
+
 function MunicipioRankingCompacto({
   historico,
   colunas = 1,
 }: {
   historico: HistoricoAnalytics | null;
-  /** 2 = layout de impressão (lista inteira, sem scroll) flui em 2 colunas
-   *  balanceadas (CSS columns) em vez de uma coluna única e comprida. */
+  /** 2 = layout de impressão: lista inteira sem scroll, dividida em duas
+   *  metades lado a lado (cada uma com seu cabeçalho, pra alinhar). */
   colunas?: 1 | 2;
 }) {
   const [ordem, setOrdem] = useState<"finalizadas" | "percentual" | "volume">("finalizadas");
@@ -560,11 +573,16 @@ function MunicipioRankingCompacto({
     if (ordem === "volume") return comDecidido.sort((a, b) => b.concluidas - a.concluidas);
     return comDecidido.sort((a, b) => b.decidido - a.decidido || b.concluidas - a.concluidas);
   }, [historico, ordem]);
-  const max = Math.max(...linhas.map((m) => m.concluidas), 1);
+
+  const grupos = useMemo(() => {
+    if (colunas !== 2) return [linhas];
+    const meio = Math.ceil(linhas.length / 2);
+    return [linhas.slice(0, meio), linhas.slice(meio)];
+  }, [linhas, colunas]);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-1.5 flex shrink-0 flex-wrap gap-1.5">
+      <div className="mb-2 flex shrink-0 flex-wrap gap-1.5">
         {([
           ["finalizadas", "Mais finalizadas"],
           ["percentual", "Maior %"],
@@ -574,7 +592,7 @@ function MunicipioRankingCompacto({
             key={id}
             type="button"
             onClick={() => setOrdem(id)}
-            className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold transition"
+            className="rounded-full px-2.5 py-1 text-[10px] font-semibold transition"
             style={ordem === id ? { background: "#3B82F6", color: "#fff" } : { background: "var(--vm-tile)", color: "var(--vm-muted)" }}
           >
             {label}
@@ -584,27 +602,38 @@ function MunicipioRankingCompacto({
       {linhas.length === 0 ? (
         <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>
       ) : (
-        <div className={colunas === 2 ? "gap-x-4" : "flex flex-col gap-1.5"} style={colunas === 2 ? { columnCount: 2 } : undefined}>
-          {linhas.map((m) => {
-            const pctResolvido = m.concluidas > 0 ? Math.round((m.decidido / m.concluidas) * 100) : 0;
-            return (
-              <div key={m.municipio} className="flex items-center gap-1.5" style={colunas === 2 ? { breakInside: "avoid", marginBottom: 6 } : undefined}>
-                <span className="w-[62px] shrink-0 truncate text-[10px] font-semibold text-[var(--vm-text-soft)]">{m.municipio}</span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                  <div className="flex h-full" style={{ width: `${(m.concluidas / max) * 100}%` }}>
-                    {m.aprovado > 0 && <div className="h-full" style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} />}
-                    {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
-                    {m.pendente > 0 && <div className="h-full" style={{ width: `${(m.pendente / m.concluidas) * 100}%`, background: "#94A3B8" }} />}
+        <div className={colunas === 2 ? "grid grid-cols-2 gap-x-6" : ""}>
+          {grupos.map((grupo, gi) => (
+            <div key={gi} className="flex flex-col gap-1">
+              <MunicipioCabecalho />
+              {grupo.map((m) => {
+                const pctResolvido = Math.round(m.pct * 100);
+                return (
+                  <div key={m.municipio} className="flex items-center gap-2 py-[3px]">
+                    <span className="w-[104px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
+                      {m.municipio}
+                    </span>
+                    {/* Barra = progresso do próprio município (verde decidido
+                        aprovado, vermelho reprovado, resto cinza = falta). */}
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                      <div className="flex h-full">
+                        {m.aprovado > 0 && <div className="h-full" style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} />}
+                        {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
+                      </div>
+                    </div>
+                    <span className="w-[42px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.decidido}</span>
+                    <span className="w-[42px] shrink-0 text-right text-[11px] tabular-nums text-[var(--vm-muted)]">{m.pendente}</span>
+                    <span
+                      className="w-[34px] shrink-0 text-right text-[11px] font-bold tabular-nums"
+                      style={{ color: pctResolvido > 0 ? "#059669" : "var(--vm-faint)" }}
+                    >
+                      {pctResolvido}%
+                    </span>
                   </div>
-                </div>
-                <span className="w-[38px] shrink-0 text-right text-[9.5px] font-bold tabular-nums text-[var(--vm-text)]" title="Vistoriado / total de equipamentos">
-                  {m.decidido}<span className="font-normal text-[var(--vm-faint)]">/{m.concluidas}</span>
-                </span>
-                <span className="w-7 shrink-0 text-right text-[9px] font-semibold tabular-nums text-[var(--vm-faint)]" title="Ainda faltam decidir">-{m.pendente}</span>
-                <span className="w-7 shrink-0 text-right text-[9.5px] font-bold tabular-nums" style={{ color: "#059669" }} title="Percentual já resolvido">{pctResolvido}%</span>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1032,19 +1061,26 @@ export default function EquipeAoVivo({
         </div>
       </div>
 
-      {/* ═══════ Análises — 4 cards lado a lado, todos do mesmo tamanho
-          (revertido 2026-09-26: uma versão anterior tinha tirado "Vistorias
-          por Município" pra um card grande sozinho — pedido de campo foi
-          claro que a composição de 4 iguais era a boa, não mexer de novo) ═══════ */}
+      {/* ═══════ Análises (recomposto 2026-09-30, escolha do usuário entre
+          3 opções): "Vistorias por município" ocupa METADE da linha — 2
+          colunas de largura e 2 de altura — porque com 1/4 o nome vinha
+          cortado e os números sem legenda ("extremamente confuso"). Os
+          outros 3 dividem a outra metade: Técnicos e Motivos em cima,
+          Atribuídas x Realizadas ocupando as 2 colunas embaixo. ═══════ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card style={print ? undefined : { height: 205 }}>
+        <Card
+          // No PDF ocupa a linha inteira (lista completa, sem scroll); na
+          // tela, metade da largura e o dobro da altura.
+          className={print ? "sm:col-span-2 xl:col-span-4" : "sm:col-span-2 xl:row-span-2"}
+          style={print ? undefined : { height: 476 }}
+        >
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por município</p>
           <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
             <MunicipioRankingCompacto historico={historico} colunas={print ? 2 : 1} />
           </div>
         </Card>
 
-        <Card style={{ height: 205 }}>
+        <Card style={{ height: 230 }}>
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</p>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <RankedBarList
@@ -1059,17 +1095,17 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card style={{ height: 205 }}>
+        <Card style={{ height: 230 }}>
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Principais motivos de reprovação</p>
           <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-4 pb-2">
             <MultiDonut segments={(historico?.motivosReprovacao ?? []).slice(0, 6).map((m, i) => ({ label: m.label, value: m.total, color: DONUT_MOTIVOS_CORES[i % DONUT_MOTIVOS_CORES.length] }))} centerLabel="Reprovações" />
           </div>
         </Card>
 
-        <Card style={{ height: 205 }}>
+        <Card className="sm:col-span-2" style={{ height: 230 }}>
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Atribuídas x Realizadas por técnico</p>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
-            <GroupedBarChart items={[...(topTecsDash?.tecnicos ?? [])].sort((a, b) => b.total - a.total).slice(0, 5)} />
+            <GroupedBarChart items={[...(topTecsDash?.tecnicos ?? [])].sort((a, b) => b.total - a.total).slice(0, 6)} />
           </div>
         </Card>
       </div>

@@ -46,6 +46,13 @@ import PainelWebPush from "@/components/painel/PainelWebPush";
 // pedir login pra quem só quer ler).
 const PUBLIC_PAINEL_PATHS = ["/painel/login", "/painel/privacidade"];
 
+// Rotas que EXIGEM sessão normalmente (passam por todo o guard abaixo) mas
+// renderizam sem a casca do painel — sem sidebar, sem topbar. Hoje só
+// /painel/print, a página que o Puppeteer fotografa pro export de PDF:
+// sidebar e menu no meio do relatório não fazem sentido. Note que isto
+// NÃO afrouxa autenticação nenhuma — só pula o shell visual.
+const CHROMELESS_PAINEL_PATHS = ["/painel/print"];
+
 // Escopo de acesso por papel — admin vê tudo; moderador é admin menos
 // Cancelar (botão, não rota) e Status; leitura só as telas de visualização
 // combinadas com o usuário (ver PAGE_ROLES abaixo para o guard de rota).
@@ -375,6 +382,9 @@ export default function PainelClientLayout({ children }: { children: React.React
   if (!session || !isPainelRole(session.role)) return null;
   const currentAllowed = rolesForPath(pathname);
   if (currentAllowed && !currentAllowed.includes(session.role)) return null;
+  // Só depois de TODO o guard acima (sessão válida + papel permitido):
+  // /painel/print sai sem a casca, pro PDF não vir com sidebar e menu.
+  if (CHROMELESS_PAINEL_PATHS.includes(pathname ?? "")) return <>{children}</>;
 
   const T = isDark ? DARK : LIGHT;
   const isMapaPage = pathname === "/painel/mapa";
