@@ -1193,7 +1193,10 @@ export default function EquipeAoVivo({
               </span>
               <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">Aproveitamento</span>
             </div>
-            <div className="flex flex-1 items-center justify-center py-2">
+            {/* mt-3 igual ao valor das outras 6 tiles (não flex-1
+                centralizado) — era o que estava descendo o donut e
+                desalinhando a linha inteira. */}
+            <div className="mt-3">
               <MiniDonut value={kpiAproveitamento} color="#059669" caption={periodoLabel} />
             </div>
           </div>
