@@ -558,7 +558,7 @@ export default function PainelOverviewPage() {
   // Filtro de período único — controla todo widget histórico da página (ver
   // comentário em PeriodoModo). Estado vive aqui, no topo, porque tanto o
   // efeito principal (historico) quanto o de Top Técnicos dependem dele.
-  const [periodoModo, setPeriodoModo] = useState<PeriodoModo>("30dias");
+  const [periodoModo, setPeriodoModo] = useState<PeriodoModo>("todoperiodo");
   const [periodoCustomInicio, setPeriodoCustomInicio] = useState("");
   const [periodoCustomFim, setPeriodoCustomFim] = useState("");
 

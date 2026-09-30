@@ -187,12 +187,18 @@ function MiniKpiCard({
   );
   if (href) {
     return (
-      <Link href={href} className="group block">
-        <Card className="relative cursor-pointer p-5 transition hover:shadow-md">{body}</Card>
+      // h-full nos dois: o Link (bloco) É o item do grid, esticado pelo
+      // "align-items: stretch" padrão — mas o Card dentro dele não herdava
+      // essa altura sozinho (div block é "auto" por padrão), então as 6
+      // tiles com link ficavam mais baixas que o Aproveitamento (o único
+      // sem Link, cujo próprio Card é o item do grid e por isso esticava
+      // certinho). "Quero todos iguais" — 2026-09-30.
+      <Link href={href} className="group block h-full">
+        <Card className="relative h-full cursor-pointer p-5 transition hover:shadow-md">{body}</Card>
       </Link>
     );
   }
-  return <Card className="relative p-5">{body}</Card>;
+  return <Card className="relative h-full p-5">{body}</Card>;
 }
 
 function MiniDonut({ value, color, caption }: { value: number; color: string; caption: string }) {
