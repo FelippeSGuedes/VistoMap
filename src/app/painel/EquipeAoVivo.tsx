@@ -656,9 +656,16 @@ function MunicipioCabecalho() {
 
 function MunicipioRankingCompacto({
   historico,
+  municipio,
   colunas = 1,
 }: {
   historico: HistoricoAnalytics | null;
+  /** Filtro global de município do cabeçalho — "" = todos. O backend NÃO
+   *  aplica ele neste ranking de propósito (seria redundante pro resto da
+   *  query, ver historico.ts), então o corte é feito aqui: sem isto, com
+   *  "Campinas" selecionado o dashboard inteiro estreitava e só este card
+   *  continuava listando os 43 municípios (pedido de campo 2026-09-30). */
+  municipio?: string;
   /** 2 = layout de impressão: lista inteira sem scroll, dividida em duas
    *  metades lado a lado (cada uma com seu cabeçalho, pra alinhar). */
   colunas?: 1 | 2;
@@ -666,7 +673,8 @@ function MunicipioRankingCompacto({
   const [ordem, setOrdem] = useState<"finalizadas" | "percentual" | "volume">("finalizadas");
 
   const linhas = useMemo(() => {
-    const rows = historico?.topMunicipiosPeriodo ?? [];
+    const todas = historico?.topMunicipiosPeriodo ?? [];
+    const rows = municipio ? todas.filter((m) => m.municipio === municipio) : todas;
     const comDecidido = rows.map((m) => {
       const decidido = m.aprovado + m.reprovado;
       const pct = m.concluidas > 0 ? decidido / m.concluidas : 0;
@@ -675,7 +683,7 @@ function MunicipioRankingCompacto({
     if (ordem === "percentual") return comDecidido.sort((a, b) => b.pct - a.pct || b.decidido - a.decidido);
     if (ordem === "volume") return comDecidido.sort((a, b) => b.concluidas - a.concluidas);
     return comDecidido.sort((a, b) => b.decidido - a.decidido || b.concluidas - a.concluidas);
-  }, [historico, ordem]);
+  }, [historico, municipio, ordem]);
 
   const grupos = useMemo(() => {
     if (colunas !== 2) return [linhas];
@@ -1183,7 +1191,7 @@ export default function EquipeAoVivo({
         >
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por município</p>
           <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
-            <MunicipioRankingCompacto historico={historico} colunas={print ? 2 : 1} />
+            <MunicipioRankingCompacto historico={historico} municipio={municipio} colunas={print ? 2 : 1} />
           </div>
         </Card>
 
