@@ -533,17 +533,19 @@ function VistoriasPorPeriodoChart({
  * proporcional ao maior município — aquela deixava quase todo mundo com
  * um risquinho ilegível e não casava com o % ao lado.
  *
- * O que cada número significa (corrigido 2026-09-30 — antes "Feitas"
- * contava só o que a concessionária já tinha decidido, e Jundiaí aparecia
- * com 210 feitas tendo 282 vistoriadas):
- *   - total     = `concluidas` (nome legado, ver historico.ts) = INVENTÁRIO
- *                 do município, todo equipamento cadastrado;
- *   - Feitas    = `vistoriado` = o técnico foi lá e fez, DECIDIDA OU NÃO;
- *   - Faltam    = total - Feitas = ninguém foi lá ainda;
- *   - %         = Feitas / total.
- * `aprovado`/`reprovado` (decisão da concessionária) e o resíduo
- * "aguardando decisão" aparecem só como cor dentro da barra — são um
- * recorte DE DENTRO das feitas, não um estágio depois delas.
+ * O que cada número significa (dois acertos de campo em 2026-09-30):
+ *   - total  = `concluidas` (nome legado, ver historico.ts) = INVENTÁRIO
+ *              do município, todo equipamento cadastrado;
+ *   - Feitas = vistoriada E que não voltou pra fila = `vistoriado` menos
+ *              `reprovado`. Inclui "Em análise" (técnico fez, decisão não
+ *              saiu — 1º acerto: antes só contava decidida, e Jundiaí
+ *              mostrava 210 tendo 282 vistoriadas) e exclui reprovada
+ *              (2º acerto: reprovação vira revisita, volta pra lista de
+ *              pendentes, então é trabalho a fazer de novo);
+ *   - Faltam = total - Feitas = nunca vistoriadas + reprovadas;
+ *   - %      = Feitas / total.
+ * Impedimentos e Reprovação têm coluna própria; aprovada/aguardando/
+ * reprovada também aparecem como cor dentro da barra.
  */
 /**
  * Mapa do PDF — imagem estática (Mapbox Static Images API) com os pinos
@@ -735,16 +737,20 @@ function MunicipioRankingCompacto({
     const todas = historico?.topMunicipiosPeriodo ?? [];
     const rows = municipio ? todas.filter((m) => m.municipio === municipio) : todas;
     const comDecidido = rows.map((m) => {
-      // "Feitas" = VISTORIADAS (o técnico foi lá e fez), não "decididas
-      // pela concessionária" — achado em campo 2026-09-30: Jundiaí
-      // aparecia com 210 feitas quando 282 já tinham sido vistoriadas,
-      // porque as que estão "Em análise" (feitas, aguardando decisão)
-      // caíam em "faltam". Ver [[status-em-analise-gotcha]].
-      const feitas = m.vistoriado;
-      const decidido = m.aprovado + m.reprovado;
-      const aguardando = Math.max(feitas - decidido, 0);
+      // "Feitas" = vistoriada E que não voltou pra fila.
+      //   - inclui "Em análise" (técnico fez, concessionária ainda não
+      //     decidiu) — ver [[status-em-analise-gotcha]];
+      //   - EXCLUI reprovada: reprovação vira revisita ativa e o
+      //     equipamento volta pra lista de pendentes, então é trabalho a
+      //     fazer de novo, não trabalho pronto (isRevisitaAtual em
+      //     constants.ts trata statusvistoria=Reprovado como o sinal mais
+      //     forte de revisita, "sempre vence").
+      // Com isso Feitas + Faltam continua fechando no inventário total:
+      // Faltam = nunca vistoriadas + reprovadas que voltaram.
+      const aguardando = Math.max(m.vistoriado - m.aprovado - m.reprovado, 0);
+      const feitas = Math.max(m.vistoriado - m.reprovado, 0);
       const pct = m.concluidas > 0 ? feitas / m.concluidas : 0;
-      return { ...m, feitas, decidido, aguardando, pct };
+      return { ...m, feitas, aguardando, pct };
     });
     // Ordem fixa por maior % (pedido de campo 2026-09-30 — os outros dois
     // critérios de ordenação foram tirados, sobrou só este).
@@ -762,8 +768,8 @@ function MunicipioRankingCompacto({
       <div className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-semibold text-[var(--vm-muted)]">
         {([
           ["#059669", "Aprovada"],
-          ["#DC2626", "Reprovada"],
           ["#F59E0B", "Aguardando decisão"],
+          ["#DC2626", "Reprovada (volta pra fila)"],
           ["var(--vm-tile-2)", "Falta vistoriar"],
         ] as const).map(([cor, label]) => (
           <span key={label} className="flex items-center gap-1">
@@ -786,19 +792,20 @@ function MunicipioRankingCompacto({
                     <span className="w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
                       {m.municipio}
                     </span>
-                    {/* Barra = progresso do próprio município. A parte
-                        colorida é tudo que JÁ FOI VISTORIADO: verde
-                        aprovado, vermelho reprovado, âmbar vistoriado mas
-                        ainda sem decisão da concessionária. Cinza = falta
-                        vistoriar. */}
+                    {/* Ordem dos segmentos = ordem da leitura: primeiro o
+                        que está PRONTO (verde aprovada + âmbar aguardando
+                        decisão), depois o que ainda é trabalho (vermelho
+                        reprovada, que voltou pra fila, + cinza nunca
+                        vistoriada). A divisa verde/âmbar → vermelho/cinza
+                        é exatamente a divisa Feitas → Faltam. */}
                     <div
                       className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]"
-                      title={`${m.feitas} vistoriadas de ${m.concluidas} · ${m.aprovado} aprovadas, ${m.reprovado} reprovadas, ${m.aguardando} aguardando decisão`}
+                      title={`${m.feitas} feitas de ${m.concluidas} · ${m.aprovado} aprovadas, ${m.aguardando} aguardando decisão · faltam ${m.concluidas - m.feitas} (${m.reprovado} reprovadas voltaram pra fila)`}
                     >
                       <div className="flex h-full">
                         {m.aprovado > 0 && <div className="h-full" style={{ width: `${(m.aprovado / m.concluidas) * 100}%`, background: "#059669" }} />}
-                        {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
                         {m.aguardando > 0 && <div className="h-full" style={{ width: `${(m.aguardando / m.concluidas) * 100}%`, background: "#F59E0B" }} />}
+                        {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
                       </div>
                     </div>
                     <span className="w-[40px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.feitas}</span>
