@@ -619,8 +619,27 @@ export default function PainelOverviewPage() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("[painel] exportarPdf falhou:", err);
-      window.alert("Não foi possível gerar o PDF agora. Tente novamente em instantes.");
+      // responseType "blob" faz o axios devolver o corpo do erro (JSON com
+      // { message, error }) como Blob, não objeto já parseado — sem isto a
+      // mensagem real do servidor (ex.: Chromium não encontrado) some e só
+      // dá pra depurar olhando log do container.
+      let detalhe = "";
+      const data = (err as { response?: { data?: unknown } })?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const texto = await data.text();
+          const json = JSON.parse(texto) as { message?: string; error?: string };
+          detalhe = json.error || json.message || texto;
+        } catch {
+          // corpo não era JSON — ignora, cai no alerta genérico
+        }
+      }
+      console.error("[painel] exportarPdf falhou:", detalhe || err);
+      window.alert(
+        detalhe
+          ? `Não foi possível gerar o PDF: ${detalhe}`
+          : "Não foi possível gerar o PDF agora. Tente novamente em instantes."
+      );
     } finally {
       setExportandoPdf(false);
     }

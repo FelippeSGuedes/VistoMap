@@ -1,8 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import { existsSync } from "fs";
 import { requirePainelRole } from "@/lib/painel-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+/** Caminhos possíveis do Chromium instalado via apk no Alpine (ver
+ *  Dockerfile) — nomes/paths mudaram entre versões do pacote, então
+ *  tenta a env var primeiro e cai numa lista antes de desistir. */
+function resolveChromiumPath(): string {
+  const candidatos = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/lib/chromium/chromium",
+  ].filter((p): p is string => !!p);
+  const achado = candidatos.find((p) => existsSync(p));
+  if (!achado) {
+    throw new Error(
+      `Chromium não encontrado no container (tentado: ${candidatos.join(", ")}). Verifique se o "apk add chromium" rodou no build da imagem do painel.`
+    );
+  }
+  return achado;
+}
 
 /**
  * GET /api/painel/export-pdf — exporta o dashboard "Equipe ao vivo" em PDF
@@ -43,9 +63,20 @@ export async function GET(req: NextRequest) {
   try {
     const puppeteer = await import("puppeteer-core");
     browser = await puppeteer.launch({
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium-browser",
+      executablePath: resolveChromiumPath(),
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        // Sem GPU de verdade no servidor — sem isto o WebGL do Mapbox não
+        // inicializa em Chromium headless e o mapa sai em branco no PDF.
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+        "--enable-webgl",
+        "--ignore-gpu-blocklist",
+        "--enable-unsafe-swiftshader",
+      ],
     });
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1080, deviceScaleFactor: 1.5 });

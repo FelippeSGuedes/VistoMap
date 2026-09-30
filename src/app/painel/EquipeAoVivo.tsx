@@ -547,22 +547,27 @@ function MunicipioRankingCompacto({
    *  balanceadas (CSS columns) em vez de uma coluna única e comprida. */
   colunas?: 1 | 2;
 }) {
-  const [ordem, setOrdem] = useState<"finalizadas" | "volume">("finalizadas");
+  const [ordem, setOrdem] = useState<"finalizadas" | "percentual" | "volume">("finalizadas");
 
   const linhas = useMemo(() => {
     const rows = historico?.topMunicipiosPeriodo ?? [];
-    const comDecidido = rows.map((m) => ({ ...m, decidido: m.aprovado + m.reprovado }));
-    return ordem === "finalizadas"
-      ? comDecidido.sort((a, b) => b.decidido - a.decidido || b.concluidas - a.concluidas)
-      : comDecidido.sort((a, b) => b.concluidas - a.concluidas);
+    const comDecidido = rows.map((m) => {
+      const decidido = m.aprovado + m.reprovado;
+      const pct = m.concluidas > 0 ? decidido / m.concluidas : 0;
+      return { ...m, decidido, pct };
+    });
+    if (ordem === "percentual") return comDecidido.sort((a, b) => b.pct - a.pct || b.decidido - a.decidido);
+    if (ordem === "volume") return comDecidido.sort((a, b) => b.concluidas - a.concluidas);
+    return comDecidido.sort((a, b) => b.decidido - a.decidido || b.concluidas - a.concluidas);
   }, [historico, ordem]);
   const max = Math.max(...linhas.map((m) => m.concluidas), 1);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-1.5 flex shrink-0 gap-1.5">
+      <div className="mb-1.5 flex shrink-0 flex-wrap gap-1.5">
         {([
           ["finalizadas", "Mais finalizadas"],
+          ["percentual", "Maior %"],
           ["volume", "Mais equipamentos"],
         ] as const).map(([id, label]) => (
           <button
