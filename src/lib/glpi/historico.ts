@@ -253,18 +253,28 @@ export async function fetchHistoricoAnalytics(
   );
 
   // Atribuídas por dia (audit log) — mesma fonte/critério de `atribRow`
-  // abaixo (não filtra por concessionária, igual o total já não filtrava —
-  // manter os dois consistentes entre si).
+  // abaixo. Até 2026-09-30 nenhum dos dois filtrava concessionária/
+  // município (audit log não tem join nativo a equipamento) — ficou
+  // documentado como "consistente entre si", mas virou bug de verdade:
+  // com o filtro de município ativo, a série "Atribuídas" de "Evolução
+  // no período" era a ÚNICA linha do gráfico que não se mexia (Realizadas/
+  // Reprovadas, vindas de `serieRows` acima, já respeitavam). Corrigido
+  // com o mesmo join usado em atividadeAuditRows (alvo_id -> items_id).
   const atribDiariaRows = await query<{ dia: string; total: number }>(
     `
-      SELECT DATE(ts) AS dia, COUNT(*) AS total
-        FROM glpi_plugin_vistomap_audit
-       WHERE acao = 'vistoria-atribuida'
-         AND DATE(ts) >= ?
-         AND DATE(ts) <= ?
-       GROUP BY DATE(ts)
+      SELECT DATE(a.ts) AS dia, COUNT(*) AS total
+        FROM glpi_plugin_vistomap_audit a
+        INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = CAST(a.alvo_id AS UNSIGNED)
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        ${concJoin}
+       WHERE a.acao = 'vistoria-atribuida'
+         AND DATE(a.ts) >= ?
+         AND DATE(a.ts) <= ?
+         ${concWhere}
+         ${muniWhere}
+       GROUP BY DATE(a.ts)
     `,
-    [inicioSerie, fim]
+    [inicioSerie, fim, ...concParams, ...muniParams]
   );
 
   // Constrói série dia-a-dia (preenche dias faltantes com 0).
@@ -456,13 +466,18 @@ export async function fetchHistoricoAnalytics(
   const [atribRow] = await query<{ atual: number; anterior: number }>(
     `
       SELECT
-        SUM(CASE WHEN DATE(ts) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS atual,
-        SUM(CASE WHEN DATE(ts) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS anterior
-        FROM glpi_plugin_vistomap_audit
-       WHERE acao = 'vistoria-atribuida'
-         AND DATE(ts) BETWEEN ? AND ?
+        SUM(CASE WHEN DATE(a.ts) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS atual,
+        SUM(CASE WHEN DATE(a.ts) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS anterior
+        FROM glpi_plugin_vistomap_audit a
+        INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = CAST(a.alvo_id AS UNSIGNED)
+        INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
+        ${concJoin}
+       WHERE a.acao = 'vistoria-atribuida'
+         AND DATE(a.ts) BETWEEN ? AND ?
+         ${concWhere}
+         ${muniWhere}
     `,
-    [inicio, fim, inicioAnterior, fimAnterior, inicioAnterior, fim]
+    [inicio, fim, inicioAnterior, fimAnterior, inicioAnterior, fim, ...concParams, ...muniParams]
   );
   const atribuidasPeriodo = Number(atribRow?.atual ?? 0);
   const atribuidasPeriodoAnterior = Number(atribRow?.anterior ?? 0);
@@ -594,13 +609,16 @@ export async function fetchHistoricoAnalytics(
         FROM glpi_plugin_vistomap_audit a
         LEFT JOIN \`${TABLE_FIELDS}\` f ON f.items_id = CAST(a.alvo_id AS UNSIGNED)
         LEFT JOIN \`${TABLE_USERS}\` u ON u.id = f.users_id_vistoriadorafield
+        ${concJoin}
        WHERE a.acao IN ('vistoria-finalizada', 'recusa-aprovada')
          AND DATE(a.ts) >= ?
          AND DATE(a.ts) <= ?
+         ${concWhere}
+         ${muniWhere}
        ORDER BY a.ts DESC
        LIMIT 30
     `,
-    [inicio, fim]
+    [inicio, fim, ...concParams, ...muniParams]
   );
   const atividadeDecisaoRows = await query<{
     ts: string;
@@ -628,13 +646,16 @@ export async function fetchHistoricoAnalytics(
         LEFT JOIN \`${TABLE_USERS}\` u ON u.id = f.users_id_vistoriadorafield
         LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
                 ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
+        ${concJoin}
        WHERE sv.name IN ('Aprovado', 'Aprovada', 'Aprovado com Pendências', 'Reprovado', 'Reprovada')
          AND DATE(ne.date_mod) >= ?
          AND DATE(ne.date_mod) <= ?
+         ${concWhere}
+         ${muniWhere}
        ORDER BY ne.date_mod DESC
        LIMIT 30
     `,
-    [inicio, fim]
+    [inicio, fim, ...concParams, ...muniParams]
   );
   type AtividadeStatus = "Vistoriada" | "Impedida" | "Recusada" | "Aprovada" | "Aprovado com Pendência" | "Reprovada";
   interface AtividadeRow {

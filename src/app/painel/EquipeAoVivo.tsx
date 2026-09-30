@@ -677,9 +677,13 @@ function MapaEstaticoPdf({ vistorias }: { vistorias: PainelMapaVistoria[] }) {
 function AprovadosPorMunicipio({
   historico,
   municipio,
+  print = false,
 }: {
   historico: HistoricoAnalytics | null;
   municipio?: string;
+  /** PDF: nome do município por extenso (sem truncar) — não dá pra passar
+   *  o mouse num papel pra ver o "CAMPO LIMPO ..." completo. */
+  print?: boolean;
 }) {
   const linhas = useMemo(() => {
     const todas = historico?.topMunicipiosPeriodo ?? [];
@@ -701,7 +705,10 @@ function AprovadosPorMunicipio({
       <div className="flex flex-col gap-1">
         {linhas.map((m) => (
           <div key={m.municipio} className="flex items-center gap-2 py-[3px]">
-            <span className="w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
+            <span
+              className={print ? "w-[170px] shrink-0 text-[11px] font-semibold text-[var(--vm-text)]" : "w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]"}
+              title={print ? undefined : m.municipio}
+            >
               {m.municipio}
             </span>
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
@@ -721,10 +728,10 @@ function AprovadosPorMunicipio({
   );
 }
 
-function MunicipioCabecalho() {
+function MunicipioCabecalho({ largo = false }: { largo?: boolean }) {
   return (
     <div className="flex items-center gap-1.5 border-b pb-1 text-[9px] font-bold uppercase tracking-wide text-[var(--vm-faint)]" style={{ borderColor: "var(--vm-border-soft)" }}>
-      <span className="w-[96px] shrink-0">Município</span>
+      <span className={largo ? "w-[170px] shrink-0" : "w-[96px] shrink-0"}>Município</span>
       <span className="flex-1">Progresso</span>
       <span className="w-[40px] shrink-0 text-right">Feitas</span>
       <span className="w-[40px] shrink-0 text-right">Faltam</span>
@@ -739,6 +746,7 @@ function MunicipioRankingCompacto({
   historico,
   municipio,
   colunas = 1,
+  print = false,
 }: {
   historico: HistoricoAnalytics | null;
   /** Filtro global de município do cabeçalho — "" = todos. O backend NÃO
@@ -747,9 +755,14 @@ function MunicipioRankingCompacto({
    *  "Campinas" selecionado o dashboard inteiro estreitava e só este card
    *  continuava listando os 43 municípios (pedido de campo 2026-09-30). */
   municipio?: string;
-  /** 2 = layout de impressão: lista inteira sem scroll, dividida em duas
-   *  metades lado a lado (cada uma com seu cabeçalho, pra alinhar). */
+  /** 2 = flui em duas metades lado a lado (cada uma com seu cabeçalho, pra
+   *  alinhar) — hoje sem uso real (o filtro "só acima de 0%" deixou a
+   *  lista curta o bastante pra caber numa coluna só), mantido por se
+   *  precisar de novo. */
   colunas?: 1 | 2;
+  /** PDF: nome do município por extenso (sem truncar) — não dá pra passar
+   *  o mouse num papel pra ver o "CAMPO LIMPO ..." completo. */
+  print?: boolean;
 }) {
   const linhas = useMemo(() => {
     const todas = historico?.topMunicipiosPeriodo ?? [];
@@ -771,8 +784,14 @@ function MunicipioRankingCompacto({
       return { ...m, feitas, aguardando, pct };
     });
     // Ordem fixa por maior % (pedido de campo 2026-09-30 — os outros dois
-    // critérios de ordenação foram tirados, sobrou só este).
-    return comDecidido.sort((a, b) => b.pct - a.pct || b.feitas - a.feitas);
+    // critérios de ordenação foram tirados, sobrou só este). Só entra
+    // quem já tem alguma vistoria feita (pct > 0) — um ranking "maior %
+    // primeiro" não faz sentido incluindo município que nem começou;
+    // com "Todo Período" como default agora, a lista toda de município
+    // parado em 0% virou muito mais ruído do que sinal.
+    return comDecidido
+      .filter((m) => m.pct > 0)
+      .sort((a, b) => b.pct - a.pct || b.feitas - a.feitas);
   }, [historico, municipio]);
 
   const grupos = useMemo(() => {
@@ -802,12 +821,15 @@ function MunicipioRankingCompacto({
         <div className={colunas === 2 ? "grid grid-cols-2 gap-x-6" : ""}>
           {grupos.map((grupo, gi) => (
             <div key={gi} className="flex flex-col gap-1">
-              <MunicipioCabecalho />
+              <MunicipioCabecalho largo={print} />
               {grupo.map((m) => {
                 const pctResolvido = Math.round(m.pct * 100);
                 return (
                   <div key={m.municipio} className="flex items-center gap-1.5 py-[3px]">
-                    <span className="w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
+                    <span
+                      className={print ? "w-[170px] shrink-0 text-[11px] font-semibold text-[var(--vm-text)]" : "w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]"}
+                      title={print ? undefined : m.municipio}
+                    >
                       {m.municipio}
                     </span>
                     {/* Ordem dos segmentos = ordem da leitura: primeiro o
@@ -1314,14 +1336,14 @@ export default function EquipeAoVivo({
             Vistorias por município <span className="font-normal text-[var(--vm-faint)]">· maior % primeiro</span>
           </p>
           <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
-            <MunicipioRankingCompacto historico={historico} municipio={municipio} colunas={print ? 2 : 1} />
+            <MunicipioRankingCompacto historico={historico} municipio={municipio} print={print} />
           </div>
         </Card>
 
         <Card style={print ? undefined : { height: 560 }}>
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Aprovados por município</p>
           <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
-            <AprovadosPorMunicipio historico={historico} municipio={municipio} />
+            <AprovadosPorMunicipio historico={historico} municipio={municipio} print={print} />
           </div>
         </Card>
       </div>

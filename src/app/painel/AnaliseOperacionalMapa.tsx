@@ -1,17 +1,22 @@
 "use client";
 
 /**
- * Mapa "Rota do dia" da Análise Operacional dos Técnicos — mostra o
- * TRAJETO REAL do técnico (trilha de GPS, glpi_plugin_vistomap_locations,
- * mesma fonte de /painel/tecnicos/[id] e do endpoint /api/painel/
- * tecnico-trail) como uma linha sólida, com os pontos de vistoria
- * plotados por cima como marcadores numerados. Antes (até 2026-09-30) a
- * linha só conectava os pins de vistoria em linha reta — não era a rota
- * de verdade, e o campo reclamou ("deve mostrar a rota que o técnico está
- * fazendo"). Cor dos pins por status: verde=realizada, vermelho=reprovada,
- * laranja=em aberto. Arquivo separado do componente principal porque
- * Mapbox é verboso (init seguro + fonte/camada da linha + marcadores +
- * popups).
+ * Mapa "Rota do dia" da Análise Operacional dos Técnicos — conecta os
+ * PONTOS DE VISTORIA do técnico selecionado em sequência cronológica com
+ * uma linha direta. Cor por status: verde=realizada, vermelho=reprovada,
+ * laranja=em aberto.
+ *
+ * Histórico (pra não repetir): em 2026-09-30 isso foi trocado pra usar a
+ * trilha REAL de GPS (glpi_plugin_vistomap_locations via /api/painel/
+ * tecnico-trail), pedido de campo "deve mostrar a rota que o técnico está
+ * fazendo". Resultado ficou feio — rastro de GPS bruto é naturalmente
+ * irregular/ziguezagueante — e o mesmo dia o campo pediu de volta "a
+ * sequência de vistoria feita e a rota entre as vistorias, mas algo mais
+ * direto sem essas linhas exatas". Revertido pra esta versão; a trilha
+ * de GPS real não é mais buscada (ver AnaliseOperacionalTecnicos.tsx).
+ *
+ * Arquivo separado do componente principal porque Mapbox é verboso (init
+ * seguro + fonte/camada da linha + marcadores + popups).
  */
 
 import mapboxgl from "mapbox-gl";
@@ -46,14 +51,7 @@ function labelDoStatus(v: VistoriaTecnicoPeriodo): string {
   return "Em aberto";
 }
 
-export default function AnaliseOperacionalMapa({
-  vistorias,
-  trail = [],
-}: {
-  vistorias: VistoriaTecnicoPeriodo[];
-  /** Trilha real de GPS (lng,lat), ordenada cronologicamente — ver /api/painel/tecnico-trail. */
-  trail?: Array<[number, number]>;
-}) {
+export default function AnaliseOperacionalMapa({ vistorias }: { vistorias: VistoriaTecnicoPeriodo[] }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -91,11 +89,11 @@ export default function AnaliseOperacionalMapa({
     if (!map) return;
 
     const apply = () => {
-      // linha do trajeto real (trilha de GPS), não mais uma reta entre pins
+      // linha conectando as paradas em ordem cronológica
       const lineGeojson: GeoJSON.Feature<GeoJSON.LineString> = {
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates: trail },
+        geometry: { type: "LineString", coordinates: stops.map((s) => [s.longitude, s.latitude]) },
       };
       const src = map.getSource(ROUTE_SRC) as mapboxgl.GeoJSONSource | undefined;
       if (src) {
@@ -107,7 +105,7 @@ export default function AnaliseOperacionalMapa({
           type: "line",
           source: ROUTE_SRC,
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#2563EB", "line-width": 3, "line-opacity": 0.75 },
+          paint: { "line-color": "#64748B", "line-width": 2, "line-dasharray": [2, 1.5], "line-opacity": 0.7 },
         });
       }
 
@@ -138,11 +136,9 @@ export default function AnaliseOperacionalMapa({
         markersRef.current.push(marker);
       });
 
-      // Bounds cobrem trilha + pins — a trilha real costuma ir além de onde
-      // as vistorias aconteceram (trajeto entre paradas).
-      const lngs = [...trail.map((c) => c[0]), ...stops.map((s) => s.longitude)];
-      const lats = [...trail.map((c) => c[1]), ...stops.map((s) => s.latitude)];
-      if (lngs.length > 0) {
+      if (stops.length > 0) {
+        const lngs = stops.map((s) => s.longitude);
+        const lats = stops.map((s) => s.latitude);
         map.fitBounds(
           [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
           { padding: 48, maxZoom: 15, duration: 400 }
@@ -153,7 +149,7 @@ export default function AnaliseOperacionalMapa({
     if (map.isStyleLoaded()) apply();
     else map.once("load", apply);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vistorias, trail]);
+  }, [vistorias]);
 
   if (!getMapboxToken()) {
     return (
@@ -166,7 +162,7 @@ export default function AnaliseOperacionalMapa({
   return (
     <div className="relative h-full min-h-[280px] w-full overflow-hidden rounded-xl">
       <div ref={containerRef} className="h-full w-full" />
-      {stops.length === 0 && trail.length === 0 && (
+      {stops.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[var(--vm-tile)]/70 text-[12px] font-medium text-[var(--vm-faint)]">
           Sem coordenadas registradas nesse período.
         </div>
