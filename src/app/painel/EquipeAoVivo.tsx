@@ -647,13 +647,69 @@ function MapaEstaticoPdf({ vistorias }: { vistorias: PainelMapaVistoria[] }) {
   );
 }
 
+/**
+ * Aprovados por município — pedido de campo 2026-09-30, fica ao lado de
+ * "Vistorias por município". Sai do MESMO `topMunicipiosPeriodo` (e não da
+ * `fetchAprovadosPorMunicipio` de cpfl.ts) porque aquela query não recebe
+ * concessionária/município e ficaria fora dos filtros globais da tela.
+ * `aprovado` já vem com Aprovado + Aprovado com Pendências somados.
+ */
+function AprovadosPorMunicipio({
+  historico,
+  municipio,
+}: {
+  historico: HistoricoAnalytics | null;
+  municipio?: string;
+}) {
+  const linhas = useMemo(() => {
+    const todas = historico?.topMunicipiosPeriodo ?? [];
+    const rows = municipio ? todas.filter((m) => m.municipio === municipio) : todas;
+    return [...rows].filter((m) => m.aprovado > 0).sort((a, b) => b.aprovado - a.aprovado);
+  }, [historico, municipio]);
+  const max = Math.max(...linhas.map((m) => m.aprovado), 1);
+  const total = linhas.reduce((s, m) => s + m.aprovado, 0);
+
+  if (linhas.length === 0) {
+    return <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Nenhuma aprovação ainda.</p>;
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <p className="mb-2 shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[var(--vm-faint)]">
+        {fmtNum(total)} aprovadas em {linhas.length} {linhas.length === 1 ? "município" : "municípios"}
+      </p>
+      <div className="flex flex-col gap-1">
+        {linhas.map((m) => (
+          <div key={m.municipio} className="flex items-center gap-2 py-[3px]">
+            <span className="w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
+              {m.municipio}
+            </span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+              <div className="h-full rounded-full" style={{ width: `${(m.aprovado / max) * 100}%`, background: "#059669" }} />
+            </div>
+            <span className="w-[42px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.aprovado}</span>
+            <span
+              className="w-[38px] shrink-0 text-right text-[10px] tabular-nums text-[var(--vm-muted)]"
+              title="Percentual do inventário do município já aprovado"
+            >
+              {m.concluidas > 0 ? Math.round((m.aprovado / m.concluidas) * 100) : 0}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MunicipioCabecalho() {
   return (
-    <div className="flex items-center gap-2 border-b pb-1 text-[9px] font-bold uppercase tracking-wide text-[var(--vm-faint)]" style={{ borderColor: "var(--vm-border-soft)" }}>
-      <span className="w-[104px] shrink-0">Município</span>
+    <div className="flex items-center gap-1.5 border-b pb-1 text-[9px] font-bold uppercase tracking-wide text-[var(--vm-faint)]" style={{ borderColor: "var(--vm-border-soft)" }}>
+      <span className="w-[96px] shrink-0">Município</span>
       <span className="flex-1">Progresso</span>
-      <span className="w-[42px] shrink-0 text-right">Feitas</span>
-      <span className="w-[42px] shrink-0 text-right">Faltam</span>
+      <span className="w-[40px] shrink-0 text-right">Feitas</span>
+      <span className="w-[40px] shrink-0 text-right">Faltam</span>
+      <span className="w-[42px] shrink-0 text-right" title="Impedimentos">Imped.</span>
+      <span className="w-[46px] shrink-0 text-right" title="Reprovações">Reprov.</span>
       <span className="w-[34px] shrink-0 text-right">%</span>
     </div>
   );
@@ -675,8 +731,6 @@ function MunicipioRankingCompacto({
    *  metades lado a lado (cada uma com seu cabeçalho, pra alinhar). */
   colunas?: 1 | 2;
 }) {
-  const [ordem, setOrdem] = useState<"finalizadas" | "percentual" | "volume">("finalizadas");
-
   const linhas = useMemo(() => {
     const todas = historico?.topMunicipiosPeriodo ?? [];
     const rows = municipio ? todas.filter((m) => m.municipio === municipio) : todas;
@@ -692,10 +746,10 @@ function MunicipioRankingCompacto({
       const pct = m.concluidas > 0 ? feitas / m.concluidas : 0;
       return { ...m, feitas, decidido, aguardando, pct };
     });
-    if (ordem === "percentual") return comDecidido.sort((a, b) => b.pct - a.pct || b.feitas - a.feitas);
-    if (ordem === "volume") return comDecidido.sort((a, b) => b.concluidas - a.concluidas);
-    return comDecidido.sort((a, b) => b.feitas - a.feitas || b.concluidas - a.concluidas);
-  }, [historico, municipio, ordem]);
+    // Ordem fixa por maior % (pedido de campo 2026-09-30 — os outros dois
+    // critérios de ordenação foram tirados, sobrou só este).
+    return comDecidido.sort((a, b) => b.pct - a.pct || b.feitas - a.feitas);
+  }, [historico, municipio]);
 
   const grupos = useMemo(() => {
     if (colunas !== 2) return [linhas];
@@ -705,23 +759,6 @@ function MunicipioRankingCompacto({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-2 flex shrink-0 flex-wrap gap-1.5">
-        {([
-          ["finalizadas", "Mais finalizadas"],
-          ["percentual", "Maior %"],
-          ["volume", "Mais equipamentos"],
-        ] as const).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setOrdem(id)}
-            className="rounded-full px-2.5 py-1 text-[10px] font-semibold transition"
-            style={ordem === id ? { background: "#3B82F6", color: "#fff" } : { background: "var(--vm-tile)", color: "var(--vm-muted)" }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
       <div className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-semibold text-[var(--vm-muted)]">
         {([
           ["#059669", "Aprovada"],
@@ -745,8 +782,8 @@ function MunicipioRankingCompacto({
               {grupo.map((m) => {
                 const pctResolvido = Math.round(m.pct * 100);
                 return (
-                  <div key={m.municipio} className="flex items-center gap-2 py-[3px]">
-                    <span className="w-[104px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
+                  <div key={m.municipio} className="flex items-center gap-1.5 py-[3px]">
+                    <span className="w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]" title={m.municipio}>
                       {m.municipio}
                     </span>
                     {/* Barra = progresso do próprio município. A parte
@@ -764,8 +801,22 @@ function MunicipioRankingCompacto({
                         {m.aguardando > 0 && <div className="h-full" style={{ width: `${(m.aguardando / m.concluidas) * 100}%`, background: "#F59E0B" }} />}
                       </div>
                     </div>
-                    <span className="w-[42px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.feitas}</span>
-                    <span className="w-[42px] shrink-0 text-right text-[11px] tabular-nums text-[var(--vm-muted)]">{m.concluidas - m.feitas}</span>
+                    <span className="w-[40px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.feitas}</span>
+                    <span className="w-[40px] shrink-0 text-right text-[11px] tabular-nums text-[var(--vm-muted)]">{m.concluidas - m.feitas}</span>
+                    <span
+                      className="w-[42px] shrink-0 text-right text-[11px] tabular-nums"
+                      style={{ color: m.impedimento > 0 ? "#7C3AED" : "var(--vm-faint)" }}
+                      title="Impedimentos no período"
+                    >
+                      {m.impedimento}
+                    </span>
+                    <span
+                      className="w-[46px] shrink-0 text-right text-[11px] font-semibold tabular-nums"
+                      style={{ color: m.reprovado > 0 ? "#DC2626" : "var(--vm-faint)" }}
+                      title="Reprovadas pela concessionária"
+                    >
+                      {m.reprovado}
+                    </span>
                     <span
                       className="w-[34px] shrink-0 text-right text-[11px] font-bold tabular-nums"
                       style={{ color: pctResolvido > 0 ? "#059669" : "var(--vm-faint)" }}
@@ -1208,24 +1259,30 @@ export default function EquipeAoVivo({
         </div>
       </div>
 
-      {/* ═══════ Análises (recomposto 2026-09-30, escolha do usuário entre
-          3 opções): "Vistorias por município" ocupa METADE da linha — 2
-          colunas de largura e 2 de altura — porque com 1/4 o nome vinha
-          cortado e os números sem legenda ("extremamente confuso"). Os
-          outros 3 dividem a outra metade: Técnicos e Motivos em cima,
-          Atribuídas x Realizadas ocupando as 2 colunas embaixo. ═══════ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card
-          // No PDF ocupa a linha inteira (lista completa, sem scroll); na
-          // tela, metade da largura e o dobro da altura.
-          className={print ? "sm:col-span-2 xl:col-span-4" : "sm:col-span-2 xl:row-span-2"}
-          style={print ? undefined : { height: 476 }}
-        >
-          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por município</p>
+      {/* ═══════ Município — linha própria, dois cards lado a lado e
+          maiores (pedido de campo 2026-09-30): "Vistorias por município"
+          com Feitas/Faltam/Impedimentos/Reprovação/% e, ao lado,
+          "Aprovados por município". ═══════ */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Card style={print ? undefined : { height: 560 }}>
+          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">
+            Vistorias por município <span className="font-normal text-[var(--vm-faint)]">· maior % primeiro</span>
+          </p>
           <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
             <MunicipioRankingCompacto historico={historico} municipio={municipio} colunas={print ? 2 : 1} />
           </div>
         </Card>
+
+        <Card style={print ? undefined : { height: 560 }}>
+          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Aprovados por município</p>
+          <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
+            <AprovadosPorMunicipio historico={historico} municipio={municipio} />
+          </div>
+        </Card>
+      </div>
+
+      {/* ═══════ Análises — 3 cards ═══════ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
         <Card style={{ height: 230 }}>
           <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Técnicos com mais reprovações</p>
