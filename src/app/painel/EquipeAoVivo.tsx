@@ -64,6 +64,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getMapboxToken } from "@/services/maps";
+import { asset } from "@/utils/asset";
 import type { AuditEntry, PainelStats, RevisitaPendente, TecnicoAtivo } from "@/types";
 import type { HistoricoAnalytics, RankingTecnicoItem, TopTecnicosDashboard } from "@/services/painel";
 import type { PainelMapaTecnico, PainelMapaVistoria } from "@/types/painel-mapa";
@@ -149,38 +150,49 @@ function MiniKpiCard({
   delta?: { value: number; up: boolean } | null;
   href?: string;
 }) {
+  // Fundo gráfico sutil (2026-09-30, pedido de campo: "coloca algo no
+  // fundo como imagem ou gráficos pra dar um efeito maneiro") — mesmo
+  // par de imagens já usado no card "Vistorias Finalizadas" de page.tsx,
+  // não uma textura nova. O wash usa a cor de cada KPI (`bg`) por cima,
+  // bem opaco, só pra imagem espiar de leve — não é decoração competindo
+  // com o número.
   const body = (
     <>
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: bg, color }}>
-          <Icon className="h-4.5 w-4.5" strokeWidth={2.1} />
-        </span>
-        <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">{label}</span>
-        {href && <ArrowRight className="ml-auto h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" style={{ color }} />}
-      </div>
-      <div className="mt-3 flex items-baseline gap-2">
-        <p className="text-[29px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{value}</p>
-        {delta && (
-          <span
-            className="inline-flex items-center gap-0.5 text-[11.5px] font-bold tabular-nums"
-            style={{ color: delta.up ? "#059669" : "#DC2626" }}
-          >
-            <ArrowUp className={`h-2.5 w-2.5 ${delta.up ? "" : "rotate-180"}`} strokeWidth={2.8} />
-            {delta.up ? "+" : "-"}{delta.value.toFixed(1)}%
+      <div className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat opacity-70 dark:hidden" style={{ backgroundImage: `url('${asset("/graphwhite.png")}')` }} />
+      <div className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat opacity-70 dark:block" style={{ backgroundImage: `url('${asset("/graphblack.png")}')` }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: bg, opacity: 0.86 }} />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: bg, color }}>
+            <Icon className="h-4.5 w-4.5" strokeWidth={2.1} />
           </span>
-        )}
+          <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">{label}</span>
+          {href && <ArrowRight className="ml-auto h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" style={{ color }} />}
+        </div>
+        <div className="mt-3 flex items-baseline gap-2">
+          <p className="text-[29px] font-bold leading-none tabular-nums text-[var(--vm-text)]">{value}</p>
+          {delta && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[11.5px] font-bold tabular-nums"
+              style={{ color: delta.up ? "#059669" : "#DC2626" }}
+            >
+              <ArrowUp className={`h-2.5 w-2.5 ${delta.up ? "" : "rotate-180"}`} strokeWidth={2.8} />
+              {delta.up ? "+" : "-"}{delta.value.toFixed(1)}%
+            </span>
+          )}
+        </div>
+        {caption && <p className="mt-2 text-[11px] text-[var(--vm-faint)]">{caption}</p>}
       </div>
-      {caption && <p className="mt-2 text-[11px] text-[var(--vm-faint)]">{caption}</p>}
     </>
   );
   if (href) {
     return (
       <Link href={href} className="group block">
-        <Card className="cursor-pointer p-5 transition hover:shadow-md">{body}</Card>
+        <Card className="relative cursor-pointer p-5 transition hover:shadow-md">{body}</Card>
       </Link>
     );
   }
-  return <Card className="p-5">{body}</Card>;
+  return <Card className="relative p-5">{body}</Card>;
 }
 
 function MiniDonut({ value, color, caption }: { value: number; color: string; caption: string }) {
@@ -1167,15 +1179,23 @@ export default function EquipeAoVivo({
             MESMA linha — "aumentou mas não melhorou o design". Agora é só
             o essencial: cabeçalho igual aos outros tiles + donut grande
             centralizado, sem duplicar número nenhum. */}
-        <Card className="col-span-2 p-5 md:col-span-3 xl:col-span-1" style={{ background: "var(--vm-accent-tint)" }}>
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/60" style={{ color: "#059669" }}>
-              <CheckCircle2 className="h-4.5 w-4.5" strokeWidth={2.1} />
-            </span>
-            <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">Aproveitamento</span>
-          </div>
-          <div className="flex flex-1 items-center justify-center py-2">
-            <MiniDonut value={kpiAproveitamento} color="#059669" caption={periodoLabel} />
+        <Card className="relative col-span-2 p-5 md:col-span-3 xl:col-span-1">
+          {/* Mesmo fundo gráfico das outras 6 tiles — antes era a única com
+              cor de fundo sólida diferente ("ficou diferente dos outros
+              cards"), agora usa o padrão idêntico. */}
+          <div className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat opacity-70 dark:hidden" style={{ backgroundImage: `url('${asset("/graphwhite.png")}')` }} />
+          <div className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat opacity-70 dark:block" style={{ backgroundImage: `url('${asset("/graphblack.png")}')` }} />
+          <div className="pointer-events-none absolute inset-0" style={{ background: "var(--vm-accent-tint)", opacity: 0.86 }} />
+          <div className="relative z-10 flex h-full flex-col">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/60" style={{ color: "#059669" }}>
+                <CheckCircle2 className="h-4.5 w-4.5" strokeWidth={2.1} />
+              </span>
+              <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">Aproveitamento</span>
+            </div>
+            <div className="flex flex-1 items-center justify-center py-2">
+              <MiniDonut value={kpiAproveitamento} color="#059669" caption={periodoLabel} />
+            </div>
           </div>
         </Card>
       </div>
