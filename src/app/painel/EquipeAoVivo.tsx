@@ -1161,15 +1161,21 @@ export default function EquipeAoVivo({
         <MiniKpiCard icon={Route} label="Em deslocamento" value={fmtNum(kpiEmDeslocamento)} color="#0891B2" bg="rgba(14,165,233,0.10)" caption="agora" href="/painel/central-vistorias?status=7" />
         <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption={periodoLabel} href="/painel/ocorrencias?tipo=impedimento" />
         <MiniKpiCard icon={ShieldAlert} label="Reprovadas" value={fmtNum(kpiReprovadas)} color="#DC2626" bg="var(--vm-red-tint)" caption={periodoLabel} delta={reprovDelta} href="/painel/central-vistorias?status=REPROVADO" />
-        <Card className="col-span-2 p-5 md:col-span-3 xl:col-span-1">
-          <div className="flex h-full w-full items-center gap-5" style={{ background: "var(--vm-accent-tint)", margin: -20, padding: 20, borderRadius: 16 }}>
-            <MiniDonut value={kpiAproveitamento} color="#059669" caption="Aproveitamento do dia" />
-            <div className="flex flex-1 flex-col gap-2.5">
-              <span className="text-[12.5px] font-bold text-[var(--vm-text)]">Aproveitamento</span>
-              <div className="flex items-baseline justify-between text-[11.5px] text-[var(--vm-text-soft)]"><span>Atribuídas</span><span className="tabular-nums font-bold">{kpiAtribuidas}</span></div>
-              <div className="flex items-baseline justify-between text-[11.5px] text-[var(--vm-text-soft)]"><span>Realizadas</span><span className="tabular-nums font-bold">{kpiRealizadas}</span></div>
-              <div className="flex items-baseline justify-between text-[11.5px] text-[var(--vm-text-soft)]"><span>Reprovadas</span><span className="tabular-nums font-bold">{kpiReprovadas}</span></div>
-            </div>
+        {/* Redesenhado 2026-09-30: a versão anterior repetia a palavra
+            "Aproveitamento" duas vezes E repetia Atribuídas/Realizadas/
+            Reprovadas, que já são as 3 primeiras/última KPI tile desta
+            MESMA linha — "aumentou mas não melhorou o design". Agora é só
+            o essencial: cabeçalho igual aos outros tiles + donut grande
+            centralizado, sem duplicar número nenhum. */}
+        <Card className="col-span-2 p-5 md:col-span-3 xl:col-span-1" style={{ background: "var(--vm-accent-tint)" }}>
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/60" style={{ color: "#059669" }}>
+              <CheckCircle2 className="h-4.5 w-4.5" strokeWidth={2.1} />
+            </span>
+            <span className="text-[11.5px] font-semibold text-[var(--vm-muted)]">Aproveitamento</span>
+          </div>
+          <div className="flex flex-1 items-center justify-center py-2">
+            <MiniDonut value={kpiAproveitamento} color="#059669" caption={periodoLabel} />
           </div>
         </Card>
       </div>
@@ -1178,7 +1184,7 @@ export default function EquipeAoVivo({
           um seu próprio card, alturas parelhas (pedido explícito: nada de
           faixa horizontal única achatada) ═══════ */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.25fr_0.58fr_0.24fr]">
-        <Card style={{ height: 340 }}>
+        <Card style={{ height: 400 }}>
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-[#059669]" strokeWidth={2.2} />
@@ -1227,7 +1233,7 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card style={{ height: 340 }}>
+        <Card style={{ height: 400 }}>
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div>
               <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Vistorias no mapa</span>
@@ -1250,16 +1256,19 @@ export default function EquipeAoVivo({
           )}
         </Card>
 
-        <div className="flex flex-col gap-4" style={{ height: 340 }}>
+        <div className="flex flex-col gap-4" style={{ height: 400 }}>
           <Card className="min-h-0 flex-1">
-            <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Distribuição das vistorias</p>
-            <div className="flex min-h-0 flex-1 items-center px-4 pb-3">
+            <p className="px-4 pt-4 pb-2 text-[12px] font-semibold text-[var(--vm-text)]">Distribuição das vistorias</p>
+            <div className="flex min-h-0 flex-1 items-center px-4 pb-4">
               <MultiDonut segments={donutSegments} />
             </div>
           </Card>
           <Card className="min-h-0 flex-1">
-            <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Evolução no período</p>
-            <div className="flex-1 px-4 pb-2">
+            <p className="px-4 pt-4 pb-2 text-[12px] font-semibold text-[var(--vm-text)]">Evolução no período</p>
+            {/* Mantém `compact` (H=110) mesmo com o card maior — o espaço
+                extra (340->400px na linha) vira respiro de verdade em vez
+                de aumentar o SVG e voltar a cortar a legenda embaixo. */}
+            <div className="min-h-0 flex-1 px-4 pb-3">
               <EvolucaoTresSeriesChart labels={evolucao.labels} atribuidas={evolucao.atribuidas} realizadas={evolucao.realizadas} reprovadas={evolucao.reprovadas} compact />
             </div>
           </Card>
