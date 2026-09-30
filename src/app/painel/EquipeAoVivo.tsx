@@ -492,9 +492,15 @@ function VistoriasPorPeriodoChart({
           ))}
         </div>
       )}
-      <div className="mt-1 flex justify-between text-[8.5px] text-[var(--vm-faint)]">
-        <span>{dados[0]?.label ?? ""}</span>
-        <span>{dados[dados.length - 1]?.label ?? ""}</span>
+      <div className="mt-1 flex gap-[3px] text-[8.5px] text-[var(--vm-faint)]">
+        {dados.map((d, i) => {
+          const show = modo === "hora" ? i % 4 === 0 || i === dados.length - 1 : i === 0 || i === dados.length - 1;
+          return (
+            <span key={i} className="flex-1 text-center" style={{ visibility: show ? "visible" : "hidden" }}>
+              {d.label}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
