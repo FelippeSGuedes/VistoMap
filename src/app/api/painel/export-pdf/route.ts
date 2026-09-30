@@ -106,12 +106,19 @@ export async function GET(req: NextRequest) {
       JSON.stringify(sessao)
     );
 
-    await page.goto(printUrl, { waitUntil: "networkidle0", timeout: 45_000 });
-    // Melhor esforço: espera o sinal "dados + mapas prontos" da própria
-    // página; se demorar demais, segue assim mesmo (não trava o export).
-    await page
-      .waitForFunction("window.__PDF_READY__ === true", { timeout: 20_000 })
-      .catch(() => {});
+    // NÃO usar networkidle0 aqui (era o bug 2026-09-30, "Navigation timeout
+    // of 45000 ms exceeded"): ele exige a rede 100% parada, e esta página
+    // nunca chega nisso — o mapa fica pedindo tiles e o layout do painel
+    // tem polling de notificações a cada 10s. Quem diz "terminei" é a
+    // própria página, pela flag __PDF_READY__ logo abaixo.
+    await page.goto(printUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    try {
+      await page.waitForFunction("window.__PDF_READY__ === true", { timeout: 45_000 });
+    } catch {
+      // Melhor esforço: gera o PDF com o que estiver na tela em vez de
+      // falhar o export inteiro por causa de um mapa lento.
+      console.warn("[api/painel/export-pdf] __PDF_READY__ não chegou a tempo; gerando assim mesmo");
+    }
 
     const pdf = await page.pdf({
       format: "A4",

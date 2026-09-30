@@ -101,7 +101,7 @@ function PainelPrintPageInner() {
           setPronto(true);
           window.__PDF_READY__ = true;
         }
-      }, 1500);
+      }, 3000);
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
