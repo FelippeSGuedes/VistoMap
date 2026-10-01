@@ -824,10 +824,18 @@ function MunicipiosDestaque({
       return { ...m, decidido, pctAprovacao, pendencias };
     });
 
+    // Só conta como "equipe atuando" o técnico cujo município ATUAL (GPS)
+    // está no conjunto já filtrado por concessionária/município (`rows`,
+    // vindo de historico.topMunicipiosPeriodo) — achado em campo
+    // (2026-10-01): localização ao vivo do técnico não tem concessionária
+    // nenhuma atrelada, então sem esse cruzamento um município de OUTRA
+    // concessionária aparecia aqui só por o técnico estar lá fisicamente
+    // (ex.: filtrar por Piratininga mostrava Paulínia, que é 100% Paulista).
+    const municipiosValidos = new Set(rows.map((m) => m.municipio));
     const equipePorMunicipio = new Map<string, number>();
     for (const x of equipePeriodo) {
       const muni = x.ativo?.municipio;
-      if (!muni) continue;
+      if (!muni || !municipiosValidos.has(muni)) continue;
       equipePorMunicipio.set(muni, (equipePorMunicipio.get(muni) ?? 0) + 1);
     }
 
