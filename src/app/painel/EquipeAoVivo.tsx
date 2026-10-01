@@ -1386,7 +1386,7 @@ export default function EquipeAoVivo({
           -> 260px, gráficos internos e fontes maiores, mais linhas na
           tabela pra não sobrar vazio embaixo). ═══════ */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_0.5fr_0.5fr]">
-        <Card style={{ height: 260 }}>
+        <Card style={{ height: 290 }}>
           <div className="flex items-center gap-2 px-4 pt-4 pb-2">
             <Wrench className="h-4 w-4 text-[#3B82F6]" strokeWidth={2} />
             <span className="text-[12.5px] font-semibold text-[var(--vm-text)]">Últimas vistorias</span>
@@ -1442,16 +1442,16 @@ export default function EquipeAoVivo({
           </div>
         </Card>
 
-        <Card style={{ height: 260 }}>
+        <Card style={{ height: 290 }}>
           <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Tempo médio por status</p>
           <div className="flex-1 px-3 pb-3">
             <TempoMedioBarChart items={tempoMedioItems} />
           </div>
         </Card>
 
-        <Card style={{ height: 260 }}>
-          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por período</p>
-          <div className="flex-1 px-3 pb-3">
+        <Card style={{ height: 290 }}>
+          <p className="px-4 pt-4 pb-2 text-[12px] font-semibold text-[var(--vm-text)]">Vistorias por período</p>
+          <div className="min-h-0 flex-1 px-3 pb-4">
             <VistoriasPorPeriodoChart historico={historico} periodoRange={periodoRange} />
           </div>
         </Card>
