@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ChevronRight, MapPin, Wrench } from "lucide-react";
 import type { Vistoria } from "@/types";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { formatDistanceKm } from "@/utils/format";
@@ -67,6 +68,9 @@ export function VistoriaCard({
               <div className="flex items-center gap-2">
                 <StatusBadge status={vistoria.status} />
                 <PriorityBadge priority={vistoria.prioridade} />
+                {vistoria.fields?.equipamentofield === "Repetidor" && (
+                  <Badge tone="blue">Repetidor</Badge>
+                )}
               </div>
               <h3 className="mt-1.5 truncate text-[15px] font-semibold tracking-tight text-ink">
                 {vistoria.equipamento}

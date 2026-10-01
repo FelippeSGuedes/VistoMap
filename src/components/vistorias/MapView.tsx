@@ -70,16 +70,31 @@ function hasValidCoords(v: Vistoria): boolean {
   );
 }
 
-function buildMarkerEl(status: Vistoria["status"]) {
+function buildMarkerEl(v: Vistoria) {
   const root = document.createElement("div");
   root.className = "vm-pin";
-  root.style.cssText = "width:44px;height:56px;";
+  root.style.cssText = "position:relative;width:44px;height:56px;";
   const img = document.createElement("img");
-  img.src = PIN_ICON[status];
+  img.src = PIN_ICON[v.status];
   img.width = 44;
   img.height = 56;
-  img.alt = status;
+  img.alt = v.status;
   root.appendChild(img);
+  // Selo "R" de Repetidor (pedido de campo 2026-10-01) — mesmo estilo do
+  // selo de revisita do mapa do painel (círculo escuro + letra branca),
+  // pra manter a linguagem visual consistente entre as duas telas.
+  if (v.fields?.equipamentofield === "Repetidor") {
+    const selo = document.createElement("div");
+    selo.style.cssText = `
+      position:absolute;top:-2px;right:-2px;width:18px;height:18px;
+      border-radius:9999px;background:#111827;border:2px solid #fff;
+      display:flex;align-items:center;justify-content:center;
+      font:800 10px -apple-system,BlinkMacSystemFont,Inter,sans-serif;
+      color:#fff;
+    `;
+    selo.textContent = "R";
+    root.appendChild(selo);
+  }
   return root;
 }
 
@@ -188,7 +203,7 @@ export function MapView({
           existing.setLngLat([v.longitude, v.latitude]);
           return;
         }
-        const el = buildMarkerEl(v.status);
+        const el = buildMarkerEl(v);
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([v.longitude, v.latitude])
           .addTo(map);
