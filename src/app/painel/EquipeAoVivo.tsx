@@ -1109,7 +1109,12 @@ export default function EquipeAoVivo({
 
   /* ── KPIs (moveram de page.tsx pra cá — só esta tela os usa) ────────────── */
   const kpiAtribuidas = useMemo(() => (topTecsDash?.tecnicos ?? []).reduce((s, t) => s + t.total, 0), [topTecsDash]);
-  const kpiRealizadas = useMemo(() => (topTecsDash?.tecnicos ?? []).reduce((s, t) => s + t.aprovadas, 0), [topTecsDash]);
+  // t.aprovadas exclui "Em análise" (vistoriada, aguardando decisão da
+  // concessionária) — mesmo gotcha já corrigido no GroupedBarChart desta
+  // tela (achado em campo 2026-10-01: "Vistorias realizadas"/"% de
+  // aproveitamento" no topo do dashboard vinham por aqui, subcontando do
+  // mesmo jeito). total - reprovadas é "tudo que o técnico já concluiu".
+  const kpiRealizadas = useMemo(() => (topTecsDash?.tecnicos ?? []).reduce((s, t) => s + Math.max(t.total - t.reprovadas, 0), 0), [topTecsDash]);
   const kpiAproveitamento = kpiAtribuidas > 0 ? Math.round((kpiRealizadas / kpiAtribuidas) * 100) : 0;
   // Reprovadas/Impedimentos: `historico.totais`/`topMunicipiosPeriodo.impedimento`
   // são as únicas fontes que respeitam de fato o filtro de período aqui
@@ -1541,8 +1546,8 @@ export default function EquipeAoVivo({
               items={tecnicosPorReprovacao}
               keyFn={(t) => String(t.id)}
               labelFn={(t) => t.nome.split(" ")[0]}
-              valueFn={(t) => String(t.revisitas)}
-              pctFn={(t) => (tecnicosPorReprovacao[0]?.revisitas ? (t.revisitas / tecnicosPorReprovacao[0].revisitas) * 100 : 0)}
+              valueFn={(t) => String(t.reprovadas)}
+              pctFn={(t) => (tecnicosPorReprovacao[0]?.reprovadas ? (t.reprovadas / tecnicosPorReprovacao[0].reprovadas) * 100 : 0)}
               colorFn={() => "#DC2626"}
               emptyLabel="Nenhuma reprovação no período."
             />

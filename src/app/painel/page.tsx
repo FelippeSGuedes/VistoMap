@@ -785,9 +785,15 @@ export default function PainelOverviewPage() {
       .filter((x) => x.ativo?.status !== "offline")
       .sort((a, b) => b.ranking.total - a.ranking.total);
   }, [topTecsDash, tecnicos]);
+  // `revisitas` (COALESCE(aux.is_repeat,0)=1) é um sinal fraco pra "tem
+  // reprovação" — achado em campo (2026-10-01, "cada um tem uma reprovação
+  // diferente"): reprovação feita direto no GLPI pela concessionária nunca
+  // seta is_repeat (só reprovarVistoria() faz isso), então o ranking saía
+  // quase aleatório. `reprovadas` (sv.name IN Reprovada/Reprovado) já é
+  // calculado certo no backend, só não era usado aqui.
   const tecnicosPorReprovacao = [...(topTecsDash?.tecnicos ?? [])]
-    .filter((t) => t.revisitas > 0)
-    .sort((a, b) => b.revisitas - a.revisitas)
+    .filter((t) => t.reprovadas > 0)
+    .sort((a, b) => b.reprovadas - a.reprovadas)
     .slice(0, 6);
   // Fiel aos KPIs (2026-09-24): antes o mapa só mostrava "hoje/em aberto" e
   // nunca batia com "Atribuídas" do período (ex.: 325 atribuídas, poucos

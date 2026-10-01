@@ -118,8 +118,8 @@ function PainelPrintPageInner() {
   const tecnicosPorReprovacao = useMemo(
     () =>
       [...(topTecsDash?.tecnicos ?? [])]
-        .filter((t) => t.revisitas > 0)
-        .sort((a, b) => b.revisitas - a.revisitas)
+        .filter((t) => t.reprovadas > 0)
+        .sort((a, b) => b.reprovadas - a.reprovadas)
         .slice(0, 6),
     [topTecsDash]
   );

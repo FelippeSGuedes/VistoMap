@@ -69,6 +69,20 @@ function resolveAdminStatus(
   hasTecnico: boolean,
   situacaoId?: number | null
 ): AdminStatus {
+  const s = (statusName ?? "").trim().toLowerCase();
+
+  // Reprovado pela concessionária é o sinal mais forte e SEMPRE vence, antes
+  // de olhar situacaoId — mesmo achado de isRevisitaAtual() (constants.ts):
+  // a reprovação costuma vir de uma edição direta no GLPI que só mexe no
+  // statusvistoria, nunca na situação nativa, que fica "presa" em
+  // Vistoriado(3)/Revisitado(6) do ciclo anterior. Achado em campo
+  // (2026-10-01): "Reprovados CPFL" no dashboard sempre mostrava 0 porque a
+  // prioridade 1 abaixo (situacaoId) resolvia pra VISTORIADO/REVISITADO
+  // antes de a heurística por nome (que classificaria certo) ser alcançada.
+  if (s === "reprovada" || s === "reprovado") {
+    return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
+  }
+
   // 1ª prioridade: campo nativo (migration aplicada)
   switch (Number(situacaoId ?? 0)) {
     case 1: return "A_VISTORIAR";
@@ -80,7 +94,6 @@ function resolveAdminStatus(
     case 8: return "DEVOLVIDA";
   }
   // 2ª prioridade: heurística pelo dropdown (fallback para registros sem o campo)
-  const s = (statusName ?? "").trim().toLowerCase();
   if (s === "" || s === "pendente") {
     return hasTecnico ? "EM_VISTORIA" : "A_VISTORIAR";
   }
@@ -88,7 +101,6 @@ function resolveAdminStatus(
   if (s === "em análise" || s === "em analise" || s === "finalizada" || s === "finalizado") {
     return isRepeat ? "REVISITADO" : "VISTORIADO";
   }
-  if (s === "reprovada" || s === "reprovado") return isRepeat ? "EM_REVISITA" : "AGUARDANDO_REVISITA";
   if (s === "aprovada" || s === "aprovado") return isRepeat ? "REVISITADO" : "VISTORIADO";
   return "A_VISTORIAR";
 }
