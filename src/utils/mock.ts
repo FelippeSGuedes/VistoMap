@@ -115,6 +115,7 @@ export const MOCK_STATS: DashboardStats = {
   concluidas: 12,
   reprovadas: 3,
   devolucoes: 0,
+  repetidores: 4,
   ultimaSincronizacao: new Date().toISOString(),
   municipios: [
     { nome: "Campinas", totalVistorias: 12 },
@@ -127,6 +128,7 @@ export const MOCK_STATS: DashboardStats = {
     concluidas: [6, 7, 8, 9, 10, 11, 12],
     reprovadas: [1, 1, 2, 2, 3, 2, 3],
     devolucoes: [0, 0, 0, 0, 0, 0, 0],
+    repetidores: [2, 3, 3, 4, 3, 4, 4],
   },
 };
 

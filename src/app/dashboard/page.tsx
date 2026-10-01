@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Map as MapIcon,
+  Radio,
   RotateCw,
   Signal,
   TrendingDown,
@@ -93,7 +94,7 @@ function useCountUp(target: number | null, duration = 700) {
   return count;
 }
 
-type StatKey = "pendentes" | "concluidas" | "reprovadas" | "devolucoes";
+type StatKey = "pendentes" | "concluidas" | "reprovadas" | "devolucoes" | "repetidores";
 
 const STATS: Array<{
   key: StatKey;
@@ -112,6 +113,9 @@ const STATS: Array<{
   // "Reprovada" no GLPI = revisita pendente pelo técnico (ação operacional).
   { key: "reprovadas",  label: "Revisitas",   icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_andamento.png" },
   { key: "devolucoes",  label: "Devoluções",  icon: Undo2,    hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600", bg: "card_rejeitado.png" },
+  // Pendentes cujo tipo de equipamento (dropdown "Equipamento") é Repetidor
+  // — pedido de campo 2026-10-01, mesmo histórico real dos outros 4.
+  { key: "repetidores", label: "Repetidores",  icon: Radio,    hex: "#0891B2", pill: "#CFFAFE", grad: "from-cyan-500 to-sky-600", bg: "card_disponivel.png" },
 ];
 
 /**
@@ -257,7 +261,7 @@ export default function DashboardPage() {
   useEffect(() => {
     let alive = true;
     const ZERO_STATS: DashboardStats = {
-      total: 0, pendentes: 0, concluidas: 0, reprovadas: 0, devolucoes: 0,
+      total: 0, pendentes: 0, concluidas: 0, reprovadas: 0, devolucoes: 0, repetidores: 0,
       municipios: [], ultimaSincronizacao: new Date().toISOString(),
     };
 
@@ -307,6 +311,11 @@ export default function DashboardPage() {
         // ainda tem algo pendente (só que agendado).
         const devolucoes =
           resumo?.totalPendentes ?? vistorias.filter((v) => v.status === "DEVOLVIDA").length;
+        // Mesma definição usada no snapshot diário (dashboardSnapshot.ts) —
+        // pendentes cujo tipo de equipamento é Repetidor.
+        const repetidores = vistorias.filter(
+          (v) => v.status === "PENDENTE" && v.fields?.equipamentofield === "Repetidor"
+        ).length;
 
         setVistoriasHoje(vistorias);
         setStats({
@@ -316,6 +325,7 @@ export default function DashboardPage() {
           concluidas,
           reprovadas,
           devolucoes,
+          repetidores,
           municipios,
           ultimaSincronizacao: new Date().toISOString(),
         });
@@ -670,7 +680,9 @@ export default function DashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.06 * i + 0.1, ease: [0.22, 0.7, 0.2, 1] }}
                   whileHover={{ y: -2, transition: { duration: 0.2 } }}
-                  className="group relative overflow-hidden rounded-[22px] p-[15px]"
+                  className={`group relative overflow-hidden rounded-[22px] p-[15px] ${
+                    key === "repetidores" ? "col-span-2" : ""
+                  }`}
                   style={{
                     backgroundColor: "#fff",
                     backgroundImage: `url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/${bg})`,

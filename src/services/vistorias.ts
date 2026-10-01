@@ -9,8 +9,24 @@ import { MOCK_STATS, MOCK_VISTORIAS } from "@/utils/mock";
 
 const ALLOW_FALLBACK = process.env.NODE_ENV !== "production";
 
+/**
+ * Tendência real de 7 dias dos KPIs do dashboard (ver
+ * lib/glpi/dashboardSnapshot.ts) — antes sempre retornava MOCK_STATS puro
+ * (achado 2026-10-01: a sparkline nunca teve histórico de verdade).
+ * Offline-first como fetchVistorias(): cache em IndexedDB, mock só como
+ * último recurso fora de produção.
+ */
 export async function fetchDashboardStats(): Promise<DashboardStats> {
-  return MOCK_STATS;
+  try {
+    const data = (await api.get<DashboardStats>("/vistorias/dashboard-stats")).data;
+    void cachePutSafe("dashboard-stats", data);
+    return data;
+  } catch (err) {
+    const cached = await cacheGetSafe<DashboardStats>("dashboard-stats");
+    if (cached) return cached;
+    if (ALLOW_FALLBACK) return MOCK_STATS;
+    throw err;
+  }
 }
 
 /* ── Cache offline-first (best-effort, via IndexedDB compartilhado) ──── */

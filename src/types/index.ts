@@ -321,15 +321,19 @@ export interface DashboardStats {
   reprovadas: number;
   /** Vistorias com situação "Devolvida para Correção" (situacao_id 8). */
   devolucoes: number;
+  /** Pendentes cujo tipo de equipamento (dropdown "Equipamento") é Repetidor. */
+  repetidores?: number;
   ultimaSincronizacao: string;
   /** Lista distinta de municípios das vistorias atribuídas — usada no MunicipioField. */
   municipios?: MunicipioOperacional[];
-  /** Série dos últimos 7 dias por KPI — usada nas sparklines do dashboard. */
+  /** Série dos últimos 7 dias por KPI — usada nas sparklines do dashboard.
+   *  Histórico real (ver lib/glpi/dashboardSnapshot.ts), não mock. */
   trend7d?: {
     pendentes: number[];
     concluidas: number[];
     reprovadas: number[];
     devolucoes: number[];
+    repetidores: number[];
   };
 }
 
