@@ -1915,6 +1915,8 @@ interface MapaVistoriaRow {
   rejeitada_resolvido_em: string | null;
   /** id da própria recusa — necessário pra reatribuir/reabrir (POST /api/painel/rejeitadas/[id]/reabrir). */
   rejeitada_recusa_id: number | null;
+  /** Nome do dropdown "Equipamento" (DCU/Repetidor) — diferenciação visual no mapa (2026-10-01). */
+  tipo_equipamento: string | null;
 }
 
 function resolveSituacaoOperacional(
@@ -2216,7 +2218,8 @@ export async function fetchPainelMapa(
         rec.motivo AS rejeitada_motivo,
         rec.categoria AS rejeitada_categoria,
         rec.resolvido_em AS rejeitada_resolvido_em,
-        rec.id AS rejeitada_recusa_id
+        rec.id AS rejeitada_recusa_id,
+        tipoeq.name AS tipo_equipamento
       FROM \`${TABLE_NE}\` ne
       INNER JOIN \`${TABLE_FIELDS}\` f ON f.items_id = ne.id
       LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -2227,6 +2230,8 @@ export async function fetchPainelMapa(
         ON u.id = f.users_id_vistoriadorafield
       LEFT JOIN \`glpi_plugin_vistomap_recusas\` rec
         ON rec.vistoria_id = ne.id AND rec.status = 'APROVADO'
+      LEFT JOIN \`${DROPDOWN_TABLES.equipamento}\` tipoeq
+        ON tipoeq.id = f.\`${DROPDOWN_COLUMNS.equipamento}\`
       ${concJoinMapa}
       WHERE ne.is_deleted = 0
         AND f.latitudefield IS NOT NULL AND f.longitudefield IS NOT NULL
@@ -2327,6 +2332,10 @@ export async function fetchPainelMapa(
       tecnico_id: r.tecnico_id,
       tecnico_nome: tecnicoNome,
       tecnico_cor: hasTecnico ? coresIdentidade.get(Number(r.tecnico_id)) ?? null : null,
+      // Diferenciação visual por tipo de equipamento (pedido de campo
+      // 2026-10-01) — Repetidor ganha um glifo próprio no mapa ("R" no
+      // miolo, cor de status normal), DCU continua com o glifo padrão.
+      repetidor: r.tipo_equipamento === "Repetidor",
       // Impedimento x recusa: mesma tabela, mesmo fluxo — o que separa é a
       // categoria que o ANALISTA escolheu ao aprovar (2026-09-14). Enquanto
       // não há decisão (ou pra histórico anterior a essa mudança), cai no

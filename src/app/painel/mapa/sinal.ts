@@ -77,7 +77,7 @@ export const FAMILIA_DESCRICAO: Record<FamiliaSinal, string> = {
   fora: "Recusa — classificada, sem técnico, aguarda reatribuição",
 };
 
-type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra" | "estrela" | "seta_volta";
+type Glifo = "vazio" | "atribuido" | "ponto" | "seta" | "check" | "alerta" | "x" | "barra" | "estrela" | "seta_volta" | "letra_r";
 
 export const SITUACOES: SituacaoOperacional[] = [
   "A_VISTORIAR",
@@ -115,6 +115,15 @@ export const SITUACOES: SituacaoOperacional[] = [
  * dá pra saber olhando status_aprovacao, não a situação. Resolve
  * reaproveitando a própria chave AGUARDANDO_REVISITA (mesma família/glifo
  * "reprovado" já mapeados abaixo) em vez de inventar uma 2ª chave sintética.
+ *
+ * Reversão (2026-10-01, JUN-G-A-148): o pedido de 2026-09-23 "Revisitado
+ * === Aprovado" virou confuso em campo — Revisitado é só o analista Nansen
+ * fechando a revisita INTERNAMENTE (`aprovarVistoria()`, painel.ts), a
+ * concessionária ainda não decidiu de verdade (status continua "Em
+ * análise", pendência "Pendência CPFL"); o mapa mostrando estrela de
+ * "Aprovado" antecipava uma decisão que não tinha acontecido. Revisitado
+ * volta a ser tratado como VISTORIADO (mesma família/glifo "concluído") —
+ * o selo "R" de revisita (iconeDe, já existe) é o único diferencial.
  */
 export type ChaveSinal = SituacaoOperacional | "REJEITADA_IMP" | "APROVADO";
 
@@ -124,13 +133,6 @@ export function chaveSinal(
   statusAprovacao?: string | null
 ): ChaveSinal {
   if (situacao === "REJEITADA" && bloqueio === "impedimento") return "REJEITADA_IMP";
-  // REVISITADO só é setado por aprovarVistoria() (painel.ts) — é o analista
-  // Nansen fechando a revisita como aprovada internamente. Não existe
-  // caminho que chegue em REVISITADO sem ter sido por aí, então a situação
-  // sozinha já BASTA (pedido de campo 2026-09-23: "Revisitado === Aprovado
-  // portanto no mapa tem que ser igual") — diferente de VISTORIADO (1ª
-  // vistoria), que ainda pode estar em qualquer dos 3 estados de aprovação.
-  if (situacao === "REVISITADO") return "APROVADO";
   if (situacao === "VISTORIADO") {
     if (statusAprovacao === "APROVADO") return "APROVADO";
     if (statusAprovacao === "REPROVADO") return "AGUARDANDO_REVISITA";
@@ -198,14 +200,18 @@ export function labelSituacao(situacao: string, bloqueio?: string | null, status
   return SITUACAO_LABEL[chaveSinal(situacao, bloqueio, statusAprovacao)] ?? situacao;
 }
 
-/** Nome do sprite de uma vistoria (o `-r` é o selo de revisita). */
+/**
+ * Nome do sprite de uma vistoria (o `-r` é o selo de revisita no canto; o
+ * `-rep` troca o glifo central pro "R" de Repetidor, cor de família normal).
+ */
 export function iconeDe(
   situacao: string,
   revisita: boolean,
   bloqueio?: string | null,
-  statusAprovacao?: string | null
+  statusAprovacao?: string | null,
+  repetidor?: boolean
 ): string {
-  return `vm-sig-${chaveSinal(situacao, bloqueio, statusAprovacao)}${revisita ? "-r" : ""}`;
+  return `vm-sig-${chaveSinal(situacao, bloqueio, statusAprovacao)}${revisita ? "-r" : ""}${repetidor ? "-rep" : ""}`;
 }
 
 /** Cor neutra do anel quando a vistoria ainda não tem técnico. */
@@ -297,6 +303,14 @@ function desenhaGlifo(ctx: CanvasRenderingContext2D, glifo: Glifo, cor: string) 
     }
     ctx.closePath();
     ctx.fill();
+  } else if (glifo === "letra_r") {
+    // "R" de Repetidor (2026-10-01) — substitui o glifo de status no miolo,
+    // a cor continua a da família de status normal (não ganha cor própria,
+    // pedido de campo: só identificar o tipo, sem inventar um 3º canal).
+    ctx.font = "800 13px -apple-system, BlinkMacSystemFont, Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("R", cx, cy + 0.5);
   } else if (glifo === "seta_volta") {
     // Seta circular ("volta pro início do ciclo, precisa ser refeito") — arco
     // de ~270° desenhado em sentido horário + chevron aberto na ponta final
@@ -371,7 +385,7 @@ interface SpriteMapbox {
   pixelRatio: number;
 }
 
-function makeSinalImage(chave: ChaveSinal, revisita: boolean): SpriteMapbox {
+function makeSinalImage(chave: ChaveSinal, revisita: boolean, repetidor: boolean): SpriteMapbox {
   const px = BOX * RATIO;
   const cvs = document.createElement("canvas");
   cvs.width = px;
@@ -380,11 +394,16 @@ function makeSinalImage(chave: ChaveSinal, revisita: boolean): SpriteMapbox {
   ctx.scale(RATIO, RATIO);
   ctx.imageSmoothingEnabled = true;
 
-  const { familia, glifo } = SINAL[chave];
+  const { familia, glifo: glifoBase } = SINAL[chave];
   const cor = FAMILIA_COR[familia];
   const cx = 22, cy = 22;
+  // Repetidor troca o glifo central por "R" — a cor continua a da família
+  // de status normal, não ganha canal próprio (pedido de campo 2026-10-01).
+  // "vazio"/"atribuido" não passam por desenhaGlifo (núcleo oco/disco do
+  // técnico), então tratam o "R" à parte logo abaixo.
+  const glifo = repetidor && glifoBase !== "vazio" && glifoBase !== "atribuido" ? "letra_r" : glifoBase;
 
-  if (glifo === "vazio") {
+  if (glifoBase === "vazio") {
     // Pendente sem dono: núcleo oco — pesa menos no mapa que um pin cheio.
     ctx.beginPath();
     ctx.arc(cx, cy, 12.5, 0, TAU);
@@ -393,10 +412,26 @@ function makeSinalImage(chave: ChaveSinal, revisita: boolean): SpriteMapbox {
     ctx.lineWidth = 3;
     ctx.strokeStyle = cor;
     ctx.stroke();
-  } else if (glifo === "atribuido") {
+    if (repetidor) {
+      ctx.fillStyle = cor;
+      ctx.font = "800 13px -apple-system, BlinkMacSystemFont, Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("R", cx, cy + 0.5);
+    }
+  } else if (glifoBase === "atribuido") {
     // Nada de núcleo: o disco cheio na cor do técnico vem da camada de
-    // círculos. Aqui só entra a prancheta branca por cima.
-    desenhaPrancheta(ctx);
+    // círculos. Aqui só entra a prancheta branca por cima (ou o "R" branco,
+    // se for repetidor — mesma troca de glifo, mesma cor de fundo).
+    if (repetidor) {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "800 13px -apple-system, BlinkMacSystemFont, Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("R", cx, cy + 0.5);
+    } else {
+      desenhaPrancheta(ctx);
+    }
   } else {
     ctx.beginPath();
     ctx.arc(cx, cy, 12.5, 0, TAU);
@@ -428,16 +463,18 @@ function makeSinalImage(chave: ChaveSinal, revisita: boolean): SpriteMapbox {
 /** Todas as chaves desenháveis/filtráveis: as 10 situações + impedimento + aprovado. */
 export const CHAVES_SINAL: ChaveSinal[] = [...SITUACOES, "REJEITADA_IMP", "APROVADO"];
 
-/** Registra as 22 imagens do miolo. Idempotente — roda a cada troca de estilo. */
+/** Registra as 48 imagens do miolo (12 chaves × revisita × repetidor). Idempotente — roda a cada troca de estilo. */
 export function registrarSpritesSinal(map: MapboxMap): void {
   for (const s of CHAVES_SINAL) {
     for (const rev of [false, true]) {
-      const nome = `vm-sig-${s}${rev ? "-r" : ""}`;
-      if (map.hasImage(nome)) continue;
-      try {
-        map.addImage(nome, makeSinalImage(s, rev), { pixelRatio: RATIO });
-      } catch (e) {
-        console.warn("[vm] falha ao registrar sprite", nome, e);
+      for (const rep of [false, true]) {
+        const nome = `vm-sig-${s}${rev ? "-r" : ""}${rep ? "-rep" : ""}`;
+        if (map.hasImage(nome)) continue;
+        try {
+          map.addImage(nome, makeSinalImage(s, rev, rep), { pixelRatio: RATIO });
+        } catch (e) {
+          console.warn("[vm] falha ao registrar sprite", nome, e);
+        }
       }
     }
   }

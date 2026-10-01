@@ -61,6 +61,8 @@ export interface PainelMapaVistoria {
   longitude: number;
   status: MapaVistoriaStatus;
   is_revisita: boolean;
+  /** Dropdown "Equipamento" = Repetidor (DCU é o outro valor) — diferenciação visual no mapa. */
+  repetidor: boolean;
   tecnico_id: number | null;
   /** Nome do técnico atribuído (null = sem atribuição). */
   tecnico_nome: string | null;

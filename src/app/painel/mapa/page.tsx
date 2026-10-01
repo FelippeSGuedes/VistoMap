@@ -388,7 +388,10 @@ function buildGeoJSON(vistorias: PainelMapaVistoria[]) {
       properties: {
         id: v.id,
         situacao: v.situacao,
-        icone: iconeDe(v.situacao, v.is_revisita, v.bloqueio, v.status_aprovacao),
+        // situacao === "REVISITADO" também conta como revisita pro selo "R"
+        // (2026-10-01) — is_revisita sozinho fica false nesse caso porque
+        // aprovarVistoria() já zera aux.is_repeat ao fechar.
+        icone: iconeDe(v.situacao, v.is_revisita || v.situacao === "REVISITADO", v.bloqueio, v.status_aprovacao, v.repetidor),
         // Cor dominante do marcador (halo de hover, anel de foco, pulso) —
         // em ATRIBUÍDO é a do técnico, no resto é a da família de status.
         cor_marcador: corMarcador(v.situacao, v.tecnico_cor, v.bloqueio, v.status_aprovacao),

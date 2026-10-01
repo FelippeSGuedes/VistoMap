@@ -1287,7 +1287,10 @@ export default function EquipeAoVivo({
           type: "Feature" as const,
           geometry: { type: "Point" as const, coordinates: [v.longitude, v.latitude] },
           properties: {
-            icone: iconeDe(v.situacao, v.is_revisita, v.bloqueio, v.status_aprovacao),
+            // situacao === "REVISITADO" também conta como revisita pro selo
+            // "R" (2026-10-01) — is_revisita sozinho fica false nesse caso
+            // porque aprovarVistoria() já zera aux.is_repeat ao fechar.
+            icone: iconeDe(v.situacao, v.is_revisita || v.situacao === "REVISITADO", v.bloqueio, v.status_aprovacao, v.repetidor),
             tecnico_cor: v.tecnico_cor ?? ANEL_SEM_TECNICO,
             tem_tecnico: v.tecnico_id ? 1 : 0,
             atribuido: v.situacao === "ATRIBUIDO" ? 1 : 0,
