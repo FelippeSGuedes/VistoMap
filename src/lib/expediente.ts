@@ -461,6 +461,79 @@ export interface ExpedienteHistoricoItem {
 }
 
 /**
+ * Km percorridos por expediente, via haversine sobre os pings de GPS
+ * (`glpi_plugin_vistomap_locations`) — a coluna `total_km` da tabela nunca
+ * foi gravada por ninguém (achado 2026-10-01, card "Km no período" sempre
+ * mostrava 0), então calcula sob demanda em vez de depender dela.
+ *
+ * Dois cuidados, validados em campo (Danilo, users_id=20, ~6-10 mil pings
+ * por turno): ping bruto é denso demais (a cada poucos segundos) pra somar
+ * ponto-a-ponto direto — ruído de GPS parado some­nte já acumulava
+ * 800-2000km num turno de 10h. Downsample pra 1 ponto/minuto (ROW_NUMBER
+ * particionado por minuto desde o início do turno) + descarta segmento
+ * abaixo de 30m (ainda ruído, não deslocamento real) trouxe o total pra
+ * uma faixa plausível, confirmada por um cálculo independente via
+ * speed_kmh do aparelho no mesmo turno (bateu dentro de ~10%).
+ *
+ * LAG particionado por expediente garante que a distância nunca atravessa
+ * a fronteira de um turno pro outro. Pontos com mais de 30min de intervalo
+ * são ignorados (app fechado/sem sinal — contar esse "salto" como
+ * deslocamento real infla o km artificialmente).
+ */
+async function kmPorExpediente(
+  usersId: number,
+  ids: number[]
+): Promise<Record<number, number>> {
+  if (ids.length === 0) return {};
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await query<{ expediente_id: number; total_km: number | string | null }>(
+    `WITH pontos_brutos AS (
+       SELECT e.id AS expediente_id, l.latitude, l.longitude, l.created_at,
+              ROW_NUMBER() OVER (
+                PARTITION BY e.id, FLOOR(TIMESTAMPDIFF(SECOND, e.inicio_at, l.created_at) / 60)
+                ORDER BY l.created_at
+              ) AS rn
+         FROM glpi_plugin_vistomap_locations l
+         INNER JOIN glpi_plugin_vistomap_expediente e
+                 ON e.users_id = l.users_id
+                AND l.created_at BETWEEN e.inicio_at AND COALESCE(e.fim_at, NOW())
+        WHERE l.users_id = ? AND e.id IN (${placeholders})
+     ),
+     pontos AS (
+       SELECT expediente_id, latitude, longitude, created_at
+         FROM pontos_brutos WHERE rn = 1
+     ),
+     segmentos AS (
+       SELECT expediente_id, created_at, latitude, longitude,
+              LAG(latitude) OVER (PARTITION BY expediente_id ORDER BY created_at) AS prev_lat,
+              LAG(longitude) OVER (PARTITION BY expediente_id ORDER BY created_at) AS prev_lng,
+              LAG(created_at) OVER (PARTITION BY expediente_id ORDER BY created_at) AS prev_at
+         FROM pontos
+     ),
+     distancias AS (
+       SELECT expediente_id,
+              CASE WHEN prev_lat IS NULL OR TIMESTAMPDIFF(MINUTE, prev_at, created_at) > 30 THEN 0
+                   ELSE 6371 * 2 * ASIN(SQRT(
+                          POWER(SIN(RADIANS(latitude - prev_lat) / 2), 2) +
+                          COS(RADIANS(prev_lat)) * COS(RADIANS(latitude)) *
+                          POWER(SIN(RADIANS(longitude - prev_lng) / 2), 2)
+                        ))
+              END AS dist_km
+         FROM segmentos
+     )
+     SELECT expediente_id, SUM(CASE WHEN dist_km >= 0.03 THEN dist_km ELSE 0 END) AS total_km
+       FROM distancias
+      GROUP BY expediente_id`,
+    [usersId, ...ids]
+  );
+  const map: Record<number, number> = {};
+  for (const r of rows) {
+    map[r.expediente_id] = r.total_km != null ? Math.round(Number(r.total_km) * 10) / 10 : 0;
+  }
+  return map;
+}
+
+/**
  * Histórico completo de expedientes de um técnico (não só o em aberto) —
  * cada linha de `glpi_plugin_vistomap_expediente` é um turno já encerrado
  * (ou em aberto), nunca sobrescrita/apagada. Serve pra auditoria de
@@ -509,6 +582,8 @@ export async function expedienteHistorico(
     params
   );
 
+  const kms = await kmPorExpediente(usersId, rows.map((r) => r.id));
+
   return rows.map((r) => {
     const inicio = new Date(r.inicio_at.replace(" ", "T") + "Z").getTime();
     const fim = r.fim_at ? new Date(r.fim_at.replace(" ", "T") + "Z").getTime() : null;
@@ -521,7 +596,7 @@ export async function expedienteHistorico(
       pausa_almoco_fim: r.pausa_almoco_fim,
       consentimento_lgpd_at: r.consentimento_lgpd_at,
       dispositivo_info: r.dispositivo_info,
-      total_km: r.total_km != null ? Number(r.total_km) : null,
+      total_km: kms[r.id] ?? 0,
       emAndamento: r.fim_at == null,
     };
   });
