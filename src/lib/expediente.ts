@@ -1,6 +1,6 @@
 import "server-only";
 import { execute, query } from "./db";
-import { hojeBrasiliaISO } from "./timezone";
+import { hojeBrasiliaISO, nowBrasiliaSql, brasiliaLocalToUtcSql } from "./timezone";
 
 /**
  * Lib expediente — turno de trabalho do tecnico.
@@ -342,6 +342,12 @@ export async function fecharExpedientesPendurados(usersId?: number): Promise<num
     params
   );
   for (const e of abertos) {
+    // inicio_at é UTC (NOW()) — o dia civil de Brasília pode diferir do dia
+    // UTC perto da virada; converte pelo relógio certo antes de montar o
+    // fallback (que precisa ser UTC também, pra bater com inicio_at e com
+    // o MAX(locations) — ambos UTC de verdade).
+    const diaCivilBrasilia = nowBrasiliaSql(`${e.inicio_at.replace(" ", "T")}Z`).slice(0, 10);
+    const fimFallbackUtc = brasiliaLocalToUtcSql(diaCivilBrasilia, cfg.fim);
     await execute(
       `UPDATE glpi_plugin_vistomap_expediente
           SET fim_at = GREATEST(
@@ -349,12 +355,12 @@ export async function fecharExpedientesPendurados(usersId?: number): Promise<num
                 COALESCE(
                   (SELECT MAX(l.created_at) FROM glpi_plugin_vistomap_locations l
                     WHERE l.users_id = ? AND DATE(l.created_at) = DATE(inicio_at)),
-                  TIMESTAMP(DATE(inicio_at), ?)
+                  ?
                 )
               ),
               pausa_almoco_fim = COALESCE(pausa_almoco_fim, pausa_almoco_inicio)
         WHERE id = ?`,
-      [e.users_id, `${cfg.fim}:00`, e.id]
+      [e.users_id, fimFallbackUtc, e.id]
     );
   }
   return abertos.length;
@@ -386,12 +392,13 @@ export async function ensureExpedienteAuto(
   if (!janela.dentro) {
     // Janela do dia acabou → encerra o expediente de hoje no horário-limite.
     if (aberto && janela.motivo === "depois") {
+      const fimUtc = brasiliaLocalToUtcSql(hojeBrasiliaISO(), janela.config.fim);
       await execute(
         `UPDATE glpi_plugin_vistomap_expediente
-            SET fim_at = GREATEST(inicio_at, TIMESTAMP(?, ?)),
+            SET fim_at = GREATEST(inicio_at, ?),
                 pausa_almoco_fim = COALESCE(pausa_almoco_fim, pausa_almoco_inicio)
           WHERE id = ?`,
-        [hojeBrasiliaISO(), `${janela.config.fim}:00`, aberto.id]
+        [fimUtc, aberto.id]
       );
       aberto = null;
     }
@@ -471,7 +478,14 @@ export async function expedienteHistorico(
     params.push(opts.desde);
   }
   if (opts.ate) {
-    where.push("inicio_at <= ?");
+    // DATE() nos dois lados (2026-10-01, achado em campo "Início do
+    // expediente/Histórico errado"): `ate` normalmente chega como só
+    // "YYYY-MM-DD" (sem hora) — comparado direto, "inicio_at <= '2026-10-01'"
+    // vira "<= 2026-10-01 00:00:00" e descarta QUALQUER expediente que
+    // começou depois da meia-noite do próprio dia final, ou seja, o dia
+    // inteiro desaparecia da lista (e "Início do expediente", que lê
+    // historico[0], mostrava o turno ERRADO — o do dia anterior).
+    where.push("DATE(inicio_at) <= DATE(?)");
     params.push(opts.ate);
   }
   const limit = Math.min(Math.max(opts.limit ?? 90, 1), 500);

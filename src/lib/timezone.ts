@@ -48,3 +48,26 @@ export function nowBrasiliaSql(iso?: string): string {
 export function hojeBrasiliaISO(): string {
   return nowBrasiliaSql().slice(0, 10);
 }
+
+/**
+ * Converte um dia civil + hora de parede de Brasília pro instante UTC
+ * equivalente, em "YYYY-MM-DD HH:MM:SS" pronto pra gravar em colunas que
+ * são `NOW()`/`DEFAULT CURRENT_TIMESTAMP` (essas SIM são UTC de verdade —
+ * ver nota no topo do arquivo). Brasília é UTC-3 fixo (sem horário de verão
+ * desde 2019), então a conversão é só "+3h", com `Date.UTC` absorvendo o
+ * estouro de dia/mês/ano sozinho.
+ *
+ * Achado em 2026-10-01: o fechamento automático de expediente
+ * (`fecharExpedientesPendurados`/`ensureExpedienteAuto`) gravava
+ * `TIMESTAMP(dia, '18:00:00')` cru — um literal de parede de Brasília
+ * sendo jogado numa coluna que o resto do sistema (inicio_at, fim_at
+ * manual via NOW(), audit.ts) trata como UTC. Resultado: todo expediente
+ * fechado automaticamente (o caso comum, já que o fluxo manual foi
+ * removido) ficava 3h adiantado/atrasado dependendo da leitura.
+ */
+export function brasiliaLocalToUtcSql(dataISO: string, horaHHMM: string): string {
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  const [h, m] = horaHHMM.split(":").map(Number);
+  const utcMs = Date.UTC(ano, mes - 1, dia, h + 3, m, 0);
+  return new Date(utcMs).toISOString().slice(0, 19).replace("T", " ");
+}

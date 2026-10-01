@@ -49,13 +49,30 @@ import { getMapboxToken, DEFAULT_CENTER } from "@/services/maps";
 import { ACAO_META, initials } from "@/lib/auditMeta";
 import type { AuditEntry, TecnicoAtivo } from "@/types";
 
-/* ── helpers de data (MySQL manda "YYYY-MM-DD HH:mm:ss" sem timezone = UTC) ── */
+/* ── helpers de data ──────────────────────────────────────────────────────
+ * Duas fontes, dois fusos: `glpi_plugin_vistomap_expediente.inicio_at/fim_at`
+ * e `glpi_plugin_vistomap_audit.ts` vêm de NOW()/CURRENT_TIMESTAMP → UTC de
+ * verdade (toDate/fmtDataHora, com "Z"). Já `dataVistoria` (campo nativo
+ * GLPI `datadavistoriafield`) é gravado por `nowBrasiliaSql()` já em
+ * horário de Brasília, SEM marcador de fuso — tratá-lo com "Z" (achado
+ * 2026-10-01, "Última vistoria finalizada" aparecia 3h adiantada) o
+ * interpreta como UTC e desloca errado. Usa toDateLocal/fmtDataHoraLocal
+ * pra esses — sem "Z", o browser lê como horário local (Brasília). */
 function toDate(iso: string): Date {
   return new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
 }
 function fmtDataHora(iso: string | null): string {
   if (!iso) return "—";
   return toDate(iso).toLocaleString("pt-BR", {
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+}
+function toDateLocal(iso: string): Date {
+  return new Date(iso.includes("T") ? iso : iso.replace(" ", "T"));
+}
+function fmtDataHoraLocal(iso: string | null): string {
+  if (!iso) return "—";
+  return toDateLocal(iso).toLocaleString("pt-BR", {
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   });
 }
@@ -396,7 +413,7 @@ export default function TecnicoDetalhePage() {
         <StatCard
           icon={<CheckCircle2 className="h-4 w-4" />}
           label="Última vistoria finalizada"
-          value={metricas?.ultimaVistoriaFinalizada ? fmtDataHora(metricas.ultimaVistoriaFinalizada) : "—"}
+          value={metricas?.ultimaVistoriaFinalizada ? fmtDataHoraLocal(metricas.ultimaVistoriaFinalizada) : "—"}
           destaque
         />
         <StatCard icon={<CheckCircle2 className="h-4 w-4" />} label="Vistorias no período" value={metricas?.vistoriasNoPeriodo ?? "—"} />
