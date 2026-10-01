@@ -1080,6 +1080,11 @@ export async function reprovarVistoria(
   const sets: string[] = [
     "plugin_fields_statusvistoriafielddropdowns_id = ?",
     `\`${SITUACAO_COLUMN}\` = ?`,
+    // Mesmo achado de devolverVistoria() (2026-10-01): sem limpar aqui, uma
+    // dataaprovaoconcessionriafield de um ciclo anterior (ex.: aprovação
+    // interna/Nansen antes desta reprovação) fica presa e mais antiga que
+    // a dataenvioconcessionriafield da revisita, quando o técnico reenviar.
+    `dataaprovaoconcessionriafield = NULL`,
   ];
   const params: unknown[] = [STATUS_VISTORIA_REPROVADO, SITUACAO_AGUARDANDO_REVISITA];
   if (motivoCpfl != null) {
@@ -2503,7 +2508,7 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
  * técnico só refaz o que foi apontado, o resto do envio permanece.
  *
  *   - situaodavistoria = Devolvida para Correção (8)
- *   - datadavistoriafield / dataenvioconcessionriafield = NULL (aguardando reenvio)
+ *   - datadavistoriafield / dataenvioconcessionriafield / dataaprovaoconcessionriafield = NULL (aguardando reenvio)
  *   - statusvistoria volta pra Pendente (1) — o finalizar/route.ts deixa ele em
  *     "Em análise" (5), e listVistorias() EXCLUI status 3/4/5 da fila do
  *     técnico (regra "não deve ver vistorias concluídas/aprovadas"). Sem
@@ -2512,6 +2517,13 @@ export async function cancelarVistoria(vistoriaId: number): Promise<void> {
  *   - o registro de projeto no aux NÃO é tocado aqui — o PDF só é regerado
  *     quando o técnico corrigir e reenviar (Fase 2), via o mesmo fluxo que já
  *     popula o aux no finalizar/route.ts.
+ *
+ * Achado em campo (2026-10-01, CAM-P-A-271/298/320): `dataaprovaoconcessionriafield`
+ * não era limpo aqui — o ciclo anterior (ex.: aprovação interna/Nansen
+ * detectada antes da devolução) deixava essa data PRESA, mais antiga que a
+ * nova `dataenvioconcessionriafield` do reenvio corrigido. Resultado visível:
+ * "aprovação ocorreu antes do envio", um paradoxo impossível que na real era
+ * data de um ciclo anterior já superado.
  */
 /**
  * @param novoTecnicoId Se informado, também redireciona a vistoria pra
@@ -2528,6 +2540,7 @@ export async function devolverVistoria(
     `plugin_fields_statusvistoriafielddropdowns_id = ?`,
     `datadavistoriafield = NULL`,
     `dataenvioconcessionriafield = NULL`,
+    `dataaprovaoconcessionriafield = NULL`,
   ];
   const params: unknown[] = [SITUACAO_DEVOLVIDA, STATUS_VISTORIA_PENDENTE];
   if (novoTecnicoId != null && novoTecnicoId > 0) {
