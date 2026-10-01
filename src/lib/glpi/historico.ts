@@ -410,11 +410,18 @@ export async function fetchHistoricoAnalytics(
      `reprovado` são o STATUS ATUAL de todo o inventário (não só quem teve
      atividade recente); `pendente` (calculado no client, residual) cobre
      tanto quem nunca foi vistoriado quanto quem está em revisita/análise.
-     Por isso não recebe `inicio`/`fim` — o filtro "Todo Período" da tela
-     não afeta mais este ranking/mapa, só os indicadores e a evolução
-     (que continuam por período, ver `agg`/`serieDiaria` acima). LIMIT 50
-     (não 10, como `muniRows`) — o universo real hoje é 43 municípios no
-     total (conferido 2026-09-24); com o filtro de Concessionária, CPFL
+     `concluidas` (tamanho do inventário) continua SEM recorte de data —
+     tamanho de cidade não é algo que "o período" deveria encolher. MAS
+     `vistoriado`/`aprovado`/`aprovadoComPendencia`/`reprovado` GANHAM o
+     recorte de período (2026-10-01, achado em campo: "não atualiza com
+     o filtro" — trocar pra 'Hoje' não mudava nada nesses dois cards).
+     Resultado: "Vistorias por Município"/"Aprovados por Município"
+     passam a mostrar PROGRESSO DENTRO DO PERÍODO sobre o inventário
+     total — ex. "Campinas: 5 feitas hoje de 760" é uma leitura válida
+     (ritmo do dia), diferente de "42% resolvido" (acumulado histórico)
+     que era tudo que dava pra ver antes. LIMIT 50 (não 10, como
+     `muniRows`) — o universo real hoje é 43 municípios no total
+     (conferido 2026-09-24); com o filtro de Concessionária, CPFL
      Paulista sozinha já tem 30 — um LIMIT 20 cortava município de quem
      tem mais operação, bem o oposto do que "Padrão Diário" deveria
      mostrar (todos que tiveram movimentação, em ordem). */
@@ -429,10 +436,14 @@ export async function fetchHistoricoAnalytics(
     `
       SELECT TRIM(f.municipiofield) AS municipio,
              COUNT(*) AS concluidas,
-             SUM(CASE WHEN f.datadavistoriafield IS NOT NULL THEN 1 ELSE 0 END) AS vistoriado,
-             SUM(CASE WHEN sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovado,
-             SUM(CASE WHEN sv.name = 'Aprovado com Pendências' THEN 1 ELSE 0 END) AS aprovadoComPendencia,
-             SUM(CASE WHEN sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovado
+             SUM(CASE WHEN f.datadavistoriafield IS NOT NULL
+                       AND DATE(f.datadavistoriafield) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS vistoriado,
+             SUM(CASE WHEN DATE(f.datadavistoriafield) BETWEEN ? AND ?
+                       AND sv.name IN ('Aprovada','Aprovado') THEN 1 ELSE 0 END) AS aprovado,
+             SUM(CASE WHEN DATE(f.datadavistoriafield) BETWEEN ? AND ?
+                       AND sv.name = 'Aprovado com Pendências' THEN 1 ELSE 0 END) AS aprovadoComPendencia,
+             SUM(CASE WHEN DATE(f.datadavistoriafield) BETWEEN ? AND ?
+                       AND sv.name IN ('Reprovada','Reprovado') THEN 1 ELSE 0 END) AS reprovado
         FROM \`${TABLE_FIELDS}\` f
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -445,7 +456,7 @@ export async function fetchHistoricoAnalytics(
        ORDER BY concluidas DESC
        LIMIT 50
     `,
-    concParams
+    [inicio, fim, inicio, fim, inicio, fim, inicio, fim, ...concParams]
   );
 
   /* ── Vistorias ATRIBUÍDAS no período — pedido 2026-09-18, "tem que
@@ -973,8 +984,20 @@ export async function fetchHistoricoAnalytics(
                    MAX(CASE WHEN acao = 'vistoria-finalizada'      THEN ts END) AS t_fim
               FROM glpi_plugin_vistomap_audit
              WHERE acao IN ('vistoria-em-deslocamento','vistoria-em-vistoria','vistoria-iniciada','vistoria-finalizada')
-               AND ts >= ? AND ts < DATE_ADD(?, INTERVAL 1 DAY)
+               -- Busca num raio de 30 dias ANTES do período (margem generosa
+               -- pra cobrir qualquer ciclo real de vistoria — o teto de
+               -- sanidade abaixo já descarta duração > 7 dias) e filtra pelo
+               -- FIM, não pela data de cada evento individual. Achado em
+               -- campo 2026-10-01 ("Tempo médio nunca aparece de forma
+               -- consistente"): antes, se o técnico começasse a vistoria um
+               -- dia e terminasse no outro (ou o período fosse "Hoje"), o
+               -- evento 'vistoria-iniciada' ficava FORA da janela filtrada e
+               -- o par ficava incompleto — a vistoria inteira sumia da
+               -- média, de um jeito que parecia aleatório.
+               AND ts >= DATE_SUB(?, INTERVAL 30 DAY) AND ts < DATE_ADD(?, INTERVAL 1 DAY)
              GROUP BY alvo_id
+            HAVING t_fim IS NOT NULL
+               AND t_fim >= ? AND t_fim < DATE_ADD(?, INTERVAL 1 DAY)
           ) ev
           LEFT JOIN \`${TABLE_FIELDS}\` f ON f.items_id = CAST(ev.alvo_id AS UNSIGNED)
           LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
@@ -984,7 +1007,7 @@ export async function fetchHistoricoAnalytics(
          ${concWhere}
          ${muniWhere}
       `,
-      [inicio, fim, ...concParams, ...muniParams]
+      [inicio, fim, inicio, fim, ...concParams, ...muniParams]
     );
     for (const r of stageRows) {
       if (r.t_desloc && r.t_chegada) {

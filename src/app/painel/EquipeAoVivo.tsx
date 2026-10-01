@@ -45,6 +45,7 @@ import {
   registrarSpritesSinal,
 } from "./mapa/sinal";
 import {
+  AlertTriangle,
   ArrowRight,
   ArrowUp,
   Ban,
@@ -58,6 +59,8 @@ import {
   RefreshCw,
   Route,
   ShieldAlert,
+  TrendingUp,
+  Trophy,
   Users,
   Wrench,
   Zap,
@@ -285,25 +288,35 @@ function GroupedBarChart({ items }: { items: RankingTecnicoItem[] }) {
   const max = Math.max(...items.map((t) => t.total), 1);
   return (
     <div className="flex flex-col gap-2.5 px-1 py-1">
-      {items.map((t) => (
-        <div key={t.id} className="flex items-center gap-2.5">
-          <span className="w-[74px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text-soft)]">{t.nome.split(" ")[0]}</span>
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-1.5">
-              <div className="h-[7px] flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                <div className="h-full rounded-full" style={{ width: `${(t.total / max) * 100}%`, background: "#94A3B8" }} />
+      {items.map((t) => {
+        // "Realizadas" = vistoriado - reprovado (t.total já é o total
+        // vistoriado do técnico, reprovada volta pra fila — mesma regra
+        // de [[status-em-analise-gotcha]] aplicada em Vistorias por
+        // Município). Achado em campo 2026-10-01: usava t.aprovadas, que
+        // exclui "Em análise" (vistoriada, aguardando decisão) e
+        // subcontava — ex. real: 440 vistoriadas/6 reprovadas/73 em
+        // análise mostrava "361 realizadas" em vez de 434.
+        const realizadas = Math.max(t.total - t.reprovadas, 0);
+        return (
+          <div key={t.id} className="flex items-center gap-2.5">
+            <span className="w-[74px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text-soft)]">{t.nome.split(" ")[0]}</span>
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="h-[7px] flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                  <div className="h-full rounded-full" style={{ width: `${(t.total / max) * 100}%`, background: "#94A3B8" }} />
+                </div>
+                <span className="w-7 shrink-0 text-right text-[10px] font-bold tabular-nums text-[var(--vm-text-soft)]">{t.total}</span>
               </div>
-              <span className="w-7 shrink-0 text-right text-[10px] font-bold tabular-nums text-[var(--vm-text-soft)]">{t.total}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-[7px] flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
-                <div className="h-full rounded-full" style={{ width: `${(t.aprovadas / max) * 100}%`, background: "#059669" }} />
+              <div className="flex items-center gap-1.5">
+                <div className="h-[7px] flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
+                  <div className="h-full rounded-full" style={{ width: `${(realizadas / max) * 100}%`, background: "#059669" }} />
+                </div>
+                <span className="w-7 shrink-0 text-right text-[10px] font-bold tabular-nums text-[#059669]">{realizadas}</span>
               </div>
-              <span className="w-7 shrink-0 text-right text-[10px] font-bold tabular-nums text-[#059669]">{t.aprovadas}</span>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       <div className="mt-1 flex items-center gap-3 pl-[82px] text-[9.5px] font-semibold text-[var(--vm-muted)]">
         <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#94A3B8" }} />Atribuídas</span>
         <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full" style={{ background: "#059669" }} />Realizadas</span>
@@ -551,17 +564,22 @@ function VistoriasPorPeriodoChart({
  * proporcional ao maior município — aquela deixava quase todo mundo com
  * um risquinho ilegível e não casava com o % ao lado.
  *
- * O que cada número significa (dois acertos de campo em 2026-09-30):
+ * O que cada número significa:
  *   - total  = `concluidas` (nome legado, ver historico.ts) = INVENTÁRIO
- *              do município, todo equipamento cadastrado;
- *   - Feitas = vistoriada E que não voltou pra fila = `vistoriado` menos
- *              `reprovado`. Inclui "Em análise" (técnico fez, decisão não
- *              saiu — 1º acerto: antes só contava decidida, e Jundiaí
- *              mostrava 210 tendo 282 vistoriadas) e exclui reprovada
- *              (2º acerto: reprovação vira revisita, volta pra lista de
- *              pendentes, então é trabalho a fazer de novo);
- *   - Faltam = total - Feitas = nunca vistoriadas + reprovadas;
- *   - %      = Feitas / total.
+ *              do município, todo equipamento cadastrado — este SEM
+ *              recorte de período (tamanho de cidade não encolhe com o
+ *              filtro de data);
+ *   - Feitas = vistoriada DENTRO DO PERÍODO selecionado e que não voltou
+ *              pra fila = `vistoriado` menos `reprovado` (2026-10-01:
+ *              ganhou recorte de período — antes era sempre all-time e o
+ *              card não reagia a "Hoje"/"7 dias"). Inclui "Em análise"
+ *              (técnico fez, decisão não saiu) e exclui reprovada
+ *              (reprovação vira revisita, volta pra lista de pendentes);
+ *   - Faltam = total - Feitas = ainda não fechado NESTE período (nunca
+ *              vistoriado + reprovadas + fora da janela escolhida);
+ *   - %      = Feitas / total — progresso do período sobre o inventário
+ *              total (ex.: "Hoje" tende a % baixo mesmo num município
+ *              quase resolvido — é o ritmo do dia, não o acumulado).
  * Impedimentos e Reprovação têm coluna própria; aprovada/aguardando/
  * reprovada também aparecem como cor dentro da barra.
  */
@@ -672,7 +690,10 @@ function MapaEstaticoPdf({ vistorias }: { vistorias: PainelMapaVistoria[] }) {
  * "Vistorias por município". Sai do MESMO `topMunicipiosPeriodo` (e não da
  * `fetchAprovadosPorMunicipio` de cpfl.ts) porque aquela query não recebe
  * concessionária/município e ficaria fora dos filtros globais da tela.
- * `aprovado` já vem com Aprovado + Aprovado com Pendências somados.
+ * `aprovado` já vem com Aprovado + Aprovado com Pendências somados —
+ * aprovadas DENTRO DO PERÍODO selecionado (2026-10-01: ganhou recorte de
+ * período, igual ao card ao lado — antes era all-time e não reagia ao
+ * filtro de "Hoje"/"7 dias"/"30 dias").
  */
 function AprovadosPorMunicipio({
   historico,
@@ -704,9 +725,9 @@ function AprovadosPorMunicipio({
       </p>
       <div className="flex flex-col gap-1">
         {linhas.map((m) => (
-          <div key={m.municipio} className="flex items-center gap-2 py-[3px]">
+          <div key={m.municipio} className="flex items-center gap-1.5 py-[3px]">
             <span
-              className={print ? "w-[170px] shrink-0 text-[11px] font-semibold text-[var(--vm-text)]" : "w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]"}
+              className={print ? "w-[170px] shrink-0 text-[11px] font-semibold text-[var(--vm-text)]" : "w-[66px] shrink-0 truncate text-[10.5px] font-semibold text-[var(--vm-text)]"}
               title={print ? undefined : m.municipio}
             >
               {m.municipio}
@@ -714,9 +735,9 @@ function AprovadosPorMunicipio({
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--vm-tile-2)]">
               <div className="h-full rounded-full" style={{ width: `${(m.aprovado / max) * 100}%`, background: "#059669" }} />
             </div>
-            <span className="w-[42px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.aprovado}</span>
+            <span className="w-[32px] shrink-0 text-right text-[10.5px] font-bold tabular-nums text-[var(--vm-text)]">{m.aprovado}</span>
             <span
-              className="w-[38px] shrink-0 text-right text-[10px] tabular-nums text-[var(--vm-muted)]"
+              className="w-[32px] shrink-0 text-right text-[10px] tabular-nums text-[var(--vm-muted)]"
               title="Percentual do inventário do município já aprovado"
             >
               {m.concluidas > 0 ? Math.round((m.aprovado / m.concluidas) * 100) : 0}%
@@ -728,16 +749,146 @@ function AprovadosPorMunicipio({
   );
 }
 
+/**
+ * Distribuição das Vistorias — pedido de campo 2026-10-01, card novo na
+ * mesma linha de "Vistorias por município"/"Aprovados por município".
+ * Reaproveita o MultiDonut já existente (não é um gráfico novo) com 4
+ * fatias somadas de topMunicipiosPeriodo (filtrado por município e
+ * período, igual aos cards vizinhos): Aprovado, Vistoriado-aguardando
+ * decisão ("Em análise" — o usuário pediu com o rótulo "Vistoriado"),
+ * Reprovado e Falta Vistoriar. Fecha exatamente no inventário total.
+ */
+function DistribuicaoVistoriasDonut({
+  historico,
+  municipio,
+}: {
+  historico: HistoricoAnalytics | null;
+  municipio?: string;
+}) {
+  const dados = useMemo(() => {
+    const todas = historico?.topMunicipiosPeriodo ?? [];
+    const rows = municipio ? todas.filter((m) => m.municipio === municipio) : todas;
+    let aprovado = 0, aguardando = 0, reprovado = 0, total = 0;
+    for (const m of rows) {
+      aprovado += m.aprovado;
+      reprovado += m.reprovado;
+      aguardando += Math.max(m.vistoriado - m.aprovado - m.reprovado, 0);
+      total += m.concluidas;
+    }
+    const faltaVistoriar = Math.max(total - aprovado - aguardando - reprovado, 0);
+    return { aprovado, aguardando, reprovado, faltaVistoriar, total };
+  }, [historico, municipio]);
+
+  if (dados.total === 0) {
+    return <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>;
+  }
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3">
+      <MultiDonut
+        segments={[
+          { label: "Aprovado", value: dados.aprovado, color: "#059669" },
+          { label: "Vistoriado (aguardando decisão)", value: dados.aguardando, color: "#F59E0B" },
+          { label: "Reprovado", value: dados.reprovado, color: "#DC2626" },
+          { label: "Falta vistoriar", value: dados.faltaVistoriar, color: "var(--vm-tile-2)" },
+        ]}
+        centerLabel="Total"
+      />
+    </div>
+  );
+}
+
+/**
+ * Municípios em Destaque — pedido de campo 2026-10-01, "coloque ícones
+ * dourados, deixe bem bonito e atraente". 4 reconhecimentos, cada um o
+ * município campeão numa métrica diferente (respeitando o filtro de
+ * município — se um só estiver selecionado, os 4 viram o mesmo). Maior %
+ * de aprovação exige pelo menos 3 decisões no período (senão 1 vistoria
+ * aprovada isolada vira "100%" e engana).
+ */
+function MunicipiosDestaque({
+  historico,
+  municipio,
+  equipePeriodo,
+}: {
+  historico: HistoricoAnalytics | null;
+  municipio?: string;
+  equipePeriodo: Array<{ ranking: RankingTecnicoItem; ativo: TecnicoAtivo | null }>;
+}) {
+  const destaques = useMemo(() => {
+    const todas = historico?.topMunicipiosPeriodo ?? [];
+    const rows = (municipio ? todas.filter((m) => m.municipio === municipio) : todas).map((m) => {
+      const decidido = m.aprovado + m.reprovado;
+      const pctAprovacao = decidido > 0 ? m.aprovado / decidido : -1;
+      const pendencias = m.impedimento + m.recusa + m.reprovado;
+      return { ...m, decidido, pctAprovacao, pendencias };
+    });
+
+    const equipePorMunicipio = new Map<string, number>();
+    for (const x of equipePeriodo) {
+      const muni = x.ativo?.municipio;
+      if (!muni) continue;
+      equipePorMunicipio.set(muni, (equipePorMunicipio.get(muni) ?? 0) + 1);
+    }
+
+    const maiorAprovacao = [...rows].filter((m) => m.decidido >= 3).sort((a, b) => b.pctAprovacao - a.pctAprovacao)[0] ?? null;
+    const maiorVolume = [...rows].sort((a, b) => b.vistoriado - a.vistoriado)[0] ?? null;
+    const maiorPendencia = [...rows].filter((m) => m.pendencias > 0).sort((a, b) => b.pendencias - a.pendencias)[0] ?? null;
+    const municipiosComEquipe = [...equipePorMunicipio.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+
+    return { maiorAprovacao, maiorVolume, maiorPendencia, municipiosComEquipe };
+  }, [historico, municipio, equipePeriodo]);
+
+  const OURO = "#B8860B";
+  const itens: Array<{ icon: LucideIcon; titulo: string; municipio: string; valor: string }> = [];
+  if (destaques.maiorAprovacao) {
+    itens.push({ icon: Trophy, titulo: "Maior % de aprovação", municipio: destaques.maiorAprovacao.municipio, valor: `${Math.round(destaques.maiorAprovacao.pctAprovacao * 100)}%` });
+  }
+  if (destaques.maiorVolume && destaques.maiorVolume.vistoriado > 0) {
+    itens.push({ icon: TrendingUp, titulo: "Maior volume de vistorias", municipio: destaques.maiorVolume.municipio, valor: fmtNum(destaques.maiorVolume.vistoriado) });
+  }
+  if (destaques.maiorPendencia) {
+    itens.push({ icon: AlertTriangle, titulo: "Mais pendências (imped. + reprov. + recusas)", municipio: destaques.maiorPendencia.municipio, valor: fmtNum(destaques.maiorPendencia.pendencias) });
+  }
+  if (destaques.municipiosComEquipe) {
+    itens.push({ icon: Users, titulo: "Maior equipe atuando", municipio: destaques.municipiosComEquipe[0], valor: `${destaques.municipiosComEquipe[1]} técnico${destaques.municipiosComEquipe[1] === 1 ? "" : "s"}` });
+  }
+
+  if (itens.length === 0) {
+    return <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>;
+  }
+
+  return (
+    <div className="flex h-full flex-col justify-center gap-2.5">
+      {itens.map((it) => (
+        <div
+          key={it.titulo}
+          className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+          style={{ background: "linear-gradient(135deg, rgba(184,134,11,0.10), rgba(184,134,11,0.03))", border: "1px solid rgba(184,134,11,0.22)" }}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: "rgba(184,134,11,0.16)", color: OURO }}>
+            <it.icon className="h-4.5 w-4.5" strokeWidth={2.2} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[9.5px] font-semibold uppercase tracking-wide text-[var(--vm-faint)]">{it.titulo}</p>
+            <p className="truncate text-[12.5px] font-bold text-[var(--vm-text)]">{it.municipio}</p>
+          </div>
+          <span className="shrink-0 text-[14px] font-extrabold tabular-nums" style={{ color: OURO }}>{it.valor}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MunicipioCabecalho({ largo = false }: { largo?: boolean }) {
   return (
-    <div className="flex items-center gap-1.5 border-b pb-1 text-[9px] font-bold uppercase tracking-wide text-[var(--vm-faint)]" style={{ borderColor: "var(--vm-border-soft)" }}>
-      <span className={largo ? "w-[170px] shrink-0" : "w-[96px] shrink-0"}>Município</span>
-      <span className="flex-1">Progresso</span>
-      <span className="w-[40px] shrink-0 text-right">Feitas</span>
-      <span className="w-[40px] shrink-0 text-right">Faltam</span>
-      <span className="w-[42px] shrink-0 text-right" title="Impedimentos">Imped.</span>
-      <span className="w-[46px] shrink-0 text-right" title="Reprovações">Reprov.</span>
-      <span className="w-[34px] shrink-0 text-right">%</span>
+    <div className="flex items-center gap-1 border-b pb-1 text-[8.5px] font-bold uppercase tracking-wide text-[var(--vm-faint)]" style={{ borderColor: "var(--vm-border-soft)" }}>
+      <span className={largo ? "w-[170px] shrink-0" : "w-[62px] shrink-0"}>Município</span>
+      <span className="flex-1">Progr.</span>
+      <span className="w-[26px] shrink-0 text-right">Feit.</span>
+      <span className="w-[26px] shrink-0 text-right">Falt.</span>
+      <span className="w-[28px] shrink-0 text-right" title="Impedimentos + Reprovações + Recusas">Pend.</span>
+      <span className="w-[30px] shrink-0 text-right">%</span>
     </div>
   );
 }
@@ -824,10 +975,11 @@ function MunicipioRankingCompacto({
               <MunicipioCabecalho largo={print} />
               {grupo.map((m) => {
                 const pctResolvido = Math.round(m.pct * 100);
+                const pendencias = m.impedimento + m.reprovado + m.recusa;
                 return (
-                  <div key={m.municipio} className="flex items-center gap-1.5 py-[3px]">
+                  <div key={m.municipio} className="flex items-center gap-1 py-[3px]">
                     <span
-                      className={print ? "w-[170px] shrink-0 text-[11px] font-semibold text-[var(--vm-text)]" : "w-[96px] shrink-0 truncate text-[11px] font-semibold text-[var(--vm-text)]"}
+                      className={print ? "w-[170px] shrink-0 text-[11px] font-semibold text-[var(--vm-text)]" : "w-[62px] shrink-0 truncate text-[10.5px] font-semibold text-[var(--vm-text)]"}
                       title={print ? undefined : m.municipio}
                     >
                       {m.municipio}
@@ -848,24 +1000,17 @@ function MunicipioRankingCompacto({
                         {m.reprovado > 0 && <div className="h-full" style={{ width: `${(m.reprovado / m.concluidas) * 100}%`, background: "#DC2626" }} />}
                       </div>
                     </div>
-                    <span className="w-[40px] shrink-0 text-right text-[11px] font-bold tabular-nums text-[var(--vm-text)]">{m.feitas}</span>
-                    <span className="w-[40px] shrink-0 text-right text-[11px] tabular-nums text-[var(--vm-muted)]">{m.concluidas - m.feitas}</span>
+                    <span className="w-[26px] shrink-0 text-right text-[10.5px] font-bold tabular-nums text-[var(--vm-text)]">{m.feitas}</span>
+                    <span className="w-[26px] shrink-0 text-right text-[10.5px] tabular-nums text-[var(--vm-muted)]">{m.concluidas - m.feitas}</span>
                     <span
-                      className="w-[42px] shrink-0 text-right text-[11px] tabular-nums"
-                      style={{ color: m.impedimento > 0 ? "#7C3AED" : "var(--vm-faint)" }}
-                      title="Impedimentos no período"
+                      className="w-[28px] shrink-0 text-right text-[10.5px] font-semibold tabular-nums"
+                      style={{ color: pendencias > 0 ? "#DC2626" : "var(--vm-faint)" }}
+                      title={`Pendências: ${m.impedimento} impedimento(s), ${m.reprovado} reprovada(s), ${m.recusa} recusa(s)`}
                     >
-                      {m.impedimento}
+                      {pendencias}
                     </span>
                     <span
-                      className="w-[46px] shrink-0 text-right text-[11px] font-semibold tabular-nums"
-                      style={{ color: m.reprovado > 0 ? "#DC2626" : "var(--vm-faint)" }}
-                      title="Reprovadas pela concessionária"
-                    >
-                      {m.reprovado}
-                    </span>
-                    <span
-                      className="w-[34px] shrink-0 text-right text-[11px] font-bold tabular-nums"
+                      className="w-[30px] shrink-0 text-right text-[10.5px] font-bold tabular-nums"
                       style={{ color: pctResolvido > 0 ? "#059669" : "var(--vm-faint)" }}
                     >
                       {pctResolvido}%
@@ -1340,24 +1485,40 @@ export default function EquipeAoVivo({
         </div>
       </div>
 
-      {/* ═══════ Município — linha própria, dois cards lado a lado e
-          maiores (pedido de campo 2026-09-30): "Vistorias por município"
-          com Feitas/Faltam/Impedimentos/Reprovação/% e, ao lado,
-          "Aprovados por município". ═══════ */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card style={print ? undefined : { height: 560 }}>
-          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">
+      {/* ═══════ Município — linha com 4 cards (pedido de campo 2026-10-01,
+          "na mesma linha coloca mais 2 cards"): "Vistorias por município" /
+          "Aprovados por município" (altura reduzida — padding grande
+          demais pra uma lista de ~8 linhas) + "Resultado das vistorias"
+          (pizza) + "Municípios em destaque" (ícones dourados), os 2 novos.
+          ═══════ */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+        <Card style={print ? undefined : { height: 400 }}>
+          <p className="px-3 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">
             Vistorias por município <span className="font-normal text-[var(--vm-faint)]">· maior % primeiro</span>
           </p>
-          <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
+          <div className={print ? "px-3 pb-2" : "min-h-0 flex-1 overflow-y-auto px-3 pb-2"}>
             <MunicipioRankingCompacto historico={historico} municipio={municipio} print={print} />
           </div>
         </Card>
 
-        <Card style={print ? undefined : { height: 560 }}>
-          <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Aprovados por município</p>
-          <div className={print ? "px-4 pb-2" : "min-h-0 flex-1 overflow-y-auto px-4 pb-2"}>
+        <Card style={print ? undefined : { height: 400 }}>
+          <p className="px-3 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Aprovados por município</p>
+          <div className={print ? "px-3 pb-2" : "min-h-0 flex-1 overflow-y-auto px-3 pb-2"}>
             <AprovadosPorMunicipio historico={historico} municipio={municipio} print={print} />
+          </div>
+        </Card>
+
+        <Card style={print ? undefined : { height: 400 }}>
+          <p className="px-3 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Resultado das vistorias</p>
+          <div className="min-h-0 flex-1 px-3 pb-3">
+            <DistribuicaoVistoriasDonut historico={historico} municipio={municipio} />
+          </div>
+        </Card>
+
+        <Card style={print ? undefined : { height: 400 }}>
+          <p className="px-3 pt-3 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Municípios em destaque</p>
+          <div className="min-h-0 flex-1 px-3 pb-3">
+            <MunicipiosDestaque historico={historico} municipio={municipio} equipePeriodo={equipePeriodo} />
           </div>
         </Card>
       </div>
