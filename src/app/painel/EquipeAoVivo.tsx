@@ -58,11 +58,14 @@ import {
   Minimize,
   RefreshCw,
   Route,
+  Search,
   ShieldAlert,
   TrendingUp,
   Trophy,
+  Truck,
   Users,
   Wrench,
+  XCircle,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -430,27 +433,45 @@ function EvolucaoTresSeriesChart({
   );
 }
 
-/** Barras verticais simples com rótulo de valor — "Tempo médio por status". */
-function TempoMedioBarChart({ items }: { items: Array<{ label: string; min: number | null; color: string }> }) {
-  const comDado = items.filter((i) => i.min != null) as Array<{ label: string; min: number; color: string }>;
-  const max = Math.max(...comDado.map((i) => i.min), 1);
+/** Ícone + cor por status — "Tempo médio por status" (TempoMedioStatusCard). */
+const TEMPO_MEDIO_ICONE: Record<string, { icon: LucideIcon; cor: string }> = {
+  "Realizada": { icon: CheckCircle2, cor: "#059669" },
+  "Em vistoria": { icon: Search, cor: "#64748B" },
+  "Em deslocamento": { icon: Truck, cor: "#F97316" },
+  "Impedimento": { icon: AlertTriangle, cor: "#D97706" },
+  "Reprovada": { icon: XCircle, cor: "#DC2626" },
+};
+
+/**
+ * 5 colunas (ícone + valor + rótulo), separadas por divisores sutis —
+ * "Tempo médio por status". Redesenho pedido (2026-10-01): sem barras,
+ * sem badge/porcentagem — só o dado em si, estilo dashboard SaaS
+ * corporativo (fundo claro, cantos ~16px, muito espaço em branco).
+ */
+function TempoMedioStatusCard({ items }: { items: Array<{ label: string; min: number | null }> }) {
   return (
-    <div className="flex items-end justify-between gap-4 px-2 pt-3" style={{ height: 195 }}>
-      {items.map((it) => (
-        <div key={it.label} className="flex flex-1 flex-col items-center gap-2">
-          <span className="text-[13px] font-bold tabular-nums text-[var(--vm-text)]">{it.min != null ? `${it.min}min` : "—"}</span>
-          <div className="flex w-full flex-1 items-end">
-            <div
-              className="w-full rounded-t-md"
-              style={{
-                height: it.min != null ? `${Math.max((it.min / max) * 100, 6)}%` : "4%",
-                background: it.min != null ? it.color : "var(--vm-tile-2)",
-              }}
-            />
+    <div className="grid h-full grid-cols-5">
+      {items.map((it, i) => {
+        const meta = TEMPO_MEDIO_ICONE[it.label] ?? { icon: Clock, cor: "#64748B" };
+        return (
+          <div
+            key={it.label}
+            className="flex flex-col items-center justify-center gap-2 px-2 py-4"
+            style={i > 0 ? { borderLeft: "1px solid rgba(15,23,42,0.07)" } : undefined}
+          >
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+              style={{ background: `${meta.cor}14`, color: meta.cor }}
+            >
+              <meta.icon className="h-4 w-4" strokeWidth={2.2} />
+            </span>
+            <span className="text-[18px] font-extrabold tabular-nums text-[#0F172A]">
+              {it.min != null ? `${it.min}min` : "—"}
+            </span>
+            <span className="text-center text-[10.5px] font-medium leading-tight text-[#94A3B8]">{it.label}</span>
           </div>
-          <span className="text-center text-[10.5px] font-semibold leading-tight text-[var(--vm-muted)]">{it.label}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -847,41 +868,43 @@ function MunicipiosDestaque({
     return { maiorAprovacao, maiorVolume, maiorPendencia, municipiosComEquipe };
   }, [historico, municipio, equipePeriodo]);
 
-  const OURO = "#B8860B";
-  const itens: Array<{ icon: LucideIcon; titulo: string; municipio: string; valor: string }> = [];
+  const itens: Array<{ icon: LucideIcon; titulo: string; municipio: string; valor: string; cor: string }> = [];
   if (destaques.maiorAprovacao) {
-    itens.push({ icon: Trophy, titulo: "Maior % de aprovação", municipio: destaques.maiorAprovacao.municipio, valor: `${Math.round(destaques.maiorAprovacao.pctAprovacao * 100)}%` });
+    itens.push({ icon: Trophy, titulo: "Maior % de aprovação", municipio: destaques.maiorAprovacao.municipio, valor: `${Math.round(destaques.maiorAprovacao.pctAprovacao * 100)}%`, cor: "#B8860B" });
   }
   if (destaques.maiorVolume && destaques.maiorVolume.vistoriado > 0) {
-    itens.push({ icon: TrendingUp, titulo: "Maior volume de vistorias", municipio: destaques.maiorVolume.municipio, valor: fmtNum(destaques.maiorVolume.vistoriado) });
+    itens.push({ icon: TrendingUp, titulo: "Maior volume de vistorias", municipio: destaques.maiorVolume.municipio, valor: fmtNum(destaques.maiorVolume.vistoriado), cor: "#2563EB" });
   }
   if (destaques.maiorPendencia) {
-    itens.push({ icon: AlertTriangle, titulo: "Mais pendências (imped. + reprov. + recusas)", municipio: destaques.maiorPendencia.municipio, valor: fmtNum(destaques.maiorPendencia.pendencias) });
+    itens.push({ icon: AlertTriangle, titulo: "Mais pendências (imped. + reprov. + recusas)", municipio: destaques.maiorPendencia.municipio, valor: fmtNum(destaques.maiorPendencia.pendencias), cor: "#DC2626" });
   }
   if (destaques.municipiosComEquipe) {
-    itens.push({ icon: Users, titulo: "Maior equipe atuando", municipio: destaques.municipiosComEquipe[0], valor: `${destaques.municipiosComEquipe[1]} técnico${destaques.municipiosComEquipe[1] === 1 ? "" : "s"}` });
+    itens.push({ icon: Users, titulo: "Maior equipe atuando", municipio: destaques.municipiosComEquipe[0], valor: `${destaques.municipiosComEquipe[1]} técnico${destaques.municipiosComEquipe[1] === 1 ? "" : "s"}`, cor: "#64748B" });
   }
 
   if (itens.length === 0) {
     return <p className="px-2 py-6 text-center text-[11.5px] text-[var(--vm-faint)]">Sem dados.</p>;
   }
 
+  // Redesenho (2026-10-01): mesma direção visual minimalista do "Tempo
+  // médio por status" — sem gradiente/borda colorida por linha, só um
+  // divisor sutil entre as linhas e um badge de ícone com tinta leve.
   return (
-    <div className="flex h-full flex-col justify-center gap-2.5">
-      {itens.map((it) => (
+    <div className="flex h-full flex-col justify-center">
+      {itens.map((it, i) => (
         <div
           key={it.titulo}
-          className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-          style={{ background: "linear-gradient(135deg, rgba(184,134,11,0.10), rgba(184,134,11,0.03))", border: "1px solid rgba(184,134,11,0.22)" }}
+          className="flex items-center gap-3 px-1 py-2.5"
+          style={i > 0 ? { borderTop: "1px solid rgba(15,23,42,0.06)" } : undefined}
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: "rgba(184,134,11,0.16)", color: OURO }}>
-            <it.icon className="h-4.5 w-4.5" strokeWidth={2.2} />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: `${it.cor}14`, color: it.cor }}>
+            <it.icon className="h-4 w-4" strokeWidth={2.2} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[9.5px] font-semibold uppercase tracking-wide text-[var(--vm-faint)]">{it.titulo}</p>
-            <p className="truncate text-[12.5px] font-bold text-[var(--vm-text)]">{it.municipio}</p>
+            <p className="truncate text-[9.5px] font-medium uppercase tracking-wide text-[#94A3B8]">{it.titulo}</p>
+            <p className="truncate text-[12.5px] font-bold text-[#0F172A]">{it.municipio}</p>
           </div>
-          <span className="shrink-0 text-[14px] font-extrabold tabular-nums" style={{ color: OURO }}>{it.valor}</span>
+          <span className="shrink-0 text-[14px] font-extrabold tabular-nums text-[#0F172A]">{it.valor}</span>
         </div>
       ))}
     </div>
@@ -1167,11 +1190,11 @@ export default function EquipeAoVivo({
   const tempoMedioItems = useMemo(() => {
     const t = historico?.tempoMedioPorStatus;
     return [
-      { label: "Realizada", min: t?.realizadaMin ?? null, color: "#059669" },
-      { label: "Em vistoria", min: t?.emVistoriaMin ?? null, color: "#F97316" },
-      { label: "Em deslocamento", min: t?.emDeslocamentoMin ?? null, color: "#0891B2" },
-      { label: "Impedimento", min: t?.impedimentoMin ?? null, color: "#7C3AED" },
-      { label: "Reprovada", min: t?.reprovadaMin ?? null, color: "#DC2626" },
+      { label: "Realizada", min: t?.realizadaMin ?? null },
+      { label: "Em vistoria", min: t?.emVistoriaMin ?? null },
+      { label: "Em deslocamento", min: t?.emDeslocamentoMin ?? null },
+      { label: "Impedimento", min: t?.impedimentoMin ?? null },
+      { label: "Reprovada", min: t?.reprovadaMin ?? null },
     ];
   }, [historico]);
 
@@ -1631,9 +1654,9 @@ export default function EquipeAoVivo({
         </Card>
 
         <Card style={{ height: 290 }}>
-          <p className="px-4 pt-4 pb-1 text-[12px] font-semibold text-[var(--vm-text)]">Tempo médio por status</p>
-          <div className="flex-1 px-3 pb-3">
-            <TempoMedioBarChart items={tempoMedioItems} />
+          <p className="px-4 pt-4 pb-2 text-[12px] font-semibold text-[var(--vm-text)]">Tempo médio por status</p>
+          <div className="min-h-0 flex-1">
+            <TempoMedioStatusCard items={tempoMedioItems} />
           </div>
         </Card>
 
