@@ -332,53 +332,72 @@ function GroupedBarChart({ items }: { items: RankingTecnicoItem[] }) {
 function MultiDonut({
   segments,
   centerLabel,
+  big = false,
 }: {
   segments: Array<{ label: string; value: number; color: string }>;
   /** Rótulo pequeno embaixo do número central (ex.: "Reprovações"). Sem isso, só o número. */
   centerLabel?: string;
+  /** Donut grande centralizado + legenda embaixo (em vez de lado a lado) —
+   *  pedido de campo (2026-10-01) só pra "Resultado das vistorias", que tem
+   *  espaço de sobra no card (4 fatias, pouco texto na legenda). */
+  big?: boolean;
 }) {
   const total = segments.reduce((s, x) => s + x.value, 0);
-  const size = 112, stroke = 15;
+  const size = big ? 180 : 112, stroke = big ? 22 : 15;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const cx = size / 2;
   let acc = 0;
+  const donut = (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--vm-tile-2)" strokeWidth={stroke} />
+      {total > 0 && segments.filter((s) => s.value > 0).map((s, i) => {
+        const len = (s.value / total) * c;
+        const dashoffset = -acc;
+        acc += len;
+        return (
+          <circle key={i} cx={cx} cy={cx} r={r} fill="none" stroke={s.color} strokeWidth={stroke}
+            strokeDasharray={`${len} ${c - len}`} strokeDashoffset={dashoffset} transform={`rotate(-90 ${cx} ${cx})`} />
+        );
+      })}
+      <text x={cx} y={centerLabel ? cx - (big ? 10 : 6) : cx} textAnchor="middle" dominantBaseline="central" className="fill-[var(--vm-text)]" style={{ fontSize: big ? 32 : 20, fontWeight: 700 }}>
+        {total}
+      </text>
+      {centerLabel && (
+        <text x={cx} y={cx + (big ? 20 : 14)} textAnchor="middle" dominantBaseline="central" className="fill-[var(--vm-faint)]" style={{ fontSize: big ? 11 : 8, fontWeight: 600, textTransform: "uppercase" }}>
+          {centerLabel}
+        </text>
+      )}
+    </svg>
+  );
+  const legenda = (
+    <div className={big ? "w-full space-y-2" : "min-w-0 flex-1 space-y-1.5 overflow-y-auto"}>
+      {segments.map((s, i) => (
+        <div key={i} className={big ? "flex items-center justify-between gap-2 text-[12.5px]" : "flex items-center justify-between gap-2 text-[10.5px]"}>
+          <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-[var(--vm-text-soft)]">
+            <span className={big ? "h-2.5 w-2.5 shrink-0 rounded-full" : "h-2 w-2 shrink-0 rounded-full"} style={{ background: s.color }} />
+            <span className="truncate">{s.label}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <span className="font-bold tabular-nums text-[var(--vm-text)]">{s.value}</span>
+            {total > 0 && <span className={big ? "w-9 text-right text-[10.5px] text-[var(--vm-faint)]" : "w-8 text-right text-[9px] text-[var(--vm-faint)]"}>{Math.round((s.value / total) * 100)}%</span>}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+  if (big) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4">
+        {donut}
+        {legenda}
+      </div>
+    );
+  }
   return (
     <div className="flex w-full items-center gap-4">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
-        <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--vm-tile-2)" strokeWidth={stroke} />
-        {total > 0 && segments.filter((s) => s.value > 0).map((s, i) => {
-          const len = (s.value / total) * c;
-          const dashoffset = -acc;
-          acc += len;
-          return (
-            <circle key={i} cx={cx} cy={cx} r={r} fill="none" stroke={s.color} strokeWidth={stroke}
-              strokeDasharray={`${len} ${c - len}`} strokeDashoffset={dashoffset} transform={`rotate(-90 ${cx} ${cx})`} />
-          );
-        })}
-        <text x={cx} y={centerLabel ? cx - 6 : cx} textAnchor="middle" dominantBaseline="central" className="fill-[var(--vm-text)]" style={{ fontSize: 20, fontWeight: 700 }}>
-          {total}
-        </text>
-        {centerLabel && (
-          <text x={cx} y={cx + 14} textAnchor="middle" dominantBaseline="central" className="fill-[var(--vm-faint)]" style={{ fontSize: 8, fontWeight: 600, textTransform: "uppercase" }}>
-            {centerLabel}
-          </text>
-        )}
-      </svg>
-      <div className="min-w-0 flex-1 space-y-1.5 overflow-y-auto">
-        {segments.map((s, i) => (
-          <div key={i} className="flex items-center justify-between gap-2 text-[10.5px]">
-            <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-[var(--vm-text-soft)]">
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
-              <span className="truncate">{s.label}</span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1.5">
-              <span className="font-bold tabular-nums text-[var(--vm-text)]">{s.value}</span>
-              {total > 0 && <span className="w-8 text-right text-[9px] text-[var(--vm-faint)]">{Math.round((s.value / total) * 100)}%</span>}
-            </span>
-          </div>
-        ))}
-      </div>
+      {donut}
+      {legenda}
     </div>
   );
 }
@@ -805,17 +824,16 @@ function DistribuicaoVistoriasDonut({
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3">
-      <MultiDonut
-        segments={[
-          { label: "Aprovado", value: dados.aprovado, color: "#059669" },
-          { label: "Vistoriado (aguardando decisão)", value: dados.aguardando, color: "#F59E0B" },
-          { label: "Reprovado", value: dados.reprovado, color: "#DC2626" },
-          { label: "Falta vistoriar", value: dados.faltaVistoriar, color: "var(--vm-tile-2)" },
-        ]}
-        centerLabel="Total"
-      />
-    </div>
+    <MultiDonut
+      big
+      segments={[
+        { label: "Aprovado", value: dados.aprovado, color: "#059669" },
+        { label: "Vistoriado (aguardando decisão)", value: dados.aguardando, color: "#F59E0B" },
+        { label: "Reprovado", value: dados.reprovado, color: "#DC2626" },
+        { label: "Falta vistoriar", value: dados.faltaVistoriar, color: "var(--vm-tile-2)" },
+      ]}
+      centerLabel="Total"
+    />
   );
 }
 

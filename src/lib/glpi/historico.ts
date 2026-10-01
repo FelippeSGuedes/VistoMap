@@ -916,7 +916,16 @@ export async function fetchHistoricoAnalytics(
      dado era motivofield (texto livre do técnico). Reprovações que ainda
      não têm o dropdown preenchido (antigas, ou decididas direto no GLPI
      nativo pela CPFL sem usar o campo novo) caem em "Não categorizado" —
-     não somem do total, só não têm motivo específico ainda. */
+     não somem do total, só não têm motivo específico ainda.
+     Achado em campo (2026-10-01, "não tá puxando pelo filtro, dando
+     divergência"): o WHERE incluía `OR aux.is_repeat=1` e `OR
+     datadavistoriafield IS NULL`, contando reprovações JÁ RESOLVIDAS
+     (is_repeat só zera quando o analista aprova, não quando o técnico
+     reenvia) e ignorando o recorte de período pra elas — 32 no total
+     contra as 12 reprovadas de verdade no período (conferido no banco).
+     Agora usa a MESMA definição do KPI "Reprovadas"/`reprovadas` em
+     topTecnicosDashboard.ts: status atual = Reprovado(a), estritamente
+     dentro do período. */
   const motivosReprovacaoRows = await query<{ motivo: string; total: number }>(
     `
       SELECT COALESCE(mr.name, 'Não categorizado') AS motivo, COUNT(*) AS total
@@ -924,19 +933,11 @@ export async function fetchHistoricoAnalytics(
         INNER JOIN \`${TABLE_NE}\` ne ON ne.id = f.items_id AND ne.is_deleted = 0
         LEFT JOIN \`${TABLE_STATUS_VISTORIA}\` sv
                 ON sv.id = f.plugin_fields_statusvistoriafielddropdowns_id
-        LEFT JOIN \`${TABLE_AUX}\` aux
-                ON aux.items_id = ne.id AND aux.itemtype = '${ITEMTYPE_NE}'
         LEFT JOIN \`${TABLE_MOTIVO_REPROVACAO_CPFL}\` mr
                 ON mr.id = f.\`${MOTIVO_REPROVACAO_CPFL_COLUMN}\`
         ${concJoin}
-       WHERE (
-              sv.name IN ('Reprovada','Reprovado')
-           OR COALESCE(aux.is_repeat, 0) = 1
-         )
-         AND (
-              f.datadavistoriafield IS NULL
-           OR (DATE(f.datadavistoriafield) >= ? AND DATE(f.datadavistoriafield) <= ?)
-         )
+       WHERE sv.name IN ('Reprovada','Reprovado')
+         AND DATE(f.datadavistoriafield) >= ? AND DATE(f.datadavistoriafield) <= ?
          ${concWhere}
          ${muniWhere}
        GROUP BY COALESCE(mr.name, 'Não categorizado')
