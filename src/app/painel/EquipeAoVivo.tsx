@@ -1030,6 +1030,20 @@ export default function EquipeAoVivo({
     return vistoriasMapa.filter((v) => v.municipio === municipio);
   }, [vistoriasMapa, municipio]);
 
+  // Marcadores de TÉCNICO no mapa (bolinha de posição ao vivo) — achado
+  // em campo 2026-10-01, "muitos cards não atualizam com o filtro":
+  // PainelMapaTecnico não carrega município (só uma contagem,
+  // municipios_ativos), então não dá pra filtrar direto; cruza pelo
+  // município ATUAL do técnico em equipePeriodo (mesma fonte de
+  // equipeFiltrada acima) via users_id.
+  const tecnicosMapaFiltrados = useMemo(() => {
+    if (!municipio) return tecnicosMapa;
+    const municipioPorId = new Map(
+      equipePeriodo.map((x) => [String(x.ranking.id), x.ativo?.municipio ?? null])
+    );
+    return tecnicosMapa.filter((t) => municipioPorId.get(String(t.users_id)) === municipio);
+  }, [tecnicosMapa, equipePeriodo, municipio]);
+
   /* ── mapa (mesmo padrão de sinal.ts/novoMapa já usado no resto do painel) */
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -1115,7 +1129,7 @@ export default function EquipeAoVivo({
     const place = () => {
       tecMarkersRef.current.forEach((mk) => mk.remove());
       tecMarkersRef.current = [];
-      tecnicosMapa
+      tecnicosMapaFiltrados
         .filter((t) => t.latitude != null && t.longitude != null)
         .forEach((t) => {
           const el = document.createElement("div");
@@ -1126,7 +1140,7 @@ export default function EquipeAoVivo({
         });
     };
     if (map.isStyleLoaded()) place(); else map.once("load", place);
-  }, [tecnicosMapa]);
+  }, [tecnicosMapaFiltrados]);
 
   return (
     <div ref={rootRef} className="flex flex-col gap-4" style={fullscreen ? { background: "var(--vm-bg)", padding: 16, overflowY: "auto", height: "100vh" } : undefined}>

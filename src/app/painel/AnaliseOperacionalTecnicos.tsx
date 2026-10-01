@@ -53,6 +53,10 @@ export interface AnaliseOperacionalTecnicosProps {
   periodoModo: PeriodoModo;
   periodoLabel: string;
   concessionaria?: string;
+  /** Filtro global de município (2026-10-01) — faltava aqui: era a única
+   *  tela do /painel que ignorava e mostrava o técnico selecionado em
+   *  TODAS as cidades, mesmo com um município escolhido no cabeçalho. */
+  municipio?: string;
   equipePeriodo: Array<{ ranking: RankingTecnicoItem; ativo: TecnicoAtivo | null }>;
 }
 
@@ -118,6 +122,7 @@ export default function AnaliseOperacionalTecnicos({
   periodoModo,
   periodoLabel,
   concessionaria,
+  municipio,
   equipePeriodo,
 }: AnaliseOperacionalTecnicosProps) {
   const [busca, setBusca] = useState("");
@@ -179,7 +184,7 @@ export default function AnaliseOperacionalTecnicos({
     const ateExp = `${periodoRange.fim} 23:59:59`;
     (async () => {
       const [v, a, e, o] = await Promise.allSettled([
-        painelService.fetchVistoriasTecnico(selecionadoId, periodoRange.inicio, periodoRange.fim, concessionaria),
+        painelService.fetchVistoriasTecnico(selecionadoId, periodoRange.inicio, periodoRange.fim, concessionaria, municipio),
         painelService.fetchAudit({ ator_id: selecionadoId, limit: 100 }),
         api.get<{ itens: ExpedienteHistItem[] }>(
           `/painel/expediente/historico?users_id=${selecionadoId}&desde=${encodeURIComponent(desdeExp)}&ate=${encodeURIComponent(ateExp)}&limit=200`
@@ -199,7 +204,7 @@ export default function AnaliseOperacionalTecnicos({
       setCarregandoTecnico(false);
     })();
     return () => { alive = false; };
-  }, [selecionadoId, periodoRange, concessionaria]);
+  }, [selecionadoId, periodoRange, concessionaria, municipio]);
 
   /* ── KPIs derivados (realizadas/atribuídas — bate com o exemplo do usuário, difere da lateral que reaproveita aprovadas/concluídas) ── */
   const kpis = useMemo(() => {

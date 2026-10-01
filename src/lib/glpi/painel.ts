@@ -1705,13 +1705,16 @@ export async function fetchVistoriasTecnicoPeriodo(
   tecnicoId: number,
   inicio: string,
   fim: string,
-  concessionaria?: string
+  concessionaria?: string,
+  municipio?: string
 ): Promise<VistoriaTecnicoPeriodo[]> {
   const concJoin = concessionaria
     ? `INNER JOIN \`${TABLE_CONCESSIONARIA}\` conc ON conc.id = f.\`${CONCESSIONARIA_COLUMN}\``
     : "";
   const concWhere = concessionaria ? "AND conc.name = ?" : "";
   const concParams = concessionaria ? [concessionaria] : [];
+  const muniWhere = municipio ? "AND TRIM(f.municipiofield) = ?" : "";
+  const muniParams = municipio ? [municipio] : [];
 
   const rows = await query<VistoriaTecnicoRow>(
     `
@@ -1745,9 +1748,10 @@ export async function fetchVistoriasTecnicoPeriodo(
           OR f.\`${SITUACAO_COLUMN}\` NOT IN (${SITUACAO_VISTORIADO}, ${SITUACAO_REVISITADO})
         )
         ${concWhere}
+        ${muniWhere}
       ORDER BY f.datadavistoriafield ASC, ne.id ASC
     `,
-    [tecnicoId, inicio, fim, ...concParams]
+    [tecnicoId, inicio, fim, ...concParams, ...muniParams]
   );
 
   const parseCoord = (s: string | null): number | null => {

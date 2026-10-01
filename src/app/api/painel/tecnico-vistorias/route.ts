@@ -6,12 +6,15 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * GET /api/painel/tecnico-vistorias?users_id=X&desde=YYYY-MM-DD&ate=YYYY-MM-DD&concessionaria=
+ * GET /api/painel/tecnico-vistorias?users_id=X&desde=YYYY-MM-DD&ate=YYYY-MM-DD&concessionaria=&municipio=
  *
  * Vistorias de UM técnico no período — usado pela Análise Operacional dos
  * Técnicos (/painel): KPIs, rota no mapa, timeline, donut, cidades
  * visitadas. Ver fetchVistoriasTecnicoPeriodo() pra regra de inclusão
- * ("concluída no período OU em aberto agora").
+ * ("concluída no período OU em aberto agora"). `municipio` (2026-10-01,
+ * "muitos cards não atualizam com o filtro") — igual concessionaria, o
+ * resto do /painel já respeitava o filtro global de município, esta tela
+ * era a única que ignorava e mostrava o técnico em TODAS as cidades.
  */
 export async function GET(req: NextRequest) {
   const auth = await requirePainelRole(req, "leitura");
@@ -30,9 +33,10 @@ export async function GET(req: NextRequest) {
   }
 
   const concessionaria = req.nextUrl.searchParams.get("concessionaria") || undefined;
+  const municipio = req.nextUrl.searchParams.get("municipio") || undefined;
 
   try {
-    const vistorias = await fetchVistoriasTecnicoPeriodo(usersId, desde, ate, concessionaria);
+    const vistorias = await fetchVistoriasTecnicoPeriodo(usersId, desde, ate, concessionaria, municipio);
     return NextResponse.json({ vistorias });
   } catch (err) {
     console.error("[api/painel/tecnico-vistorias] error", err);

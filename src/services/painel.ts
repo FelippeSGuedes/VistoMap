@@ -658,10 +658,12 @@ export async function fetchVistoriasTecnico(
   tecnicoId: number,
   desde: string,
   ate: string,
-  concessionaria?: string
+  concessionaria?: string,
+  municipio?: string
 ): Promise<VistoriaTecnicoPeriodo[]> {
   const p = new URLSearchParams({ users_id: String(tecnicoId), desde, ate });
   if (concessionaria) p.set("concessionaria", concessionaria);
+  if (municipio) p.set("municipio", municipio);
   return tryReal(
     api
       .get<{ vistorias: VistoriaTecnicoPeriodo[] }>(`/painel/tecnico-vistorias?${p.toString()}`)

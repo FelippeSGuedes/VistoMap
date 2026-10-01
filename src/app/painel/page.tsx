@@ -1420,6 +1420,7 @@ export default function PainelOverviewPage() {
             periodoModo={periodoModo}
             periodoLabel={periodoLabel}
             concessionaria={concessionaria}
+            municipio={municipio}
             equipePeriodo={equipePeriodo}
           />
         </div>
