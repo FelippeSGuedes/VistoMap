@@ -5,7 +5,13 @@ import { ensureExpedienteAuto } from "@/lib/expediente";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { execute, query } from "@/lib/db";
-import { TABLE_FIELDS, SITUACAO_COLUMN, SITUACAO_EM_VISTORIA } from "@/lib/glpi/constants";
+import {
+  TABLE_FIELDS,
+  SITUACAO_COLUMN,
+  SITUACAO_EM_VISTORIA,
+  SITUACAO_REVISITADO,
+  SITUACAO_VISTORIADO,
+} from "@/lib/glpi/constants";
 import { ensureOverrideTable } from "@/lib/ensureOverrideTable";
 import { logError } from "@/lib/observability";
 import { fetchDevolucaoPendente, devolucaoEhDeOutroDia } from "@/lib/glpi/devolucoes";
@@ -171,6 +177,24 @@ export async function POST(
     }
     if (actorRole === "tecnico" && String(actorId) !== vistoria.tecnico.id) {
       return NextResponse.json({ message: "Você não tem acesso a esta vistoria" }, { status: 403 });
+    }
+
+    // Achado em campo (JUN-G-R-015, 2026-10-01): um "iniciar" retido na fila
+    // offline do app pode chegar DEPOIS do "finalizar" já ter sido
+    // processado (ex.: o técnico finalizou com sinal, mas o "iniciar"
+    // enfileirado antes só sincronizou mais tarde). Essa rota sempre
+    // sobrescrevia a situação pra Em Vistoria(2) sem checar nada — voltava
+    // atrás numa vistoria JÁ Vistoriada(3)/Revisitada(6), que ficava presa
+    // mostrando "Em vistoria" pra sempre mesmo já aprovada pela
+    // concessionária. Aguardando Revisita(4)/Em Revisita(5) continuam
+    // liberados normalmente — aí um novo "iniciar" é legítimo (segunda
+    // visita de verdade).
+    if (vistoria.situacaoId === SITUACAO_VISTORIADO || vistoria.situacaoId === SITUACAO_REVISITADO) {
+      return NextResponse.json({
+        ok: true,
+        jaFinalizada: true,
+        equipamento: vistoria.equipamento,
+      });
     }
 
     // ── Geofence ───────────────────────────────────────────────────────
