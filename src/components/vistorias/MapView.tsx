@@ -70,6 +70,14 @@ function hasValidCoords(v: Vistoria): boolean {
   );
 }
 
+/** Cor própria por tipo de equipamento — nenhuma das duas é usada pelos
+ *  5 pins de status (laranja/verde/azul/vermelho/laranja-escuro), pra não
+ *  disputar leitura com a cor de status do pin. */
+const TIPO_COR: Record<"Repetidor" | "DCU", string> = {
+  Repetidor: "#7C3AED",
+  DCU: "#0F766E",
+};
+
 function buildMarkerEl(v: Vistoria) {
   const root = document.createElement("div");
   root.className = "vm-pin";
@@ -80,21 +88,24 @@ function buildMarkerEl(v: Vistoria) {
   img.height = 56;
   img.alt = v.status;
   root.appendChild(img);
-  // Selo "R" de Repetidor (pedido de campo 2026-10-01) — mesmo estilo do
-  // selo de revisita do mapa do painel (círculo escuro + letra branca),
-  // pra manter a linguagem visual consistente entre as duas telas.
-  if (v.fields?.equipamentofield === "Repetidor") {
-    const selo = document.createElement("div");
-    selo.style.cssText = `
-      position:absolute;top:-2px;right:-2px;width:18px;height:18px;
-      border-radius:9999px;background:#111827;border:2px solid #fff;
-      display:flex;align-items:center;justify-content:center;
-      font:800 10px -apple-system,BlinkMacSystemFont,Inter,sans-serif;
-      color:#fff;
-    `;
-    selo.textContent = "R";
-    root.appendChild(selo);
-  }
+  // Letra de tipo de equipamento (R=Repetidor, D=DCU) — pedido de campo
+  // 2026-10-01: o selo pequeno no canto ficava discreto demais. Agora cobre
+  // o círculo branco do miolo do pin (onde ficava o ícone de status, ex.:
+  // "!" de pendente) com um disco colorido bem maior e a letra em
+  // destaque — a cor do PIN (fora) continua contando o status; a cor do
+  // DISCO (dentro) conta o tipo.
+  const tipo = v.fields?.equipamentofield === "Repetidor" ? "Repetidor" : "DCU";
+  const letra = document.createElement("div");
+  letra.style.cssText = `
+    position:absolute;left:10px;top:9px;width:24px;height:24px;
+    border-radius:9999px;background:${TIPO_COR[tipo]};border:2.5px solid #fff;
+    box-shadow:0 1px 4px rgba(0,0,0,0.35);
+    display:flex;align-items:center;justify-content:center;
+    font:800 13px -apple-system,BlinkMacSystemFont,Inter,sans-serif;
+    color:#fff;
+  `;
+  letra.textContent = tipo === "Repetidor" ? "R" : "D";
+  root.appendChild(letra);
   return root;
 }
 
