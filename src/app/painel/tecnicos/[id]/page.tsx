@@ -144,8 +144,20 @@ export default function TecnicoDetalhePage() {
     return { desde: customDesde, ate: customAte };
   }, [periodo, customDesde, customAte]);
 
+  // Guarda contra corrida de requisições: trocar "Personalizado" e depois
+  // editar desde/ate dispara 3 carregar() em sequência rápida (um por
+  // mudança de estado). Sem isso, se a resposta da 1ª (ainda com datas
+  // default = hoje, mais pesada) chegar DEPOIS da resposta da última
+  // (range passado, mais leve), ela sobrescreve o resultado certo com
+  // dado de hoje — exatamente o "fica travado em 01/10 não importa a
+  // data" visto em campo (2026-10-01). requestSeqRef garante que só a
+  // resposta da requisição MAIS RECENTE (por disparo, não por chegada)
+  // atualiza o estado.
+  const requestSeqRef = useRef(0);
+
   const carregar = async () => {
     if (!id) return;
+    const meuSeq = ++requestSeqRef.current;
     setLoading(true);
     setErro(null);
     try {
@@ -161,6 +173,7 @@ export default function TecnicoDetalhePage() {
         ),
         painelService.fetchAudit({ ator_id: Number(id), desde, ate, limit: 200 }),
       ]);
+      if (meuSeq !== requestSeqRef.current) return; // superada por uma chamada mais nova
       const vistoriador = tecnicos.find((t) => String(t.id) === String(id));
       const instalador = instaladores.find((t) => String(t.id) === String(id));
       setTecnico(vistoriador ?? instalador ?? null);
@@ -188,12 +201,13 @@ export default function TecnicoDetalhePage() {
         ultimaVistoriaFinalizada: ultimaData,
       });
     } catch (err) {
+      if (meuSeq !== requestSeqRef.current) return;
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
         "Falha ao carregar dados do técnico.";
       setErro(msg);
     } finally {
-      setLoading(false);
+      if (meuSeq === requestSeqRef.current) setLoading(false);
     }
   };
 
