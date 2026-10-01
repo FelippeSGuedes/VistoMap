@@ -22,11 +22,15 @@ export async function GET(req: Request) {
       tipoParam === "impedimento" || tipoParam === "recusa" || tipoParam === "excecao"
         ? tipoParam
         : undefined;
+    const desde = searchParams.get("desde") ?? undefined;
+    const ate = searchParams.get("ate") ?? undefined;
     const entries = await fetchAudit({
       acao,
       alvo_id,
       ator_id,
       tipo,
+      desde,
+      ate,
       limit: Number.isFinite(limit) ? limit : 100,
       offset: Number.isFinite(offset) ? offset : 0,
     });

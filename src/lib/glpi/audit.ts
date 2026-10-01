@@ -110,6 +110,12 @@ export interface FetchAuditFilters {
    * sabe em qual das duas categorias ele ia cair.
    */
   tipo?: "impedimento" | "recusa" | "excecao";
+  /** Recorte de período (2026-10-01, "Centro de Auditoria" do técnico —
+   *  antes esta lista sempre trazia as últimas N ações, ignorando
+   *  completamente o filtro de período da tela). "YYYY-MM-DD" ou
+   *  "YYYY-MM-DD HH:mm:ss" — DATE(ts) trunca os dois igual. */
+  desde?: string;
+  ate?: string;
   limit?: number;
   offset?: number;
 }
@@ -146,6 +152,14 @@ export async function fetchAudit(
   if (filters.alvo_id) {
     where.push("alvo_id = ?");
     params.push(filters.alvo_id);
+  }
+  if (filters.desde) {
+    where.push("DATE(ts) >= DATE(?)");
+    params.push(filters.desde);
+  }
+  if (filters.ate) {
+    where.push("DATE(ts) <= DATE(?)");
+    params.push(filters.ate);
   }
   if (filters.tipo === "excecao") {
     where.push("acao IN ('override-solicitado','override-aprovado','override-reprovado')");

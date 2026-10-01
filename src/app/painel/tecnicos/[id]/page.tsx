@@ -1,13 +1,25 @@
 "use client";
 
 /**
- * /painel/tecnicos/[id] — Detalhe completo de um técnico.
+ * /painel/tecnicos/[id] — Centro de Auditoria de um técnico.
  *
  * Criado pra resolver "técnico dando barrigada" (diz que começou o
  * expediente em tal horário mas não tem prova): mostra o HISTÓRICO real de
  * expedientes (tabela `glpi_plugin_vistomap_expediente`, nunca sobrescrita —
  * já existia, só faltava essa tela), a trilha de GPS num mapa de calor, e a
  * auditoria de ações filtrada por esse técnico — tudo com filtro de período.
+ *
+ * Redesenho 2026-10-01 ("não dá pra filtrar nada por lá, mostra dados de
+ * Hoje sempre independente do filtro"): os stat cards vinham de
+ * /painel/tecnico-today, que NUNCA recebia desde/ate — sempre "hoje" não
+ * importa o filtro escolhido. E a lista de Auditoria também ignorava
+ * desde/ate por completo (fetchAudit não aceitava esses parâmetros).
+ * Ambos corrigidos; os stat cards agora derivam de
+ * fetchVistoriasTecnico(desde,ate) — a MESMA fonte confiável
+ * (datadavistoriafield, timestamp do app no momento da ação, não o
+ * horário de sincronização do audit log) usada pra achar "que horas foi
+ * a última vistoria" — e mostram Início do expediente + Última vistoria
+ * finalizada em destaque, exatamente o par que motivou esta tela existir.
  */
 
 import mapboxgl from "mapbox-gl";
@@ -31,6 +43,7 @@ import {
 } from "lucide-react";
 import { api } from "@/services/api";
 import { painelService } from "@/services/painel";
+import type { VistoriaTecnicoPeriodo } from "@/services/painel";
 import { fetchInstaladoresAtivos } from "@/services/painel-instalacoes";
 import { getMapboxToken, DEFAULT_CENTER } from "@/services/maps";
 import { ACAO_META, initials } from "@/lib/auditMeta";
@@ -45,15 +58,6 @@ function fmtDataHora(iso: string | null): string {
   return toDate(iso).toLocaleString("pt-BR", {
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   });
-}
-function fmtRelativo(iso: string | null): string {
-  if (!iso) return "—";
-  const min = Math.round((Date.now() - toDate(iso).getTime()) / 60000);
-  if (min < 1) return "agora mesmo";
-  if (min < 60) return `há ${min} min`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `há ${h}h`;
-  return `há ${Math.round(h / 24)}d`;
 }
 function fmtDuracao(min: number | null): string {
   if (min == null) return "em andamento";
@@ -77,10 +81,19 @@ interface ExpedienteHistItem {
   emAndamento: boolean;
 }
 
-interface TecnicoTodayMetrics {
-  vistorias_hoje: number;
-  km_hoje: number;
-  tempo_medio_min: number | null;
+/** Métricas derivadas no cliente a partir de fetchVistoriasTecnico +
+ *  histórico de expediente — tudo já respeitando desde/ate (2026-10-01,
+ *  substitui /painel/tecnico-today que era sempre "hoje" fixo). */
+interface MetricasPeriodo {
+  vistoriasNoPeriodo: number;
+  reprovadasNoPeriodo: number;
+  kmNoPeriodo: number;
+  tempoMedioMin: number | null;
+  /** datadavistoriafield da vistoria mais recente — fonte confiável
+   *  (timestamp do app no momento da ação), não o audit log (ts =
+   *  DEFAULT CURRENT_TIMESTAMP, reflete quando o servidor RECEBEU a
+   *  ação — pode chegar horas depois se o técnico sincronizou offline). */
+  ultimaVistoriaFinalizada: string | null;
 }
 
 export default function TecnicoDetalhePage() {
@@ -92,7 +105,7 @@ export default function TecnicoDetalhePage() {
   const [papel, setPapel] = useState<"vistoriador" | "instalador" | null>(null);
   const [historico, setHistorico] = useState<ExpedienteHistItem[]>([]);
   const [auditoria, setAuditoria] = useState<AuditEntry[]>([]);
-  const [today, setToday] = useState<TecnicoTodayMetrics | null>(null);
+  const [metricas, setMetricas] = useState<MetricasPeriodo | null>(null);
   const [trail, setTrail] = useState<[number, number][]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -119,26 +132,44 @@ export default function TecnicoDetalhePage() {
     setLoading(true);
     setErro(null);
     try {
-      const [tecnicos, instaladores, histRes, todayRes, trailRes, auditEntries] = await Promise.all([
+      const [tecnicos, instaladores, histRes, vistoriasPeriodo, trailRes, auditEntries] = await Promise.all([
         painelService.fetchTecnicos(),
         fetchInstaladoresAtivos().catch(() => [] as TecnicoAtivo[]),
         api.get<{ itens: ExpedienteHistItem[] }>(
           `/painel/expediente/historico?users_id=${id}&desde=${desde}&ate=${ate}&limit=200`
         ),
-        api.get<TecnicoTodayMetrics>(`/painel/tecnico-today?users_id=${id}`),
+        painelService.fetchVistoriasTecnico(Number(id), desde, ate),
         api.get<{ coords: [number, number][] }>(
           `/painel/tecnico-trail?users_id=${id}&desde=${desde}&ate=${ate}`
         ),
-        painelService.fetchAudit({ ator_id: Number(id), limit: 200 }),
+        painelService.fetchAudit({ ator_id: Number(id), desde, ate, limit: 200 }),
       ]);
       const vistoriador = tecnicos.find((t) => String(t.id) === String(id));
       const instalador = instaladores.find((t) => String(t.id) === String(id));
       setTecnico(vistoriador ?? instalador ?? null);
       setPapel(vistoriador ? "vistoriador" : instalador ? "instalador" : null);
       setHistorico(histRes.data.itens);
-      setToday(todayRes.data);
       setTrail(trailRes.data.coords);
       setAuditoria(auditEntries);
+
+      // Métricas do período — derivadas de fetchVistoriasTecnico (fonte
+      // confiável, datadavistoriafield) + km do histórico de expediente já
+      // carregado acima. Substitui /painel/tecnico-today (sempre "hoje").
+      const feitasNoPeriodo = vistoriasPeriodo.filter((v: VistoriaTecnicoPeriodo) => v.dataVistoria);
+      const reprovadas = feitasNoPeriodo.filter((v) => v.statusName === "Reprovada" || v.statusName === "Reprovado");
+      const ultimaData = feitasNoPeriodo.reduce<string | null>(
+        (max, v) => (v.dataVistoria && (!max || v.dataVistoria > max) ? v.dataVistoria : max),
+        null
+      );
+      const kmNoPeriodo = histRes.data.itens.reduce((s, h) => s + (h.total_km ?? 0), 0);
+      const minutosTotais = histRes.data.itens.reduce((s, h) => s + (h.duracao_min ?? 0), 0);
+      setMetricas({
+        vistoriasNoPeriodo: feitasNoPeriodo.length,
+        reprovadasNoPeriodo: reprovadas.length,
+        kmNoPeriodo: Math.round(kmNoPeriodo * 10) / 10,
+        tempoMedioMin: feitasNoPeriodo.length > 0 ? Math.round(minutosTotais / feitasNoPeriodo.length) : null,
+        ultimaVistoriaFinalizada: ultimaData,
+      });
     } catch (err) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
@@ -264,6 +295,7 @@ export default function TecnicoDetalhePage() {
               {initials(tecnico.nome)}
             </span>
             <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-[#00875F]">Centro de Auditoria</p>
               <div className="flex items-center gap-2">
                 <h1 className="truncate text-[18px] font-bold text-gray-900">{tecnico.nome}</h1>
                 <span
@@ -350,16 +382,27 @@ export default function TecnicoDetalhePage() {
         )}
       </div>
 
-      {/* Stat cards — sempre "hoje", independente do filtro de período */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard icon={<CheckCircle2 className="h-4 w-4" />} label="Vistorias hoje" value={today?.vistorias_hoje ?? "—"} />
-        <StatCard icon={<Navigation className="h-4 w-4" />} label="Km hoje" value={today ? `${today.km_hoje}` : "—"} />
-        <StatCard icon={<Timer className="h-4 w-4" />} label="Tempo médio/vistoria" value={today?.tempo_medio_min != null ? `${today.tempo_medio_min}min` : "—"} />
+      {/* Os 2 primeiros são o par que motivou esta tela existir ("técnico
+          dando barrigada") — início do expediente mais recente no período
+          selecionado + última vistoria finalizada nesse mesmo período,
+          ambos de fontes à prova de sincronização offline atrasada. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
           icon={<Clock className="h-4 w-4" />}
-          label="Última atividade"
-          value={tecnico ? fmtRelativo(tecnico.ultimaAtividade ?? null) : "—"}
+          label="Início do expediente"
+          value={historico[0] ? fmtDataHora(historico[0].inicio_at) : "—"}
+          destaque
         />
+        <StatCard
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          label="Última vistoria finalizada"
+          value={metricas?.ultimaVistoriaFinalizada ? fmtDataHora(metricas.ultimaVistoriaFinalizada) : "—"}
+          destaque
+        />
+        <StatCard icon={<CheckCircle2 className="h-4 w-4" />} label="Vistorias no período" value={metricas?.vistoriasNoPeriodo ?? "—"} />
+        <StatCard icon={<AlertTriangle className="h-4 w-4" />} label="Reprovadas no período" value={metricas?.reprovadasNoPeriodo ?? "—"} />
+        <StatCard icon={<Navigation className="h-4 w-4" />} label="Km no período" value={metricas ? `${metricas.kmNoPeriodo}` : "—"} />
+        <StatCard icon={<Timer className="h-4 w-4" />} label="Tempo médio/expediente" value={metricas?.tempoMedioMin != null ? `${metricas.tempoMedioMin}min` : "—"} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -465,14 +508,31 @@ export default function TecnicoDetalhePage() {
   );
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+function StatCard({
+  icon, label, value, destaque = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  /** As duas métricas que motivaram esta tela existir (início do
+   *  expediente + última vistoria) — destacadas em verde pra achar de
+   *  cara, sem precisar ler os rótulos de todos os 6 cards. */
+  destaque?: boolean;
+}) {
   return (
-    <div className="rounded-2xl bg-white p-3.5" style={{ border: "1px solid var(--vm-border)" }}>
-      <div className="flex items-center gap-1.5 text-gray-400">
+    <div
+      className="rounded-2xl p-3.5"
+      style={
+        destaque
+          ? { background: "var(--vm-accent-tint)", border: "1px solid rgba(0,135,95,0.25)" }
+          : { background: "#fff", border: "1px solid var(--vm-border)" }
+      }
+    >
+      <div className="flex items-center gap-1.5" style={{ color: destaque ? "#00875F" : "#9CA3AF" }}>
         {icon}
         <p className="text-[10.5px] font-semibold uppercase tracking-wide">{label}</p>
       </div>
-      <p className="mt-1.5 text-[20px] font-bold text-gray-900">{value}</p>
+      <p className="mt-1.5 truncate text-[17px] font-bold text-gray-900">{value}</p>
     </div>
   );
 }

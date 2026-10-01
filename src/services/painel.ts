@@ -198,6 +198,9 @@ export interface FetchAuditFilters {
   ator_id?: number;
   /** Impedimento/Recusa/Exceção — busca direto no servidor (ver lib/glpi/audit.ts). */
   tipo?: "impedimento" | "recusa" | "excecao";
+  /** Recorte de período — "YYYY-MM-DD" ou "YYYY-MM-DD HH:mm:ss". */
+  desde?: string;
+  ate?: string;
   limit?: number;
   offset?: number;
 }
@@ -210,6 +213,8 @@ export async function fetchAudit(
   if (filters.alvo_id) params.set("alvo_id", filters.alvo_id);
   if (filters.ator_id != null) params.set("ator_id", String(filters.ator_id));
   if (filters.tipo) params.set("tipo", filters.tipo);
+  if (filters.desde) params.set("desde", filters.desde);
+  if (filters.ate) params.set("ate", filters.ate);
   if (filters.limit != null) params.set("limit", String(filters.limit));
   if (filters.offset != null) params.set("offset", String(filters.offset));
   const url = `/painel/audit${params.toString() ? `?${params.toString()}` : ""}`;
