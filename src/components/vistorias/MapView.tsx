@@ -2,9 +2,9 @@
 
 import mapboxgl, { type LngLatLike, type Map as MapboxMap } from "mapbox-gl";
 import { novoMapa } from "@/lib/mapaSeguro";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { MapPinned } from "lucide-react";
+import { MapPinned, RadioTower } from "lucide-react";
 import type { Poste, Vistoria } from "@/types";
 import { postesToGeoJSON } from "@/services/postes";
 import {
@@ -20,6 +20,14 @@ import {
   type IconePrimitiva,
   type TipoEquipamento,
 } from "@/lib/equipamentoTipo";
+import {
+  TORRES_LAYER_HALO,
+  TORRES_LAYER_NUCLEO,
+  TORRE_COR,
+  TORRE_LABEL,
+  adicionarCamadaTorres,
+  torresVisiveis,
+} from "@/lib/torresLayer";
 
 interface MapViewProps {
   vistorias: Vistoria[];
@@ -59,6 +67,16 @@ const PIN_ICON: Record<Vistoria["status"], string> = {
 // Tecnico recebe vistorias SEM coord (vai ao local marcar GPS). O SQL
 // converte coord vazia -> 0, entao (0,0) = "sem GPS ainda". NAO plotar essas:
 // cairiam em Null Island (meio do Atlantico). A LISTA ainda as mostra.
+/** Escapa texto que vai pro HTML do popup. Os campos de torre vêm da base
+ *  da Anatel (CSV de terceiro), então são DADO, nunca markup confiável. */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function hasValidCoords(v: Vistoria): boolean {
   return (
     Number.isFinite(v.latitude) &&
@@ -543,6 +561,65 @@ export function MapView({
     }
   }, [selectedPosteId, postes]);
 
+  /* ────── camada de torres de operadoras (contexto opcional) ─────────────── */
+
+  // Desligada por padrão: o trabalho do técnico são as vistorias, torre é
+  // só referência de cobertura. Ligar é o que dispara o download do
+  // GeoJSON (o Mapbox só busca a source quando a layer entra no mapa),
+  // então quem nunca usa não paga os 536 KB.
+  const [torresOn, setTorresOn] = useState(false);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      adicionarCamadaTorres(map, VISTORIAS_LAYER);
+      torresVisiveis(map, torresOn);
+    };
+    if (map.loaded()) apply();
+    else map.once("load", apply);
+  }, [torresOn]);
+
+  // Toque numa torre: diz qual é. Só responde se NÃO houver pin de
+  // vistoria no mesmo ponto — o pin tem prioridade absoluta, a torre
+  // nunca pode roubar um toque do fluxo de trabalho.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const onClick = (e: mapboxgl.MapMouseEvent) => {
+      if (!torresOn) return;
+      const pin = map.queryRenderedFeatures(e.point, { layers: [VISTORIAS_LAYER] });
+      if (pin.length > 0) return;
+      const props = e.features?.[0]?.properties as Record<string, unknown> | undefined;
+      if (!props) return;
+      const op = String(props.op ?? "") as "claro" | "vivo";
+      const cor = TORRE_COR[op] ?? "#64748B";
+      const linhas = [
+        props.end && `<div style="margin-top:4px">${esc(String(props.end))}</div>`,
+        props.mun && `<div style="opacity:.7">${esc(String(props.mun))}${props.uf ? ` · ${esc(String(props.uf))}` : ""}</div>`,
+        (props.tec || props.alt) &&
+          `<div style="margin-top:4px;opacity:.7">${esc(String(props.tec ?? ""))}${
+            props.alt ? ` · ${esc(String(props.alt))} m` : ""
+          }</div>`,
+      ].filter(Boolean).join("");
+      new mapboxgl.Popup({ offset: 12, closeButton: false })
+        .setLngLat(e.lngLat)
+        .setHTML(
+          `<div style="padding:9px 11px;font-size:12px;line-height:1.35;color:#073B4C;max-width:220px">
+             <div style="font-weight:700;color:${cor}">${TORRE_LABEL[op] ?? "Torre"}</div>
+             ${linhas}
+           </div>`
+        )
+        .addTo(map);
+    };
+    map.on("click", TORRES_LAYER_NUCLEO, onClick);
+    map.on("click", TORRES_LAYER_HALO, onClick);
+    return () => {
+      map.off("click", TORRES_LAYER_NUCLEO, onClick);
+      map.off("click", TORRES_LAYER_HALO, onClick);
+    };
+  }, [torresOn]);
+
   if (!token) {
     return (
       <div className={`relative overflow-hidden rounded-3xl bg-grad-hero ${className ?? ""}`}>
@@ -566,6 +643,38 @@ export function MapView({
       className={`map-canvas relative ${className ?? ""}`}
     >
       <div ref={containerRef} className="h-full w-full" />
+
+      {/* Toggle de torres — encostado na coluna do NavigationControl do
+          Mapbox (top-right), logo abaixo dele, pra não disputar espaço com
+          o FAB "Postes próximos" que fica no topo centro da tela. */}
+      <div className="absolute right-2.5 top-[84px] z-10 flex flex-col items-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => setTorresOn((v) => !v)}
+          aria-pressed={torresOn}
+          className={`flex h-9 items-center gap-1.5 rounded-full pl-2 pr-3 text-[12px] font-semibold shadow-elev backdrop-blur transition ${
+            torresOn ? "bg-brand-deep text-white" : "bg-white/95 text-brand-deep"
+          }`}
+        >
+          <RadioTower className="h-4 w-4" strokeWidth={2.2} />
+          Torres
+        </button>
+
+        {torresOn && (
+          <div className="flex items-center gap-2.5 rounded-full bg-white/95 px-2.5 py-1.5 text-[10.5px] font-semibold shadow-elev backdrop-blur">
+            {(["claro", "vivo"] as const).map((op) => (
+              <span key={op} className="flex items-center gap-1 text-brand-deep">
+                {/* mesma leitura do mapa: núcleo branco + anel da operadora */}
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-white"
+                  style={{ boxShadow: `0 0 0 2px ${TORRE_COR[op]}` }}
+                />
+                {TORRE_LABEL[op]}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }

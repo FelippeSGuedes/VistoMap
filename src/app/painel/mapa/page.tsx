@@ -9,6 +9,7 @@ import mapboxgl, {
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { TechModel3DLayer, TECH_MODEL_LAYER_ID, type TechEntrySpec } from "./techModel3DLayer";
+import { Torres3DLayer, TORRES_3D_LAYER_ID } from "./torres3DLayer";
 import {
   getRouteFor,
   peekRoute,
@@ -44,6 +45,12 @@ import type {
 import { VistoriaDetalheModal } from "@/components/painel/VistoriaDetalheModal";
 import { StreetViewModal } from "@/components/painel/StreetViewModal";
 import { MapaLoading } from "./MapaLoading";
+import {
+  TORRE_COR,
+  TORRE_LABEL,
+  adicionarCamadaTorres,
+  torresVisiveis,
+} from "@/lib/torresLayer";
 import {
   ANEL_SEM_TECNICO,
   BORDA_ATRIBUIDO,
@@ -750,6 +757,9 @@ export default function PainelMapaPage() {
   const [postesProximos, setPostesProximos] = useState<Poste[]>([]);
   const [postesProximosLoading, setPostesProximosLoading] = useState(false);
   const [postesProximosAtivo, setPostesProximosAtivo] = useState(false);
+  // Torres de operadoras (Claro/Vivo) — contexto de cobertura, desligado por
+  // padrão. Ligar é o que dispara o download do GeoJSON.
+  const [torresAtivo, setTorresAtivo] = useState(false);
   const [detalheVistoria, setDetalheVistoria] = useState<PainelMapaVistoria | null>(null);
   const [streetViewVistoria, setStreetViewVistoria] = useState<PainelMapaVistoria | null>(null);
 
@@ -1060,6 +1070,43 @@ export default function PainelMapaPage() {
     else map.once("load", sync);
 
   }, [instalacaoData, filtroTec, filtroPapel, setSelectedVistoria]);
+
+  /* ── torres de operadoras ───────────────────────────────────────────────── */
+
+  // setStyle (troca Padrão/Satélite/Híbrido) descarta TODAS as layers, então
+  // a camada precisa ser reposta a cada style.load — handler persistente, ao
+  // contrário do `once` que o switchLayer usa pras layers dele. A ordem entre
+  // os dois handlers não importa: se as torres entram primeiro, as vistorias
+  // são adicionadas depois (e ficam por cima); se entram depois, o `abaixoDe`
+  // as coloca sob os pins. Nos dois caminhos a torre fica embaixo.
+  const torres3DLayerRef = useRef<Torres3DLayer | null>(null);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const aplicar = () => {
+      adicionarCamadaTorres(map, VISTORIAS_POINTS);
+      torresVisiveis(map, torresAtivo);
+
+      // O modelo 3D só faz sentido no modo Padrão — é o único com pitch; em
+      // Satélite/Híbrido o mapa é plano e a luzinha 2D é tudo que há pra
+      // ver. Entra ANTES da camada dos técnicos (que é sempre a última
+      // adicionada), pra o marcador do técnico nunca ficar atrás da torre.
+      const quer3D = torresAtivo && activeLayerRef.current === "3d";
+      const tem3D = !!map.getLayer(TORRES_3D_LAYER_ID);
+      if (quer3D && !tem3D) {
+        torres3DLayerRef.current = new Torres3DLayer();
+        map.addLayer(torres3DLayerRef.current);
+      } else if (!quer3D && tem3D) {
+        map.removeLayer(TORRES_3D_LAYER_ID);
+        torres3DLayerRef.current = null;
+      }
+    };
+    if (map.isStyleLoaded()) aplicar();
+    else map.once("style.load", aplicar);
+    map.on("style.load", aplicar);
+    return () => { map.off("style.load", aplicar); };
+  }, [torresAtivo, activeLayer]);
 
   /* ── layer switcher ─────────────────────────────────────────────────────── */
 
@@ -2219,6 +2266,47 @@ export default function PainelMapaPage() {
             </button>
           );
         })}
+      </div>
+
+      {/* ── TORRES DE OPERADORAS (ao lado do layer switcher) ───────────────── */}
+      <div
+        className="absolute z-10 flex items-center overflow-hidden"
+        style={{ bottom: 32, left: 620, ...GLASS, borderRadius: 12, padding: 3 }}
+      >
+        <button
+          type="button"
+          onClick={() => setTorresAtivo((v) => !v)}
+          aria-pressed={torresAtivo}
+          className="flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[10.5px] font-semibold transition"
+          style={{
+            background: torresAtivo ? "rgba(0,179,136,0.20)" : "transparent",
+            color: torresAtivo ? "#00D4A0" : "var(--vm-muted)",
+            border: `1px solid ${torresAtivo ? "rgba(0,179,136,0.40)" : "transparent"}`,
+          }}
+          title="Torres de telefonia (base Anatel)"
+        >
+          <RadioTower className="h-3 w-3" />
+          Torres
+        </button>
+
+        {torresAtivo && (
+          <div className="flex items-center gap-2.5 pl-2.5 pr-1.5">
+            {(["claro", "vivo"] as const).map((op) => (
+              <span
+                key={op}
+                className="flex items-center gap-1 text-[10px] font-semibold"
+                style={{ color: "var(--vm-muted)" }}
+              >
+                {/* mesma leitura do mapa: núcleo branco + anel da operadora */}
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-white"
+                  style={{ boxShadow: `0 0 0 2px ${TORRE_COR[op]}` }}
+                />
+                {TORRE_LABEL[op]}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── HOVER CARD DO EQUIPAMENTO ─────────────────────────────────────── */}
