@@ -122,24 +122,35 @@ function registrarImagensVistoria(map: MapboxMap): Promise<void> {
             resolve();
             return;
           }
+          // Nunca deixa esta promise pendurada pra sempre — qualquer
+          // exceção aqui dentro (ex.: canvas "tainted" por uma resposta
+          // opaca vinda do cache do service worker offline) travaria a
+          // layer de vistorias (e o MudarPosteFlow, que usa o mesmo
+          // MapView) pra sempre, já que .then() nunca dispararia. Acha
+          // em campo (2026-10-02): técnico offline sem mapa nem troca
+          // de poste.
           const img = new Image();
           img.onload = () => {
-            for (const tipo of ["Repetidor", "DCU"] as const) {
-              const key = vistoriaIconKey(status, tipo);
-              if (map.hasImage(key)) continue;
-              const canvas = document.createElement("canvas");
-              canvas.width = PIN_W * PIN_RATIO;
-              canvas.height = PIN_H * PIN_RATIO;
-              const ctx = canvas.getContext("2d");
-              if (!ctx) continue;
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              desenhaBadgeTipo(ctx, tipo, PIN_RATIO);
-              const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              map.addImage(
-                key,
-                { width: canvas.width, height: canvas.height, data: new Uint8Array(data.data.buffer) },
-                { pixelRatio: PIN_RATIO }
-              );
+            try {
+              for (const tipo of ["Repetidor", "DCU"] as const) {
+                const key = vistoriaIconKey(status, tipo);
+                if (map.hasImage(key)) continue;
+                const canvas = document.createElement("canvas");
+                canvas.width = PIN_W * PIN_RATIO;
+                canvas.height = PIN_H * PIN_RATIO;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) continue;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                desenhaBadgeTipo(ctx, tipo, PIN_RATIO);
+                const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                map.addImage(
+                  key,
+                  { width: canvas.width, height: canvas.height, data: new Uint8Array(data.data.buffer) },
+                  { pixelRatio: PIN_RATIO }
+                );
+              }
+            } catch (e) {
+              console.warn("[vm] falha ao compor icone de vistoria", status, e);
             }
             resolve();
           };
