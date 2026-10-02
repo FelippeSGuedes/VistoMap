@@ -51,9 +51,17 @@ const PIN_ICON: Record<Vistoria["status"], string> = {
 if (typeof document !== "undefined" && !document.getElementById("vm-pin-style")) {
   const style = document.createElement("style");
   style.id = "vm-pin-style";
+  // Achado em campo (2026-10-02, "pins flutuando" durante pan/zoom): o
+  // Mapbox reposiciona o marker a cada frame escrevendo DIRETO em
+  // el.style.transform — se essa MESMA propriedade tem transition no
+  // elemento raiz, todo reposicionamento (não só o hover) fica suavizado/
+  // atrasado, e o pin parece "flutuar" sempre que o mapa se move. O efeito
+  // de levantar no hover precisa viver num filho, nunca no elemento que o
+  // Mapbox move.
   style.textContent = `
-    .vm-pin { cursor: pointer; transition: transform .18s ease; will-change: transform; }
-    .vm-pin:hover { transform: translateY(-3px) scale(1.1); }
+    .vm-pin { cursor: pointer; }
+    .vm-pin-inner { transition: transform .18s ease; will-change: transform; }
+    .vm-pin:hover .vm-pin-inner { transform: translateY(-3px) scale(1.1); }
     .vm-pin img { display: block; pointer-events: none; }
   `;
   document.head.appendChild(style);
@@ -70,42 +78,53 @@ function hasValidCoords(v: Vistoria): boolean {
   );
 }
 
-/** Cor própria por tipo de equipamento — nenhuma das duas é usada pelos
- *  5 pins de status (laranja/verde/azul/vermelho/laranja-escuro), pra não
- *  disputar leitura com a cor de status do pin. */
+/** Cor própria por tipo de equipamento — só na BORDA/LETRA, nunca no
+ *  preenchimento (que fica branco, igual ao miolo original do pin), pra
+ *  nunca brigar visualmente com a cor de status do pin por fora (achado em
+ *  campo 2026-10-02: disco cheio de cor virava uma combinação "ridícula"
+ *  ao lado do laranja de pendente). Roxo/grafite — nenhum dos dois é usado
+ *  pelos 5 pins de status (laranja/verde/azul/vermelho/laranja-escuro). */
 const TIPO_COR: Record<"Repetidor" | "DCU", string> = {
   Repetidor: "#7C3AED",
-  DCU: "#0F766E",
+  DCU: "#334155",
 };
 
 function buildMarkerEl(v: Vistoria) {
+  // `root` é o elemento que o Mapbox pega e reposiciona via transform a
+  // cada frame — precisa ficar livre de qualquer transition nessa
+  // propriedade (ver vm-pin-style acima). O efeito de hover (levantar)
+  // mora no `inner`.
   const root = document.createElement("div");
   root.className = "vm-pin";
   root.style.cssText = "position:relative;width:44px;height:56px;";
+  const inner = document.createElement("div");
+  inner.className = "vm-pin-inner";
+  inner.style.cssText = "position:relative;width:44px;height:56px;";
+  root.appendChild(inner);
   const img = document.createElement("img");
   img.src = PIN_ICON[v.status];
   img.width = 44;
   img.height = 56;
   img.alt = v.status;
-  root.appendChild(img);
+  inner.appendChild(img);
   // Letra de tipo de equipamento (R=Repetidor, D=DCU) — pedido de campo
   // 2026-10-01: o selo pequeno no canto ficava discreto demais. Agora cobre
   // o círculo branco do miolo do pin (onde ficava o ícone de status, ex.:
-  // "!" de pendente) com um disco colorido bem maior e a letra em
-  // destaque — a cor do PIN (fora) continua contando o status; a cor do
-  // DISCO (dentro) conta o tipo.
+  // "!" de pendente) com um disco BRANCO maior (mesmo fundo do miolo
+  // original, não compete com a cor do pin) + anel fino colorido e a letra
+  // em destaque — sem box-shadow (mais leve de repintar a cada
+  // pan/zoom do mapa).
   const tipo = v.fields?.equipamentofield === "Repetidor" ? "Repetidor" : "DCU";
   const letra = document.createElement("div");
   letra.style.cssText = `
     position:absolute;left:10px;top:9px;width:24px;height:24px;
-    border-radius:9999px;background:${TIPO_COR[tipo]};border:2.5px solid #fff;
-    box-shadow:0 1px 4px rgba(0,0,0,0.35);
+    border-radius:9999px;background:#fff;border:2.5px solid ${TIPO_COR[tipo]};
     display:flex;align-items:center;justify-content:center;
     font:800 13px -apple-system,BlinkMacSystemFont,Inter,sans-serif;
-    color:#fff;
+    color:${TIPO_COR[tipo]};
   `;
   letra.textContent = tipo === "Repetidor" ? "R" : "D";
-  root.appendChild(letra);
+  inner.appendChild(letra);
   return root;
 }
 
