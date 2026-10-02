@@ -32,6 +32,8 @@ interface MapViewProps {
 const POSTES_SRC = "vm-postes-src";
 const POSTES_LAYER = "vm-postes-circle";
 const POSTES_LAYER_SELECTED = "vm-postes-circle-selected";
+const VISTORIAS_SRC = "vm-vistorias-src";
+const VISTORIAS_LAYER = "vm-vistorias-symbol";
 
 // Sob basePath (/app), assets estaticos precisam do prefixo manual senao o
 // browser pede "/icons/..." na origin e toma 404 -> pin sem icone. Ver
@@ -47,26 +49,6 @@ const PIN_ICON: Record<Vistoria["status"], string> = {
   DEVOLVIDA:  `${BASE_PATH}/icons/pin-devolvida.svg`,
 };
 
-// Inject hover style once (avoids JS mouseenter/mouseleave flicker)
-if (typeof document !== "undefined" && !document.getElementById("vm-pin-style")) {
-  const style = document.createElement("style");
-  style.id = "vm-pin-style";
-  // Achado em campo (2026-10-02, "pins flutuando" durante pan/zoom): o
-  // Mapbox reposiciona o marker a cada frame escrevendo DIRETO em
-  // el.style.transform — se essa MESMA propriedade tem transition no
-  // elemento raiz, todo reposicionamento (não só o hover) fica suavizado/
-  // atrasado, e o pin parece "flutuar" sempre que o mapa se move. O efeito
-  // de levantar no hover precisa viver num filho, nunca no elemento que o
-  // Mapbox move.
-  style.textContent = `
-    .vm-pin { cursor: pointer; }
-    .vm-pin-inner { transition: transform .18s ease; will-change: transform; }
-    .vm-pin:hover .vm-pin-inner { transform: translateY(-3px) scale(1.1); }
-    .vm-pin img { display: block; pointer-events: none; }
-  `;
-  document.head.appendChild(style);
-}
-
 // Tecnico recebe vistorias SEM coord (vai ao local marcar GPS). O SQL
 // converte coord vazia -> 0, entao (0,0) = "sem GPS ainda". NAO plotar essas:
 // cairiam em Null Island (meio do Atlantico). A LISTA ainda as mostra.
@@ -78,54 +60,105 @@ function hasValidCoords(v: Vistoria): boolean {
   );
 }
 
+type TipoEquip = "Repetidor" | "DCU";
+function tipoDe(v: Vistoria): TipoEquip {
+  return v.fields?.equipamentofield === "Repetidor" ? "Repetidor" : "DCU";
+}
+
 /** Cor própria por tipo de equipamento — só na BORDA/LETRA, nunca no
  *  preenchimento (que fica branco, igual ao miolo original do pin), pra
  *  nunca brigar visualmente com a cor de status do pin por fora (achado em
  *  campo 2026-10-02: disco cheio de cor virava uma combinação "ridícula"
  *  ao lado do laranja de pendente). Roxo/grafite — nenhum dos dois é usado
  *  pelos 5 pins de status (laranja/verde/azul/vermelho/laranja-escuro). */
-const TIPO_COR: Record<"Repetidor" | "DCU", string> = {
+const TIPO_COR: Record<TipoEquip, string> = {
   Repetidor: "#7C3AED",
   DCU: "#334155",
 };
 
-function buildMarkerEl(v: Vistoria) {
-  // `root` é o elemento que o Mapbox pega e reposiciona via transform a
-  // cada frame — precisa ficar livre de qualquer transition nessa
-  // propriedade (ver vm-pin-style acima). O efeito de hover (levantar)
-  // mora no `inner`.
-  const root = document.createElement("div");
-  root.className = "vm-pin";
-  root.style.cssText = "position:relative;width:44px;height:56px;";
-  const inner = document.createElement("div");
-  inner.className = "vm-pin-inner";
-  inner.style.cssText = "position:relative;width:44px;height:56px;";
-  root.appendChild(inner);
-  const img = document.createElement("img");
-  img.src = PIN_ICON[v.status];
-  img.width = 44;
-  img.height = 56;
-  img.alt = v.status;
-  inner.appendChild(img);
-  // Letra de tipo de equipamento (R=Repetidor, D=DCU) — pedido de campo
-  // 2026-10-01: o selo pequeno no canto ficava discreto demais. Agora cobre
-  // o círculo branco do miolo do pin (onde ficava o ícone de status, ex.:
-  // "!" de pendente) com um disco BRANCO maior (mesmo fundo do miolo
-  // original, não compete com a cor do pin) + anel fino colorido e a letra
-  // em destaque — sem box-shadow (mais leve de repintar a cada
-  // pan/zoom do mapa).
-  const tipo = v.fields?.equipamentofield === "Repetidor" ? "Repetidor" : "DCU";
-  const letra = document.createElement("div");
-  letra.style.cssText = `
-    position:absolute;left:10px;top:9px;width:24px;height:24px;
-    border-radius:9999px;background:#fff;border:2.5px solid ${TIPO_COR[tipo]};
-    display:flex;align-items:center;justify-content:center;
-    font:800 13px -apple-system,BlinkMacSystemFont,Inter,sans-serif;
-    color:${TIPO_COR[tipo]};
-  `;
-  letra.textContent = tipo === "Repetidor" ? "R" : "D";
-  inner.appendChild(letra);
-  return root;
+/**
+ * Achado em campo (2026-10-02, "pins flutuando" durante pan/zoom): markers
+ * DOM (mapboxgl.Marker, <div> sobreposto ao canvas WebGL) nunca
+ * sincronizam perfeitamente com o mapa nesse WebView Android — são duas
+ * camadas de renderização separadas (compositor da WebView vs. GPU do
+ * WebGL) sem garantia de frame conjunto. Confirmado comparando com os
+ * postes (já uma symbol layer nativa, nunca flutuaram). Fix definitivo:
+ * vistorias também viram symbol layer — pins pré-renderados em canvas
+ * (pin base + badge de tipo) registrados como imagem do Mapbox, 100%
+ * desenhados DENTRO do WebGL, sem camada DOM por cima.
+ */
+const PIN_W = 44, PIN_H = 56, PIN_RATIO = 2;
+
+function vistoriaIconKey(status: Vistoria["status"], tipo: TipoEquip): string {
+  return `vm-vistoria-${status}-${tipo}`;
+}
+
+function desenhaBadgeTipo(ctx: CanvasRenderingContext2D, tipo: TipoEquip, scale: number) {
+  const cor = TIPO_COR[tipo];
+  const cx = 22 * scale, cy = 19 * scale, r = 12 * scale;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.lineWidth = 2.5 * scale;
+  ctx.strokeStyle = cor;
+  ctx.stroke();
+  ctx.fillStyle = cor;
+  ctx.font = `800 ${13 * scale}px -apple-system, BlinkMacSystemFont, Inter, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(tipo === "Repetidor" ? "R" : "D", cx, cy + 0.5 * scale);
+}
+
+/** Carrega os 5 SVGs de status uma vez, compõe os 2 badges de tipo em cima
+ *  de cada um (10 imagens no total) e registra tudo no Mapbox. */
+function registrarImagensVistoria(map: MapboxMap): Promise<void> {
+  const statuses = Object.keys(PIN_ICON) as Array<Vistoria["status"]>;
+  return Promise.all(
+    statuses.map(
+      (status) =>
+        new Promise<void>((resolve) => {
+          if ((["Repetidor", "DCU"] as const).every((t) => map.hasImage(vistoriaIconKey(status, t)))) {
+            resolve();
+            return;
+          }
+          const img = new Image();
+          img.onload = () => {
+            for (const tipo of ["Repetidor", "DCU"] as const) {
+              const key = vistoriaIconKey(status, tipo);
+              if (map.hasImage(key)) continue;
+              const canvas = document.createElement("canvas");
+              canvas.width = PIN_W * PIN_RATIO;
+              canvas.height = PIN_H * PIN_RATIO;
+              const ctx = canvas.getContext("2d");
+              if (!ctx) continue;
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              desenhaBadgeTipo(ctx, tipo, PIN_RATIO);
+              const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              map.addImage(
+                key,
+                { width: canvas.width, height: canvas.height, data: new Uint8Array(data.data.buffer) },
+                { pixelRatio: PIN_RATIO }
+              );
+            }
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = PIN_ICON[status];
+        })
+    )
+  ).then(() => undefined);
+}
+
+function vistoriasToGeoJSON(vistorias: Vistoria[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  return {
+    type: "FeatureCollection",
+    features: vistorias.map((v) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [v.longitude, v.latitude] },
+      properties: { id: v.id, icone: vistoriaIconKey(v.status, tipoDe(v)) },
+    })),
+  };
 }
 
 export function MapView({
@@ -140,7 +173,6 @@ export function MapView({
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapboxMap | null>(null);
-  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const token = getMapboxToken();
@@ -187,7 +219,6 @@ export function MapView({
     return () => {
       map.remove();
       mapRef.current = null;
-      markersRef.current.clear();
       userMarkerRef.current = null;
       didFitRef.current = false;
     };
@@ -219,39 +250,65 @@ export function MapView({
     else map.once("load", onReady);
   }, [userPosition]);
 
-  // vistoria markers
+  /* ────── camada de vistorias (symbol layer — ver nota em registrarImagensVistoria) ────────── */
+
+  // ref pra manter o listener de click estável sem re-attachar a cada render
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  // 1) garante source + imagens + layer (anexo único)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
-    const sync = () => {
-      const seen = new Set<string>();
-      plottable.forEach((v) => {
-        seen.add(v.id);
-        const existing = markersRef.current.get(v.id);
-        if (existing) {
-          existing.setLngLat([v.longitude, v.latitude]);
-          return;
-        }
-        const el = buildMarkerEl(v);
-        const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
-          .setLngLat([v.longitude, v.latitude])
-          .addTo(map);
-        el.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          onSelect?.(v.id);
+    const ensure = () => {
+      if (map.getSource(VISTORIAS_SRC)) return;
+      map.addSource(VISTORIAS_SRC, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        promoteId: "id",
+      });
+      registrarImagensVistoria(map).then(() => {
+        if (map.getLayer(VISTORIAS_LAYER)) return;
+        map.addLayer({
+          id: VISTORIAS_LAYER,
+          source: VISTORIAS_SRC,
+          type: "symbol",
+          layout: {
+            "icon-image": ["get", "icone"],
+            "icon-anchor": "bottom",
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          },
         });
-        markersRef.current.set(v.id, marker);
+        map.on("click", VISTORIAS_LAYER, (e) => {
+          const id = e.features?.[0]?.properties?.id;
+          if (id != null) onSelectRef.current?.(String(id));
+        });
+        map.on("mouseenter", VISTORIAS_LAYER, () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", VISTORIAS_LAYER, () => {
+          map.getCanvas().style.cursor = "";
+        });
       });
-      markersRef.current.forEach((marker, id) => {
-        if (!seen.has(id)) {
-          marker.remove();
-          markersRef.current.delete(id);
-        }
-      });
+    };
+    if (map.loaded()) ensure();
+    else map.once("load", ensure);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      // Como o mapa nao recria mais, enquadra a primeira leva de markers uma
-      // unica vez (sem userPosition, senao o user marker cuida do enquadre).
+  // 2) atualiza GeoJSON + enquadra a primeira leva (uma única vez, sem
+  // userPosition, senão o user marker cuida do enquadre) quando `plottable` muda
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      const src = map.getSource(VISTORIAS_SRC) as mapboxgl.GeoJSONSource | undefined;
+      if (!src) return;
+      src.setData(vistoriasToGeoJSON(plottable));
+
       if (!didFitRef.current && !userPosition && plottable.length > 0) {
         didFitRef.current = true;
         if (plottable.length === 1) {
@@ -263,10 +320,9 @@ export function MapView({
         }
       }
     };
-
-    if (map.loaded()) sync();
-    else map.once("load", sync);
-  }, [plottable, onSelect, userPosition]);
+    if (map.loaded()) apply();
+    else map.once("load", apply);
+  }, [plottable, userPosition]);
 
   // selected fly-to (vistoria)
   useEffect(() => {
