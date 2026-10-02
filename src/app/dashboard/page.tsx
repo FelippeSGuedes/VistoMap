@@ -331,19 +331,27 @@ export default function DashboardPage() {
         });
       });
 
-    // 1a falha pode ser só um soluço passageiro de rede — tenta mais uma vez
-    // antes de exibir zerado. Antes caía direto em ZERO_STATS numa falha só,
-    // o que deixava o dashboard mostrando "0 vistorias" mesmo o técnico tendo
-    // trabalho normal, só por causa de um hiccup momentâneo.
-    carregar().catch(() => {
-      if (!alive) return;
-      setTimeout(() => {
+    // Insiste indefinidamente (backoff até 30s) em vez de desistir depois de
+    // 1 retentativa — achado em campo (2026-10-02): técnico abriu o app numa
+    // janela de sinal ruim logo cedo, as 2 tentativas (imediata + 4s depois)
+    // falharam as duas, e vistoriasHoje nunca populava pro resto do dia
+    // inteiro (useOfflinePrepDia, que pré-baixa os postes da rota ANTES do
+    // técnico sair, depende de vistoriasHoje — sem ela, troca de poste
+    // offline nunca fica pronta, mesmo o técnico tendo sinal bom minutos
+    // depois). Continua tentando até conseguir ou a tela ser desmontada.
+    let tentativa = 0;
+    const tentarComBackoff = () => {
+      carregar().catch(() => {
         if (!alive) return;
-        carregar().catch(() => {
-          if (alive) setStats(ZERO_STATS);
-        });
-      }, 4000);
-    });
+        tentativa++;
+        if (tentativa === 1) setStats(ZERO_STATS);
+        const delay = Math.min(4000 * 2 ** (tentativa - 1), 30000);
+        setTimeout(() => {
+          if (alive) tentarComBackoff();
+        }, delay);
+      });
+    };
+    tentarComBackoff();
 
     return () => {
       alive = false;
