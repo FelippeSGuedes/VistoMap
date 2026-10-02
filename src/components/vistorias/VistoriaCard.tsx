@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ChevronRight, MapPin, Navigation, Wrench } from "lucide-react";
+import { ChevronRight, MapPin, Navigation } from "lucide-react";
 import type { Vistoria } from "@/types";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "./StatusBadge";
@@ -62,21 +62,28 @@ export function VistoriaCard({
             highlighted ? "ring-2 ring-brand-emerald/60" : ""
           }`}
         >
-          {/* Hero image do equipamento — as imagens já vêm com fade
-              branco→foto embutido; object-position "right" mantém o
-              equipamento sempre dentro do corte. O overflow-hidden do Card
-              recorta nos cantos arredondados, sem replicar o raio aqui. */}
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-[32%] min-w-[92px] max-w-[164px]">
+          {/* Hero image do equipamento. O fade pro fundo do card é feito por
+              MÁSCARA na própria imagem (não por um branco sobreposto) —
+              achado em campo 2026-10-02: sobrepor branco deixava uma emenda
+              vertical dura entre o card e a foto. Com máscara, a imagem
+              nasce transparente à esquerda e vai ganhando opacidade, então
+              não existe borda nenhuma. object-position "right" mantém o
+              equipamento sempre dentro do corte; o overflow-hidden do Card
+              recorta nos cantos arredondados. */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-[34%] min-w-[96px] max-w-[172px]">
             <img
               src={tipo === "Repetidor" ? `${BASE_PATH}/repetidor.png` : `${BASE_PATH}/dcu.png`}
               alt=""
               className="h-full w-full object-cover"
-              style={{ objectPosition: "right center" }}
+              style={{
+                objectPosition: "right center",
+                WebkitMaskImage:
+                  "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.35) 38%, rgba(0,0,0,0.8) 68%, #000 100%)",
+                maskImage:
+                  "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.35) 38%, rgba(0,0,0,0.8) 68%, #000 100%)",
+              }}
               loading="lazy"
-            />
-            <div
-              className="absolute inset-0"
-              style={{ background: "linear-gradient(to right, #fff 0%, rgba(255,255,255,0) 45%)" }}
+              decoding="async"
             />
             {vistoria.online && (
               <span className="absolute right-2 top-2 flex h-2.5 w-2.5">
@@ -87,10 +94,8 @@ export function VistoriaCard({
           </div>
 
           <div className="relative p-4 pr-[28%]">
-            <Wrench className="h-4 w-4 text-ink-muted/70" />
-
             {/* Identificador principal do equipamento */}
-            <h3 className="mt-2 text-[20px] font-bold leading-none tracking-[-0.015em] text-ink">
+            <h3 className="text-[20px] font-bold leading-none tracking-[-0.015em] text-ink">
               {vistoria.equipamento}
             </h3>
 
