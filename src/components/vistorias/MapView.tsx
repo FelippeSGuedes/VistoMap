@@ -13,6 +13,13 @@ import {
   MAP_STYLE,
   getMapboxToken,
 } from "@/services/maps";
+import {
+  TIPO_COR,
+  TIPO_ICONE_PATH,
+  tipoEquipamento,
+  type IconePrimitiva,
+  type TipoEquipamento,
+} from "@/lib/equipamentoTipo";
 
 interface MapViewProps {
   vistorias: Vistoria[];
@@ -60,22 +67,6 @@ function hasValidCoords(v: Vistoria): boolean {
   );
 }
 
-type TipoEquip = "Repetidor" | "DCU";
-function tipoDe(v: Vistoria): TipoEquip {
-  return v.fields?.equipamentofield === "Repetidor" ? "Repetidor" : "DCU";
-}
-
-/** Cor própria por tipo de equipamento — só na BORDA/LETRA, nunca no
- *  preenchimento (que fica branco, igual ao miolo original do pin), pra
- *  nunca brigar visualmente com a cor de status do pin por fora (achado em
- *  campo 2026-10-02: disco cheio de cor virava uma combinação "ridícula"
- *  ao lado do laranja de pendente). Roxo/grafite — nenhum dos dois é usado
- *  pelos 5 pins de status (laranja/verde/azul/vermelho/laranja-escuro). */
-const TIPO_COR: Record<TipoEquip, string> = {
-  Repetidor: "#7C3AED",
-  DCU: "#334155",
-};
-
 /**
  * Achado em campo (2026-10-02, "pins flutuando" durante pan/zoom): markers
  * DOM (mapboxgl.Marker, <div> sobreposto ao canvas WebGL) nunca
@@ -86,28 +77,84 @@ const TIPO_COR: Record<TipoEquip, string> = {
  * vistorias também viram symbol layer — pins pré-renderados em canvas
  * (pin base + badge de tipo) registrados como imagem do Mapbox, 100%
  * desenhados DENTRO do WebGL, sem camada DOM por cima.
+ *
+ * O sprite tem folga em volta do pin (PAD) só pro halo não ser cortado.
  */
-const PIN_W = 44, PIN_H = 56, PIN_RATIO = 2;
+const PIN_W = 44, PIN_H = 56, PAD = 6, PIN_RATIO = 2;
+const BOX_W = PIN_W + PAD * 2, BOX_H = PIN_H + PAD * 2;
 
-function vistoriaIconKey(status: Vistoria["status"], tipo: TipoEquip): string {
+function vistoriaIconKey(status: Vistoria["status"], tipo: TipoEquipamento): string {
   return `vm-vistoria-${status}-${tipo}`;
 }
 
-function desenhaBadgeTipo(ctx: CanvasRenderingContext2D, tipo: TipoEquip, scale: number) {
+/** Desenha um ícone do lucide (viewBox 24, stroke 2, cap/join round)
+ *  centrado em (cx,cy) com `size` de lado — mesmo desenho que o card usa
+ *  como componente React (ver lib/equipamentoTipo.ts). */
+function desenhaIconeLucide(
+  ctx: CanvasRenderingContext2D,
+  primitivas: IconePrimitiva[],
+  cx: number,
+  cy: number,
+  size: number,
+  cor: string
+) {
+  const s = size / 24;
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(s, s);
+  ctx.strokeStyle = cor;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const p of primitivas) {
+    if (p.tipo === "path") {
+      ctx.stroke(new Path2D(p.d));
+    } else if (p.tipo === "rect") {
+      ctx.beginPath();
+      // roundRect não existe em toda WebView — monta com arcTo.
+      ctx.moveTo(p.x + p.r, p.y);
+      ctx.arcTo(p.x + p.w, p.y, p.x + p.w, p.y + p.h, p.r);
+      ctx.arcTo(p.x + p.w, p.y + p.h, p.x, p.y + p.h, p.r);
+      ctx.arcTo(p.x, p.y + p.h, p.x, p.y, p.r);
+      ctx.arcTo(p.x, p.y, p.x + p.w, p.y, p.r);
+      ctx.closePath();
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/** Miolo do marcador: disco branco + anel na cor do tipo + ícone do tipo,
+ *  com um halo discreto por trás pra destacar do mapa sem virar "glow". */
+function desenhaBadgeTipo(ctx: CanvasRenderingContext2D, tipo: TipoEquipamento, scale: number) {
   const cor = TIPO_COR[tipo];
-  const cx = 22 * scale, cy = 19 * scale, r = 12 * scale;
+  const cx = (PAD + 22) * scale, cy = (PAD + 19) * scale, r = 12.5 * scale;
+
+  // Halo: sombra suave na cor do tipo, só o suficiente pra separar o
+  // marcador de fundos claros/saturados do mapa.
+  ctx.save();
+  ctx.shadowColor = `${cor}59`;
+  ctx.shadowBlur = 6 * scale;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = "#fff";
   ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.lineWidth = 2.5 * scale;
   ctx.strokeStyle = cor;
   ctx.stroke();
-  ctx.fillStyle = cor;
-  ctx.font = `800 ${13 * scale}px -apple-system, BlinkMacSystemFont, Inter, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(tipo === "Repetidor" ? "R" : "D", cx, cy + 0.5 * scale);
+
+  ctx.save();
+  ctx.scale(scale, scale);
+  desenhaIconeLucide(ctx, TIPO_ICONE_PATH[tipo], cx / scale, cy / scale, 15, cor);
+  ctx.restore();
 }
 
 /** Carrega os 5 SVGs de status uma vez, compõe os 2 badges de tipo em cima
@@ -136,11 +183,19 @@ function registrarImagensVistoria(map: MapboxMap): Promise<void> {
                 const key = vistoriaIconKey(status, tipo);
                 if (map.hasImage(key)) continue;
                 const canvas = document.createElement("canvas");
-                canvas.width = PIN_W * PIN_RATIO;
-                canvas.height = PIN_H * PIN_RATIO;
+                canvas.width = BOX_W * PIN_RATIO;
+                canvas.height = BOX_H * PIN_RATIO;
                 const ctx = canvas.getContext("2d");
                 if (!ctx) continue;
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                // PAD de folga em volta — o halo do badge não pode ser
+                // cortado pela borda do sprite.
+                ctx.drawImage(
+                  img,
+                  PAD * PIN_RATIO,
+                  PAD * PIN_RATIO,
+                  PIN_W * PIN_RATIO,
+                  PIN_H * PIN_RATIO
+                );
                 desenhaBadgeTipo(ctx, tipo, PIN_RATIO);
                 const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 map.addImage(
@@ -167,7 +222,7 @@ function vistoriasToGeoJSON(vistorias: Vistoria[]): GeoJSON.FeatureCollection<Ge
     features: vistorias.map((v) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [v.longitude, v.latitude] },
-      properties: { id: v.id, icone: vistoriaIconKey(v.status, tipoDe(v)) },
+      properties: { id: v.id, icone: vistoriaIconKey(v.status, tipoEquipamento(v)) },
     })),
   };
 }
@@ -288,7 +343,11 @@ export function MapView({
           type: "symbol",
           layout: {
             "icon-image": ["get", "icone"],
+            // O sprite tem PAD de folga em volta (pro halo não ser
+            // cortado), então "bottom" cairia PAD acima do ponto real —
+            // o offset devolve a ponta do pin pra coordenada exata.
             "icon-anchor": "bottom",
+            "icon-offset": [0, PAD],
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           },

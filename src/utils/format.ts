@@ -1,7 +1,10 @@
 import type { VistoriaPriority, VistoriaStatus } from "@/types";
 
 export const STATUS_LABEL: Record<VistoriaStatus, string> = {
-  PENDENTE: "Pendente",
+  // "A vistoriar" em vez de "Pendente" (pedido de campo 2026-10-02): o
+  // técnico lê o card como uma ORDEM DE SERVIÇO, não como um estado
+  // administrativo. Vale pro badge do card e pro filtro da mesma tela.
+  PENDENTE: "A vistoriar",
   EM_CAMPO: "Em campo",
   FINALIZADA: "Concluída",
   // "Reprovada" no GLPI = vistoria que precisa de revisita pelo técnico.
