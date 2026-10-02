@@ -10,6 +10,11 @@ import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { formatDistanceKm } from "@/utils/format";
 
+// Sob basePath (/app), assets estaticos precisam do prefixo manual senao o
+// browser pede a imagem na origin raiz e toma 404. Ver [[basepath-raw-fetch-bug]]
+// (mesmo achado já documentado em MapView.tsx pros pins de status).
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 interface VistoriaCardProps {
   vistoria: Vistoria;
   onSelect?: (vistoria: Vistoria) => void;
@@ -54,7 +59,7 @@ export function VistoriaCard({
               cantos arredondados, sem precisar replicar o raio aqui. */}
           <div className="pointer-events-none absolute inset-y-0 right-0 w-[38%] min-w-[108px] max-w-[190px]">
             <img
-              src={isRepetidor ? "/repetidor.png" : "/dcu.png"}
+              src={isRepetidor ? `${BASE_PATH}/repetidor.png` : `${BASE_PATH}/dcu.png`}
               alt=""
               className="h-full w-full object-cover"
               style={{ objectPosition: "right center" }}
