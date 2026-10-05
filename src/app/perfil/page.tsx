@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { BundleVersion } from "@/components/BundleVersion";
+import { AtualizacaoCard } from "@/components/AtualizacaoCard";
 import {
   ArrowLeft,
   Award,
@@ -328,6 +329,10 @@ export default function PerfilPage() {
 
         {/* Conectividade */}
         <ConectividadeCard />
+
+        {/* Atualização do app — fica logo acima do Sair, que é o lugar onde
+            o técnico já vai quando algo está estranho. */}
+        <AtualizacaoCard />
 
         {/* SAIR */}
         <button

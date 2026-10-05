@@ -196,213 +196,317 @@ export function useOtaUpdate(enabled: boolean) {
       );
     });
   }, []);
-
-  // Efeito 2 — checa manifesto, baixa e aplica. Uma vez só por abertura do
-  // app (trava por useRef, não por `enabled`) — autenticado ou não.
+  // Efeito 2 — checa, baixa e aplica. Uma vez por abertura do app (trava
+  // por useRef, não por `enabled`) — autenticado ou não.
   const jaRodou = useRef(false);
   useEffect(() => {
     if (jaRodou.current) return;
     jaRodou.current = true;
+    void executarAtualizacaoOta({ origem: "automatico" });
+  }, []);
+}
 
-    const cap = getCapacitor();
-    if (!cap?.isNativePlatform?.()) return;
+/* ── diagnóstico ──────────────────────────────────────────────────────────
+ *
+ * O erro que chega do plugin é só "Failed to download from: <url>" — não
+ * distingue conexão caindo no meio, disco cheio, TLS ou timeout. Sem mais
+ * nada, o log de produção não concluía coisa alguma (reclamação direta,
+ * 2026-10-05: "esse log ta muito simples, não é conclusivo em nada").
+ *
+ * Os dois campos que mais separam as hipóteses são `ms` e `percent`:
+ *   • ms baixo, percent 0      -> recusado de cara (disco, TLS, plugin)
+ *   • ms médio, percent 30     -> conexão caiu no meio do download
+ *   • ms no teto, percent alto -> lento demais, timeout genuíno
+ */
+interface Conexao {
+  effectiveType?: string;
+  downlink?: number;
+  type?: string;
+  saveData?: boolean;
+}
 
-    const Updater = cap.Plugins?.CapacitorUpdater;
-    if (!Updater) {
-      console.warn("[useOtaUpdate] Plugin CapacitorUpdater indisponível — APK antigo?");
-      return;
+function lerConexao(): Conexao | null {
+  try {
+    const nav = navigator as Navigator & { connection?: Conexao };
+    const c = nav.connection;
+    if (!c) return null;
+    return {
+      effectiveType: c.effectiveType,
+      downlink: c.downlink,
+      type: c.type,
+      saveData: c.saveData,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Espaço livre estimado no device (quota de storage da origem). */
+async function lerEspacoLivreMB(): Promise<number | null> {
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (!est || est.quota == null || est.usage == null) return null;
+    return Math.round((est.quota - est.usage) / 1048576);
+  } catch {
+    return null;
+  }
+}
+
+export type OrigemOta = "automatico" | "manual";
+
+export interface ResultadoOta {
+  /** "atualizando" = vai recarregar o WebView; nada mais a fazer. */
+  estado: "atualizando" | "ja-atualizado" | "sem-suporte" | "falhou";
+  versaoAtual?: string | null;
+  versaoNova?: string | null;
+  motivo?: string;
+}
+
+/**
+ * Executa o ciclo de atualização. Exportada pra o botão manual do Perfil.
+ *
+ * `origem: "manual"` ignora o disjuntor e zera o contador: o disjuntor
+ * existe pra impedir LOOP automático, e um toque deliberado do técnico
+ * (tipicamente já no wi-fi, depois de ver que falhou) é justamente o caso
+ * em que insistir é o certo.
+ */
+export async function executarAtualizacaoOta(
+  { origem }: { origem: OrigemOta }
+): Promise<ResultadoOta> {
+  const cap = getCapacitor();
+  if (!cap?.isNativePlatform?.()) {
+    return {
+      estado: "sem-suporte",
+      motivo: "A atualização automática só existe no aplicativo instalado.",
+    };
+  }
+  const Updater = cap.Plugins?.CapacitorUpdater;
+  if (!Updater) {
+    return {
+      estado: "sem-suporte",
+      motivo: "Esta versão do APK não tem o módulo de atualização.",
+    };
+  }
+
+  let progressHandle: PluginListenerHandle | null = null;
+  let ultimoPercent = 0;
+  let versaoAtual: string | null = null;
+  let versaoNova: string | null = null;
+  const t0 = Date.now();
+
+  try {
+    const manifestController = new AbortController();
+    const manifestTimer = window.setTimeout(() => manifestController.abort(), 10_000);
+    let res: Response;
+    try {
+      res = await fetch(`${OTA_BASE}/latest.json?ts=${Date.now()}`, {
+        cache: "no-store",
+        signal: manifestController.signal,
+      });
+    } finally {
+      window.clearTimeout(manifestTimer);
+    }
+    if (!res.ok) {
+      return { estado: "falhou", motivo: `O servidor respondeu ${res.status} ao consultar a versão.` };
     }
 
-    let cancelled = false;
-    let progressHandle: PluginListenerHandle | null = null;
+    const manifest = (await res.json()) as { version?: string; url?: string };
+    if (!manifest?.version || !manifest?.url) {
+      return { estado: "falhou", motivo: "O manifesto de atualização veio incompleto." };
+    }
+    versaoNova = manifest.version;
 
-    (async () => {
-      try {
-        const manifestController = new AbortController();
-        const manifestTimer = window.setTimeout(() => manifestController.abort(), 10_000);
-        let res: Response;
-        try {
-          res = await fetch(`${OTA_BASE}/latest.json?ts=${Date.now()}`, {
-            cache: "no-store",
-            signal: manifestController.signal,
-          });
-        } finally {
-          window.clearTimeout(manifestTimer);
-        }
-        if (!res.ok) return;
+    const cur = await withTimeout(Updater.current(), 8_000, "Updater.current()");
+    versaoAtual = cur?.bundle?.version ?? null;
+    if (versaoAtual === manifest.version) {
+      clearAttempt(); // rodando na versão certa — trava antiga não vale mais
+      return { estado: "ja-atualizado", versaoAtual, versaoNova };
+    }
 
-        const manifest = (await res.json()) as { version?: string; url?: string };
-        if (!manifest?.version || !manifest?.url) return;
-
-        const cur = await withTimeout(Updater.current(), 8_000, "Updater.current()");
-        const deVersao = cur?.bundle?.version ?? null;
-        if (deVersao === manifest.version) {
-          clearAttempt(); // rodando na versão certa — qualquer trava antiga não vale mais.
-          return;
-        }
-
-        // Trava de loop: já tentamos aplicar ESSA versão demais vezes recentemente
-        // e o manifesto continua pedindo ela — provável rollback do capgo (bundle
-        // não passa no health-check). Para de insistir em vez de ficar em loop de
-        // baixar/aplicar/recarregar sem parar.
-        const attempt = readAttempt();
-        if (
-          attempt &&
-          attempt.version === manifest.version &&
-          attempt.count >= OTA_ATTEMPT_MAX &&
-          Date.now() - attempt.ts < OTA_ATTEMPT_WINDOW_MS
-        ) {
-          console.warn(
-            `[useOtaUpdate] Versão ${manifest.version} falhou ${attempt.count}x nos últimos 10min — pausando tentativas.`
-          );
-          void import("@/lib/reportClientError").then(({ reportClientError }) =>
-            reportClientError(
-              `Disjuntor OTA acionado — versão ${manifest.version} falhou ${attempt.count}x`,
-              "useOtaUpdate/circuitBreaker",
-              { deVersao, paraVersao: manifest.version, tentativas: attempt.count }
-            )
-          );
-          // Visível (aviso pequeno, não bloqueia o app) em vez de silencioso —
-          // sem isso o técnico não tinha nenhum sinal de que o app sabia da
-          // atualização e ia tentar de novo sozinho, e "resetar os dados"
-          // virava o único jeito de sentir que fez alguma coisa.
-          useOtaStore.getState().pausada(manifest.version);
-          window.setTimeout(() => {
-            if (useOtaStore.getState().phase === "pausada") useOtaStore.getState().reset();
-          }, 6_000);
-          return;
-        }
-
-        console.log(`[useOtaUpdate] Atualização: ${deVersao ?? "?"} → ${manifest.version}`);
-
-        // Abre a tela de atualização e escuta o progresso real do download.
-        useOtaStore.getState().iniciarDownload(deVersao, manifest.version);
-
-        // Registra a tentativa JÁ AQUI (antes de qualquer chamada de rede) —
-        // não só antes do reload. Antes, uma falha no download/list (sinal
-        // fraco) nunca incrementava o contador, então a trava de loop só
-        // pegava rollback do capgo, não conexão ruim — reabrir o app depois
-        // de um download travado reiniciava o ciclo do zero indefinidamente.
-        writeAttempt({
-          version: manifest.version,
-          count: attempt?.version === manifest.version ? attempt.count + 1 : 1,
-          ts: Date.now(),
-        });
-
-        // 3a. Reaproveita um bundle DESTA MESMA versão que já esteja baixado
-        //     e íntegro (status success). Evita rebaixar 16 MB a cada abertura
-        //     numa rede ruim — que era o que fazia o app "atualizar várias
-        //     vezes" e às vezes travar sem conseguir puxar. Só re-aplica (set).
-        let bundle: BundleInfo | null = null;
-        try {
-          const lista = await withTimeout(Updater.list?.() ?? Promise.resolve(undefined), 8_000, "Updater.list()");
-          const existente = lista?.bundles?.find((b) => b.version === manifest.version && b.id);
-          if (existente?.status === "success" || existente?.status === "pending") {
-            bundle = existente;
-            console.log(`[useOtaUpdate] Bundle ${manifest.version} já baixado — reaproveitando.`);
-          } else if (existente?.status === "error") {
-            // Download anterior ficou quebrado (parcial/corrompido) — apaga
-            // ANTES de tentar de novo. Sem isso, o downloader nativo pode
-            // encontrar esse arquivo pela frente e tentar retomar dele por
-            // conta própria (resume mal resolvido = mesmo bug de sempre
-            // travar no mesmo ponto), em vez de baixar do zero de verdade.
-            console.log(`[useOtaUpdate] Bundle ${manifest.version} com status "error" — apagando antes de rebaixar.`);
-            await Updater.delete?.({ id: existente.id }).catch(() => {});
+    // Disjuntor: a MESMA versão falhou demais há pouco e o manifesto segue
+    // pedindo ela. Para de insistir sozinho — mas nunca barra pedido manual.
+    const attempt = readAttempt();
+    if (
+      origem === "automatico" &&
+      attempt &&
+      attempt.version === manifest.version &&
+      attempt.count >= OTA_ATTEMPT_MAX &&
+      Date.now() - attempt.ts < OTA_ATTEMPT_WINDOW_MS
+    ) {
+      console.warn(
+        `[useOtaUpdate] Versão ${manifest.version} falhou ${attempt.count}x nos últimos 10min — pausando tentativas.`
+      );
+      void import("@/lib/reportClientError").then(({ reportClientError }) =>
+        reportClientError(
+          `Disjuntor OTA acionado — versão ${manifest.version} falhou ${attempt.count}x`,
+          "useOtaUpdate/circuitBreaker",
+          {
+            deVersao: versaoAtual,
+            paraVersao: manifest.version,
+            tentativas: attempt.count,
+            conexao: lerConexao(),
           }
-        } catch {
-          /* list() indisponível/travou — segue pro download */
-        }
+        )
+      );
+      // Aviso pequeno, não bloqueia o app — o técnico precisa saber que o
+      // app SABE da atualização, senão "resetar os dados" vira o único jeito
+      // de sentir que fez alguma coisa (e isso apaga a fila offline).
+      useOtaStore.getState().pausada(manifest.version);
+      window.setTimeout(() => {
+        if (useOtaStore.getState().phase === "pausada") useOtaStore.getState().reset();
+      }, 6_000);
+      return {
+        estado: "falhou",
+        versaoAtual,
+        versaoNova,
+        motivo: "Tentativas pausadas após falhas seguidas. Toque em Atualizar para forçar.",
+      };
+    }
+    if (origem === "manual") clearAttempt();
 
-        // 3b. Se não tinha baixado ainda, baixa com progresso real.
-        //
-        // BUG (relatado por técnico de campo, 2026-09-01): update "demora
-        // muito, às vezes não puxa, tem que resetar os dados". Causa: este
-        // timeout era 60_000ms (60s), calibrado pra bundle de ~16MB — os
-        // bundles reais hoje pesam 37-61MB (conferido nos publicados pelo CI
-        // nesta mesma data). Em sinal fraco de campo, 60s não é tempo
-        // suficiente pra baixar 40-60MB de jeito NENHUM — o download falhava
-        // por timeout genuíno (não "rede quebrou", só "não deu tempo"),
-        // disparava a trava de loop (OTA_ATTEMPT_MAX) depois de só 2
-        // tentativas, e o app ficava 10min sem sequer tentar de novo — daí
-        // "às vezes não puxa" e o hábito de resetar os dados (que zera a
-        // trava, mas também apaga a fila offline com vistorias não
-        // sincronizadas — risco que o técnico provavelmente não percebe).
-        //
-        // 5min é generoso o bastante pra 60MB mesmo em sinal ruim, mas ainda
-        // finito — nunca volta a ser o "trava pra sempre" que esse timeout
-        // existia pra evitar.
-        const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
-        if (!bundle) {
-          try {
-            progressHandle = (await Updater.addListener?.("download", (e) => {
-              if (typeof e?.percent === "number") {
-                useOtaStore.getState().setProgresso(e.percent);
-              }
-            })) as PluginListenerHandle | null;
-          } catch {
-            /* sem evento de progresso — a barra usa fallback animado na overlay */
-          }
-          bundle = await withTimeout(
-            Updater.download({ url: manifest.url, version: manifest.version }),
-            DOWNLOAD_TIMEOUT_MS,
-            "Updater.download()"
-          );
-        }
+    console.log(`[useOtaUpdate] Atualização (${origem}): ${versaoAtual ?? "?"} → ${manifest.version}`);
+    useOtaStore.getState().iniciarDownload(versaoAtual, manifest.version);
 
-        if (cancelled || !bundle?.id) {
-          useOtaStore.getState().reset();
-          return;
-        }
+    // Conta a tentativa JÁ AQUI, antes de qualquer rede — falha de download
+    // em sinal fraco também precisa contar, senão reabrir o app reinicia o
+    // ciclo do zero indefinidamente.
+    writeAttempt({
+      version: manifest.version,
+      count: attempt?.version === manifest.version ? attempt.count + 1 : 1,
+      ts: Date.now(),
+    });
 
-        // Marca "acabei de atualizar" ANTES do reload (a store é apagada no
-        // reload; o localStorage sobrevive e reidrata a tela de "concluído").
-        useOtaStore.getState().aplicando();
-        try {
-          window.localStorage.setItem(OTA_JUST_UPDATED_KEY, manifest.version);
-        } catch {
-          /* segue mesmo sem o marcador */
-        }
-
-        await withTimeout(Updater.set({ id: bundle.id }), 15_000, "Updater.set()");
-        console.log(`[useOtaUpdate] Bundle ${manifest.version} aplicado — recarregando.`);
-      } catch (err) {
-        console.warn("[useOtaUpdate] Checagem OTA falhou (offline?):", err);
-        const st = useOtaStore.getState();
-        // "offline?" no log é só uma suposição — reporta o motivo real pro
-        // servidor. Sem isso, "atualização não puxa" só era diagnosticável
-        // por relato informal do técnico (mesmo gap que existia na falha do
-        // gravador de vídeo, mesmo fix).
-        void import("@/lib/reportClientError").then(({ reportClientError }) =>
-          reportClientError(
-            err instanceof Error ? err.message : String(err),
-            "useOtaUpdate/checagem",
-            { fase: st.phase, deVersao: st.deVersao, paraVersao: st.paraVersao }
-          )
-        );
-        if (st.phase === "baixando" || st.phase === "aplicando") {
-          // set() pode ter travado antes do reload real acontecer — limpa o
-          // marcador "acabei de atualizar" pra não mostrar "Atualizado ✓"
-          // falso na próxima abertura (o reload nunca aconteceu de verdade).
-          try {
-            window.localStorage.removeItem(OTA_JUST_UPDATED_KEY);
-          } catch {
-            /* ignora */
-          }
-          st.erro();
-          window.setTimeout(() => useOtaStore.getState().reset(), 2600);
-        }
-      } finally {
-        try {
-          await progressHandle?.remove();
-        } catch {
-          /* ignora */
-        }
+    // Reaproveita um bundle DESTA versão já baixado e íntegro — evita
+    // rebaixar tudo de novo numa rede ruim.
+    let bundle: BundleInfo | null = null;
+    try {
+      const lista = await withTimeout(Updater.list?.() ?? Promise.resolve(undefined), 8_000, "Updater.list()");
+      const existente = lista?.bundles?.find((b) => b.version === manifest.version && b.id);
+      if (existente?.status === "success" || existente?.status === "pending") {
+        bundle = existente;
+        console.log(`[useOtaUpdate] Bundle ${manifest.version} já baixado — reaproveitando.`);
+      } else if (existente?.status === "error") {
+        // Download anterior ficou parcial/corrompido: apaga ANTES de tentar
+        // de novo, senão o downloader nativo tenta retomar dele e trava no
+        // mesmo ponto de sempre.
+        console.log(`[useOtaUpdate] Bundle ${manifest.version} com status "error" — apagando antes de rebaixar.`);
+        await Updater.delete?.({ id: existente.id }).catch(() => {});
       }
-    })();
+    } catch {
+      /* list() indisponível — segue pro download */
+    }
 
-    return () => {
-      cancelled = true;
-      progressHandle?.remove().catch(() => {});
+    // 5min: calibrado depois de um timeout de 60s causar falha genuína em
+    // bundles grandes no campo. Generoso, mas finito.
+    const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
+    if (!bundle) {
+      try {
+        progressHandle = (await Updater.addListener?.("download", (e) => {
+          if (typeof e?.percent === "number") {
+            ultimoPercent = Math.max(ultimoPercent, Math.round(e.percent));
+            useOtaStore.getState().setProgresso(e.percent);
+          }
+        })) as PluginListenerHandle | null;
+      } catch {
+        /* sem evento de progresso — a overlay usa barra animada */
+      }
+      bundle = await withTimeout(
+        Updater.download({ url: manifest.url, version: manifest.version }),
+        DOWNLOAD_TIMEOUT_MS,
+        "Updater.download()"
+      );
+    }
+
+    if (!bundle?.id) {
+      useOtaStore.getState().reset();
+      return { estado: "falhou", versaoAtual, versaoNova, motivo: "O download não retornou um pacote válido." };
+    }
+
+    // Marca ANTES do reload: a store morre no reload, o localStorage não.
+    useOtaStore.getState().aplicando();
+    try {
+      window.localStorage.setItem(OTA_JUST_UPDATED_KEY, manifest.version);
+    } catch {
+      /* segue sem o marcador */
+    }
+
+    await withTimeout(Updater.set({ id: bundle.id }), 15_000, "Updater.set()");
+    console.log(`[useOtaUpdate] Bundle ${manifest.version} aplicado — recarregando.`);
+    return { estado: "atualizando", versaoAtual, versaoNova };
+  } catch (err) {
+    console.warn("[useOtaUpdate] Checagem OTA falhou:", err);
+    const st = useOtaStore.getState();
+    const ms = Date.now() - t0;
+    const espacoLivreMB = await lerEspacoLivreMB();
+    void import("@/lib/reportClientError").then(({ reportClientError }) =>
+      reportClientError(
+        err instanceof Error ? err.message : String(err),
+        "useOtaUpdate/checagem",
+        {
+          origem,
+          fase: st.phase,
+          deVersao: versaoAtual ?? st.deVersao,
+          paraVersao: versaoNova ?? st.paraVersao,
+          // Os campos que tornam o log conclusivo — ver bloco "diagnóstico".
+          ms,
+          percent: ultimoPercent,
+          online: typeof navigator !== "undefined" ? navigator.onLine : null,
+          conexao: lerConexao(),
+          espacoLivreMB,
+        }
+      )
+    );
+    if (st.phase === "baixando" || st.phase === "aplicando") {
+      // set() pode ter travado antes do reload — limpa o marcador pra não
+      // mostrar "Atualizado ✓" falso na próxima abertura.
+      try {
+        window.localStorage.removeItem(OTA_JUST_UPDATED_KEY);
+      } catch {
+        /* ignora */
+      }
+      st.erro();
+      window.setTimeout(() => useOtaStore.getState().reset(), 2600);
+    }
+    return {
+      estado: "falhou",
+      versaoAtual,
+      versaoNova,
+      motivo: traduzErro(err, ultimoPercent, ms),
     };
-  }, []);
+  } finally {
+    try {
+      await progressHandle?.remove();
+    } catch {
+      /* ignora */
+    }
+  }
+}
+
+/** Transforma o erro cru do plugin em algo sobre o que o técnico possa agir. */
+function traduzErro(err: unknown, percent: number, ms: number): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const seg = Math.round(ms / 1000);
+  if (/Failed to download/i.test(msg)) {
+    if (percent === 0) {
+      return `A conexão recusou o download logo no início (${seg}s). Tente de novo, de preferência no Wi-Fi.`;
+    }
+    return `A conexão caiu com ${percent}% baixado (${seg}s). Tente de novo, de preferência no Wi-Fi.`;
+  }
+  if (/timeout|expirou/i.test(msg)) {
+    return `Demorou demais (${seg}s, ${percent}% baixado). Procure um sinal melhor e tente de novo.`;
+  }
+  return `${msg} (${seg}s, ${percent}% baixado)`;
+}
+
+/** Versão do bundle em execução — pra mostrar no Perfil. */
+export async function lerVersaoOtaAtual(): Promise<string | null> {
+  const cap = getCapacitor();
+  const Updater = cap?.Plugins?.CapacitorUpdater;
+  if (!cap?.isNativePlatform?.() || !Updater) return null;
+  try {
+    const cur = await withTimeout(Updater.current(), 8_000, "Updater.current()");
+    return cur?.bundle?.version ?? null;
+  } catch {
+    return null;
+  }
 }
