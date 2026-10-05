@@ -217,16 +217,21 @@ function adicionarCamadaPin(map: MapboxMap, antes?: string): void {
         // nada, mas é desenhada abaixo dos pins de vistoria (ver `antes`).
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
-        // Registrado com pixelRatio 2, então os 256 px do arquivo valem
-        // 128 px de tela em size 1. Os valores abaixo dão ~23 px de
-        // largura em zoom 10 e ~54 px em zoom 19 — sempre um pouco menor
-        // que o pin de vistoria (44 px), que é o que de fato importa.
+        // Registrado com pixelRatio 2, então os 256x~355 px do arquivo
+        // valem 128x~178 px de tela em size 1.
+        //
+        // O teto de 0,30 existe por uma razão concreta: o pin de VISTORIA
+        // é um sprite de 44x56 px FIXO em todos os zooms (ver PIN_W/PIN_H
+        // em MapView). Uma curva que passasse disso faria a torre — que é
+        // contexto — ficar maior que o trabalho do técnico justamente nos
+        // zooms em que ele está perto do equipamento. Com 0,30 o pin de
+        // torre chega a 38x53 px e fica sempre abaixo dos 44x56.
         "icon-size": [
           "interpolate", ["linear"], ["zoom"],
-          10, 0.18,
-          13, 0.26,
-          16, 0.34,
-          19, 0.42,
+          10, 0.16,
+          13, 0.22,
+          16, 0.28,
+          19, 0.30,
         ],
       },
     }, antes && map.getLayer(antes) ? antes : undefined);
