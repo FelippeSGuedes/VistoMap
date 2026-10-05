@@ -29,10 +29,10 @@ worker/test_projeto.pdf
 # OTA bundles gerados (nao versionar)
 dist-ota/
 
-# Modelos 3D das torres em qualidade de origem (Tripo): 28 MB somados, com
-# texturas 4096x4096 que NUNCA são servidas — o mapa usa as versões
-# otimizadas (torre-claro.glb / torre-vivo.glb, ~500 KB cada, essas sim
-# versionadas). Ver scripts/otimizar-torres-glb.sh.
+# Modelos 3D das torres em qualidade de origem (Tripo), 28 MB somados.
+# O mapa não usa mais modelo 3D de torre — a camada foi substituída pelo
+# sprite da operadora em 2026-10-05 (ver src/lib/torresLayer.ts). Ficam
+# ignorados caso os arquivos ainda estejam na máquina de alguém.
 public/Torre_claro.glb
 public/torre_vivo.glb
 

@@ -622,14 +622,7 @@ export function MapView({
     if (!map || torresRaioM <= 0) return;
     let vivo = true;
     const apply = () => {
-      // visual "pin": sprite da torre na marca da operadora. No app, um
-      // ponto colorido não diz "torre da Claro" como a figura diz — e o
-      // técnico olha o mapa de relance, em tela pequena e no sol.
-      adicionarCamadaTorres(map, {
-        abaixoDe: VISTORIAS_LAYER,
-        porRaio: true,
-        visual: "pin",
-      });
+      adicionarCamadaTorres(map, { abaixoDe: VISTORIAS_LAYER, porRaio: true });
       torresVisiveis(map, torresLigadas);
       if (torresLat == null || torresLng == null) return;
       definirTorresNoRaio(map, { lat: torresLat, lng: torresLng }, torresRaioM)

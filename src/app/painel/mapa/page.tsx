@@ -9,7 +9,6 @@ import mapboxgl, {
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { TechModel3DLayer, TECH_MODEL_LAYER_ID, type TechEntrySpec } from "./techModel3DLayer";
-import { Torres3DLayer, TORRES_3D_LAYER_ID } from "./torres3DLayer";
 import {
   getRouteFor,
   peekRoute,
@@ -1094,8 +1093,7 @@ export default function PainelMapaPage() {
   // os dois handlers não importa: se as torres entram primeiro, as vistorias
   // são adicionadas depois (e ficam por cima); se entram depois, o `abaixoDe`
   // as coloca sob os pins. Nos dois caminhos a torre fica embaixo.
-  const torres3DLayerRef = useRef<Torres3DLayer | null>(null);
-
+  //
   // Coordenadas soltas, não o objeto: o polling de 5s troca
   // `selectedVistoria` por uma instância nova mesmo quando nada mudou, e
   // como dependência isso refiltraria as 2.772 torres a cada 5 segundos.
@@ -1120,23 +1118,6 @@ export default function PainelMapaPage() {
           .then((n) => { if (vivo) setTorresNoRaio(n); })
           .catch(() => { if (vivo) setTorresNoRaio(null); });
       }
-
-      // O modelo 3D só faz sentido no modo Padrão — é o único com pitch; em
-      // Satélite/Híbrido o mapa é plano e a luzinha 2D é tudo que há pra
-      // ver. Entra ANTES da camada dos técnicos (que é sempre a última
-      // adicionada), pra o marcador do técnico nunca ficar atrás da torre.
-      const quer3D = ligado && activeLayerRef.current === "3d";
-      const tem3D = !!map.getLayer(TORRES_3D_LAYER_ID);
-      if (quer3D && !tem3D) {
-        torres3DLayerRef.current = new Torres3DLayer();
-        map.addLayer(torres3DLayerRef.current);
-      } else if (!quer3D && tem3D) {
-        map.removeLayer(TORRES_3D_LAYER_ID);
-        torres3DLayerRef.current = null;
-      }
-      // O 3D tem que respeitar o MESMO raio do 2D, senão a luzinha mostra
-      // 8 torres e o modelo mostra a base inteira.
-      torres3DLayerRef.current?.definirArea(ligado ? centro : null, TORRES_RAIO_M);
     };
 
     const limpar = aoPoderMexerNoMapa(map, aplicar);

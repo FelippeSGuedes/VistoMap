@@ -1,36 +1,37 @@
-import type { GeoJSONSource, Expression, Map as MapboxMap } from "mapbox-gl";
+import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
 import { asset } from "@/utils/asset";
 import { haversineKm } from "@/utils/format";
 import { TORRES_PIN_VERSAO } from "@/lib/torresPinVersao";
 
 /**
  * Camada de torres de celular (base de licenciamento da Anatel —
- * 2.772 torres Claro/Vivo na área de operação). Fonte única usada pelo
- * mapa do painel e pelo mapa do app, pra os dois ficarem idênticos.
+ * 2.772 torres Claro/Vivo na área de operação). Fonte única do mapa do
+ * painel e do mapa do app, pra os dois ficarem idênticos.
  *
- * Em 2D (top-down) cada torre é uma "luzinha": um halo difuso na cor da
- * operadora + um núcleo claro no meio — é a ponta da torre vista de cima.
- * No painel, quando o mapa está inclinado, o modelo 3D entra POR CIMA
- * disso (ver torres3DLayer); a luzinha continua marcando o ponto no chão.
+ * Cada torre é o sprite da torre na marca da operadora, ancorado pela
+ * BASE (o ponto da torre é onde ela encosta no chão).
  *
- * Circle layer (não symbol/DOM): 2.772 pontos renderizam no WebGL sem
- * custo perceptível e sem o problema de dessincronia que marker DOM tem
- * durante pan/zoom (ver nota em MapView.tsx).
+ * HISTÓRICO, pra não refazer o caminho: houve antes um visual de
+ * "luzinha" (halo + núcleo em circle layer) e, no painel, um modelo 3D
+ * de verdade por cima dela (torres3DLayer, GLB carregado no Three.js).
+ * Os dois saíram em 2026-10-05 — a figura comunica "torre da Claro" de
+ * relance, que é o que o mapa precisa, enquanto o 3D custava um draw
+ * call por torre, 1 MB de GLB no bundle e só aparecia com o mapa
+ * inclinado. Estão no histórico do git se algum dia fizerem falta.
+ *
+ * Symbol layer, nunca marker DOM: marker DOM dessincroniza do canvas
+ * WebGL durante pan/zoom (ver a nota em MapView.tsx).
  *
  * DOIS MODOS DE FONTE, porque painel e app querem coisas diferentes:
  *
- *  • painel — a source aponta direto pra URL e o Mapbox busca e indexa o
- *    GeoJSON sozinho, sem nada passar pelo JS. Mostra a base inteira.
+ *  • base inteira — a source aponta direto pra URL e o Mapbox busca e
+ *    indexa o GeoJSON sozinho, sem nada passar pelo JS.
  *
- *  • app — a source nasce vazia e recebe só as torres num raio em volta do
- *    técnico (ver definirTorresNoRaio). Decisão de campo: o técnico não tem
- *    o que fazer com torre do outro lado do estado, e o mapa dele já
- *    carrega vistorias, postes e GPS.
+ *  • por raio — a source nasce vazia e recebe só as torres num raio em
+ *    volta de um ponto (ver definirTorresNoRaio). É o que painel e app
+ *    usam hoje: as torres saem do equipamento selecionado.
  */
 export const TORRES_SRC = "vm-torres-src";
-export const TORRES_LAYER_HALO = "vm-torres-halo";
-export const TORRES_LAYER_NUCLEO = "vm-torres-nucleo";
-/** Visual "pin": sprite da torre na marca da operadora (só o app). */
 export const TORRES_LAYER_PIN = "vm-torres-pin";
 
 const IMG = { claro: "vm-torre-claro", vivo: "vm-torre-vivo" } as const;
@@ -47,15 +48,6 @@ export const TORRE_COR: Record<"claro" | "vivo", string> = {
   vivo: "#7B18B5",
 };
 
-const COR_POR_OP: Expression = [
-  "match",
-  ["get", "op"],
-  "claro",
-  TORRE_COR.claro,
-  "vivo",
-  TORRE_COR.vivo,
-  "#64748B", // fallback: operadora fora das duas (não deve ocorrer, o gerador filtra)
-];
 
 /**
  * Roda `fn` assim que for possível mexer nas layers, e de novo a cada
@@ -99,25 +91,12 @@ interface OpcoesCamadaTorres {
    * a base inteira.
    */
   porRaio?: boolean;
-  /**
-   * Como a torre é desenhada:
-   *
-   *  • "luz" (padrão) — halo + núcleo, a ponta da torre vista de cima. É o
-   *    visual do painel, onde o mapa já é denso e a torre é pano de fundo;
-   *    inclinando, o modelo 3D entra por cima dela.
-   *
-   *  • "pin" — sprite da torre na marca da operadora, ancorado pelo bico.
-   *    É o visual do app: o técnico olha o mapa no sol, em tela pequena e
-   *    de relance, e um ponto colorido não diz "torre da Claro" como a
-   *    figura diz. O app nunca teve o 3D, então aqui não há o que empilhar.
-   */
-  visual?: "luz" | "pin";
 }
 
 /** Cria source + layers (idempotente). Nasce oculta — quem liga é a UI. */
 export function adicionarCamadaTorres(
   map: MapboxMap,
-  { abaixoDe, porRaio, visual = "luz" }: OpcoesCamadaTorres = {}
+  { abaixoDe, porRaio }: OpcoesCamadaTorres = {}
 ): void {
   const antes = abaixoDe && map.getLayer(abaixoDe) ? abaixoDe : undefined;
 
@@ -130,64 +109,11 @@ export function adicionarCamadaTorres(
     });
   }
 
-  if (visual === "pin") {
-    adicionarCamadaPin(map, antes);
-    return;
-  }
-
-  if (!map.getLayer(TORRES_LAYER_HALO)) {
-    map.addLayer({
-      id: TORRES_LAYER_HALO,
-      source: TORRES_SRC,
-      type: "circle",
-      layout: { visibility: "none" },
-      paint: {
-        "circle-color": COR_POR_OP,
-        "circle-blur": 1,
-        "circle-opacity": 0.45,
-        "circle-radius": [
-          "interpolate", ["linear"], ["zoom"],
-          8, 4,
-          12, 8,
-          16, 16,
-          19, 26,
-        ],
-      },
-    }, antes);
-  }
-
-  if (!map.getLayer(TORRES_LAYER_NUCLEO)) {
-    map.addLayer({
-      id: TORRES_LAYER_NUCLEO,
-      source: TORRES_SRC,
-      type: "circle",
-      layout: { visibility: "none" },
-      paint: {
-        // Núcleo quase branco com anel na cor da operadora: lê como "luz
-        // acesa" em cima de qualquer base do mapa (clara ou satélite).
-        "circle-color": "#FFFFFF",
-        "circle-opacity": 0.95,
-        "circle-stroke-color": COR_POR_OP,
-        "circle-stroke-width": [
-          "interpolate", ["linear"], ["zoom"],
-          8, 1,
-          14, 2,
-          18, 3,
-        ],
-        "circle-radius": [
-          "interpolate", ["linear"], ["zoom"],
-          8, 1.6,
-          12, 2.6,
-          16, 4.5,
-          19, 7,
-        ],
-      },
-    }, antes);
-  }
+  adicionarCamadaPin(map, antes);
 }
 
 /**
- * Camada de sprites (visual "pin"). As imagens carregam de forma
+ * Camada de sprites da torre. As imagens carregam de forma
  * assíncrona; a layer só entra quando as duas estiverem registradas, pra
  * nunca existir uma layer apontando pra `icon-image` inexistente (o
  * Mapbox não desenha nada e ainda enche o console de aviso por feature).
@@ -220,25 +146,27 @@ function adicionarCamadaPin(map: MapboxMap, antes?: string): void {
         "icon-ignore-placement": true,
         // A curva é calibrada pela ALTURA, não pela largura: o sprite é uma
         // torre vertical (proporção ~1:2,6), então é a altura que briga por
-        // espaço na tela.
+        // espaço na tela. Registrado com pixelRatio 2, os ~256x655 px do
+        // arquivo valem ~128x328 px de tela em size 1.
         //
-        // Registrado com pixelRatio 2, os ~256x655 px do arquivo valem
-        // ~128x328 px de tela em size 1. O teto de 0,165 dá ~54 px de
-        // altura, logo abaixo dos 56 px do pin de VISTORIA — que é um
-        // sprite de 44x56 FIXO em todos os zooms (PIN_W/PIN_H em MapView).
-        // Esse limite é o ponto: torre é contexto e não pode ficar maior
-        // que o trabalho do técnico justamente quando ele chega perto do
-        // equipamento. Já errei isto uma vez calibrando pela largura.
+        // Alturas que estes valores produzem (torre da Claro; a da Vivo sai
+        // ~6% menor, é a proporção real do arquivo):
+        //   zoom 10 -> 46 px   zoom 13 -> 66 px
+        //   zoom 16 -> 85 px   zoom 19 -> 98 px
         //
-        // Os dois arquivos têm alturas um pouco diferentes (663 e 623 px),
-        // então a torre da Claro sai ~3 px mais alta que a da Vivo no mesmo
-        // size. É a proporção real de cada modelo, não vale reamostrar.
+        // Isto passa dos 56 px do pin de VISTORIA (sprite 44x56 fixo, ver
+        // PIN_W/PIN_H em MapView), ao contrário da regra que eu havia
+        // adotado — "torre é contexto, não pode competir com o trabalho".
+        // Foi pedido explicitamente ("deixe maior", 2026-10-05) depois de
+        // ver as torres no tamanho anterior: com a figura da operadora no
+        // lugar do ponto colorido, ela passou a ser informação que se quer
+        // enxergar, não só pano de fundo.
         "icon-size": [
           "interpolate", ["linear"], ["zoom"],
-          10, 0.085,
-          13, 0.115,
-          16, 0.150,
-          19, 0.165,
+          10, 0.14,
+          13, 0.20,
+          16, 0.26,
+          19, 0.30,
         ],
       },
     }, antes && map.getLayer(antes) ? antes : undefined);
@@ -272,10 +200,8 @@ export const TORRE_LABEL: Record<"claro" | "vivo", string> = {
 
 export function torresVisiveis(map: MapboxMap, visivel: boolean): void {
   const v = visivel ? "visible" : "none";
-  // Percorre os dois visuais: só existe o que foi criado, e assim quem
-  // chama não precisa saber qual visual está em uso.
-  for (const id of [TORRES_LAYER_HALO, TORRES_LAYER_NUCLEO, TORRES_LAYER_PIN]) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", v);
+  if (map.getLayer(TORRES_LAYER_PIN)) {
+    map.setLayoutProperty(TORRES_LAYER_PIN, "visibility", v);
   }
 }
 
