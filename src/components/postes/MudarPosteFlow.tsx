@@ -462,7 +462,7 @@ function PickerStep({
           // Torres entram automáticas aqui: na hora de escolher um poste
           // novo, saber onde ficam as torres é contexto da decisão, não
           // mais uma opção pro técnico ligar no meio do serviço.
-          torres={{ raioM: 1500, modo: "auto" }}
+          torres={{ centro: focus ?? null, raioM: 1500 }}
           className="h-full w-full"
         />
 

@@ -15,8 +15,8 @@ import { VistoriaExecucaoSheet } from "@/components/vistorias/VistoriaExecucaoSh
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { LoadingShell } from "@/components/feedback/LoadingShell";
 import { LocationPermissionModal } from "@/components/feedback/LocationPermissionModal";
-import { PostesProximosFAB } from "@/components/postes/PostesProximosFAB";
 import { PostesProximosPanel } from "@/components/postes/PostesProximosPanel";
+import type { Vistoria } from "@/types";
 import { useVistoriasStore } from "@/store/vistorias";
 import { useAuthStore } from "@/store/auth";
 import { useExpedienteStore } from "@/store/expediente";
@@ -26,6 +26,9 @@ import { usePostesProximos } from "@/hooks/usePostesProximos";
 import { useFilteredVistorias } from "@/hooks/useFilteredVistorias";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { getVistoriasAccessBlockReason } from "@/hooks/useVistoriasAccessGuard";
+
+/** Mesmo raio usado no painel — ver TORRES_RAIO_M em painel/mapa/page.tsx. */
+const TORRES_RAIO_M = 1500;
 
 const MapView = dynamic(
   () => import("@/components/vistorias/MapView").then((m) => m.MapView),
@@ -51,38 +54,57 @@ function VistoriasPageInner() {
   const permission = useLocationPermission();
   const accessBlockReason = getVistoriasAccessBlockReason(expediente, janela, lgpdAceito);
 
-  // /postes — visualização operacional. Liga/desliga via FAB.
+  /**
+   * Postes e torres são camadas POR EQUIPAMENTO, ligadas pelos botões do
+   * card (2026-10-05). Antes eram um FAB no topo centro da tela, centrado
+   * no GPS do técnico; agora o centro é o equipamento, como no painel —
+   * o que também faz os botões funcionarem sem GPS.
+   *
+   * Uma camada de cada vez: ligar num card desliga no anterior.
+   */
   const postesProximos = usePostesProximos();
   const [postesPanelOpen, setPostesPanelOpen] = useState(false);
   const [postesSelectedId, setPostesSelectedId] = useState<number | null>(null);
+  const [postesDeId, setPostesDeId] = useState<string | null>(null);
+  const [torresDeId, setTorresDeId] = useState<string | null>(null);
+  const [focar, setFocar] = useState<{ lat: number; lng: number } | null>(null);
+  // Contador que manda a gaveta recolher — ver MobileMapShell.recolherSinal.
+  const [recolherSinal, setRecolherSinal] = useState(0);
   const postesActive = postesProximos.fetched;
 
-  const togglePostesProximos = async () => {
-    if (postesActive) {
-      // já ativo → desliga
+  /** Traz o mapa até o equipamento e tira a gaveta da frente. */
+  const mostrarNoMapa = (v: Vistoria) => {
+    setFocar({ lat: v.latitude, lng: v.longitude });
+    setRecolherSinal((n) => n + 1);
+  };
+
+  const togglePostesDoEquipamento = async (v: Vistoria) => {
+    if (postesDeId === v.id) {
       postesProximos.reset();
+      setPostesDeId(null);
       setPostesPanelOpen(false);
       setPostesSelectedId(null);
       return;
     }
-    // Usa a posição já capturada; se ainda não tiver, pede ao browser agora.
-    let origin = position;
-    if (!origin) {
-      if (permission.state !== "granted") {
-        setPermissionDismissed(false);
-        return;
-      }
-      // refreshGeo retorna Promise<GeoPosition|null> — evita stale closure
-      origin = await refreshGeo();
-    }
-    if (!origin) return;
+    setPostesDeId(v.id);
+    setPostesSelectedId(null);
+    mostrarNoMapa(v);
     await postesProximos.fetch({
-      lat: origin.lat,
-      lng: origin.lng,
+      lat: v.latitude,
+      lng: v.longitude,
       raio: 500,
       limit: 50,
     });
     setPostesPanelOpen(true);
+  };
+
+  const toggleTorresDoEquipamento = (v: Vistoria) => {
+    if (torresDeId === v.id) {
+      setTorresDeId(null);
+      return;
+    }
+    setTorresDeId(v.id);
+    mostrarNoMapa(v);
   };
 
   // Quando o usuário concede a permissão (no modal ou via banner do browser),
@@ -147,6 +169,12 @@ function VistoriasPageInner() {
       ),
     [items]
   );
+
+  // Centro das torres = o equipamento cujo botão está ligado.
+  const torresCentro = useMemo(() => {
+    const v = filtered.find((x) => x.id === torresDeId);
+    return v ? { lat: v.latitude, lng: v.longitude } : null;
+  }, [filtered, torresDeId]);
 
   if (!expedienteReady) {
     return <LoadingShell label="Validando expediente" />;
@@ -225,6 +253,15 @@ function VistoriasPageInner() {
               vistoria={v}
               highlighted={v.id === selectedId}
               onSelect={(item) => setSelected(item.id)}
+              acoesMapa={{
+                postesAtivo: postesDeId === v.id,
+                postesCarregando: postesDeId === v.id && postesProximos.loading,
+                postesCount: postesDeId === v.id ? postesProximos.items.length : null,
+                torresAtivo: torresDeId === v.id,
+                torresCount: null,
+                onPostes: togglePostesDoEquipamento,
+                onTorres: toggleTorresDoEquipamento,
+              }}
             />
           ))}
         </motion.div>
@@ -244,7 +281,8 @@ function VistoriasPageInner() {
         setPostesSelectedId(id);
         setPostesPanelOpen(true);
       }}
-      torres={{ raioM: 1500, modo: "botao" }}
+      torres={{ centro: torresCentro, raioM: TORRES_RAIO_M }}
+      focar={focar}
       className="h-full w-full"
     />
   );
@@ -268,20 +306,9 @@ function VistoriasPageInner() {
         </main>
       ) : (
         <div className="flex-1">
-          <MobileMapShell map={map} list={list} />
+          <MobileMapShell map={map} list={list} recolherSinal={recolherSinal} />
         </div>
       )}
-
-      {/* FAB "Postes próximos" — logo abaixo do botão de filtro flutuante */}
-      <div className="pointer-events-none fixed inset-x-0 top-[calc(max(env(safe-area-inset-top),12px)+56px)] z-30 flex justify-center px-4">
-        <PostesProximosFAB
-          active={postesActive}
-          loading={postesProximos.loading}
-          count={postesProximos.items.length}
-          onClick={togglePostesProximos}
-          className="pointer-events-auto"
-        />
-      </div>
 
       <FiltersBottomSheet
         open={filtersOpen}

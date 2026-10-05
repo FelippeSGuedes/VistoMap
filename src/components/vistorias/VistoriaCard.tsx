@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ChevronRight, MapPin, Navigation } from "lucide-react";
+import { ChevronRight, Loader2, MapPin, MapPinned, Navigation, RadioTower } from "lucide-react";
 import type { Vistoria } from "@/types";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "./StatusBadge";
@@ -18,10 +18,26 @@ const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
  *  libera espaço pro nome da cidade aparecer inteiro, nunca truncado. */
 const UF: Record<string, string> = { "São Paulo": "SP" };
 
+/**
+ * Camadas do mapa que o card liga/desliga para ESTE equipamento (postes e
+ * torres num raio em volta dele). Sem esta prop o card não mostra a linha
+ * de ações — é o mesmo card usado em contexto sem mapa.
+ */
+export interface AcoesMapaCard {
+  postesAtivo: boolean;
+  postesCarregando?: boolean;
+  postesCount?: number | null;
+  torresAtivo: boolean;
+  torresCount?: number | null;
+  onPostes: (vistoria: Vistoria) => void;
+  onTorres: (vistoria: Vistoria) => void;
+}
+
 interface VistoriaCardProps {
   vistoria: Vistoria;
   onSelect?: (vistoria: Vistoria) => void;
   highlighted?: boolean;
+  acoesMapa?: AcoesMapaCard;
 }
 
 /** Divisória fina entre os blocos da linha de meta-informação. */
@@ -29,10 +45,55 @@ function Sep() {
   return <span aria-hidden className="h-3.5 w-px shrink-0 bg-ink-muted/25" />;
 }
 
+/** Botão da linha de ações. Fica FORA do <Link> do card — botão dentro de
+ *  link é HTML inválido e, na prática, rouba o toque de navegar. */
+function AcaoBotao({
+  ativo,
+  carregando,
+  icone: Icone,
+  rotulo,
+  contagem,
+  desabilitado,
+  onClick,
+}: {
+  ativo: boolean;
+  carregando?: boolean;
+  icone: typeof MapPinned;
+  rotulo: string;
+  contagem?: number | null;
+  desabilitado?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={desabilitado}
+      aria-pressed={ativo}
+      className={`flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-[12px] font-semibold ring-1 ring-inset transition disabled:opacity-40 ${
+        ativo
+          ? "bg-brand-emerald/12 text-brand-emerald ring-brand-emerald/40"
+          : "bg-brand-ice text-ink-muted ring-brand-steel/60"
+      }`}
+    >
+      {carregando ? (
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+      ) : (
+        <Icone className="h-4 w-4 shrink-0" />
+      )}
+      <span className="truncate">
+        {rotulo}
+        {ativo && contagem != null && ` (${contagem})`}
+      </span>
+    </button>
+  );
+}
+
 export function VistoriaCard({
   vistoria,
   onSelect,
   highlighted,
+  acoesMapa,
 }: VistoriaCardProps) {
   const handleClick = (e: React.MouseEvent) => {
     if (onSelect) {
@@ -45,22 +106,29 @@ export function VistoriaCard({
   const TipoIcone = TIPO_ICONE[tipo];
   const estado = vistoria.estado ? UF[vistoria.estado] ?? vistoria.estado : null;
 
+  // Camadas só fazem sentido com coordenada real. O SQL converte coord
+  // vazia em 0, então (0,0) = "sem GPS ainda" (o técnico vai ao local
+  // marcar) — centrar uma busca aí cairia no meio do Atlântico.
+  const semCoord =
+    !Number.isFinite(vistoria.latitude) ||
+    !Number.isFinite(vistoria.longitude) ||
+    (vistoria.latitude === 0 && vistoria.longitude === 0);
+
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      whileTap={{ scale: 0.99 }}
     >
-      <Link
-        href={`/vistoria?id=${vistoria.id}`}
-        onClick={handleClick}
-        className="block"
+      <Card
+        className={`relative overflow-hidden p-0 ${
+          highlighted ? "ring-2 ring-brand-emerald/60" : ""
+        }`}
       >
-        <Card
-          className={`relative overflow-hidden p-0 ${
-            highlighted ? "ring-2 ring-brand-emerald/60" : ""
-          }`}
+        <Link
+          href={`/vistoria?id=${vistoria.id}`}
+          onClick={handleClick}
+          className="relative block active:opacity-95"
         >
           {/* Hero image do equipamento. O fade pro fundo do card é feito por
               MÁSCARA na própria imagem (não por um branco sobreposto) —
@@ -139,8 +207,32 @@ export function VistoriaCard({
           </div>
 
           <ChevronRight className="absolute right-2.5 top-3.5 h-5 w-5 text-ink-muted" />
-        </Card>
-      </Link>
+        </Link>
+
+        {/* Camadas do mapa deste equipamento. Fora do <Link> de propósito:
+            botão dentro de link é HTML inválido e o toque vira navegação. */}
+        {acoesMapa && (
+          <div className="flex gap-2 border-t border-brand-steel/50 px-3 py-2.5">
+            <AcaoBotao
+              ativo={acoesMapa.postesAtivo}
+              carregando={acoesMapa.postesCarregando}
+              icone={MapPinned}
+              rotulo="Ver postes"
+              contagem={acoesMapa.postesCount}
+              desabilitado={semCoord}
+              onClick={() => acoesMapa.onPostes(vistoria)}
+            />
+            <AcaoBotao
+              ativo={acoesMapa.torresAtivo}
+              icone={RadioTower}
+              rotulo="Torres próximas"
+              contagem={acoesMapa.torresCount}
+              desabilitado={semCoord}
+              onClick={() => acoesMapa.onTorres(vistoria)}
+            />
+          </div>
+        )}
+      </Card>
     </motion.div>
   );
 }

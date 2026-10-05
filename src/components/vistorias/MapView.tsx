@@ -30,7 +30,6 @@ import {
   definirTorresNoRaio,
   torresVisiveis,
 } from "@/lib/torresLayer";
-import { haversineKm } from "@/utils/format";
 
 interface MapViewProps {
   vistorias: Vistoria[];
@@ -45,15 +44,23 @@ interface MapViewProps {
   selectedPosteId?: number | null;
   onPosteSelect?: (id: number) => void;
   /**
-   * Torres de operadoras num raio em volta de `userPosition`. Sem esta
-   * prop, a camada nem é criada.
+   * Torres de operadoras num raio em volta de `centro`. Sem esta prop (ou
+   * com `centro: null`) a camada não aparece.
    *
-   * `modo: "botao"` mostra o toggle (mapa principal de vistorias);
-   * `modo: "auto"` deixa sempre ligada e sem botão — é o fluxo de trocar
-   * poste, onde a torre é contexto da escolha e não uma opção a mais pro
-   * técnico administrar no meio do serviço.
+   * Quem liga é sempre de fora: na lista de vistorias é o botão do card do
+   * equipamento, no fluxo de trocar poste é automático. O MapView não tem
+   * controle próprio pra isso — o mapa é o lugar onde a camada aparece,
+   * não onde ela é administrada.
    */
-  torres?: { raioM: number; modo: "botao" | "auto" };
+  torres?: { centro: { lat: number; lng: number } | null; raioM: number };
+  /**
+   * Centraliza o mapa neste ponto sempre que ele MUDAR, sem selecionar
+   * nada. Existe porque ligar postes/torres pelo card precisa trazer o
+   * mapa até o equipamento — e `selectedId`, o caminho normal de
+   * centralizar, abre junto a tela cheia de chegada, que taparia
+   * justamente o que se quer ver.
+   */
+  focar?: { lat: number; lng: number } | null;
   className?: string;
 }
 
@@ -267,6 +274,7 @@ export function MapView({
   selectedPosteId,
   onPosteSelect,
   torres,
+  focar,
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -575,48 +583,48 @@ export function MapView({
     }
   }, [selectedPosteId, postes]);
 
+  // Centraliza no ponto pedido (ver prop `focar`). Lido como primitivos
+  // pra o efeito não disparar por o pai remontar o objeto a cada render.
+  const focarLat = focar?.lat ?? null;
+  const focarLng = focar?.lng ?? null;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || focarLat == null || focarLng == null) return;
+    map.flyTo({
+      center: [focarLng, focarLat],
+      // Zoom suficiente pra o raio de 1500 m caber na tela sem virar um
+      // amontoado de pontos, mas sem desfazer um zoom maior que o técnico
+      // já tenha dado.
+      zoom: Math.max(map.getZoom(), 14.5),
+      duration: 700,
+      essential: true,
+    });
+  }, [focarLat, focarLng]);
+
   /* ────── camada de torres de operadoras (contexto opcional) ─────────────── */
 
-  // No modo "botao" nasce desligada: o trabalho do técnico são as
-  // vistorias, torre é referência de cobertura. Ligar é o que dispara o
-  // download dos dados, então quem nunca usa não paga os 536 KB. No modo
-  // "auto" (trocar poste) já entra ligada.
-  const [torresOn, setTorresOn] = useState(false);
-  // Primitivos, não o objeto da prop: o pai monta `torres={{...}}` inline,
-  // então o objeto é novo a cada render dele e, como dependência de
-  // efeito, refiltraria as 2.772 torres sem nada ter mudado.
+  // Centro e raio vêm prontos de fora (as coordenadas do equipamento
+  // escolhido na lista, ou o foco do fluxo de trocar poste). Lidos como
+  // primitivos, nunca o objeto da prop: o pai monta `torres={{...}}`
+  // inline, então o objeto é novo a cada render dele e, como dependência
+  // de efeito, refiltraria as 2.772 torres sem nada ter mudado.
   const torresRaioM = torres?.raioM ?? 0;
-  const torresModo = torres?.modo;
-  const torresLigadas = torresModo === "auto" || (!!torresModo && torresOn);
+  const torresLat = torres?.centro?.lat ?? null;
+  const torresLng = torres?.centro?.lng ?? null;
+  const torresLigadas = torresLat != null && torresLng != null;
 
-  /** Quantas torres entraram no raio — rótulo do botão. null = falhou. */
+  /** Quantas torres entraram no raio — mostrado na legenda. null = falhou. */
   const [torresNoRaio, setTorresNoRaio] = useState<number | null>(null);
-
-  // Centro do raio, só recalculado quando o técnico anda o bastante. Sem
-  // isso, cada leitura de GPS (que chega de segundo em segundo e oscila
-  // alguns metros parada) refiltraria 2.772 torres e chamaria setData à
-  // toa. 1/5 do raio é folga de sobra pra lista nunca ficar defasada.
-  const [centroRaio, setCentroRaio] = useState<{ lat: number; lng: number } | null>(null);
-  useEffect(() => {
-    if (!userPosition) return;
-    setCentroRaio((atual) => {
-      if (!atual) return userPosition;
-      const limiarKm = torresRaioM / 5 / 1000;
-      return haversineKm(atual, userPosition) > limiarKm ? userPosition : atual;
-    });
-  }, [userPosition, torresRaioM]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !torresModo) return;
+    if (!map || torresRaioM <= 0) return;
     let vivo = true;
     const apply = () => {
       adicionarCamadaTorres(map, { abaixoDe: VISTORIAS_LAYER, porRaio: true });
       torresVisiveis(map, torresLigadas);
-      // Sem posição não dá pra medir raio — melhor não mostrar nada do que
-      // despejar o estado inteiro no mapa do técnico.
-      if (!torresLigadas || !centroRaio) return;
-      definirTorresNoRaio(map, centroRaio, torresRaioM)
+      if (torresLat == null || torresLng == null) return;
+      definirTorresNoRaio(map, { lat: torresLat, lng: torresLng }, torresRaioM)
         .then((n) => { if (vivo) setTorresNoRaio(n); })
         .catch(() => { if (vivo) setTorresNoRaio(null); });
     };
@@ -626,7 +634,7 @@ export function MapView({
     // mais dispararia. Ver o comentário no helper.
     const limpar = aoPoderMexerNoMapa(map, apply);
     return () => { vivo = false; limpar(); };
-  }, [torresLigadas, centroRaio, torresModo, torresRaioM]);
+  }, [torresLigadas, torresLat, torresLng, torresRaioM]);
 
   // Toque numa torre: diz qual é. Só responde se NÃO houver pin de
   // vistoria no mesmo ponto — o pin tem prioridade absoluta, a torre
@@ -635,7 +643,7 @@ export function MapView({
     const map = mapRef.current;
     if (!map) return;
     const onClick = (e: mapboxgl.MapMouseEvent) => {
-      if (!torresOn) return;
+      if (!torresLigadas) return;
       const pin = map.queryRenderedFeatures(e.point, { layers: [VISTORIAS_LAYER] });
       if (pin.length > 0) return;
       const props = e.features?.[0]?.properties as Record<string, unknown> | undefined;
@@ -666,7 +674,7 @@ export function MapView({
       map.off("click", TORRES_LAYER_NUCLEO, onClick);
       map.off("click", TORRES_LAYER_HALO, onClick);
     };
-  }, [torresOn]);
+  }, [torresLigadas]);
 
   if (!token) {
     return (
@@ -692,45 +700,27 @@ export function MapView({
     >
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* Toggle de torres — encostado na coluna do NavigationControl do
-          Mapbox (top-right), logo abaixo dele, pra não disputar espaço com
-          o FAB "Postes próximos" que fica no topo centro da tela.
-          No modo "auto" (trocar poste) não há botão: só a legenda, pra o
-          técnico saber o que são as luzinhas que apareceram. */}
-      {torresModo && (
-      <div className="absolute right-2.5 top-[84px] z-10 flex flex-col items-end gap-1.5">
-        {torresModo === "botao" && (
-        <button
-          type="button"
-          onClick={() => setTorresOn((v) => !v)}
-          aria-pressed={torresOn}
-          className={`flex h-9 items-center gap-1.5 rounded-full pl-2 pr-3 text-[12px] font-semibold shadow-elev backdrop-blur transition ${
-            torresOn ? "bg-brand-deep text-white" : "bg-white/95 text-brand-deep"
-          }`}
-        >
-          <RadioTower className="h-4 w-4" strokeWidth={2.2} />
-          Torres
-          {torresOn && torresNoRaio != null && (
-            <span className="opacity-80">({torresNoRaio})</span>
+      {/* Legenda das torres. Sem botão: quem liga é o card do equipamento
+          (ou o fluxo de trocar poste). Aqui só se explica o que são as
+          luzinhas que apareceram — senão viram pontos coloridos sem
+          significado. Encostada abaixo do NavigationControl do Mapbox. */}
+      {torresLigadas && (
+        <div className="absolute right-2.5 top-[84px] z-10 flex items-center gap-2.5 rounded-full bg-white/95 px-2.5 py-1.5 text-[10.5px] font-semibold shadow-elev backdrop-blur">
+          <RadioTower className="h-3.5 w-3.5 shrink-0 text-brand-deep" />
+          {(["claro", "vivo"] as const).map((op) => (
+            <span key={op} className="flex items-center gap-1 text-brand-deep">
+              {/* mesma leitura do mapa: núcleo branco + anel da operadora */}
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-white"
+                style={{ boxShadow: `0 0 0 2px ${TORRE_COR[op]}` }}
+              />
+              {TORRE_LABEL[op]}
+            </span>
+          ))}
+          {torresNoRaio === 0 && (
+            <span className="text-ink-muted">nenhuma por perto</span>
           )}
-        </button>
-        )}
-
-        {torresLigadas && (
-          <div className="flex items-center gap-2.5 rounded-full bg-white/95 px-2.5 py-1.5 text-[10.5px] font-semibold shadow-elev backdrop-blur">
-            {(["claro", "vivo"] as const).map((op) => (
-              <span key={op} className="flex items-center gap-1 text-brand-deep">
-                {/* mesma leitura do mapa: núcleo branco + anel da operadora */}
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full bg-white"
-                  style={{ boxShadow: `0 0 0 2px ${TORRE_COR[op]}` }}
-                />
-                {TORRE_LABEL[op]}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+        </div>
       )}
     </motion.div>
   );

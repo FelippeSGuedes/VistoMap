@@ -13,6 +13,17 @@ interface MobileMapShellProps {
   map: ReactNode;
   list: ReactNode;
   initial?: "map" | "split" | "list";
+  /**
+   * Contador: toda vez que MUDA, a gaveta recolhe pra deixar o mapa à
+   * vista. Serve pros botões de camada dos cards — eles ligam algo NO
+   * MAPA, que está justamente atrás da gaveta; sem recolher, o técnico
+   * toca e não vê nada acontecer.
+   *
+   * É um contador e não um booleano porque o gesto pode se repetir (ligar
+   * postes, arrastar a gaveta de volta, ligar torres) e um booleano já
+   * `true` não dispararia de novo.
+   */
+  recolherSinal?: number;
 }
 
 const SNAPS = {
@@ -21,7 +32,12 @@ const SNAPS = {
   list: 0.82,
 } as const;
 
-export function MobileMapShell({ map, list, initial = "split" }: MobileMapShellProps) {
+export function MobileMapShell({
+  map,
+  list,
+  initial = "split",
+  recolherSinal,
+}: MobileMapShellProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [height, setHeight] = useState(0);
   const sheetY = useMotionValue(0);
@@ -41,6 +57,13 @@ export function MobileMapShell({ map, list, initial = "split" }: MobileMapShellP
     if (!height) return;
     sheetY.set(SNAPS[snap] * height);
   }, [snap, height, sheetY]);
+
+  // Recolhe quando o pai pede (ver recolherSinal). O guard do undefined
+  // mantém o comportamento intacto pra quem não usa a prop.
+  useEffect(() => {
+    if (recolherSinal === undefined) return;
+    setSnap("map");
+  }, [recolherSinal]);
 
   const handleDragEnd = (_: unknown, info: PanInfo) => {
     setDragging(false);
