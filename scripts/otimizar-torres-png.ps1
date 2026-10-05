@@ -9,9 +9,17 @@
 # o sprite é ancorado em "bottom" no Mapbox, então margem transparente embaixo
 # empurraria o bico do pin pra cima do ponto real da torre.
 #
+# ATENÇÃO: o script SOBRESCREVE o arquivo em public/. Guarde o original fora
+# do repositório antes de rodar — já houve perda por rodar direto sobre uma
+# imagem recém-trocada (2026-10-05). O backup abaixo é uma rede de segurança,
+# não substituto disso: ele só guarda a versão imediatamente anterior.
+#
 # Uso: powershell -NoProfile -File scripts/otimizar-torres-png.ps1
 
 Add-Type -AssemblyName System.Drawing
+
+$BACKUP = Join-Path (Get-Location) 'scripts\dados\originais'
+New-Item -ItemType Directory -Force -Path $BACKUP | Out-Null
 
 # 256 px cobre um pin de ~50 px mesmo em tela 3x, com folga pra zoom.
 $LARGURA_ALVO = 256
@@ -22,6 +30,17 @@ foreach ($nome in @('torre-claro-app.png', 'torre-vivo-app.png')) {
 
   $orig = [System.Drawing.Bitmap]::FromFile($caminho)
   $bytesAntes = (Get-Item $caminho).Length
+
+  # Idempotência: rodar duas vezes reamostraria uma imagem já reduzida,
+  # perdendo qualidade sem ganho nenhum de tamanho.
+  if ($orig.Width -le $LARGURA_ALVO) {
+    Write-Host "pulando $nome (já está em $($orig.Width) px)"
+    $orig.Dispose()
+    continue
+  }
+  $orig.Dispose()
+  Copy-Item $caminho (Join-Path $BACKUP $nome) -Force
+  $orig = [System.Drawing.Bitmap]::FromFile($caminho)
 
   # bbox do alfa via LockBits — GetPixel em 1,5 milhão de pixels é lento demais
   $rect = New-Object System.Drawing.Rectangle 0, 0, $orig.Width, $orig.Height

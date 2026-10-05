@@ -351,8 +351,7 @@ export function MapView({
           .addTo(map);
       }
     };
-    if (map.loaded()) onReady();
-    else map.once("load", onReady);
+    return aoPoderMexerNoMapa(map, onReady);
   }, [userPosition]);
 
   /* ────── camada de vistorias (symbol layer — ver nota em registrarImagensVistoria) ────────── */
@@ -403,8 +402,7 @@ export function MapView({
         });
       });
     };
-    if (map.loaded()) ensure();
-    else map.once("load", ensure);
+    return aoPoderMexerNoMapa(map, ensure);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -429,8 +427,7 @@ export function MapView({
         }
       }
     };
-    if (map.loaded()) apply();
-    else map.once("load", apply);
+    return aoPoderMexerNoMapa(map, apply);
   }, [plottable, userPosition]);
 
   // selected fly-to (vistoria)
@@ -532,8 +529,7 @@ export function MapView({
         });
       }
     };
-    if (map.loaded()) ensure();
-    else map.once("load", ensure);
+    return aoPoderMexerNoMapa(map, ensure);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -550,8 +546,14 @@ export function MapView({
           : { type: "FeatureCollection", features: [] }
       );
     };
-    if (map.loaded()) apply();
-    else map.once("load", apply);
+    // aoPoderMexerNoMapa, nunca map.loaded(): este efeito re-roda quando os
+    // dados chegam da rede, e nesse instante o mapa costuma estar VOANDO
+    // até o equipamento (ver prop `focar`) — map.loaded() é false durante
+    // a animação, e o `once("load")` que havia aqui já tinha disparado na
+    // carga inicial, então os postes simplesmente nunca eram desenhados.
+    // Foi o bug relatado em 2026-10-05 ("ver postes não aparece"), criado
+    // quando o fly-to entrou. Ver o comentário no helper.
+    return aoPoderMexerNoMapa(map, apply);
   }, [postes]);
 
   // 3) filtro do layer "selecionado" + fly-to
@@ -566,8 +568,7 @@ export function MapView({
         selectedPosteId ?? -1,
       ]);
     };
-    if (map.loaded()) apply();
-    else map.once("load", apply);
+    const limparSel = aoPoderMexerNoMapa(map, apply);
 
     if (selectedPosteId != null && postes) {
       const p = postes.find((x) => x.id === selectedPosteId);
@@ -580,6 +581,7 @@ export function MapView({
         });
       }
     }
+    return limparSel;
   }, [selectedPosteId, postes]);
 
   // Centraliza no ponto pedido (ver prop `focar`). Lido como primitivos

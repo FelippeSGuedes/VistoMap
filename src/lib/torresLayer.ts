@@ -211,27 +211,33 @@ function adicionarCamadaPin(map: MapboxMap, antes?: string): void {
       layout: {
         visibility: "none",
         "icon-image": ["match", ["get", "op"], "claro", IMG.claro, "vivo", IMG.vivo, IMG.claro],
-        // O sprite é uma gota: o ponto da torre é o BICO, embaixo.
+        // O sprite é a torre apoiada no chão: o ponto é a BASE, embaixo.
         "icon-anchor": "bottom",
         // Torre é contexto: deixa passar por cima das outras sem empurrar
         // nada, mas é desenhada abaixo dos pins de vistoria (ver `antes`).
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
-        // Registrado com pixelRatio 2, então os 256x~355 px do arquivo
-        // valem 128x~178 px de tela em size 1.
+        // A curva é calibrada pela ALTURA, não pela largura: o sprite é uma
+        // torre vertical (proporção ~1:2,6), então é a altura que briga por
+        // espaço na tela.
         //
-        // O teto de 0,30 existe por uma razão concreta: o pin de VISTORIA
-        // é um sprite de 44x56 px FIXO em todos os zooms (ver PIN_W/PIN_H
-        // em MapView). Uma curva que passasse disso faria a torre — que é
-        // contexto — ficar maior que o trabalho do técnico justamente nos
-        // zooms em que ele está perto do equipamento. Com 0,30 o pin de
-        // torre chega a 38x53 px e fica sempre abaixo dos 44x56.
+        // Registrado com pixelRatio 2, os ~256x655 px do arquivo valem
+        // ~128x328 px de tela em size 1. O teto de 0,165 dá ~54 px de
+        // altura, logo abaixo dos 56 px do pin de VISTORIA — que é um
+        // sprite de 44x56 FIXO em todos os zooms (PIN_W/PIN_H em MapView).
+        // Esse limite é o ponto: torre é contexto e não pode ficar maior
+        // que o trabalho do técnico justamente quando ele chega perto do
+        // equipamento. Já errei isto uma vez calibrando pela largura.
+        //
+        // Os dois arquivos têm alturas um pouco diferentes (663 e 623 px),
+        // então a torre da Claro sai ~3 px mais alta que a da Vivo no mesmo
+        // size. É a proporção real de cada modelo, não vale reamostrar.
         "icon-size": [
           "interpolate", ["linear"], ["zoom"],
-          10, 0.16,
-          13, 0.22,
-          16, 0.28,
-          19, 0.30,
+          10, 0.085,
+          13, 0.115,
+          16, 0.150,
+          19, 0.165,
         ],
       },
     }, antes && map.getLayer(antes) ? antes : undefined);

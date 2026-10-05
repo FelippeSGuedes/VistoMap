@@ -435,6 +435,9 @@ function PickerStep({
   onAtribuir: () => void;
 }) {
   const focus = userPos ?? centerOnVistoria ?? { lat: -23.5505, lng: -46.6333 };
+  /** Só posição REAL — sem o fallback de São Paulo, que não é um lugar
+   *  onde o técnico esteja e levaria a camada a buscar torres no vazio. */
+  const centroTorres = userPos ?? centerOnVistoria;
   const [panelOpen, setPanelOpen] = useState(true);
   const dummyVistorias = useMemo(() => [], []);
 
@@ -459,10 +462,15 @@ function PickerStep({
           postes={postes}
           selectedPosteId={selectedId}
           onPosteSelect={handlePick}
-          // Torres entram automáticas aqui: na hora de escolher um poste
-          // novo, saber onde ficam as torres é contexto da decisão, não
-          // mais uma opção pro técnico ligar no meio do serviço.
-          torres={{ centro: focus ?? null, raioM: 1500 }}
+          // Torres SEMPRE ligadas aqui: na hora de escolher um poste novo,
+          // saber onde ficam as torres é contexto da decisão, não uma
+          // opção pro técnico ligar no meio do serviço.
+          //
+          // Centro é `centroTorres`, não `focus`: focus cai no centro de
+          // São Paulo quando não há GPS nem coordenada da vistoria, e esse
+          // ponto fica FORA da área da base (Campinas/Jundiaí) — o raio
+          // devolveria zero torre e pareceria que a camada quebrou.
+          torres={{ centro: centroTorres, raioM: 1500 }}
           className="h-full w-full"
         />
 

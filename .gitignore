@@ -35,3 +35,8 @@ dist-ota/
 # versionadas). Ver scripts/otimizar-torres-glb.sh.
 public/Torre_claro.glb
 public/torre_vivo.glb
+
+# Backup automático do otimizador de PNG (scripts/otimizar-torres-png.ps1):
+# guarda a versão imediatamente anterior da imagem, só pra não perder tudo
+# num comando errado. Não é fonte de verdade — o original fica fora do repo.
+scripts/dados/originais/
