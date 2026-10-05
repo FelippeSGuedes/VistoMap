@@ -32,7 +32,7 @@ export function InstalacaoBottomNav() {
         className="flex items-end mx-4 w-full max-w-[390px]"
         style={{
           backgroundColor: "rgba(255,255,255,0.88)",
-          backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.9) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/menu.png)`,
+          backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.9) 100%), url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/menu.webp)`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           backdropFilter: "saturate(200%) blur(28px)",

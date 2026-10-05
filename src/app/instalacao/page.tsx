@@ -129,10 +129,10 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 type StatKey = "disponiveis" | "andamento" | "instaladas" | "rejeitadas";
 
 const STAT_META: Record<StatKey, { label: string; icon: typeof Activity; hex: string; pill: string; grad: string; bg: string }> = {
-  disponiveis: { label: "Disponíveis", icon: Wrench, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_disponivel.png" },
-  andamento: { label: "Em Andamento", icon: Activity, hex: "#2563EB", pill: "#EFF6FF", grad: "from-blue-500 to-indigo-500", bg: "card_andamento.png" },
-  instaladas: { label: "Instaladas (30d)", icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500", bg: "card_instalado.png" },
-  rejeitadas: { label: "Rejeitadas", icon: Ban, hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600", bg: "card_rejeitado.png" },
+  disponiveis: { label: "Disponíveis", icon: Wrench, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_disponivel.webp" },
+  andamento: { label: "Em Andamento", icon: Activity, hex: "#2563EB", pill: "#EFF6FF", grad: "from-blue-500 to-indigo-500", bg: "card_andamento.webp" },
+  instaladas: { label: "Instaladas (30d)", icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500", bg: "card_instalado.webp" },
+  rejeitadas: { label: "Rejeitadas", icon: Ban, hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600", bg: "card_rejeitado.webp" },
 };
 
 export default function InstalacaoHomePage() {
@@ -206,7 +206,7 @@ export default function InstalacaoHomePage() {
     <div
       className="relative flex min-h-[100dvh] flex-col"
       style={{
-        background: `#F7F9FB url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_tudo.png) no-repeat top center / cover`,
+        background: `#F7F9FB url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_tudo.webp) no-repeat top center / cover`,
       }}
     >
       {/* HEADER */}
@@ -265,7 +265,7 @@ export default function InstalacaoHomePage() {
             // Altura fixa (252px) cortava demais em telas mais largas: o
             // card ficava bem mais largo que alto (chegando a 2.25:1 numa
             // tela de 600px), bem longe da proporção real da foto
-            // (banner_instalação.png é 1535x1024 ≈ 1.5:1) — daí o
+            // (banner_instalação.webp é 1280x854 ≈ 1.5:1) — daí o
             // object-fit:cover precisava cortar muito mais que o esperado
             // pra cobrir a largura toda, dando a sensação de foto "muito
             // maior"/zoom apertado. Usando aspect-ratio quase igual ao da
@@ -282,7 +282,7 @@ export default function InstalacaoHomePage() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner_instalação.png`}
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner_instalação.webp`}
             alt=""
             aria-hidden="true"
             className="absolute inset-0 h-full w-full"
@@ -447,7 +447,7 @@ export default function InstalacaoHomePage() {
                   contraste do texto branco nunca fica em risco. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.png`}
+                src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/mpoperacional.webp`}
                 alt=""
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 h-full w-full"
@@ -478,7 +478,7 @@ export default function InstalacaoHomePage() {
               className="flex items-center gap-3.5 rounded-[22px] p-4 transition active:scale-[0.98]"
               style={{
                 backgroundColor: "#fff",
-                backgroundImage: `url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/minsta.png)`,
+                backgroundImage: `url(${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/minsta.webp)`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 boxShadow: "0 1px 3px rgba(6,59,59,0.04), 0 8px 24px rgba(6,59,59,0.07)",

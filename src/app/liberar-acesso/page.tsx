@@ -65,7 +65,7 @@ export default function LiberarAcessoPage() {
     <main className="relative flex min-h-[100dvh] flex-col overflow-x-hidden text-brand-ice">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={asset("/banner_app.png")}
+        src={asset("/banner_app.webp")}
         alt=""
         aria-hidden
         className="absolute inset-0 z-0 h-full w-full select-none object-cover"
@@ -91,7 +91,7 @@ export default function LiberarAcessoPage() {
 
         <footer className="mt-6 flex flex-col items-center gap-1.5 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={asset("/nansen.png")} alt="Nansen" className="h-5 w-auto opacity-80" draggable={false} />
+          <img src={asset("/nansen.webp")} alt="Nansen" className="h-5 w-auto opacity-80" draggable={false} />
           <p className="text-[10.5px] leading-relaxed text-white/45">
             Plataforma VistoMap · Todos os direitos reservados © 2026
           </p>

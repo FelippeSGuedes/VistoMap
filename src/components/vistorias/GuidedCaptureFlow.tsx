@@ -155,8 +155,11 @@ let LOGO_PROMISE: Promise<HTMLImageElement | null> | null = null;
 function loadLogo(): Promise<HTMLImageElement | null> {
   if (LOGO_PROMISE) return LOGO_PROMISE;
   LOGO_PROMISE = new Promise((resolve) => {
-    // Tenta múltiplas variações de casing (Linux case-sensitive).
-    const candidatos = ["/logo-marca.PNG", "/logo-marca.png", "/logo_app.png"];
+    // Antes havia duas entradas pro mesmo arquivo, por causa de variação de
+    // maiúsculas (logo-marca.PNG / .png) num filesystem case-sensitive. Na
+    // conversão pra WebP os dois viraram um nome só, em minúsculas, então
+    // sobra apenas o fallback de verdade: o logo do app.
+    const candidatos = ["/logo-marca.webp", "/logo_app.webp"];
     let i = 0;
     const tentar = () => {
       if (i >= candidatos.length) return resolve(null);
@@ -586,7 +589,7 @@ function OrbitAnim({ progress }: { progress: number }) {
 
 function BrandAnim({ brand }: { brand: "vivo" | "claro" }) {
   const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  const src = brand === "vivo" ? `${BP}/Logo_VIVO.png` : `${BP}/claro.svg`;
+  const src = brand === "vivo" ? `${BP}/Logo_VIVO.webp` : `${BP}/claro.svg`;
   return (
     <div className="flex h-full w-full items-center justify-center p-10">
       <motion.img

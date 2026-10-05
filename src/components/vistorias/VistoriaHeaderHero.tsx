@@ -2,7 +2,7 @@
 
 /**
  * VistoriaHeaderHero — cabeçalho cinematográfico usado pelo PinSheet e pelo
- * ExecucaoForm. Múltiplos overlays sobre /fundo_img.png + animações premium
+ * ExecucaoForm. Múltiplos overlays sobre /fundo_img.webp + animações premium
  * (fog drift, shimmer no highlight, glow pulsante, image parallax sutil).
  */
 
@@ -32,7 +32,7 @@ export function VistoriaHeaderHero({
     >
       {/* ── IMG base — parallax sutil + filter cinematográfico ──────── */}
       <motion.img
-        src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_img.png`}
+        src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fundo_img.webp`}
         alt=""
         aria-hidden
         initial={{ scale: 1.12, opacity: 0 }}

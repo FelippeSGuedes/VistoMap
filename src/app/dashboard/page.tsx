@@ -108,14 +108,14 @@ const STATS: Array<{
    *  Revisitas~Em Andamento, Devoluções~Rejeitadas. */
   bg: string;
 }> = [
-  { key: "pendentes",  label: "Pendentes",   icon: Activity,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_disponivel.png" },
-  { key: "concluidas", label: "Concluídas",  icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500", bg: "card_instalado.png" },
+  { key: "pendentes",  label: "Pendentes",   icon: Activity,     hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_disponivel.webp" },
+  { key: "concluidas", label: "Concluídas",  icon: CheckCircle2, hex: "#00B388", pill: "#ECFDF5", grad: "from-emerald-500 to-teal-500", bg: "card_instalado.webp" },
   // "Reprovada" no GLPI = revisita pendente pelo técnico (ação operacional).
-  { key: "reprovadas",  label: "Revisitas",   icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_andamento.png" },
-  { key: "devolucoes",  label: "Devoluções",  icon: Undo2,    hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600", bg: "card_rejeitado.png" },
+  { key: "reprovadas",  label: "Revisitas",   icon: RotateCw, hex: "#F59E0B", pill: "#FEF3C7", grad: "from-amber-500 to-orange-500", bg: "card_andamento.webp" },
+  { key: "devolucoes",  label: "Devoluções",  icon: Undo2,    hex: "#DC2626", pill: "#FEE2E2", grad: "from-red-500 to-rose-600", bg: "card_rejeitado.webp" },
   // Pendentes cujo tipo de equipamento (dropdown "Equipamento") é Repetidor
   // — pedido de campo 2026-10-01, mesmo histórico real dos outros 4.
-  { key: "repetidores", label: "Repetidores",  icon: Radio,    hex: "#0891B2", pill: "#CFFAFE", grad: "from-cyan-500 to-sky-600", bg: "card_disponivel.png" },
+  { key: "repetidores", label: "Repetidores",  icon: Radio,    hex: "#0891B2", pill: "#CFFAFE", grad: "from-cyan-500 to-sky-600", bg: "card_disponivel.webp" },
 ];
 
 /**
@@ -516,7 +516,7 @@ export default function DashboardPage() {
           {/* BACKGROUND IMAGE -- full card, brightened */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner.png`}
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/banner.webp`}
             alt=""
             aria-hidden="true"
             className="absolute inset-0 h-full w-full"

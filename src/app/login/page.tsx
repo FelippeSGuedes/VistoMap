@@ -174,7 +174,7 @@ function LoginPageInner() {
       {/* Imagem de fundo */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={asset("/banner_app.png")}
+        src={asset("/banner_app.webp")}
         alt=""
         aria-hidden
         className="absolute inset-0 z-0 h-full w-full select-none object-cover"
@@ -415,7 +415,7 @@ function LoginPageInner() {
         <footer className="mt-6 flex flex-col items-center gap-1.5 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={asset("/nansen.png")}
+            src={asset("/nansen.webp")}
             alt="Nansen"
             className="h-5 w-auto opacity-80"
             draggable={false}

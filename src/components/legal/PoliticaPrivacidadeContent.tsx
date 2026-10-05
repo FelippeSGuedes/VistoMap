@@ -64,7 +64,7 @@ export function PoliticaPrivacidadeContent() {
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={asset("/nansen.png")} alt="Nansen" className="mx-auto h-7 w-auto opacity-90" />
+        <img src={asset("/nansen.webp")} alt="Nansen" className="mx-auto h-7 w-auto opacity-90" />
         <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.22em] text-[#4DFF88]">
           VistoMap · Nansen
         </p>

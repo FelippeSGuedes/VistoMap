@@ -119,6 +119,22 @@ const PAINEL_ONLY_ASSETS = [
   "dscclbl.png",
   // Modelo 3D do tecnico parado no mapa do painel (8.5MB).
   "person1.glb",
+  // 2026-10-05: a lista tinha ficado desatualizada DE NOVO. Um técnico
+  // ficou travado sem conseguir atualizar (disjuntor OTA, "Failed to
+  // download") com o zip em 39MB, dos quais 87% eram imagem e vídeo.
+  //
+  // Estas quatro são imagens de E-MAIL: montadas por src/lib/emailTemplates.ts
+  // e emailPendenciaCpfl.ts, que rodam NO SERVIDOR e referenciam a imagem
+  // por URL absoluta. O app nunca as exibe. Continuam em public/ (o e-mail
+  // precisa delas), só não viajam no zip do técnico. ~4.7MB.
+  "carta.png",
+  "header.png",
+  "cardpendencialtz.png",
+  // Sem nenhuma referência em src/ — nem código, nem CSS. Estavam no bundle
+  // só por existirem em public/. ~2.1MB. Ficam em public/ (não custam nada
+  // no servidor) mas não viajam pro campo.
+  "imagem_login.png",
+  "assinatura.png",
 ];
 
 function copyOutToWww() {

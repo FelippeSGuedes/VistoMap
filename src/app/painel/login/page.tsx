@@ -499,7 +499,7 @@ function PainelLoginInner() {
                   </span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={asset("/logo-marca.PNG")}
+                    src={asset("/logo-marca.webp")}
                     alt="Nansen"
                     className="h-[15px] object-contain"
                     style={{ filter: "brightness(0) invert(1)", opacity: 0.38 }}
