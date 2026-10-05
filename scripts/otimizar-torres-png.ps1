@@ -1,4 +1,4 @@
-# Otimiza os pins de torre do app (torre-claro-app.png / torre-vivo-app.png).
+﻿# Otimiza os pins de torre do app (torre-claro-app.png / torre-vivo-app.png).
 #
 # POR QUE: os PNG vieram em 1254x1254 com ~1 MB cada, para desenhar um pin de
 # ~50 px no mapa. Isso é peso de download e de memória (1254² em RGBA = 6,3 MB
@@ -89,3 +89,33 @@ foreach ($nome in @('torre-claro-app.png', 'torre-vivo-app.png')) {
     $nome, $lc, $ac, $LARGURA_ALVO, $novaAltura, $bytesAntes, $bytesDepois,
     (100 - 100 * $bytesDepois / $bytesAntes)
 }
+
+# ── versão de cache ─────────────────────────────────────────────────────────
+#
+# O nome do arquivo é fixo, e o service worker guarda imagem por 30 dias em
+# StaleWhileRevalidate: ele devolve a cópia VELHA na hora e só busca a nova
+# depois. Trocar a imagem sem trocar a URL fazia o técnico continuar vendo a
+# anterior (relatado em 2026-10-05). Daí este token no fim da URL.
+#
+# É gerado do conteúdo e não escrito à mão de propósito — constante manual é
+# exatamente o tipo de coisa que se esquece de atualizar junto com a imagem.
+$hashes = foreach ($nome in @('torre-claro-app.png', 'torre-vivo-app.png')) {
+  $c = Join-Path (Join-Path (Get-Location) 'public') $nome
+  if (Test-Path $c) { (Get-FileHash $c -Algorithm SHA256).Hash }
+}
+$combinado = ($hashes -join '')
+$versao = ((Get-FileHash -InputStream ([IO.MemoryStream]::new(
+  [Text.Encoding]::UTF8.GetBytes($combinado))) -Algorithm SHA256).Hash).Substring(0, 8).ToLower()
+
+$destino = Join-Path (Get-Location) 'src\lib\torresPinVersao.ts'
+$conteudo = @"
+// GERADO por scripts/otimizar-torres-png.ps1 — não editar à mão.
+//
+// Hash do conteúdo dos PNG de torre, usado como query na URL do sprite.
+// Sem ele, trocar a imagem mantendo o nome não chega ao técnico: o service
+// worker serve a versão em cache (StaleWhileRevalidate, 30 dias) e só
+// atualiza na abertura seguinte.
+export const TORRES_PIN_VERSAO = "$versao";
+"@
+Set-Content -Path $destino -Value $conteudo -Encoding utf8
+"versao dos pins: $versao -> src/lib/torresPinVersao.ts"

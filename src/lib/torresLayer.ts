@@ -1,6 +1,7 @@
 import type { GeoJSONSource, Expression, Map as MapboxMap } from "mapbox-gl";
 import { asset } from "@/utils/asset";
 import { haversineKm } from "@/utils/format";
+import { TORRES_PIN_VERSAO } from "@/lib/torresPinVersao";
 
 /**
  * Camada de torres de celular (base de licenciamento da Anatel —
@@ -248,7 +249,12 @@ function adicionarCamadaPin(map: MapboxMap, antes?: string): void {
   for (const op of ["claro", "vivo"] as const) {
     if (map.hasImage(IMG[op])) continue;
     pendentes++;
-    map.loadImage(asset(ARQUIVO_PIN[op]), (err, img) => {
+    // ?v=<hash do conteúdo>: o nome do arquivo é fixo e o service worker
+    // guarda imagem por 30 dias em StaleWhileRevalidate — devolve a cópia
+    // VELHA na hora e só busca a nova depois. Sem a query, trocar a
+    // imagem não chegava ao técnico (relatado em 2026-10-05). O token é
+    // gerado do conteúdo pelo scripts/otimizar-torres-png.ps1.
+    map.loadImage(`${asset(ARQUIVO_PIN[op])}?v=${TORRES_PIN_VERSAO}`, (err, img) => {
       if (!err && img && !map.hasImage(IMG[op])) {
         map.addImage(IMG[op], img, { pixelRatio: 2 });
       }
