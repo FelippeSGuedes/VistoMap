@@ -473,6 +473,7 @@ export interface AuditEntry {
   acao:
     | "vistoria-atribuida"
     | "vistoria-reaberta"
+    | "projeto-reaberto"
     | "vistoria-desvinculada"
     | "vistoria-finalizada"
     | "revisita-criada"

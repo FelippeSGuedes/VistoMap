@@ -29,6 +29,7 @@ export const ACAO_META: Record<
 > = {
   "vistoria-atribuida":  { label: "Atribuição",           icon: Send,         fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "vistoria-reaberta":   { label: "Reaberta (rejeitada)", icon: UserCheck,    fg: "#2563EB", bg: "#EFF6FF", dot: "#3B82F6" },
+  "projeto-reaberto":    { label: "Validação reaberta",   icon: RotateCw,     fg: "#0F766E", bg: "#F0FDFA", dot: "#14B8A6" },
   "vistoria-desvinculada":{ label: "Desvinculação",       icon: XCircle,      fg: "#B45309", bg: "var(--vm-orange-tint)", dot: "#F97316" },
   "vistoria-finalizada": { label: "Vistoria finalizada",  icon: ClipboardCheck,fg: "#00875F", bg: "var(--vm-accent-tint)", dot: "#00B388" },
   "revisita-criada":     { label: "Revisita criada",      icon: RotateCw,     fg: "#B45309", bg: "#FFFBEB", dot: "#F59E0B" },

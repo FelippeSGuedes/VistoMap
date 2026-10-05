@@ -1240,7 +1240,7 @@ export default function PainelOverviewPage() {
                 )}
               </div>
               <div className="mt-1.5 flex items-center gap-2" style={{ fontSize: "0.8rem", color: "var(--vm-faint)" }}>
-                <span>vistorias na fila</span>
+                <span>vistorias feitas no período</span>
                 <span className="text-[#D1D5DB]">·</span>
                 <span>vs. período anterior</span>
               </div>

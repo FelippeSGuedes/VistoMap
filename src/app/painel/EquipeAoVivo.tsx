@@ -1149,6 +1149,14 @@ export default function EquipeAoVivo({
   }, [historico]);
 
   /* ── KPIs (moveram de page.tsx pra cá — só esta tela os usa) ────────────── */
+  // ATENÇÃO ao nome: apesar de "Atribuidas", isto NÃO conta vistorias
+  // atribuídas. `t.total` vem de topTecnicosDashboard.ts como COUNT(*) das
+  // vistorias com datadavistoriafield no período — ou seja, as que o
+  // técnico JÁ FEZ. É o mesmo conjunto do card "Vistorias Finalizadas"
+  // (por isso os dois mostram o mesmo número) e inclui as que a
+  // concessionária depois reprovou. O rótulo na tela é "Vistorias feitas"
+  // desde 2026-10-05; o nome da variável ficou pra não espalhar um rename
+  // por 20 usos (donut, aproveitamento, delta).
   const kpiAtribuidas = useMemo(() => (topTecsDash?.tecnicos ?? []).reduce((s, t) => s + t.total, 0), [topTecsDash]);
   // t.aprovadas exclui "Em análise" (vistoriada, aguardando decisão da
   // concessionária) — mesmo gotcha já corrigido no GroupedBarChart desta
@@ -1411,8 +1419,8 @@ export default function EquipeAoVivo({
 
       {/* ═══════ KPIs + Aproveitamento ═══════ */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
-        <MiniKpiCard icon={ArrowRight} label="Vistorias atribuídas" value={fmtNum(kpiAtribuidas)} color="#3B82F6" bg="var(--vm-tile-blue)" caption={periodoLabel} delta={atribDelta} href="/painel/central-vistorias?status=ATRIBUIDO" />
-        <MiniKpiCard icon={CheckCircle2} label="Vistorias realizadas" value={fmtNum(kpiRealizadas)} color="#059669" bg="var(--vm-accent-tint)" caption={`${kpiAproveitamento}% de aproveitamento`} href="/painel/central-vistorias?status=APROVADO,APROVADO_PENDENCIA" />
+        <MiniKpiCard icon={ArrowRight} label="Vistorias feitas" value={fmtNum(kpiAtribuidas)} color="#3B82F6" bg="var(--vm-tile-blue)" caption={periodoLabel} delta={atribDelta} href="/painel/central-vistorias?status=ATRIBUIDO" />
+        <MiniKpiCard icon={CheckCircle2} label="Sem reprovação" value={fmtNum(kpiRealizadas)} color="#059669" bg="var(--vm-accent-tint)" caption={`${kpiAproveitamento}% de aproveitamento`} href="/painel/central-vistorias?status=APROVADO,APROVADO_PENDENCIA" />
         <MiniKpiCard icon={Clock} label="Em vistoria" value={fmtNum(kpiEmVistoria)} color="#F97316" bg="var(--vm-orange-tint)" caption="agora" href="/painel/central-vistorias?status=2" />
         <MiniKpiCard icon={Route} label="Em deslocamento" value={fmtNum(kpiEmDeslocamento)} color="#0891B2" bg="rgba(14,165,233,0.10)" caption="agora" href="/painel/central-vistorias?status=7" />
         <MiniKpiCard icon={Ban} label="Impedimentos" value={fmtNum(kpiImpedimentos)} color="#7C3AED" bg="var(--vm-tile-purple)" caption={periodoLabel} href="/painel/ocorrencias?tipo=impedimento" />

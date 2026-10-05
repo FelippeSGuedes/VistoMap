@@ -19,6 +19,7 @@ import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
 import { getActorFromRequest } from "@/lib/auth-request";
 import { logError } from "@/lib/observability";
+import { reabrirValidacaoAposRevisita } from "@/lib/glpi/projetoPlugin";
 import { rsrpParValido, RSRP_MENSAGEM_ERRO } from "@/lib/rsrp";
 import { nowBrasiliaSql } from "@/lib/timezone";
 
@@ -238,6 +239,23 @@ export async function POST(
     // Status geral nativo do poste (glpi_networkequipments.states_id) — só
     // avançava pra Instalação; nunca marcava Vistoriado ao técnico finalizar.
     await marcarStatusGeralVistoriado(id);
+
+    // Revisita concluída: reabre o projeto no plugin do GLPI (estava
+    // "Reprovado" com o motivo antigo até alguém clicar em "Reabrir
+    // Validação" à mão — JUN-G-A-292, 2026-10-05). Melhor esforço: uma falha
+    // aqui NÃO pode derrubar a finalização, que o app do técnico reenvia da
+    // fila offline até receber 200.
+    if (eraRevisita) {
+      try {
+        await reabrirValidacaoAposRevisita({
+          vistoriaId: id,
+          equipamento: vistoria.equipamento ?? `NE-${id}`,
+          ator: actor,
+        });
+      } catch (err) {
+        void logError("app", "vistorias/:id/finalizar/reabrir-validacao", err, { id });
+      }
+    }
 
     const saved = await saveEquipmentFiles(vistoria.equipamento, [
       ...files,
