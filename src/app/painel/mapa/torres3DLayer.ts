@@ -29,6 +29,7 @@ import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { asset } from "@/utils/asset";
+import { carregarTorres as carregarTorresBase } from "@/lib/torresLayer";
 
 export const TORRES_3D_LAYER_ID = "vm-torres-3d";
 
@@ -37,8 +38,19 @@ export const TORRES_3D_LAYER_ID = "vm-torres-3d";
 const MIN_PITCH = 20;
 /** Altura na tela abaixo da qual a torre não vale um draw call. */
 const ALTURA_MIN_PX = 14;
-/** Teto de draw calls por frame. 40 torres de 17k triângulos ≈ 680k tri. */
-const MAX_TORRES = 40;
+/**
+ * Teto de draw calls por frame — salvaguarda, não cota. O painel mostra
+ * TODAS as torres da viewport (pedido de 2026-10-05); este número só existe
+ * pra um caso patológico não travar a tela.
+ *
+ * Na prática ele quase nunca morde, porque quem limita de verdade é o
+ * ALTURA_MIN_PX: uma torre de 40 m (a mediana da base) só passa de 14 px a
+ * partir do zoom ~14,5, e nesse zoom a viewport cobre poucos km². Com o
+ * mapa inclinado, o que entra perto do horizonte fica pequeno demais e cai
+ * no mesmo filtro — ou seja, o próprio critério de legibilidade já faz o
+ * papel de orçamento de performance.
+ */
+const MAX_TORRES = 600;
 /** Altura assumida quando a Anatel não informa AlturaAntena. */
 const ALTURA_PADRAO_M = 30;
 /**
@@ -127,55 +139,34 @@ function carregarTemplate(op: Operadora): Promise<THREE.Object3D> {
   return p;
 }
 
-/* ── dados das torres (mesmo GeoJSON que a camada 2D consome) ─────────────── */
+/* ── dados das torres ────────────────────────────────────────────────────── */
 
 let torresCache: Torre[] | null = null;
-let torresPromessa: Promise<Torre[]> | null = null;
 
-interface FeatureTorre {
-  geometry?: { coordinates?: [number, number] };
-  properties?: { op?: string; alt?: number };
-}
-
-function carregarTorres(): Promise<Torre[]> {
-  if (torresCache) return Promise.resolve(torresCache);
-  if (torresPromessa) return torresPromessa;
-  // Mesmo arquivo que a camada 2D pede: o cache HTTP do navegador atende as
-  // duas, então ligar as torres baixa o GeoJSON uma única vez.
-  torresPromessa = fetch(asset("/torres-operadoras.json"))
-    .then((r) => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json() as Promise<{ features?: FeatureTorre[] }>;
-    })
-    .then((gj) => {
-      const lista: Torre[] = [];
-      for (const f of gj.features ?? []) {
-        const c = f.geometry?.coordinates;
-        const op = f.properties?.op;
-        if (!c || (op !== "claro" && op !== "vivo")) continue;
-        const [lng, lat] = c;
-        const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], 0);
-        lista.push({
-          op,
-          alturaM: Math.max(
-            f.properties?.alt && f.properties.alt > 0 ? f.properties.alt : ALTURA_PADRAO_M,
-            ALTURA_MIN_M
-          ),
-          x: m.x,
-          y: m.y,
-          z: m.z ?? 0,
-          lng,
-          lat,
-        });
-      }
-      torresCache = lista;
-      return lista;
-    })
-    .catch((err) => {
-      torresPromessa = null;
-      throw err;
-    });
-  return torresPromessa;
+/**
+ * Converte a base compartilhada (a MESMA que a camada 2D usa — ver
+ * lib/torresLayer.ts) no formato desta camada, com o Mercator já
+ * calculado: a torre nunca se move, então isso é feito uma vez e não a
+ * cada frame.
+ */
+async function carregarTorres(): Promise<Torre[]> {
+  if (torresCache) return torresCache;
+  const features = await carregarTorresBase();
+  torresCache = features.map((f) => {
+    const [lng, lat] = f.geometry.coordinates;
+    const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], 0);
+    const alt = f.properties.alt;
+    return {
+      op: f.properties.op,
+      alturaM: Math.max(alt && alt > 0 ? alt : ALTURA_PADRAO_M, ALTURA_MIN_M),
+      x: m.x,
+      y: m.y,
+      z: m.z ?? 0,
+      lng,
+      lat,
+    };
+  });
+  return torresCache;
 }
 
 /* ── a camada ─────────────────────────────────────────────────────────────── */

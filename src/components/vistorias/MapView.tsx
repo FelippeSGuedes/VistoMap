@@ -26,8 +26,10 @@ import {
   TORRE_COR,
   TORRE_LABEL,
   adicionarCamadaTorres,
+  definirTorresNoRaio,
   torresVisiveis,
 } from "@/lib/torresLayer";
+import { haversineKm } from "@/utils/format";
 
 interface MapViewProps {
   vistorias: Vistoria[];
@@ -41,6 +43,16 @@ interface MapViewProps {
   postes?: Poste[] | null;
   selectedPosteId?: number | null;
   onPosteSelect?: (id: number) => void;
+  /**
+   * Torres de operadoras num raio em volta de `userPosition`. Sem esta
+   * prop, a camada nem é criada.
+   *
+   * `modo: "botao"` mostra o toggle (mapa principal de vistorias);
+   * `modo: "auto"` deixa sempre ligada e sem botão — é o fluxo de trocar
+   * poste, onde a torre é contexto da escolha e não uma opção a mais pro
+   * técnico administrar no meio do serviço.
+   */
+  torres?: { raioM: number; modo: "botao" | "auto" };
   className?: string;
 }
 
@@ -253,6 +265,7 @@ export function MapView({
   postes,
   selectedPosteId,
   onPosteSelect,
+  torres,
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -563,22 +576,53 @@ export function MapView({
 
   /* ────── camada de torres de operadoras (contexto opcional) ─────────────── */
 
-  // Desligada por padrão: o trabalho do técnico são as vistorias, torre é
-  // só referência de cobertura. Ligar é o que dispara o download do
-  // GeoJSON (o Mapbox só busca a source quando a layer entra no mapa),
-  // então quem nunca usa não paga os 536 KB.
+  // No modo "botao" nasce desligada: o trabalho do técnico são as
+  // vistorias, torre é referência de cobertura. Ligar é o que dispara o
+  // download dos dados, então quem nunca usa não paga os 536 KB. No modo
+  // "auto" (trocar poste) já entra ligada.
   const [torresOn, setTorresOn] = useState(false);
+  // Primitivos, não o objeto da prop: o pai monta `torres={{...}}` inline,
+  // então o objeto é novo a cada render dele e, como dependência de
+  // efeito, refiltraria as 2.772 torres sem nada ter mudado.
+  const torresRaioM = torres?.raioM ?? 0;
+  const torresModo = torres?.modo;
+  const torresLigadas = torresModo === "auto" || (!!torresModo && torresOn);
+
+  /** Quantas torres entraram no raio — rótulo do botão. null = falhou. */
+  const [torresNoRaio, setTorresNoRaio] = useState<number | null>(null);
+
+  // Centro do raio, só recalculado quando o técnico anda o bastante. Sem
+  // isso, cada leitura de GPS (que chega de segundo em segundo e oscila
+  // alguns metros parada) refiltraria 2.772 torres e chamaria setData à
+  // toa. 1/5 do raio é folga de sobra pra lista nunca ficar defasada.
+  const [centroRaio, setCentroRaio] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!userPosition) return;
+    setCentroRaio((atual) => {
+      if (!atual) return userPosition;
+      const limiarKm = torresRaioM / 5 / 1000;
+      return haversineKm(atual, userPosition) > limiarKm ? userPosition : atual;
+    });
+  }, [userPosition, torresRaioM]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !torresModo) return;
+    let vivo = true;
     const apply = () => {
-      adicionarCamadaTorres(map, VISTORIAS_LAYER);
-      torresVisiveis(map, torresOn);
+      adicionarCamadaTorres(map, { abaixoDe: VISTORIAS_LAYER, porRaio: true });
+      torresVisiveis(map, torresLigadas);
+      // Sem posição não dá pra medir raio — melhor não mostrar nada do que
+      // despejar o estado inteiro no mapa do técnico.
+      if (!torresLigadas || !centroRaio) return;
+      definirTorresNoRaio(map, centroRaio, torresRaioM)
+        .then((n) => { if (vivo) setTorresNoRaio(n); })
+        .catch(() => { if (vivo) setTorresNoRaio(null); });
     };
     if (map.loaded()) apply();
     else map.once("load", apply);
-  }, [torresOn]);
+    return () => { vivo = false; };
+  }, [torresLigadas, centroRaio, torresModo, torresRaioM]);
 
   // Toque numa torre: diz qual é. Só responde se NÃO houver pin de
   // vistoria no mesmo ponto — o pin tem prioridade absoluta, a torre
@@ -646,8 +690,12 @@ export function MapView({
 
       {/* Toggle de torres — encostado na coluna do NavigationControl do
           Mapbox (top-right), logo abaixo dele, pra não disputar espaço com
-          o FAB "Postes próximos" que fica no topo centro da tela. */}
+          o FAB "Postes próximos" que fica no topo centro da tela.
+          No modo "auto" (trocar poste) não há botão: só a legenda, pra o
+          técnico saber o que são as luzinhas que apareceram. */}
+      {torresModo && (
       <div className="absolute right-2.5 top-[84px] z-10 flex flex-col items-end gap-1.5">
+        {torresModo === "botao" && (
         <button
           type="button"
           onClick={() => setTorresOn((v) => !v)}
@@ -658,9 +706,13 @@ export function MapView({
         >
           <RadioTower className="h-4 w-4" strokeWidth={2.2} />
           Torres
+          {torresOn && torresNoRaio != null && (
+            <span className="opacity-80">({torresNoRaio})</span>
+          )}
         </button>
+        )}
 
-        {torresOn && (
+        {torresLigadas && (
           <div className="flex items-center gap-2.5 rounded-full bg-white/95 px-2.5 py-1.5 text-[10.5px] font-semibold shadow-elev backdrop-blur">
             {(["claro", "vivo"] as const).map((op) => (
               <span key={op} className="flex items-center gap-1 text-brand-deep">
@@ -675,6 +727,7 @@ export function MapView({
           </div>
         )}
       </div>
+      )}
     </motion.div>
   );
 }

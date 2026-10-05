@@ -244,6 +244,7 @@ function VistoriasPageInner() {
         setPostesSelectedId(id);
         setPostesPanelOpen(true);
       }}
+      torres={{ raioM: 1500, modo: "botao" }}
       className="h-full w-full"
     />
   );

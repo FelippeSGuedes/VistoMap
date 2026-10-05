@@ -1085,7 +1085,9 @@ export default function PainelMapaPage() {
     const map = mapRef.current;
     if (!map) return;
     const aplicar = () => {
-      adicionarCamadaTorres(map, VISTORIAS_POINTS);
+      // Sem `porRaio`: o painel mostra a base inteira (o app é que limita
+      // ao raio em volta do técnico).
+      adicionarCamadaTorres(map, { abaixoDe: VISTORIAS_POINTS });
       torresVisiveis(map, torresAtivo);
 
       // O modelo 3D só faz sentido no modo Padrão — é o único com pitch; em
