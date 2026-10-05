@@ -26,6 +26,7 @@ import {
   TORRE_COR,
   TORRE_LABEL,
   adicionarCamadaTorres,
+  aoPoderMexerNoMapa,
   definirTorresNoRaio,
   torresVisiveis,
 } from "@/lib/torresLayer";
@@ -619,9 +620,12 @@ export function MapView({
         .then((n) => { if (vivo) setTorresNoRaio(n); })
         .catch(() => { if (vivo) setTorresNoRaio(null); });
     };
-    if (map.loaded()) apply();
-    else map.once("load", apply);
-    return () => { vivo = false; };
+    // aoPoderMexerNoMapa em vez de map.loaded(): este efeito re-roda a
+    // cada clique no botão, e nesse momento map.loaded() costuma ser
+    // false só porque há tile em voo — aí o antigo `once("load")` nunca
+    // mais dispararia. Ver o comentário no helper.
+    const limpar = aoPoderMexerNoMapa(map, apply);
+    return () => { vivo = false; limpar(); };
   }, [torresLigadas, centroRaio, torresModo, torresRaioM]);
 
   // Toque numa torre: diz qual é. Só responde se NÃO houver pin de

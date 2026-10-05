@@ -46,6 +46,34 @@ const COR_POR_OP: Expression = [
   "#64748B", // fallback: operadora fora das duas (não deve ocorrer, o gerador filtra)
 ];
 
+/**
+ * Roda `fn` assim que for possível mexer nas layers, e de novo a cada
+ * troca de estilo (setStyle descarta tudo). Devolve o cleanup.
+ *
+ * NÃO use `map.isStyleLoaded()`/`map.loaded()` como porteiro pra isso.
+ * Eles retornam false sempre que QUALQUER source ainda tem tile em voo —
+ * num mapa que repinta o tempo todo, quase sempre. Foi exatamente o bug
+ * de 2026-10-05: clicar em "Torres" caía no ramo `once("style.load")`,
+ * que já havia disparado e nunca mais dispara, e nada acontecia.
+ *
+ * O que addLayer/addSource/setLayoutProperty exigem é só que o ESTILO
+ * tenha carregado, não os tiles. Então aqui a gente tenta direto; se o
+ * estilo de fato ainda não estiver pronto o Mapbox lança, a gente engole,
+ * e o handler persistente de style.load repõe quando der.
+ */
+export function aoPoderMexerNoMapa(map: MapboxMap, fn: () => void): () => void {
+  const tentar = () => {
+    try {
+      fn();
+    } catch {
+      // Estilo ainda não carregou — o style.load abaixo cuida.
+    }
+  };
+  tentar();
+  map.on("style.load", tentar);
+  return () => { map.off("style.load", tentar); };
+}
+
 interface OpcoesCamadaTorres {
   /**
    * Id de uma layer já existente (os pins de vistoria, por exemplo). As

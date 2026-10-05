@@ -49,6 +49,8 @@ import {
   TORRE_COR,
   TORRE_LABEL,
   adicionarCamadaTorres,
+  aoPoderMexerNoMapa,
+  definirTorresNoRaio,
   torresVisiveis,
 } from "@/lib/torresLayer";
 import {
@@ -178,6 +180,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 
 /** Mesmo raio do backend (POSTE_TROCA_RAIO_M) — consistência com o app técnico. */
 const POSTES_PROXIMOS_RAIO_M = 100;
+/**
+ * Raio das torres em volta do equipamento selecionado. Bem maior que o dos
+ * postes (100 m) de propósito: aquele é limitado pela física da operação —
+ * só dá pra mudar o equipamento pra um poste ao lado. Torre é referência de
+ * cobertura, e num raio de 100 m quase sempre não haveria nenhuma. 1500 m é
+ * o mesmo valor usado no app.
+ */
+const TORRES_RAIO_M = 1500;
 const POSTES_PROX_SRC = "vm-postes-prox-src";
 const POSTES_PROX_LAYER = "vm-postes-prox-layer";
 
@@ -757,18 +767,23 @@ export default function PainelMapaPage() {
   const [postesProximos, setPostesProximos] = useState<Poste[]>([]);
   const [postesProximosLoading, setPostesProximosLoading] = useState(false);
   const [postesProximosAtivo, setPostesProximosAtivo] = useState(false);
-  // Torres de operadoras (Claro/Vivo) — contexto de cobertura, desligado por
-  // padrão. Ligar é o que dispara o download do GeoJSON.
+  // Torres de operadoras (Claro/Vivo) no raio do equipamento selecionado —
+  // irmão do "Postes próximos", ligado pelo mesmo painel. Desligado por
+  // padrão: ligar é o que dispara o download do GeoJSON.
   const [torresAtivo, setTorresAtivo] = useState(false);
+  const [torresNoRaio, setTorresNoRaio] = useState<number | null>(null);
   const [detalheVistoria, setDetalheVistoria] = useState<PainelMapaVistoria | null>(null);
   const [streetViewVistoria, setStreetViewVistoria] = useState<PainelMapaVistoria | null>(null);
 
   // Troca/fecha a vistoria selecionada → limpa a camada de postes próximos
   // (senão os pontos roxos de uma seleção anterior ficavam "grudados" no mapa).
+  // Mesma razão vale pras torres: elas são do raio DAQUELE equipamento.
   const setSelectedVistoria = useCallback((v: PainelMapaVistoria | null) => {
     setSelectedVistoriaRaw(v);
     setPostesProximosAtivo(false);
     setPostesProximos([]);
+    setTorresAtivo(false);
+    setTorresNoRaio(null);
     const map = mapRef.current;
     if (map?.getSource(POSTES_PROX_SRC)) {
       (map.getSource(POSTES_PROX_SRC) as GeoJSONSource).setData({ type: "FeatureCollection", features: [] });
@@ -1081,20 +1096,36 @@ export default function PainelMapaPage() {
   // as coloca sob os pins. Nos dois caminhos a torre fica embaixo.
   const torres3DLayerRef = useRef<Torres3DLayer | null>(null);
 
+  // Coordenadas soltas, não o objeto: o polling de 5s troca
+  // `selectedVistoria` por uma instância nova mesmo quando nada mudou, e
+  // como dependência isso refiltraria as 2.772 torres a cada 5 segundos.
+  const torresLat = selectedVistoria?.latitude ?? null;
+  const torresLng = selectedVistoria?.longitude ?? null;
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    const centro = torresLat != null && torresLng != null
+      ? { lat: torresLat, lng: torresLng }
+      : null;
+    const ligado = torresAtivo && !!centro;
+    let vivo = true;
+
     const aplicar = () => {
-      // Sem `porRaio`: o painel mostra a base inteira (o app é que limita
-      // ao raio em volta do técnico).
-      adicionarCamadaTorres(map, { abaixoDe: VISTORIAS_POINTS });
-      torresVisiveis(map, torresAtivo);
+      adicionarCamadaTorres(map, { abaixoDe: VISTORIAS_POINTS, porRaio: true });
+      torresVisiveis(map, ligado);
+
+      if (ligado && centro) {
+        definirTorresNoRaio(map, centro, TORRES_RAIO_M)
+          .then((n) => { if (vivo) setTorresNoRaio(n); })
+          .catch(() => { if (vivo) setTorresNoRaio(null); });
+      }
 
       // O modelo 3D só faz sentido no modo Padrão — é o único com pitch; em
       // Satélite/Híbrido o mapa é plano e a luzinha 2D é tudo que há pra
       // ver. Entra ANTES da camada dos técnicos (que é sempre a última
       // adicionada), pra o marcador do técnico nunca ficar atrás da torre.
-      const quer3D = torresAtivo && activeLayerRef.current === "3d";
+      const quer3D = ligado && activeLayerRef.current === "3d";
       const tem3D = !!map.getLayer(TORRES_3D_LAYER_ID);
       if (quer3D && !tem3D) {
         torres3DLayerRef.current = new Torres3DLayer();
@@ -1103,12 +1134,14 @@ export default function PainelMapaPage() {
         map.removeLayer(TORRES_3D_LAYER_ID);
         torres3DLayerRef.current = null;
       }
+      // O 3D tem que respeitar o MESMO raio do 2D, senão a luzinha mostra
+      // 8 torres e o modelo mostra a base inteira.
+      torres3DLayerRef.current?.definirArea(ligado ? centro : null, TORRES_RAIO_M);
     };
-    if (map.isStyleLoaded()) aplicar();
-    else map.once("style.load", aplicar);
-    map.on("style.load", aplicar);
-    return () => { map.off("style.load", aplicar); };
-  }, [torresAtivo, activeLayer]);
+
+    const limpar = aoPoderMexerNoMapa(map, aplicar);
+    return () => { vivo = false; limpar(); };
+  }, [torresAtivo, activeLayer, torresLat, torresLng]);
 
   /* ── layer switcher ─────────────────────────────────────────────────────── */
 
@@ -2270,47 +2303,6 @@ export default function PainelMapaPage() {
         })}
       </div>
 
-      {/* ── TORRES DE OPERADORAS (ao lado do layer switcher) ───────────────── */}
-      <div
-        className="absolute z-10 flex items-center overflow-hidden"
-        style={{ bottom: 32, left: 620, ...GLASS, borderRadius: 12, padding: 3 }}
-      >
-        <button
-          type="button"
-          onClick={() => setTorresAtivo((v) => !v)}
-          aria-pressed={torresAtivo}
-          className="flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[10.5px] font-semibold transition"
-          style={{
-            background: torresAtivo ? "rgba(0,179,136,0.20)" : "transparent",
-            color: torresAtivo ? "#00D4A0" : "var(--vm-muted)",
-            border: `1px solid ${torresAtivo ? "rgba(0,179,136,0.40)" : "transparent"}`,
-          }}
-          title="Torres de telefonia (base Anatel)"
-        >
-          <RadioTower className="h-3 w-3" />
-          Torres
-        </button>
-
-        {torresAtivo && (
-          <div className="flex items-center gap-2.5 pl-2.5 pr-1.5">
-            {(["claro", "vivo"] as const).map((op) => (
-              <span
-                key={op}
-                className="flex items-center gap-1 text-[10px] font-semibold"
-                style={{ color: "var(--vm-muted)" }}
-              >
-                {/* mesma leitura do mapa: núcleo branco + anel da operadora */}
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full bg-white"
-                  style={{ boxShadow: `0 0 0 2px ${TORRE_COR[op]}` }}
-                />
-                {TORRE_LABEL[op]}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* ── HOVER CARD DO EQUIPAMENTO ─────────────────────────────────────── */}
       {hoveredVis && hoveredVisPos && !selectedVistoria && (
         <div
@@ -2781,8 +2773,11 @@ export default function PainelMapaPage() {
                   </button>
                 )}
 
-              {/* Quick actions */}
-              <div className="grid grid-cols-3 gap-1.5">
+              {/* Quick actions — 2x2 desde que "Torres" entrou (2026-10-05).
+                  Em 4 colunas de ~70px os rótulos já apertados ("Postes
+                  próximos") ficariam ilegíveis; em 2x2 cada botão dobra de
+                  largura e a linha de texto respira. */}
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleTogglePostesProximos(selectedVistoria)}
@@ -2796,6 +2791,26 @@ export default function PainelMapaPage() {
                   <MapPinned className="h-4 w-4" style={{ color: PANEL.textSoft }} />
                   <span className="text-[9.5px] font-semibold leading-tight" style={{ color: PANEL.textSoft }}>
                     {postesProximosLoading ? "Buscando…" : postesProximosAtivo ? `Postes (${postesProximos.length})` : "Postes próximos"}
+                  </span>
+                </button>
+                {/* Torres — irmão do "Postes próximos": mesmo gesto, mesmo
+                    recorte por raio em volta DESTE equipamento. */}
+                <button
+                  type="button"
+                  onClick={() => setTorresAtivo((v) => !v)}
+                  aria-pressed={torresAtivo}
+                  className="flex flex-col items-center justify-center gap-1 rounded-xl py-2.5 text-center transition hover:brightness-125"
+                  style={{
+                    background: torresAtivo ? "rgba(255,255,255,0.07)" : PANEL.cardAlt,
+                    border: `1px solid ${torresAtivo ? "#3D4753" : PANEL.border}`,
+                  }}
+                  title={`Torres de telefonia num raio de ${TORRES_RAIO_M} m (base Anatel)`}
+                >
+                  <RadioTower className="h-4 w-4" style={{ color: PANEL.textSoft }} />
+                  <span className="text-[9.5px] font-semibold leading-tight" style={{ color: PANEL.textSoft }}>
+                    {torresAtivo
+                      ? `Torres${torresNoRaio != null ? ` (${torresNoRaio})` : "…"}`
+                      : "Torres próximas"}
                   </span>
                 </button>
                 <button
@@ -2817,6 +2832,36 @@ export default function PainelMapaPage() {
                   <span className="text-[9.5px] font-semibold leading-tight" style={{ color: PANEL.textSoft }}>Street View</span>
                 </button>
               </div>
+
+              {/* Legenda das torres — sem ela as luzinhas no mapa não dizem
+                  de quem são. Some junto com a camada. */}
+              {torresAtivo && (
+                <div
+                  className="mt-2 flex items-center justify-center gap-4 rounded-xl py-2"
+                  style={{ background: PANEL.cardAlt, border: `1px solid ${PANEL.border}` }}
+                >
+                  {torresNoRaio === 0 ? (
+                    <span className="text-[10px]" style={{ color: PANEL.textSoft }}>
+                      Nenhuma torre num raio de {TORRES_RAIO_M} m
+                    </span>
+                  ) : (
+                    (["claro", "vivo"] as const).map((op) => (
+                      <span
+                        key={op}
+                        className="flex items-center gap-1.5 text-[10px] font-semibold"
+                        style={{ color: PANEL.textSoft }}
+                      >
+                        {/* mesma leitura do mapa: núcleo branco + anel da operadora */}
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full bg-white"
+                          style={{ boxShadow: `0 0 0 2px ${TORRE_COR[op]}` }}
+                        />
+                        {TORRE_LABEL[op]}
+                      </span>
+                    ))
+                  )}
+                </div>
+              )}
 
               {postesProximosAtivo && postesProximos.length > 0 && (
                 <div className="mt-2 max-h-[140px] space-y-1 overflow-y-auto rounded-xl p-1.5" style={{ background: PANEL.cardAlt, border: `1px solid ${PANEL.border}` }}>

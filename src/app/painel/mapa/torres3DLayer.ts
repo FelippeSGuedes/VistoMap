@@ -30,6 +30,7 @@ import mapboxgl from "mapbox-gl";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { asset } from "@/utils/asset";
 import { carregarTorres as carregarTorresBase } from "@/lib/torresLayer";
+import { haversineKm } from "@/utils/format";
 
 export const TORRES_3D_LAYER_ID = "vm-torres-3d";
 
@@ -185,7 +186,40 @@ export class Torres3DLayer implements mapboxgl.CustomLayerInterface {
   private renderer!: THREE.WebGLRenderer;
   /** Um nó por operadora, adicionado à cena e exibido um por vez. */
   private nos: Partial<Record<Operadora, THREE.Object3D>> = {};
+  /** Base completa, carregada uma vez. */
   private torres: Torre[] = [];
+  /** Recorte que esta camada desenha — ver definirArea. */
+  private visiveis: Torre[] = [];
+  private area: { centro: { lat: number; lng: number } | null; raioM: number } = {
+    centro: null,
+    raioM: 0,
+  };
+
+  /**
+   * Restringe o que a camada desenha a um raio em volta de um ponto (o
+   * equipamento selecionado no painel). `centro: null` não desenha nada.
+   *
+   * Existe pra o 3D mostrar exatamente as mesmas torres que a luzinha 2D:
+   * as duas camadas são alimentadas pelo mesmo recorte, senão o mapa diria
+   * duas coisas diferentes sobre a mesma coisa.
+   */
+  definirArea(centro: { lat: number; lng: number } | null, raioM: number): void {
+    this.area = { centro, raioM };
+    this.recortar();
+    this.map?.triggerRepaint();
+  }
+
+  private recortar(): void {
+    const { centro, raioM } = this.area;
+    if (!centro) {
+      this.visiveis = [];
+      return;
+    }
+    const raioKm = raioM / 1000;
+    this.visiveis = this.torres.filter(
+      (t) => haversineKm(centro, { lat: t.lat, lng: t.lng }) <= raioKm
+    );
+  }
 
   onAdd(map: mapboxgl.Map, gl: WebGLRenderingContext): void {
     this.map = map;
@@ -216,6 +250,8 @@ export class Torres3DLayer implements mapboxgl.CustomLayerInterface {
     carregarTorres()
       .then((lista) => {
         this.torres = lista;
+        // A área pode ter sido definida antes dos dados chegarem.
+        this.recortar();
         this.map?.triggerRepaint();
       })
       .catch((err) => {
@@ -274,7 +310,7 @@ export class Torres3DLayer implements mapboxgl.CustomLayerInterface {
 
   render(gl: WebGLRenderingContext, matrix: number[]): void {
     const map = this.map;
-    if (!map || this.torres.length === 0) return;
+    if (!map || this.visiveis.length === 0) return;
     if (map.getPitch() < MIN_PITCH) return;
 
     const temAlgumModelo = this.nos.claro || this.nos.vivo;
@@ -288,7 +324,7 @@ export class Torres3DLayer implements mapboxgl.CustomLayerInterface {
     const centro = map.getCenter();
 
     const candidatas: { t: Torre; d2: number }[] = [];
-    for (const t of this.torres) {
+    for (const t of this.visiveis) {
       if (t.lng < oeste || t.lng > leste || t.lat < sul || t.lat > norte) continue;
       if (!this.nos[t.op]) continue;
       const dx = t.lng - centro.lng, dy = t.lat - centro.lat;
