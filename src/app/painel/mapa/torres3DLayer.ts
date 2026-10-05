@@ -284,10 +284,19 @@ export class Torres3DLayer implements mapboxgl.CustomLayerInterface {
     // clone() pra cada camada: uma troca de estilo cria uma camada nova, e o
     // template fica no módulo pra não rebaixar o GLB de novo.
     const no = template.clone(true);
-    // A matriz vem montada na mão a cada frame (a transformação está na
-    // câmera), então o Three.js não deve recompô-la de position/rotation.
-    no.matrixAutoUpdate = false;
-    no.matrix.identity();
+    // NÃO zerar a matriz nem desligar matrixAutoUpdate aqui.
+    //
+    // Foi o bug de 2026-10-05 ("as torres estão deitadas"): a ORIENTAÇÃO
+    // BASE do modelo mora na rotação DESTE nó — é ela que leva o Y-up do
+    // glTF pro Z-up do Mapbox (ver prepararTemplate). Zerar a matriz logo
+    // depois apagava essa rotação, e a torre renderizava deitada no chão.
+    //
+    // O par `matrixAutoUpdate = false` + `matrix.identity()` foi copiado do
+    // techModel3DLayer, onde ele é correto por um motivo que aqui não vale:
+    // lá o nó é um GRUPO com matriz montada à mão a cada frame, e a rotação
+    // do modelo fica num FILHO. Aqui o nó é o próprio modelo, e não há nada
+    // montado à mão pra o Three.js atrapalhar — posição e escala vão na
+    // matriz da CÂMERA (ver render()).
     no.visible = false;
     this.scene.add(no);
     this.nos[op] = no;
