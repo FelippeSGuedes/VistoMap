@@ -1,6 +1,10 @@
 /**
- * Converte public/torres_operadoras.csv (base de licenciamento da Anatel,
- * 36 colunas) no GeoJSON enxuto que o mapa consome.
+ * Converte o CSV da base de licenciamento da Anatel (36 colunas) no
+ * GeoJSON enxuto que o mapa consome.
+ *
+ * O CSV mora em scripts/dados/ e NÃO em public/: é insumo de build, então
+ * em public/ ele seria servido ao mundo e ainda entraria no bundle do app
+ * (791 KB que o técnico baixaria sem nunca usar).
  *
  * Por que não ler o CSV direto no cliente: são 791 KB e 36 colunas das
  * quais o mapa usa 5 — parsear isso a cada abertura do mapa (ainda mais
@@ -12,7 +16,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
-const ENTRADA = "public/torres_operadoras.csv";
+const ENTRADA = "scripts/dados/torres_operadoras.csv";
 // .json, não .geojson, DE PROPÓSITO: o nginx serve estáticos sob /painel/ por
 // allowlist de extensão (ver scripts/nginx-https.conf) e .geojson não está
 // nela — o painel tomaria 404. GeoJSON é JSON, então a extensão é honesta e

@@ -21,8 +21,7 @@ import {
   type TipoEquipamento,
 } from "@/lib/equipamentoTipo";
 import {
-  TORRES_LAYER_HALO,
-  TORRES_LAYER_NUCLEO,
+  TORRES_LAYER_PIN,
   TORRE_COR,
   TORRE_LABEL,
   adicionarCamadaTorres,
@@ -621,7 +620,14 @@ export function MapView({
     if (!map || torresRaioM <= 0) return;
     let vivo = true;
     const apply = () => {
-      adicionarCamadaTorres(map, { abaixoDe: VISTORIAS_LAYER, porRaio: true });
+      // visual "pin": sprite da torre na marca da operadora. No app, um
+      // ponto colorido não diz "torre da Claro" como a figura diz — e o
+      // técnico olha o mapa de relance, em tela pequena e no sol.
+      adicionarCamadaTorres(map, {
+        abaixoDe: VISTORIAS_LAYER,
+        porRaio: true,
+        visual: "pin",
+      });
       torresVisiveis(map, torresLigadas);
       if (torresLat == null || torresLng == null) return;
       definirTorresNoRaio(map, { lat: torresLat, lng: torresLng }, torresRaioM)
@@ -668,11 +674,9 @@ export function MapView({
         )
         .addTo(map);
     };
-    map.on("click", TORRES_LAYER_NUCLEO, onClick);
-    map.on("click", TORRES_LAYER_HALO, onClick);
+    map.on("click", TORRES_LAYER_PIN, onClick);
     return () => {
-      map.off("click", TORRES_LAYER_NUCLEO, onClick);
-      map.off("click", TORRES_LAYER_HALO, onClick);
+      map.off("click", TORRES_LAYER_PIN, onClick);
     };
   }, [torresLigadas]);
 
