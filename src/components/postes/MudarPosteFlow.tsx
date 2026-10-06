@@ -100,31 +100,51 @@ export function MudarPosteFlow({
     };
   }, [open]);
 
-  // Ao entrar no picker: tenta GPS primeiro (mais confiável que coord do GLPI).
-  // Fallback para coords da vistoria APENAS se forem válidas (não nulas/zero).
+  // Centro da lista de postes: a COORDENADA GRAVADA DO POSTE ANTIGO, e só
+  // cai no GPS quando ela não existe.
   //
-  // BUG (relatado por técnico de campo, 2026-09-01): sob sinal ruim, às vezes
-  // puxava o ÚLTIMO ponto vistoriado em vez do atual. Causa: `geo.position`
-  // é semeado no mount do hook a partir de um cache MODULE-SCOPE
-  // (useGeolocation.ts) compartilhado por todo o app — se o técnico tinha
-  // acabado de vistoriar outro ponto (ou o app rodou GPS em qualquer outra
-  // tela), `geo.position` já vem preenchido com ESSA leitura antiga, e o `??`
-  // pulava `geo.refresh()` inteiro — nunca pedia uma leitura nova ao GPS.
-  // `refresh()` sozinho já tem cache de 5s (evita reconsulta redundante em
-  // sequência), então chamar ele sempre é seguro e força hardware real
-  // sempre que a última leitura não for daquele instante.
+  // O servidor (backend/src/routes/postes.ts, POST /mudancas) valida a troca
+  // medindo a distância entre as coordenadas do poste ANTIGO — as que o app
+  // manda em lat_antiga/lng_antiga — e o poste novo, e recusa acima de
+  // POSTE_TROCA_RAIO_M (100 m). A lista, porém, era montada em volta do GPS
+  // do técnico. Duas referências diferentes: com o técnico a poucos metros
+  // da coordenada gravada, um poste a 100 m dele ficava a 102,9 m do antigo
+  // — a lista mostrava e o servidor recusava, só na tela de confirmação,
+  // depois de o técnico escolher o poste e digitar o motivo (relatado em
+  // campo, 2026-10-06). O desencontro funciona nos dois sentidos: também
+  // escondia postes VÁLIDOS (a 95 m do antigo, mas a 105 m do técnico).
+  // Com a lista centrada no mesmo ponto da validação, nenhum poste exibido
+  // pode ser recusado por distância e nenhum válido fica de fora.
+  //
+  // HISTÓRICO, pra não refazer o caminho: até 2026-10-06 era GPS primeiro
+  // (b01884f, 2026-09-01). Aquele fix existia porque, sob sinal ruim, a
+  // lista às vezes vinha do ÚLTIMO ponto vistoriado em vez do atual: o
+  // `geo.position` é semeado de um cache module-scope (useGeolocation.ts)
+  // compartilhado pelo app, e o `??` antigo pulava `geo.refresh()` por
+  // inteiro. Centrar na coordenada gravada elimina essa classe de erro —
+  // a busca não depende mais de o GPS estar fresco. O refresh continua
+  // sendo disparado, mas só pra o mapa mostrar onde o técnico está.
   useEffect(() => {
     if (step !== "picker") return;
     if (postes.fetched) return;
     const run = async () => {
+      const temCoordGravada = !!latAtual && !!lngAtual && (latAtual !== 0 || lngAtual !== 0);
+
+      if (temCoordGravada) {
+        // Sem await de propósito: o GPS só alimenta o pontinho do técnico no
+        // mapa e não pode atrasar nem condicionar a busca.
+        void geo.refresh();
+        // Mesmo raio do backend (POSTE_TROCA_RAIO_M) — sem isso a lista mostrava
+        // postes até 500m que o servidor rejeitava na confirmação (raio real é 100m).
+        await postes.fetch({ lat: latAtual, lng: lngAtual, raio: 100, limit: 80 });
+        return;
+      }
+
+      // Poste antigo sem coordenada gravada (a vistoria ainda vai marcar o GPS
+      // no local): é a única referência que sobra, então usa o GPS, como antes.
       const fresh = await geo.refresh();
-      const hasStoredCoords = latAtual && lngAtual && (latAtual !== 0 || lngAtual !== 0);
-      const lat = fresh?.lat ?? (hasStoredCoords ? latAtual : null);
-      const lng = fresh?.lng ?? (hasStoredCoords ? lngAtual : null);
-      if (!lat || !lng) return; // sem GPS e sem coords armazenadas — mostra lista vazia
-      // Mesmo raio do backend (POSTE_TROCA_RAIO_M) — sem isso a lista mostrava
-      // postes até 500m que o servidor rejeitava na confirmação (raio real é 100m).
-      await postes.fetch({ lat, lng, raio: 100, limit: 80 });
+      if (!fresh?.lat || !fresh?.lng) return; // sem GPS e sem coords gravadas — lista vazia
+      await postes.fetch({ lat: fresh.lat, lng: fresh.lng, raio: 100, limit: 80 });
     };
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -437,7 +457,7 @@ function PickerStep({
   const focus = userPos ?? centerOnVistoria ?? { lat: -23.5505, lng: -46.6333 };
   /** Só posição REAL — sem o fallback de São Paulo, que não é um lugar
    *  onde o técnico esteja e levaria a camada a buscar torres no vazio. */
-  const centroTorres = userPos ?? centerOnVistoria;
+  const centroTorres = centerOnVistoria ?? userPos;
   const [panelOpen, setPanelOpen] = useState(true);
   const dummyVistorias = useMemo(() => [], []);
 
@@ -459,6 +479,7 @@ function PickerStep({
         <MapView
           vistorias={dummyVistorias}
           userPosition={focus}
+          focar={centerOnVistoria}
           postes={postes}
           selectedPosteId={selectedId}
           onPosteSelect={handlePick}
