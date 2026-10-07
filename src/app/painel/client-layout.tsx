@@ -23,6 +23,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Pin,
   RotateCw,
   Search,
   Settings,
@@ -282,24 +283,47 @@ export default function PainelClientLayout({ children }: { children: React.React
   const [vistoriasOpen, setVistoriasOpen] = useState(false);
   const [instalacoesOpen, setInstalacoesOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // Menu lateral: AUTOMÁTICO por padrão — fica recolhido (68px) e expande POR
+  // CIMA do conteúdo quando o mouse entra (ou o foco entra, pro teclado), sem
+  // empurrar a página. "Fixo" (alfinete) mantém o comportamento antigo: aberto
+  // (224px) e reservando espaço. Abaixo de AUTO_COLLAPSE_BP o fixo é ignorado.
+  const [menuFixo, setMenuFixo] = useState(false);
+  const [estreito, setEstreito] = useState(false);
+  const [hoverMenu, setHoverMenu] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fixoEfetivo = menuFixo && !estreito;
+  const collapsed = !(fixoEfetivo || hoverMenu);
+  // Expandido só pelo mouse = está flutuando sobre o conteúdo (sombra mais forte).
+  const sobrepondo = !collapsed && !fixoEfetivo;
   const [pendentesCount, setPendentesCount] = useState(0);
-  const prefRef = useRef(false); // preferência manual do usuário (expandido/recolhido)
 
   useEffect(() => {
     setIsDark(localStorage.getItem("vm_painel_theme") === "dark");
   }, []);
 
-  // Colapso inteligente: recolhe sob breakpoint estreito; senão respeita a
-  // preferência salva. Reavalia em resize.
+  // Chave NOVA (vm_painel_sidebar_modo) de propósito: a antiga guardava
+  // expandido/recolhido por navegador, e reaproveitá-la deixaria quem já tinha
+  // o menu aberto sem ver mudança nenhuma. Quem nunca fixou cai em "auto".
   useEffect(() => {
-    prefRef.current = localStorage.getItem("vm_painel_sidebar") === "collapsed";
-    const apply = () =>
-      setCollapsed(window.innerWidth < AUTO_COLLAPSE_BP ? true : prefRef.current);
+    setMenuFixo(localStorage.getItem("vm_painel_sidebar_modo") === "fixo");
+    const apply = () => setEstreito(window.innerWidth < AUTO_COLLAPSE_BP);
     apply();
     window.addEventListener("resize", apply);
     return () => window.removeEventListener("resize", apply);
   }, []);
+
+  // Pequeno atraso na entrada (não abre se o mouse só roçou a borda indo pra
+  // outro lugar) e na saída (não fecha num escorregão). Limpa no unmount.
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
+  const abrirMenu = (imediato = false) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (imediato) { setHoverMenu(true); return; }
+    hoverTimer.current = setTimeout(() => setHoverMenu(true), 90);
+  };
+  const fecharMenu = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHoverMenu(false), 170);
+  };
 
   // Abre o grupo automaticamente quando está numa rota de operação
   useEffect(() => {
@@ -351,11 +375,13 @@ export default function PainelClientLayout({ children }: { children: React.React
     window.location.reload();
   };
 
+  // Alterna entre menu fixo (aberto, empurra o conteúdo) e automático. Ao soltar
+  // o alfinete com o mouse em cima, o menu continua aberto até o mouse sair —
+  // o que é o esperado de um menu automático.
   const toggleCollapse = () => {
-    const next = !collapsed;
-    prefRef.current = next;
-    localStorage.setItem("vm_painel_sidebar", next ? "collapsed" : "expanded");
-    setCollapsed(next);
+    const next = !menuFixo;
+    localStorage.setItem("vm_painel_sidebar_modo", next ? "fixo" : "auto");
+    setMenuFixo(next);
   };
 
   const isPainelRole = (r?: SessionRole): r is SessionRole =>
@@ -411,15 +437,29 @@ export default function PainelClientLayout({ children }: { children: React.React
       <PainelWebPush />
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
+      {/* O <aside> só RESERVA a vaga no layout (68px no automático, 224px no
+          fixo); o painel visível é o <div> absoluto de dentro, que cresce por
+          cima do conteúdo no hover. É isso que evita a página "pular" a cada
+          vez que o menu abre ou fecha. z-40 fica abaixo dos modais (z-[120]+). */}
       <aside
-        className="flex h-full shrink-0 flex-col transition-[width] duration-200 ease-out"
-        style={{
-          width: collapsed ? 68 : 224,
-          background: T.sidebar,
-          borderRight: `1px solid ${T.border}`,
-          boxShadow: isDark ? "none" : "0 0 0 1px rgba(0,0,0,0.04), 2px 0 12px rgba(0,0,0,0.04)",
-        }}
+        className="relative h-full shrink-0 transition-[width] duration-200 ease-out"
+        style={{ width: fixoEfetivo ? 224 : 68, zIndex: 40 }}
+        onMouseEnter={() => abrirMenu()}
+        onMouseLeave={fecharMenu}
+        onFocus={() => abrirMenu(true)}
+        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) fecharMenu(); }}
       >
+        <div
+          className="absolute inset-y-0 left-0 flex h-full flex-col overflow-hidden transition-[width,box-shadow] duration-200 ease-out"
+          style={{
+            width: collapsed ? 68 : 224,
+            background: T.sidebar,
+            borderRight: `1px solid ${T.border}`,
+            boxShadow: sobrepondo
+              ? (isDark ? "8px 0 32px rgba(0,0,0,0.55)" : "8px 0 32px rgba(15,23,42,0.18)")
+              : (isDark ? "none" : "0 0 0 1px rgba(0,0,0,0.04), 2px 0 12px rgba(0,0,0,0.04)"),
+          }}
+        >
         {/* ── BRAND ── */}
         <div
           className={`flex h-16 shrink-0 items-center ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}
@@ -464,11 +504,12 @@ export default function PainelClientLayout({ children }: { children: React.React
             <button
               type="button"
               onClick={toggleCollapse}
-              title="Recolher menu"
+              aria-pressed={menuFixo}
+              title={menuFixo ? "Menu fixo — clique pra voltar ao automático" : "Fixar menu aberto"}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition hover:bg-black/5"
-              style={{ color: T.textMuted }}
+              style={{ color: menuFixo ? "#00B388" : T.textMuted }}
             >
-              <PanelLeftClose className="h-[15px] w-[15px]" />
+              {menuFixo ? <PanelLeftClose className="h-[15px] w-[15px]" /> : <Pin className="h-[15px] w-[15px]" />}
             </button>
           )}
         </div>
@@ -479,7 +520,7 @@ export default function PainelClientLayout({ children }: { children: React.React
             <button
               type="button"
               onClick={toggleCollapse}
-              title="Expandir menu"
+              title="Fixar menu aberto"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-black/5"
               style={{ color: T.textMuted }}
             >
@@ -878,6 +919,7 @@ export default function PainelClientLayout({ children }: { children: React.React
               </button>
             </div>
           )}
+        </div>
         </div>
       </aside>
 
