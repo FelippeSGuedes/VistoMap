@@ -357,6 +357,15 @@ class PluginVistomapprojetosSalaControle
             ],
         ])->current()['cpt'] ?? 0);
 
+        // Cartões "Taxa de aprovação" e "Esperando a concessionária": tomam o
+        // lugar de "Instalação pendente/aprovada", que mostravam 0 e 0 porque a
+        // instalação ainda não começou.
+        $st = self::statusCounts();
+        $aprovTotal  = ($st[self::STATUS_VISTORIA_APROVADO] ?? 0) + ($st[self::STATUS_VISTORIA_APROVADO_PENDENCIAS] ?? 0);
+        $reprovTotal = $st[self::STATUS_VISTORIA_REPROVADO] ?? 0;
+        $decididas   = $aprovTotal + $reprovTotal;
+        $espera      = self::esperaConcessionaria();
+
         $tecnicosAtivosTotal = (int) ($DB->request([
             'COUNT' => 'cpt',
             'FROM'  => 'glpi_plugin_vistomap_expediente',
@@ -404,6 +413,13 @@ class PluginVistomapprojetosSalaControle
                 'vistoriasAprovadas'  => $vistoriasAprovadas,
                 'instalacaoPendente'  => $instalacaoPendente,
                 'instalacaoAprovada'  => $instalacaoAprovada,
+                // Taxa = aprovadas / (aprovadas + reprovadas): só quem a
+                // concessionária JÁ decidiu entra na conta. Em análise não é nem
+                // um nem outro.
+                'taxaAprovacao'       => $decididas > 0 ? round($aprovTotal / $decididas * 100, 1) : null,
+                'decididas'           => $decididas,
+                'emAnalise'           => $espera['total'],
+                'emAnaliseMais7d'     => $espera['acima7'],
                 'tecnicosEmCampo'     => $tecnicosAtivosTotal,
             ],
             'porStatusGeral'    => $porStatusGeral,
@@ -581,17 +597,7 @@ class PluginVistomapprojetosSalaControle
 
         $total = array_sum(self::statesCounts());
 
-        $rows = $DB->request([
-            'SELECT'  => ['f.plugin_fields_statusvistoriafielddropdowns_id AS sid', 'COUNT' => 'f.id AS cpt'],
-            'FROM'    => self::TABLE_FIELDS . ' AS f',
-            'INNER JOIN' => [self::TABLE_NE . ' AS ne' => ['ON' => ['f' => 'items_id', 'ne' => 'id']]],
-            'WHERE'   => ['ne.is_deleted' => 0],
-            'GROUPBY' => 'f.plugin_fields_statusvistoriafielddropdowns_id',
-        ]);
-        $porStatus = [];
-        foreach ($rows as $r) {
-            $porStatus[(int) $r['sid']] = (int) $r['cpt'];
-        }
+        $porStatus = self::statusCounts();
         $analise   = $porStatus[self::STATUS_VISTORIA_EM_ANALISE] ?? 0;
         $aprovado  = $porStatus[self::STATUS_VISTORIA_APROVADO] ?? 0;
         $aprovPend = $porStatus[self::STATUS_VISTORIA_APROVADO_PENDENCIAS] ?? 0;
@@ -635,6 +641,229 @@ class PluginVistomapprojetosSalaControle
             'etaDias' => $etaDias,
             'etaData' => $etaData,
         ];
+    }
+
+    /** Contagem da base por status da vistoria na concessionária: [status_id => qtd]. */
+    private static function statusCounts(): array
+    {
+        global $DB;
+
+        $rows = $DB->request([
+            'SELECT'  => ['f.plugin_fields_statusvistoriafielddropdowns_id AS sid', 'COUNT' => 'f.id AS cpt'],
+            'FROM'    => self::TABLE_FIELDS . ' AS f',
+            'INNER JOIN' => [self::TABLE_NE . ' AS ne' => ['ON' => ['f' => 'items_id', 'ne' => 'id']]],
+            'WHERE'   => ['ne.is_deleted' => 0],
+            'GROUPBY' => 'f.plugin_fields_statusvistoriafielddropdowns_id',
+        ]);
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r['sid']] = (int) $r['cpt'];
+        }
+        return $out;
+    }
+
+    /**
+     * Quanto os projetos "Em análise" estão esperando a concessionária, pela
+     * data de envio. total = quantos estão em análise; acima7 = há mais de 7
+     * dias; maxDias = a maior espera.
+     */
+    private static function esperaConcessionaria(): array
+    {
+        global $DB;
+
+        $row = $DB->request([
+            'SELECT' => [
+                new QueryExpression('COUNT(f.id) AS total'),
+                new QueryExpression('COALESCE(SUM(DATEDIFF(CURDATE(), f.dataenvioconcessionriafield) > 7), 0) AS acima7'),
+                new QueryExpression('COALESCE(MAX(DATEDIFF(CURDATE(), f.dataenvioconcessionriafield)), 0) AS maxdias'),
+            ],
+            'FROM'   => self::TABLE_FIELDS . ' AS f',
+            'INNER JOIN' => [self::TABLE_NE . ' AS ne' => ['ON' => ['f' => 'items_id', 'ne' => 'id']]],
+            'WHERE'  => [
+                'ne.is_deleted' => 0,
+                'f.plugin_fields_statusvistoriafielddropdowns_id' => self::STATUS_VISTORIA_EM_ANALISE,
+            ],
+        ])->current();
+
+        return [
+            'total'   => (int) ($row['total'] ?? 0),
+            'acima7'  => (int) ($row['acima7'] ?? 0),
+            'maxDias' => (int) ($row['maxdias'] ?? 0),
+        ];
+    }
+
+    /**
+     * Resultado por concessionária: quanto da base já foi vistoriado e como a
+     * concessionária decidiu. vistoriadas = aprovadas + em análise + reprovadas
+     * (as 3 etapas que vêm DEPOIS de a vistoria ser feita).
+     */
+    public static function dataConcessionariasResultado(): array
+    {
+        global $DB;
+
+        $aprov = self::STATUS_VISTORIA_APROVADO . ',' . self::STATUS_VISTORIA_APROVADO_PENDENCIAS;
+        $rows = $DB->request([
+            'SELECT' => [
+                'c.name AS nome',
+                new QueryExpression('COUNT(f.id) AS base'),
+                new QueryExpression("SUM(f.plugin_fields_statusvistoriafielddropdowns_id IN ($aprov)) AS aprovadas"),
+                new QueryExpression('SUM(f.plugin_fields_statusvistoriafielddropdowns_id = ' . self::STATUS_VISTORIA_EM_ANALISE . ') AS analise'),
+                new QueryExpression('SUM(f.plugin_fields_statusvistoriafielddropdowns_id = ' . self::STATUS_VISTORIA_REPROVADO . ') AS reprovadas'),
+            ],
+            'FROM'   => self::TABLE_FIELDS . ' AS f',
+            'INNER JOIN' => [self::TABLE_NE . ' AS ne' => ['ON' => ['f' => 'items_id', 'ne' => 'id']]],
+            'LEFT JOIN' => [
+                'glpi_plugin_fields_concessionriafielddropdowns AS c' => [
+                    'ON' => ['f' => 'plugin_fields_concessionriafielddropdowns_id', 'c' => 'id'],
+                ],
+            ],
+            'WHERE'   => ['ne.is_deleted' => 0],
+            'GROUPBY' => 'c.name',
+        ]);
+
+        $out = [];
+        foreach ($rows as $r) {
+            $ap = (int) $r['aprovadas'];
+            $an = (int) $r['analise'];
+            $rp = (int) $r['reprovadas'];
+            $out[] = [
+                'label'       => $r['nome'] ?: 'Sem concessionária',
+                'base'        => (int) $r['base'],
+                'vistoriadas' => $ap + $an + $rp,
+                'aprovadas'   => $ap,
+                'emAnalise'   => $an,
+                'reprovadas'  => $rp,
+            ];
+        }
+        usort($out, fn($a, $b) => $b['base'] <=> $a['base']);
+        return $out;
+    }
+
+    /** Principais motivos de reprovação entre os reprovados (status Reprovado). */
+    public static function dataMotivosReprovacao(): array
+    {
+        global $DB;
+
+        $rows = $DB->request([
+            'SELECT' => ['m.name AS label', 'COUNT' => 'f.id AS cpt'],
+            'FROM'   => self::TABLE_FIELDS . ' AS f',
+            'INNER JOIN' => [self::TABLE_NE . ' AS ne' => ['ON' => ['f' => 'items_id', 'ne' => 'id']]],
+            'LEFT JOIN' => [
+                'glpi_plugin_fields_motivoreprovacaocpflfielddropdowns AS m' => [
+                    'ON' => ['f' => 'plugin_fields_motivoreprovacaocpflfielddropdowns_id', 'm' => 'id'],
+                ],
+            ],
+            'WHERE'   => [
+                'ne.is_deleted' => 0,
+                'f.plugin_fields_statusvistoriafielddropdowns_id' => self::STATUS_VISTORIA_REPROVADO,
+            ],
+            'GROUPBY' => 'm.name',
+        ]);
+
+        $todos = [];
+        foreach ($rows as $r) {
+            $todos[] = ['label' => $r['label'] ?: 'Sem motivo informado', 'value' => (int) $r['cpt']];
+        }
+        // Empate no valor desempata pelo nome: sem isso a ordem dos motivos com a
+        // mesma contagem mudava de um carregamento pro outro.
+        usort($todos, fn($a, $b) => ($b['value'] <=> $a['value']) ?: strcmp($a['label'], $b['label']));
+        $total = array_sum(array_column($todos, 'value'));
+        $top   = array_slice($todos, 0, 6);
+
+        return [
+            'total'  => $total,
+            'itens'  => $top,
+            // o que ficou fora do top 6, pra o total do painel fechar
+            'outros' => $total - array_sum(array_column($top, 'value')),
+        ];
+    }
+
+    /**
+     * "Atenção agora" — o que pede AÇÃO, não só um número: cada item diz quem
+     * cobrar ou onde olhar. Tudo derivado do banco, nada escrito à mão; um
+     * item só aparece quando a condição existe de fato.
+     * tom: warn (agir), crit (grave), info (acompanhar).
+     */
+    public static function dataAtencao(): array
+    {
+        global $DB;
+
+        $itens = [];
+
+        // 1) projetos parados esperando a concessionária
+        $espera = self::esperaConcessionaria();
+        if ($espera['acima7'] > 0) {
+            $n = $espera['acima7'];
+            $itens[] = [
+                'id'      => 'espera',
+                'tom'     => 'warn',
+                'n'       => $n,
+                'titulo'  => $n === 1
+                    ? 'projeto esperando a concessionária há mais de 7 dias'
+                    : 'projetos esperando a concessionária há mais de 7 dias',
+                'detalhe' => 'De ' . $espera['total'] . ' em análise, a maior espera é de ' . $espera['maxDias'] . ' dias.',
+            ];
+        }
+
+        // 2) onde se concentram as reprovações
+        $conc = self::dataConcessionariasResultado();
+        $totalRp = array_sum(array_column($conc, 'reprovadas'));
+        if ($totalRp >= 3) {
+            $top = $conc[0];
+            foreach ($conc as $c) {
+                if ($c['reprovadas'] > $top['reprovadas']) {
+                    $top = $c;
+                }
+            }
+            $vistTotal = array_sum(array_column($conc, 'vistoriadas'));
+            $vistRest  = $vistTotal - $top['vistoriadas'];
+            $rpRest    = $totalRp - $top['reprovadas'];
+            $detalhe   = '';
+            if ($top['vistoriadas'] > 0 && $vistRest > 0) {
+                $detalhe = 'Das vistoriadas dela, ' . number_format($top['reprovadas'] / $top['vistoriadas'] * 100, 1, ',', '')
+                    . '% foram reprovadas; nas demais, ' . number_format($rpRest / $vistRest * 100, 1, ',', '') . '%.';
+            }
+            $itens[] = [
+                'id'      => 'reprov',
+                'tom'     => 'warn',
+                'n'       => $top['reprovadas'],
+                'titulo'  => 'das ' . $totalRp . ' reprovações são da ' . $top['label'],
+                'detalhe' => $detalhe,
+                'conc'    => $top['label'],
+            ];
+        }
+
+        // 3) concessionária cuja base ainda não teve nenhuma vistoria
+        foreach ($conc as $c) {
+            if ($c['base'] > 0 && $c['vistoriadas'] === 0) {
+                $itens[] = [
+                    'id'      => 'zero',
+                    'tom'     => 'info',
+                    'n'       => $c['base'],
+                    'titulo'  => 'equipamentos da ' . $c['label'] . ' ainda sem nenhuma vistoria',
+                    'detalhe' => '',
+                    'conc'    => $c['label'],
+                ];
+            }
+        }
+
+        // 4) devoluções pendentes de correção
+        $dev = (int) ($DB->request([
+            'COUNT' => 'cpt',
+            'FROM'  => 'glpi_plugin_vistomap_devolucoes',
+            'WHERE' => ['status' => 'PENDENTE'],
+        ])->current()['cpt'] ?? 0);
+        if ($dev > 0) {
+            $itens[] = [
+                'id'      => 'devolucao',
+                'tom'     => 'info',
+                'n'       => $dev,
+                'titulo'  => $dev === 1 ? 'devolução pendente' : 'devoluções pendentes',
+                'detalhe' => 'Aguardando correção do técnico.',
+            ];
+        }
+
+        return ['itens' => array_slice($itens, 0, 5)];
     }
 
     /**

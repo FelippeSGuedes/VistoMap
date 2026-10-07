@@ -19,6 +19,9 @@ $fluxo     = PluginVistomapprojetosSalaControle::dataFluxoStatus();
 $mapaOp    = PluginVistomapprojetosSalaControle::dataMapaOperacional();
 $filtros   = PluginVistomapprojetosSalaControle::dataFiltrosMapa();
 $tecnicos  = PluginVistomapprojetosSalaControle::dataTecnicosEmCampo();
+$atencao   = PluginVistomapprojetosSalaControle::dataAtencao();
+$concRes   = PluginVistomapprojetosSalaControle::dataConcessionariasResultado();
+$motivos   = PluginVistomapprojetosSalaControle::dataMotivosReprovacao();
 
 $webDir = Plugin::getWebDir('vistomapprojetos');
 $mapboxToken = 'pk.eyJ1IjoiZmVsaXBwZWd1ZWRlcyIsImEiOiJjbWdqdmJhdzcwbm52Mmlvam1tcDBxZHRhIn0.KOmJr0i_kVzcXQgX1biogQ';
@@ -317,6 +320,37 @@ Html::header('Central de Operações', $_SERVER['PHP_SELF'], 'plugins', 'PluginV
   .vx-fl-alert{display:flex; align-items:center; gap:8px; font-size:11px; color:#B45309;
     background:#FEF3C7; border:1px solid #FDE68A; border-radius:8px; padding:8px 10px; margin-top:auto;}
   .vx-fl-alert b{font-variant-numeric:tabular-nums;}
+
+  /* ── Atenção agora ── */
+  .vx-attn-b{display:grid; grid-template-columns:repeat(auto-fit, minmax(270px, 1fr)); gap:12px; padding:16px 20px 18px;}
+  .vx-at{display:flex; gap:14px; align-items:flex-start; padding:13px 15px; border:1px solid var(--bd); border-radius:12px;
+    background:var(--panel2); transition:border-color .14s ease, box-shadow .14s ease;}
+  .vx-at.click{cursor:pointer;}
+  .vx-at.click:hover{border-color:var(--pur);}
+  .vx-at.on{border-color:var(--pur); box-shadow:0 0 0 1.5px var(--pur);}
+  .vx-at-n{font-size:28px; font-weight:800; line-height:1; letter-spacing:-.02em; font-variant-numeric:tabular-nums; min-width:46px;}
+  .vx-at-t{font-size:12px; color:var(--mut); line-height:1.4; min-width:0;}
+  .vx-at-t b{display:block; color:var(--ink); font-weight:700; font-size:12.5px; margin-bottom:2px;}
+
+  /* ── cartões novos do strip ── */
+  .vx-kpi-sub{font-size:11px; font-weight:700; margin-top:9px; line-height:1.3;}
+
+  /* ── Concessionárias com resultado ── */
+  /* fundo semitransparente: o painel tem curvas decorativas que cruzavam o texto */
+  .vx-conc-res{display:flex; flex-direction:column; gap:12px; margin-top:16px; padding:13px 15px;
+    background:rgba(255,255,255,.84); border:1px solid var(--bd); border-radius:12px;}
+  .vx-conc-h{display:flex; justify-content:space-between; align-items:baseline; font-size:12px; color:var(--ink); font-weight:700;}
+  .vx-conc-h b{font-variant-numeric:tabular-nums;}
+  .vx-conc-tr{height:7px; border-radius:4px; background:var(--bd); overflow:hidden; margin:5px 0 4px;}
+  .vx-conc-tr span{display:block; height:100%; border-radius:4px; background:var(--pur);}
+  .vx-conc-o{font-size:11px; color:var(--faint); font-variant-numeric:tabular-nums;}
+  .vx-conc-o i{font-style:normal; font-weight:700;}
+
+  /* ── Motivos de reprovação (barras sem clique: o ponto do mapa não carrega o motivo) ── */
+  .vx-bar-row.vx-static{cursor:default;}
+  .vx-bar-row.vx-static:hover{background:transparent;}
+  #vx-motivos .vx-bar-row .lb{flex-basis:170px;}
+  .vx-mot-nt{margin-top:10px; font-size:11px; color:var(--faint);}
   /* insight de ritmo/previsão — frase curta + 3 estatísticas lado a lado,
      não um parágrafo corrido com número em negrito solto no meio do texto */
   .vx-fl-insight{display:flex; gap:11px; padding:11px 12px; border-radius:11px;
@@ -457,6 +491,12 @@ Html::header('Central de Operações', $_SERVER['PHP_SELF'], 'plugins', 'PluginV
 
       <div class="vx-kpis" id="vx-kpis"></div>
 
+      <!-- Atenção agora: o que pede ação. Começa oculto; o JS mostra se houver item. -->
+      <section class="vx-panel vx-attn" id="vx-attn" style="display:none">
+        <div class="vx-ph"><div><div class="vx-pt">ATENÇÃO AGORA</div><div class="vx-ps">O que pede ação · clique pra ver no mapa</div></div></div>
+        <div class="vx-attn-b" id="vx-attn-b"></div>
+      </section>
+
       <!-- mapa: elemento único, dominante -->
       <section class="vx-panel vx-mapfull">
         <div class="vx-mapwrap">
@@ -533,6 +573,10 @@ Html::header('Central de Operações', $_SERVER['PHP_SELF'], 'plugins', 'PluginV
           <div class="vx-ph"><div><div class="vx-pt">PENDÊNCIAS</div><div class="vx-ps">Clique pra filtrar o mapa</div></div></div>
           <div class="vx-pb" id="vx-pendencias"></div>
         </section>
+        <section class="vx-panel">
+          <div class="vx-ph"><div><div class="vx-pt">MOTIVOS DE REPROVAÇÃO</div><div class="vx-ps">Principais motivos entre os reprovados</div></div></div>
+          <div class="vx-pb" id="vx-motivos"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -553,6 +597,9 @@ Html::header('Central de Operações', $_SERVER['PHP_SELF'], 'plugins', 'PluginV
   var MAPA    = <?= json_encode($mapaOp) ?>;
   var FILTROS = <?= json_encode($filtros) ?>;
   var TEC     = <?= json_encode($tecnicos) ?>;
+  var ATENCAO = <?= json_encode($atencao) ?>;
+  var CONCRES = <?= json_encode($concRes) ?>;
+  var MOTIVOS = <?= json_encode($motivos) ?>;
 
   var C = { cyan:"#0EA5E9", grn:"#16A34A", amb:"#D97706", red:"#DC2626", pur:"#7C5CE0", mut:"#69618C" };
   var IC = {
@@ -718,14 +765,21 @@ Html::header('Central de Operações', $_SERVER['PHP_SELF'], 'plugins', 'PluginV
       {key:"vist_concluida", lb:"Vistorias concluídas", v:K.vistoriasConcluidas, ic:IC.check, c:C.grn, test:function(p){return p.situacaoId===3||p.situacaoId===6;}, bg:"concluidas_gioc.png"},
       {key:"vist_pendente", lb:"Vistorias pendentes", v:K.vistoriasPendentes, ic:IC.alert, c:C.amb, test:function(p){return p.statesId===1||p.statesId===2;}, bg:"vistoriaspen.png"},
       {key:"vist_aprovada", lb:"Vistorias aprovadas", v:K.vistoriasAprovadas, ic:IC.shield, c:C.pur, test:function(p){return p.aprovada===1;}, bg:"vistoriasap.png"},
-      {key:"inst_pendente", lb:"Instalação pendente", v:K.instalacaoPendente, ic:IC.undo, c:C.amb, test:function(p){return p.statesId===3||p.statesId===4;}, bg:"instpen.png"},
-      {key:"inst_aprovada", lb:"Instalação aprovada", v:K.instalacaoAprovada, ic:IC.check, c:C.grn, test:function(p){return p.statesId===5;}, bg:"instapro.png"}
+      // Os cartões de Instalação (sempre 0 e 0: a instalação ainda não começou)
+      // deram lugar a estes dois. Reaproveitam as mesmas imagens de fundo.
+      {key:"taxa_aprov", lb:"Taxa de aprovação", v:K.taxaAprovacao, f:function(v){ return v==null?"—":String(v).replace(".",",")+"%"; },
+        sub:(K.decididas>0 ? nf(K.decididas)+" decididas pela concessionária" : ""), subc:C.mut,
+        ic:IC.check, c:C.grn, test:function(p){return p.statusVistoriaId===3||p.statusVistoriaId===4||p.statusVistoriaId===7;}, bg:"instapro.png"},
+      {key:"em_analise", lb:"Esperando a concessionária", v:K.emAnalise,
+        sub:(K.emAnaliseMais7d>0 ? nf(K.emAnaliseMais7d)+" há mais de 7 dias" : ""), subc:C.amb,
+        ic:IC.alert, c:C.amb, test:function(p){return p.statusVistoriaId===5;}, bg:"instpen.png"}
     ];
     document.getElementById("vx-kpis").innerHTML=defs.map(function(d){
       return '<div class="vx-kpi'+(d.off?" off":"")+'" data-filter-key="'+d.key+'" style="'+bgStyle(d.bg)+'">'+
         '<div class="vx-kpi-h"><div class="vx-kpi-ic" style="background:'+tint(d.c,.14)+';color:'+d.c+'">'+svg(d.ic)+'</div>'+
         '<div class="vx-kpi-lb">'+d.lb+'</div></div>'+
-        '<div><span class="vx-kpi-v">'+nf(d.v)+'</span></div>'+
+        '<div><span class="vx-kpi-v">'+(d.f ? d.f(d.v) : nf(d.v))+'</span></div>'+
+        (d.sub ? '<div class="vx-kpi-sub" style="color:'+d.subc+'">'+d.sub+'</div>' : '')+
       '</div>';
     }).join("");
     document.querySelectorAll(".vx-kpi:not(.off)").forEach(function(el,i){
@@ -867,6 +921,61 @@ Html::header('Central de Operações', $_SERVER['PHP_SELF'], 'plugins', 'PluginV
   (function concessionaria(){
     renderDonutFilter("vx-concessionaria", FILTROS.porConcessionaria||[], "cc",
       function(it){ return function(p){ return (p.concessionaria||"Sem concessionária")===it.label; }; }, PAL);
+    // Resultado de cada concessionária: quanto da base já foi vistoriado e como
+    // ela decidiu. O donut só mostrava o tamanho de cada base.
+    var res = CONCRES || [];
+    if(res.length){
+      document.getElementById("vx-concessionaria").insertAdjacentHTML("beforeend",
+        '<div class="vx-conc-res">'+res.map(function(r){
+          var pct = r.base ? r.vistoriadas/r.base*100 : 0;
+          return '<div class="vx-conc-r">'+
+            '<div class="vx-conc-h"><span>'+esc(r.label)+'</span><b>'+pct.toFixed(1).replace(".",",")+'%</b></div>'+
+            '<div class="vx-conc-tr"><span style="width:'+Math.max(pct,0.8)+'%"></span></div>'+
+            '<div class="vx-conc-o">'+nf(r.vistoriadas)+' de '+nf(r.base)+' vistoriadas'+
+              (r.vistoriadas ? ' · <i style="color:'+C.grn+'">'+nf(r.aprovadas)+' aprov.</i>'+
+                ' · <i style="color:'+C.amb+'">'+nf(r.emAnalise)+' análise</i>'+
+                ' · <i style="color:'+C.red+'">'+nf(r.reprovadas)+' reprov.</i>' : '')+
+            '</div></div>';
+        }).join("")+'</div>');
+    }
+  })();
+
+  /* ── Atenção agora — itens vindos de dataAtencao(); clique filtra o mapa ── */
+  (function atencao(){
+    var A = (ATENCAO && ATENCAO.itens) || [];
+    if(!A.length) return;
+    var TOM = {warn:C.amb, crit:C.red, info:C.cyan};
+    function testeDe(it){
+      if(it.id==="espera")  return function(p){ return p.statusVistoriaId===5; };
+      if(it.id==="reprov")  return function(p){ return p.statusVistoriaId===4 && p.concessionaria===it.conc; };
+      if(it.id==="zero")    return function(p){ return p.concessionaria===it.conc; };
+      return null; // devolução: o ponto do mapa não carrega esse dado
+    }
+    document.getElementById("vx-attn-b").innerHTML = A.map(function(it,i){
+      var c = TOM[it.tom] || C.cyan, clicavel = !!testeDe(it);
+      return '<div class="vx-at'+(clicavel?' click':'')+'" data-filter-key="at_'+i+'">'+
+        '<div class="vx-at-n" style="color:'+c+'">'+nf(it.n)+'</div>'+
+        '<div class="vx-at-t"><b>'+esc(it.titulo)+'</b>'+esc(it.detalhe||"")+'</div></div>';
+    }).join("");
+    document.getElementById("vx-attn").style.display = "";
+    A.forEach(function(it,i){
+      var t = testeDe(it); if(!t) return;
+      var key = "at_"+i, el = document.querySelector('[data-filter-key="'+key+'"]');
+      if(el) el.addEventListener("click", function(){ setFilter(key, t, it.titulo); });
+    });
+  })();
+
+  /* ── Motivos de reprovação ── */
+  (function motivos(){
+    var M = MOTIVOS || {}, itens = M.itens || [], el = document.getElementById("vx-motivos");
+    if(!itens.length){ el.innerHTML = '<div class="vx-tec-empty">Nenhuma reprovação registrada.</div>'; return; }
+    var mx = itens.reduce(function(m,it){ return Math.max(m,it.value); },1);
+    el.innerHTML = itens.map(function(it){
+      return '<div class="vx-bar-row vx-static"><span class="lb" title="'+esc(it.label)+'">'+esc(it.label)+'</span>'+
+        '<span class="tr"><span style="width:'+Math.max(4,it.value/mx*100)+'%;background:'+C.red+'"></span></span>'+
+        '<span class="vl">'+nf(it.value)+'</span></div>';
+    }).join("") +
+      '<div class="vx-mot-nt">'+nf(M.total)+' reprovações no total'+(M.outros>0 ? ' · '+nf(M.outros)+' em outros motivos' : '')+'</div>';
   })();
   (function porTipo(){
     var items = Object.keys(MAPA.porTipo||{}).map(function(k){ return {label:k, value:MAPA.porTipo[k]}; });
