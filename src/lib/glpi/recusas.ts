@@ -1,6 +1,12 @@
 import "server-only";
 import { execute, query } from "@/lib/db";
 import type { RecusaCategoria } from "./recusaMotivos";
+import {
+  SITUACAO_COLUMN,
+  SITUACAO_IMPEDIMENTO,
+  SITUACAO_RECUSA,
+  TABLE_FIELDS,
+} from "./constants";
 
 /**
  * Recusas — técnico declara que uma vistoria é impossível de fazer
@@ -228,6 +234,72 @@ export async function resolverRecusa(
  * estatísticas/mapa — nenhuma dessas leituras precisa mudar, todas já
  * filtram por status='APROVADO').
  */
+// ── Situação da Vistoria: Impedimento / Recusa ──────────────────────────────
+
+const DROPDOWN_SITUACAO = "glpi_plugin_fields_situaodavistoriafielddropdowns";
+// A coluna "pai" do dropdown tem o MESMO nome da coluna de situação na tabela
+// de campos (é o padrão do plugin Fields: <tabela>_id) — coincidência de nome,
+// não a mesma coisa.
+const COLUNA_PAI_DROPDOWN = "plugin_fields_situaodavistoriafielddropdowns_id";
+let situacoesGarantidas = false;
+
+/**
+ * Garante que "Impedimento" (9) e "Recusa" (10) existem no dropdown Situação da
+ * Vistoria. Idempotente (INSERT IGNORE), uma vez por processo. Segue o formato
+ * das linhas já existentes (nível 1, sem pai, entidade raiz).
+ */
+export async function ensureSituacoesRecusa(): Promise<void> {
+  if (situacoesGarantidas) return;
+  const valores: Array<[number, string]> = [
+    [SITUACAO_IMPEDIMENTO, "Impedimento"],
+    [SITUACAO_RECUSA, "Recusa"],
+  ];
+  for (const [id, nome] of valores) {
+    await execute(
+      `INSERT IGNORE INTO \`${DROPDOWN_SITUACAO}\`
+         (id, name, completename, comment, \`${COLUNA_PAI_DROPDOWN}\`, level, ancestors_cache, entities_id, is_recursive)
+       VALUES (?, ?, ?, NULL, 0, 1, '[]', 0, 0)`,
+      [id, nome, nome]
+    );
+  }
+  // INSERT IGNORE engole colisão de id: se alguém criou o 9 ou o 10 com OUTRO
+  // nome, a situação passaria a aparecer errada em silêncio. Confere e grita.
+  const rows = await query<{ id: number; name: string }>(
+    `SELECT id, name FROM \`${DROPDOWN_SITUACAO}\` WHERE id IN (?, ?)`,
+    [SITUACAO_IMPEDIMENTO, SITUACAO_RECUSA]
+  );
+  for (const [id, nome] of valores) {
+    const achada = rows.find((r) => Number(r.id) === id);
+    if (!achada || achada.name !== nome) {
+      throw new Error(
+        `Dropdown de Situação da Vistoria: id ${id} deveria ser "${nome}" e é "${achada?.name ?? "(ausente)"}"`
+      );
+    }
+  }
+  situacoesGarantidas = true;
+}
+
+export function situacaoDaCategoria(categoria: RecusaCategoria): number {
+  return categoria === "impedimento" ? SITUACAO_IMPEDIMENTO : SITUACAO_RECUSA;
+}
+
+/**
+ * Grava "Impedimento" ou "Recusa" na Situação da Vistoria. Chamar SEMPRE que uma
+ * recusa vira APROVADO — hoje são dois caminhos (o analista aprova o pedido do
+ * técnico; o analista recusa em nome do técnico), e esquecer um deles deixa a
+ * vistoria com a situação antiga.
+ */
+export async function aplicarSituacaoDaRecusa(
+  vistoriaId: number,
+  categoria: RecusaCategoria
+): Promise<void> {
+  await ensureSituacoesRecusa();
+  await execute(
+    `UPDATE \`${TABLE_FIELDS}\` SET \`${SITUACAO_COLUMN}\` = ? WHERE items_id = ?`,
+    [situacaoDaCategoria(categoria), vistoriaId]
+  );
+}
+
 export async function reabrirRecusa(id: number): Promise<void> {
   await ensureRecusasTable();
   await execute(`UPDATE \`${TABLE}\` SET status = 'REABERTA' WHERE id = ?`, [id]);

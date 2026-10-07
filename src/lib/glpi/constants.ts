@@ -110,6 +110,17 @@ export const SITUACAO_REVISITADO = 6;
 export const SITUACAO_EM_DESLOCAMENTO = 7;
 /** 8 = "Devolvida para Correção" — já existe no GLPI (dropdown criado previamente). */
 export const SITUACAO_DEVOLVIDA = 8;
+/**
+ * 9 = "Impedimento" e 10 = "Recusa": situação de uma vistoria cuja recusa foi
+ * APROVADA pelo analista, ou seja, que saiu de circulação. Antes de
+ * 2026-10-07 o campo ficava no estado de ANTES do pedido ("Em Deslocamento" /
+ * "Em Vistoria"), o que no GLPI parecia um técnico a caminho e ainda inflava os
+ * KPIs de "Em deslocamento"/"Em vistoria" do painel (contam por situação, sem
+ * olhar técnico). Os dois valores são criados no dropdown por
+ * ensureSituacoesRecusa() (lib/glpi/recusas.ts).
+ */
+export const SITUACAO_IMPEDIMENTO = 9;
+export const SITUACAO_RECUSA = 10;
 
 export const SITUACAO_COLUMN =
   "plugin_fields_situaodavistoriafielddropdowns_id";

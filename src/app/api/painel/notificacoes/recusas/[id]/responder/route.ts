@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { execute } from "@/lib/db";
 import { TABLE_FIELDS } from "@/lib/glpi/constants";
-import { fetchRecusaPorId, resolverRecusa } from "@/lib/glpi/recusas";
+import { aplicarSituacaoDaRecusa, fetchRecusaPorId, resolverRecusa } from "@/lib/glpi/recusas";
+import { logError } from "@/lib/observability";
 import { CATEGORIA_LABEL, type RecusaCategoria } from "@/lib/glpi/recusaMotivos";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPainelWebPush } from "@/lib/webpush";
@@ -73,7 +74,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
       [recusa.tecnicoId, recusa.vistoriaId]
     );
   }
-  // Aprovado: já está desvinculada desde a solicitação — fica assim.
+  // Aprovado: já está desvinculada desde a solicitação — fica assim. Mas a
+  // Situação da Vistoria ficava no estado de ANTES ("Em Deslocamento"), então
+  // grava Impedimento/Recusa conforme a categoria que o analista escolheu.
+  // Não-fatal: a aprovação já foi gravada; uma falha aqui vai pro log de erros.
+  if (body.acao === "aprovar") {
+    try {
+      await aplicarSituacaoDaRecusa(recusa.vistoriaId, body.categoria as RecusaCategoria);
+    } catch (err) {
+      void logError("app", "painel/recusas/responder/situacao", err, { recusaId, vistoriaId: recusa.vistoriaId });
+    }
+  }
 
   void auditInsert({
     ator: { id: adminId, nome: adminNome, role: "admin" },

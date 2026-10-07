@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { requirePainelRole } from "@/lib/painel-auth";
 import { query, execute } from "@/lib/db";
 import { TABLE_FIELDS } from "@/lib/glpi/constants";
-import { criarRecusa, fetchRecusaPendentePorVistoria, resolverRecusa } from "@/lib/glpi/recusas";
+import {
+  aplicarSituacaoDaRecusa,
+  criarRecusa,
+  fetchRecusaPendentePorVistoria,
+  resolverRecusa,
+} from "@/lib/glpi/recusas";
+import { RECUSA_MOTIVO_CATEGORIA } from "@/lib/glpi/recusaMotivos";
+import { logError } from "@/lib/observability";
 import { auditInsert } from "@/lib/glpi/audit";
 import { sendPushTo } from "@/lib/push";
 
@@ -80,6 +87,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
   // Nasce direto aprovada — quem executa já é o analista, não precisa de
   // uma segunda aprovação de outro analista pra sair de circulação.
   await resolverRecusa(recusaId, "APROVADO");
+
+  // Situação da Vistoria = categoria do motivo (TECNICO_INCAPACITADO cai em
+  // "recusa" pela regra de recusaMotivos.ts). Não-fatal, como no caminho normal.
+  try {
+    await aplicarSituacaoDaRecusa(vistoriaId, RECUSA_MOTIVO_CATEGORIA.TECNICO_INCAPACITADO);
+  } catch (err) {
+    void logError("app", "painel/central-vistorias/recusar/situacao", err, { recusaId, vistoriaId });
+  }
 
   // Some da fila do técnico, igual à recusa normal (coluna NOT NULL — 0
   // é a convenção GLPI pra "sem responsável", nunca NULL).

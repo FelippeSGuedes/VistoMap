@@ -19,6 +19,8 @@ import {
   SITUACAO_COLUMN,
   SITUACAO_DEVOLVIDA,
   SITUACAO_EM_DESLOCAMENTO,
+  SITUACAO_IMPEDIMENTO,
+  SITUACAO_RECUSA,
   SITUACAO_EM_REVISITA,
   SITUACAO_EM_VISTORIA,
   SITUACAO_REVISITADO,
@@ -1939,6 +1941,11 @@ function resolveSituacaoOperacional(
     case 1: return hasTecnico ? "ATRIBUIDO" : "A_VISTORIAR";
     case SITUACAO_EM_DESLOCAMENTO: return "EM_DESLOCAMENTO";
     case 8: return "DEVOLVIDA";
+    // Recusa/impedimento aprovado: fora de circulação. O flag `rejeitada` acima
+    // já cobre o caso normal; isto garante o mesmo resultado se a leitura das
+    // recusas falhar ou atrasar.
+    case SITUACAO_IMPEDIMENTO:
+    case SITUACAO_RECUSA: return "REJEITADA";
   }
   // Fallback: deriva de statusvistoria + is_repeat
   const s = (statusName ?? "").trim().toLowerCase();
