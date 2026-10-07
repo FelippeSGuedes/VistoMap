@@ -15,7 +15,7 @@ if (!Session::haveRight('plugin_vistomapprojetos', READ)) {
 }
 
 $kpis      = PluginVistomapprojetosSalaControle::dataKpis();
-$fluxo     = PluginVistomapprojetosSalaControle::dataFluxo();
+$fluxo     = PluginVistomapprojetosSalaControle::dataFluxoStatus();
 $mapaOp    = PluginVistomapprojetosSalaControle::dataMapaOperacional();
 $filtros   = PluginVistomapprojetosSalaControle::dataFiltrosMapa();
 $tecnicos  = PluginVistomapprojetosSalaControle::dataTecnicosEmCampo();
@@ -933,15 +933,19 @@ Html::header('Central de Operações', $_SERVER['PHP_SELF'], 'plugins', 'PluginV
     var stages = nodes.filter(function(n){ return n.id!=="devolvido"; });
     var devolvido = nodes.filter(function(n){ return n.id==="devolvido"; })[0];
 
+    // Etapas pelo STATUS NA CONCESSIONÁRIA (dataFluxoStatus) — antes eram
+    // estados do poste (Liberado/Em instalação/Instalado) que a operação de
+    // vistoria não usa, e "Aprovado" saía 0. O desenho é o mesmo.
     var META = {
-      aguardando: {c:C.amb,  test:function(p){ return p.statesId===2; }},
-      processo:   {c:C.cyan, test:function(p){ return p.statesId===1; }},
-      vistoriado: {c:C.grn,  test:function(p){ return p.statesId===7; }},
-      aprovado:   {c:C.pur,  test:function(p){ return p.statesId===3||p.statesId===4||p.statesId===5; }}
+      aguardando:    {c:C.amb,     test:function(p){ return p.statesId===2; }},
+      analise:       {c:C.cyan,    test:function(p){ return p.statusVistoriaId===5; }},
+      aprovado:      {c:C.pur,     test:function(p){ return p.statusVistoriaId===3; }},
+      aprovado_pend: {c:"#A78BFA", test:function(p){ return p.statusVistoriaId===7; }},
+      reprovado:     {c:C.red,     test:function(p){ return p.statusVistoriaId===4; }}
     };
 
     var tot = stages.reduce(function(s,n){ return s+Number(n.value||0); },0) || 1;
-    var done = stages.filter(function(n){ return n.id==="vistoriado"||n.id==="aprovado"; })
+    var done = stages.filter(function(n){ return n.done; })
                      .reduce(function(s,n){ return s+Number(n.value||0); },0);
     var pct = done/tot*100;
 

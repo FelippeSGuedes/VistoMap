@@ -28,3 +28,18 @@ servidor, faça o backup no padrão que já existe lá:
 
 Versão original copiada em 2026-10-06 (geo-poc.php de 17/09, 86 KB, 1.422
 linhas; salacontrole.class.php, 970 linhas).
+
+## Histórico de implantações
+
+| data | o que | sha256 (16 primeiros) | backup no servidor |
+|---|---|---|---|
+| 2026-10-07 | Central de Operações com dados corretos (funil por status da concessionária, KPI/flag de aprovadas) | `salacontrole.class.php` `16bcc789b9ddbbd5` · `geo-poc.php` `b026b40965a30322` | `*.bak-20261007113434` |
+
+O estado ANTERIOR (hashes `ba601e429b4237d8` e `5915aa0a0f5c50b1`) está no
+commit "versiona geo-poc.php e salacontrole.class.php (estado original)".
+
+Método usado, a repetir nas próximas: (1) conferir que o servidor ainda é
+idêntico à cópia daqui; (2) `php -l` do arquivo novo no PHP real do
+container; (3) rodar as funções de dados antes e depois contra o banco real;
+(4) backup `.bak-AAAAMMDDHHMMSS`; (5) `sudo install -o www-data -g www-data
+-m 644`; (6) conferir hash e rodar de novo no que ficou no ar.

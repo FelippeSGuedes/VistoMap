@@ -29,14 +29,22 @@ class PluginVistomapprojetosSalaControle
     private const STATE_INSTALACAO_REJEITADA = 6;
     private const STATE_VISTORIADO           = 7;
 
-    // "Aprovada" — testado contra produção (17/08): statusvistoria=Aprovado(3)
-    // nunca é gravado pelo fluxo real (aprovarVistoria() no app grava Em
-    // Análise, não Aprovado), dataaprovaoconcessionriafield está 100% vazio,
-    // e situação=Revisitado(6) também não tem nenhum registro ainda — a
-    // operação simplesmente não chegou nessa etapa. Mantemos os 3 sinais
-    // reais (OR) pra já funcionar automaticamente quando o primeiro
-    // acontecer, mas hoje o valor real É zero, não é bug.
+    // Status da vistoria NA CONCESSIONÁRIA (statusvistoriafielddropdowns).
+    // Conferido em produção em 2026-10-06: Aprovado(3)=823, Aprovado com
+    // Pendências(7)=71, Em análise(5)=49, Reprovado(4)=29, Aguardando
+    // Vistoria(6)=3.522 e 99 sem status — soma 4.593, a base inteira.
+    //
+    // "Aprovada" = status 3 OU 7, o mesmo critério do painel (/painel). Até
+    // 2026-10-06 isto era um OR de 3 sinais (status 3, data de aprovação ou
+    // situação Revisitado) calibrado em 17/08, quando nada tinha sido
+    // aprovado ainda e o comentário dizia que o valor real "É zero". A
+    // operação andou; hoje isso dava 900 contra 894 reais, porque Revisitado
+    // entrava como aprovação — mas Revisitado é o técnico ter REFEITO a
+    // vistoria, que segue em análise até a concessionária decidir.
     private const STATUS_VISTORIA_APROVADO = 3;
+    private const STATUS_VISTORIA_REPROVADO = 4;
+    private const STATUS_VISTORIA_EM_ANALISE = 5;
+    private const STATUS_VISTORIA_APROVADO_PENDENCIAS = 7;
     private const SITUACAO_VISTORIADO      = 3;
     private const SITUACAO_REVISITADO      = 6;
 
@@ -333,19 +341,18 @@ class PluginVistomapprojetosSalaControle
         $instalacaoPendente = ($counts[self::STATE_LIBERADO_INSTALACAO] ?? 0) + ($counts[self::STATE_EM_INSTALACAO] ?? 0);
         $instalacaoAprovada = $counts[self::STATE_INSTALADO] ?? 0;
 
-        // 3 sinais reais de aprovação, nenhum populado hoje (ver comentário
-        // nas constantes) — soma dá 0 agora, passa a refletir a realidade
-        // automaticamente assim que a operação chegar nessa etapa.
+        // Aprovadas = status Aprovado OU Aprovado com Pendências (ver as
+        // constantes). Precisa bater com a flag `aprovada` de cada ponto do
+        // mapa em dataMapaOperacional(): o card recorta o mapa por ela.
         $vistoriasAprovadas = (int) ($DB->request([
             'COUNT' => 'cpt',
             'FROM'  => self::TABLE_FIELDS . ' AS f',
             'INNER JOIN' => [self::TABLE_NE . ' AS ne' => ['ON' => ['f' => 'items_id', 'ne' => 'id']]],
             'WHERE' => [
                 'ne.is_deleted' => 0,
-                'OR' => [
-                    'f.' . self::SITUACAO_COLUMN => self::SITUACAO_REVISITADO,
-                    'f.plugin_fields_statusvistoriafielddropdowns_id' => self::STATUS_VISTORIA_APROVADO,
-                    ['f.dataaprovaoconcessionriafield' => ['<>', null]],
+                'f.plugin_fields_statusvistoriafielddropdowns_id' => [
+                    self::STATUS_VISTORIA_APROVADO,
+                    self::STATUS_VISTORIA_APROVADO_PENDENCIAS,
                 ],
             ],
         ])->current()['cpt'] ?? 0);
@@ -549,6 +556,82 @@ class PluginVistomapprojetosSalaControle
             'links' => $links,
             'ritmoDiario' => $ritmoDiario,
             'restante' => $restante,
+            'etaDias' => $etaDias,
+            'etaData' => $etaData,
+        ];
+    }
+
+    /**
+     * Fluxo da operação pelo STATUS NA CONCESSIONÁRIA — usado pela Central de
+     * Operações (front/geo-poc.php).
+     *
+     * dataFluxo() mede o ciclo de vida do POSTE (Liberado -> Em instalação ->
+     * Instalado), que a operação de vistoria não usa: em 2026-10-06 só
+     * existiam os estados Aguardando (3.621) e Vistoriado (972), então a etapa
+     * "Aprovado" saía 0 enquanto havia 894 aprovações, e o "Vistoriado" as
+     * incluía. Este método particiona a base pelo que a concessionária
+     * decidiu — etapas mutuamente exclusivas que somam a base inteira.
+     *
+     * É um método NOVO (e não um conserto de dataFluxo) de propósito: outra
+     * página do plugin pode consumir os ids antigos dos nós.
+     */
+    public static function dataFluxoStatus(): array
+    {
+        global $DB;
+
+        $total = array_sum(self::statesCounts());
+
+        $rows = $DB->request([
+            'SELECT'  => ['f.plugin_fields_statusvistoriafielddropdowns_id AS sid', 'COUNT' => 'f.id AS cpt'],
+            'FROM'    => self::TABLE_FIELDS . ' AS f',
+            'INNER JOIN' => [self::TABLE_NE . ' AS ne' => ['ON' => ['f' => 'items_id', 'ne' => 'id']]],
+            'WHERE'   => ['ne.is_deleted' => 0],
+            'GROUPBY' => 'f.plugin_fields_statusvistoriafielddropdowns_id',
+        ]);
+        $porStatus = [];
+        foreach ($rows as $r) {
+            $porStatus[(int) $r['sid']] = (int) $r['cpt'];
+        }
+        $analise   = $porStatus[self::STATUS_VISTORIA_EM_ANALISE] ?? 0;
+        $aprovado  = $porStatus[self::STATUS_VISTORIA_APROVADO] ?? 0;
+        $aprovPend = $porStatus[self::STATUS_VISTORIA_APROVADO_PENDENCIAS] ?? 0;
+        $reprovado = $porStatus[self::STATUS_VISTORIA_REPROVADO] ?? 0;
+        // "A vistoriar" é o resto, não uma contagem própria: assim a soma
+        // fecha com a base MESMO com equipamento sem status (eram 99).
+        $aguardando = max(0, $total - ($analise + $aprovado + $aprovPend + $reprovado));
+
+        $devolvido = (int) ($DB->request([
+            'COUNT' => 'cpt',
+            'FROM'  => 'glpi_plugin_vistomap_devolucoes',
+            'WHERE' => ['status' => 'PENDENTE'],
+        ])->current()['cpt'] ?? 0);
+
+        // `done` = a vistoria já foi feita (alimenta o "% da base já
+        // vistoriada" do card). `devolvido` fica FORA da barra, como antes:
+        // vem de outra tabela, somá-lo misturaria denominadores.
+        $nodes = [
+            ['id' => 'aguardando',    'label' => 'A vistoriar',            'value' => $aguardando, 'stage' => 0],
+            ['id' => 'analise',       'label' => 'Em análise',             'value' => $analise,    'stage' => 1, 'done' => true],
+            ['id' => 'aprovado',      'label' => 'Aprovado',               'value' => $aprovado,   'stage' => 2, 'done' => true, 'kind' => 'good'],
+            ['id' => 'aprovado_pend', 'label' => 'Aprovado c/ pendências', 'value' => $aprovPend,  'stage' => 2, 'done' => true, 'kind' => 'good'],
+            ['id' => 'reprovado',     'label' => 'Reprovado',              'value' => $reprovado,  'stage' => 2, 'done' => true, 'kind' => 'crit'],
+            ['id' => 'devolvido',     'label' => 'Devolvido',              'value' => $devolvido,  'stage' => 3, 'kind' => 'crit'],
+        ];
+
+        // Ritmo e previsão: mesma regra de dataFluxo() (média só dos dias com
+        // ao menos 1 finalização nos últimos 14 dias), mas o backlog agora é
+        // a etapa "A vistoriar" — o que de fato falta vistoriar.
+        $serieVistorias = self::dailySeries('glpi_plugin_vistomap_audit', 'ts', 14, ['acao' => 'vistoria-finalizada']);
+        $diasComRitmo = array_filter($serieVistorias, static fn($v) => $v > 0);
+        $ritmoDiario = $diasComRitmo ? round(array_sum($diasComRitmo) / count($diasComRitmo), 1) : 0.0;
+        $etaDias = $ritmoDiario > 0 ? (int) ceil($aguardando / $ritmoDiario) : null;
+        $etaData = $etaDias !== null ? date('d/m', strtotime("+$etaDias days")) : null;
+
+        return [
+            'nodes' => $nodes,
+            'links' => [],
+            'ritmoDiario' => $ritmoDiario,
+            'restante' => $aguardando,
             'etaDias' => $etaDias,
             'etaData' => $etaData,
         ];
@@ -849,9 +932,12 @@ class PluginVistomapprojetosSalaControle
             $tecNomeCompleto = trim(($r['tec_firstname'] ?? '') . ' ' . ($r['tec_realname'] ?? ''));
             $tecnicoNome = $temTecnico ? ($tecNomeCompleto ?: ($r['tec_login'] ?? null)) : null;
             $statusVistoriaId = (int) ($r['status_vistoria_id'] ?? 0);
-            $aprovada = $situacaoId === self::SITUACAO_REVISITADO
-                || $statusVistoriaId === self::STATUS_VISTORIA_APROVADO
-                || !empty($r['data_aprovacao']);
+            // Mesmo critério do KPI em dataFiltrosMapa() — Revisitado NÃO é
+            // aprovação (ver as constantes de status).
+            $aprovada = in_array($statusVistoriaId, [
+                self::STATUS_VISTORIA_APROVADO,
+                self::STATUS_VISTORIA_APROVADO_PENDENCIAS,
+            ], true);
 
             $pendenciaId = (int) ($r['pendencia_id'] ?? 0);
             if ($pendenciaId === self::PENDENCIA_CPFL) {
@@ -883,6 +969,8 @@ class PluginVistomapprojetosSalaControle
                     // mesma fonte de verdade da contagem em dataFiltrosMapa()).
                     'statesId' => $statesId,
                     'situacaoId' => $situacaoId,
+                    // Status na concessionária — o funil clica por ele.
+                    'statusVistoriaId' => $statusVistoriaId,
                     'aprovada' => $aprovada ? 1 : 0,
                     'pendencia' => $pendenciaLabel,
                     // indicador 0/1 só pro que importa pro cluster (reprovado
