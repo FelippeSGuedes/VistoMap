@@ -35,6 +35,7 @@ linhas; salacontrole.class.php, 970 linhas).
 |---|---|---|---|
 | 2026-10-07 | Central de Operações com dados corretos (funil por status da concessionária, KPI/flag de aprovadas) | `salacontrole.class.php` `16bcc789b9ddbbd5` · `geo-poc.php` `b026b40965a30322` | `*.bak-20261007113434` |
 | 2026-10-07 | Painéis novos no estilo atual: cartões Taxa de aprovação / Esperando a concessionária, Atenção agora, Concessionárias com resultado, Motivos de reprovação | `salacontrole.class.php` `796695ee5d6165f5` · `geo-poc.php` `70bffc5d8b3fa0e1` | `*.bak-20261007120348` |
+| 2026-10-07 | Mapa: bucket "Reprovado" inclui reprovados pela concessionária (antes mostrava 0) | `salacontrole.class.php` `d370bdc1f2e5ac5d` · `geo-poc.php` `70bffc5d8b3fa0e1` | `*.bak-20261007133444` |
 
 O estado ANTERIOR (hashes `ba601e429b4237d8` e `5915aa0a0f5c50b1`) está no
 commit "versiona geo-poc.php e salacontrole.class.php (estado original)".

@@ -1102,6 +1102,9 @@ class PluginVistomapprojetosSalaControle
 
             $statesId = (int) $r['states_id'];
             $situacaoId = (int) $r['situacao_id'];
+            // Status na concessionária — lido aqui em cima porque a classificação
+            // do bucket "Reprovado" abaixo depende dele (antes era lido depois).
+            $statusVistoriaId = (int) ($r['status_vistoria_id'] ?? 0);
             // Colunas GLPI Fields nunca ficam NULL: "sem técnico" é 0, não
             // NULL — checar "!== null" classificava TODO equipamento sem
             // técnico como "Atribuído" (achado real: CAM-P-A-453).
@@ -1130,7 +1133,13 @@ class PluginVistomapprojetosSalaControle
             //    caía dentro de Em Vistoria, Revisitado dentro de
             //    Vistoriado e Aguardando Revisita dentro de Atribuído/A
             //    Vistoriar — pedido do usuário 2026-09-17).
-            elseif ($situacaoId === 8 || $temDevolucaoPendente) {
+            // "Reprovado" no mapa = precisa de correção/revisita: devolução pendente
+            // (situação Devolvida) OU reprovado pela concessionária. Até 2026-10-07
+            // só a primeira entrava, então a legenda mostrava 0 com 29 reprovados —
+            // eles apareciam como "Vistoriado", porque a reprovação grava o status
+            // mas não mexe na situação.
+            elseif ($situacaoId === 8 || $temDevolucaoPendente
+                || $statusVistoriaId === self::STATUS_VISTORIA_REPROVADO) {
                 $status = 'reprovado';
             } elseif ($situacaoId === 7) {
                 $status = 'deslocamento';
@@ -1160,7 +1169,6 @@ class PluginVistomapprojetosSalaControle
 
             $tecNomeCompleto = trim(($r['tec_firstname'] ?? '') . ' ' . ($r['tec_realname'] ?? ''));
             $tecnicoNome = $temTecnico ? ($tecNomeCompleto ?: ($r['tec_login'] ?? null)) : null;
-            $statusVistoriaId = (int) ($r['status_vistoria_id'] ?? 0);
             // Mesmo critério do KPI em dataFiltrosMapa() — Revisitado NÃO é
             // aprovação (ver as constantes de status).
             $aprovada = in_array($statusVistoriaId, [
